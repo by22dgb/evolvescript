@@ -501,17 +501,17 @@
             }
             if($('#autoCraft').length == 0){
                 createSettingToggle('autoCraft', createCraftToggles, removeCraftToggles);
-            }else if($('.ea-craft-toggle').length == 0){
+            }else if(settings.autoCraft && $('.ea-craft-toggle').length == 0){
                 createCraftToggles();
             }
             if($('#autoBuild').length == 0){
                 createSettingToggle('autoBuild', createBuildingToggles, removeBuildingToggles);
-            }else if($('.ea-building-toggle').length == 0){
+            }else if(settings.autoBuild && $('.ea-building-toggle').length == 0){
                 createBuildingToggles();
             }
             if($('#autoMarket').length == 0 && isMarketUnlocked()){
                 createSettingToggle('autoMarket', createMarketToggles, removeMarketToggles);
-            }else if($('.ea-market-toggle').length == 0){
+            }else if(settings.autoMarket > 0 && $('.ea-market-toggle').length == 0 && isMarketUnlocked()){
                 createMarketToggles()
             }
             if($('#autoResearch').length == 0){
