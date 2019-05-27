@@ -419,7 +419,11 @@
         for(let i = 0; i < buildings.length; i++){
             let bat = buildings[i];
             if(bat.enabled){
-                bat.buyBtn.click();
+                let buyContainer = document.getElementById("city-" + buildings[i].name);
+                if(buyContainer === null){
+                    continue; //building not unlocked
+                }
+                buyContainer.getElementsByTagName("a")[0].click();
             }
         }
     }
@@ -556,6 +560,7 @@
     }
 
     function createCraftToggles(){
+        removeCraftToggles();
         for (let i = 0; i < craftableResources.length; i++) {
             let res = craftableResources[i];
             createCraftToggle(res);
@@ -584,6 +589,7 @@
     }
 
     function createBuildingToggles(){
+        removeBuildingToggles();
         for (let i = 0; i < buildings.length; i++) {
             let building = buildings[i];
             createBuildingToggle(building);
@@ -639,6 +645,7 @@
     }
 
     function createMarketToggles(){
+        removeMarketToggles();
         for (let i = 0; i < resources.length; i++) {
             let res = resources[i];
             createMarketToggle(res);
