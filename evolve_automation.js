@@ -499,13 +499,13 @@
             if($('#autoFight').length == 0){
                 createSettingToggle('autoFight');
             }
-            if($('#autoCraft').length == 0){
+            if($('#autoCraft').length == 0 || $('.ea-craft-toggle').length == 0){
                 createSettingToggle('autoCraft', createCraftToggles, removeCraftToggles);
             }
             if($('#autoBuild').length == 0 || $('.ea-building-toggle').length == 0){
                 createSettingToggle('autoBuild', createBuildingToggles, removeBuildingToggles);
             }
-            if($('#autoMarket').length == 0 && isMarketUnlocked()){
+            if(($('#autoMarket').length == 0 || $('.ea-market-toggle').length == 0)&& isMarketUnlocked()){
                 createSettingToggle('autoMarket', createMarketToggles, removeMarketToggles);
             }
             if($('#autoResearch').length == 0){
