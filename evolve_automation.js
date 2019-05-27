@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description  try to take over the world!
-// @author       memilian
+// @author       Fafnir
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
 // ==/UserScript==
@@ -25,7 +25,6 @@
     var resources = [
         {
             name:"Food",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -33,7 +32,6 @@
         },
         {
             name:"Lumber",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -41,7 +39,6 @@
         },
         {
             name:"Stone",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -49,7 +46,6 @@
         },
         {
             name:"Furs",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -57,7 +53,6 @@
         },
         {
             name:"Copper",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -65,7 +60,6 @@
         },
         {
             name:"Iron",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -73,7 +67,6 @@
         },
         {
             name:"Cement",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.3,
@@ -81,7 +74,6 @@
         },
         {
             name:"Coal",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -89,7 +81,6 @@
         },
         {
             name:"Oil",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -97,7 +88,6 @@
         },
         {
             name:"Uranium",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -105,7 +95,6 @@
         },
         {
             name:"Steel",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.5,
@@ -113,7 +102,6 @@
         },
         {
             name:"Titanium",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.8,
@@ -121,7 +109,6 @@
         },
         {
             name:"Alloy",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.8,
@@ -129,7 +116,6 @@
         },
         {
             name:"Polymer",
-            ratio:1,
             autobuy:false,
             autosell:false,
             buyRatio:0.8,
@@ -181,7 +167,11 @@
     ];
 
     for (let i = 0; i < craftableResources.length; i++) {
-        craftableResources[i].buyBtn = document.getElementById("inc" + craftableResources[i].name + "5").getElementsByTagName("a")[0];
+        let buyContainer = document.getElementById("inc" + craftableResources[i].name + "5");
+        if(buyContainer === null){
+            continue; //craft not unlocked
+        }
+        craftableResources[i].buyBtn = buyContainer.getElementsByTagName("a")[0];
         let skey = 'craft' + craftableResources[i].name;
         if(settings.hasOwnProperty(skey)){
             craftableResources[i].enabled = settings[skey];
@@ -242,10 +232,59 @@
         },{
             name: "apartment",
             enabled: false,
+        },{
+            name: "farm",
+            enabled: false,
+        },{
+            name: "mill",
+            enabled: false,
+        },{
+            name: "silo",
+            enabled: false,
+        },{
+            name: "shed",
+            enabled: false,
+        },{
+            name: "lumber_yard",
+            enabled: false,
+        },{
+            name: "rock_quarry",
+            enabled: false,
+        },{
+            name: "cement_plant",
+            enabled: false,
+        },{
+            name: "foundry",
+            enabled: false,
+        },{
+            name: "factory",
+            enabled: false,
+        },{
+            name: "oil_depot",
+            enabled: false,
+        },{
+            name: "trade",
+            enabled: false,
+        },{
+            name: "amphitheatre",
+            enabled: false,
+        },{
+            name: "library",
+            enabled: false,
+        },{
+            name: "sawmill",
+            enabled: false,
+        },{
+            name: "fission_power",
+            enabled: false,
         }
     ];
     for (let i = 0; i < buildings.length; i++) {
-        buildings[i].buyBtn = document.getElementById("city-" + buildings[i].name).getElementsByTagName("a")[0];
+        let buyContainer = document.getElementById("city-" + buildings[i].name);
+        if(buyContainer === null){
+            continue; //building not unlocked
+        }
+        buildings[i].buyBtn = buyContainer.getElementsByTagName("a")[0];
         let skey = 'bat' + buildings[i].name;
         if(settings.hasOwnProperty(skey)){
             buildings[i].enabled = settings[skey];
@@ -290,13 +329,16 @@
 
     /***
     *
-    * Setup resources informations
+    * automation functions
     *
     ***/
     function autoCraft() {
         for (let i = 0; i < craftableResources.length; i++) {
-            var res = craftableResources[i];
-            var counter = 0;
+            let res = craftableResources[i];
+            if(!isResourceUnlocked(res)){
+                continue;
+            }
+            let counter = 0;
             while(res.enabled && counter++<1 && getResourceRatio(res.source) > res.ratio){
                 res.buyBtn.click();
                 setTimeout(5);
@@ -330,6 +372,9 @@
         setTimeout(function(){ //timeout needed to let the click on multiplier take effect
             for(let i = 0; i<resources.length; i++){
                 let resource = resources[i];
+                if(!isResourceUnlocked(resource)){
+                    continue;
+                }
                 let resCurrent = getResourceAmount(resource);
                 let resMax = getResourceStorage(resource);
                 if(resource.autosell === true && (ignoreSellRatio ? true : resCurrent / resMax > resource.sellRatio)){
@@ -365,7 +410,6 @@
                         resCurrent += qty;
                         buyBtn.click();
                     }
-
                 }
             }
         }, 25);
@@ -391,12 +435,17 @@
     }
 
     function automate() {
+        updateUI();
         if(settings.autoFight){
             autoBattle();
         }
         setTimeout(125);
-        if(settings.autoARPA){//just supercollider
-            document.querySelector("#arpalhc > div.buy > button.button.x1").click();
+        if(settings.autoARPA){
+            //just supercollider
+            let btn = document.querySelector("#arpalhc > div.buy > button.button.x1");
+            if(btn != null){
+                btn.click();
+            }
         }
         if(settings.autoBuild){
             autoBuild();
@@ -420,13 +469,16 @@
     * Setup UI
     *
     ***/
-    function createSettingToggle(name){
+    function createSettingToggle(name, enabledCallBack, disabledCallBack){
         let elm = $('#resources');
-        let toggle = $('<label tabindex="0" class="switch" style=""><input type="checkbox" value=false> <span class="check"></span><span>'+name+'</span></label></br>');
+        let toggle = $('<label tabindex="0" class="switch" id="'+name+'" style=""><input type="checkbox" value=false> <span class="check"></span><span>'+name+'</span></label></br>');
         elm.append(toggle);
         if(settings[name]){
             toggle.click();
             toggle.children('input').attr('value', true);
+            if(enabledCallBack !== undefined){
+                enabledCallBack();
+            }
         }
         toggle.on('mouseup', function(e){
             let input = e.currentTarget.children[0];
@@ -434,26 +486,54 @@
             input.setAttribute('value', state);
             settings[name] = state;
             updateSettings();
+            if(state && enabledCallBack !== undefined){
+                enabledCallBack();
+            } else if(disabledCallBack !== undefined){
+                disabledCallBack()
+            }
         });
     }
 
-    createSettingToggle('autoFight');
-    createSettingToggle('autoCraft');
-    createSettingToggle('autoBuild');
-    createSettingToggle('autoMarket');
-    createSettingToggle('autoResearch');
-    createSettingToggle('autoARPA');
-
-    let bulkSell = $('<a class="button is-dark"><span class="aTitle">Bulk Sell</span></a>');
-    $('#resources').append(bulkSell);
-    bulkSell.on('mouseup', function(e){
-        autoMarket(true, true);
-    });
-
+    function updateUI(){
+        if($('#evolution') != null && $('#evolution')[0].style.display === 'none'){
+            if($('#autoFight').length == 0){
+                createSettingToggle('autoFight');
+            }
+            if($('#autoCraft').length == 0){
+                createSettingToggle('autoCraft', createCraftToggles, removeCraftToggles);
+            }
+            if($('#autoBuild').length == 0){
+                createSettingToggle('autoBuild', createBuildingToggles, removeBuildingToggles);
+            }
+            if($('#autoMarket').length == 0 && isMarketUnlocked()){
+                createSettingToggle('autoMarket', createMarketToggles, removeMarketToggles);
+            }
+            if($('#autoResearch').length == 0){
+                createSettingToggle('autoResearch');
+            }
+            if($('#autoARPA').length == 0){
+                createSettingToggle('autoARPA');
+            }
+            if($('#bulkSell').length == 0 && isMarketUnlocked()){
+                let bulkSell = $('<a class="button is-dark" id="bulkSell"><span class="aTitle">Bulk Sell</span></a>');
+                $('#resources').append(bulkSell);
+                bulkSell.on('mouseup', function(e){
+                    autoMarket(true, true);
+                });
+            }
+        }else{
+            settings.autoBuild = false;
+            settings.autoFight = false;
+            settings.autoARPA = false;
+            settings.autoCraft = false;
+            settings.autoResearch = false;
+            settings.autoMarket = false;
+        }
+    }
 
     function createCraftToggle(resource){
         let resourceSpan = $('#res'+resource.name);
-        let toggle = $('<label tabindex="0" class="switch" style="position:absolute; max-width:75px;margin-top: 4px;left:8%;"><input type="checkbox" value=false> <span class="check" style="height:5px;"></span></label>');
+        let toggle = $('<label tabindex="0" class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:8%;"><input type="checkbox" value=false> <span class="check" style="height:5px;"></span></label>');
         resourceSpan.append(toggle);
         if(resource.enabled){
             toggle.click();
@@ -469,14 +549,20 @@
         });
     }
 
-    for (let i = 0; i < craftableResources.length; i++) {
-        let res = craftableResources[i];
-        createCraftToggle(res);
+    function createCraftToggles(){
+        for (let i = 0; i < craftableResources.length; i++) {
+            let res = craftableResources[i];
+            createCraftToggle(res);
+        }
     }
 
-    function createBatToggle(bat){
+    function removeCraftToggles(){
+        $('.ea-craft-toggle').remove();
+    }
+
+    function createBuildingToggle(bat){
         let batElmt = $('#city-'+bat.name);
-        let toggle = $('<label tabindex="0" class="switch" style="position:absolute; margin-top: 30px;left:8%;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span></label>');
+        let toggle = $('<label tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 30px;left:8%;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span></label>');
         batElmt.append(toggle);
         if(bat.enabled){
             toggle.click();
@@ -491,15 +577,21 @@
         });
     }
 
-    for (let i = 0; i < buildings.length; i++) {
-        let bat = buildings[i];
-        createBatToggle(bat);
+    function createBuildingToggles(){
+        for (let i = 0; i < buildings.length; i++) {
+            let building = buildings[i];
+            createBuildingToggle(building);
+        }
     }
 
-    function createMarketToggles(resource){
+    function removeBuildingToggles(){
+        $('.ea-building-toggle').remove();
+    }
+
+    function createMarketToggle(resource){
         let marketRow = $('#market-'+resource.name);
-        let toggleBuy = $('<label tabindex="0" class="switch" style=""><input type="checkbox" value=false> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">auto buy (&lt'+resource.buyRatio+')</span><span class="state"></span></label>');
-        let toggleSell = $('<label tabindex="0" class="switch" style=""><input type="checkbox" value=false> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">auto sell (&gt'+resource.sellRatio+')</span><span class="state"></span></label>');
+        let toggleBuy = $('<label tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox" value=false> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">auto buy (&lt'+resource.buyRatio+')</span><span class="state"></span></label>');
+        let toggleSell = $('<label tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox" value=false> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">auto sell (&gt'+resource.sellRatio+')</span><span class="state"></span></label>');
         marketRow.append(toggleBuy);
         marketRow.append(toggleSell);
         if(resource.autobuy){
@@ -540,11 +632,16 @@
         });
     }
 
-    for (let i = 0; i < resources.length; i++) {
-        let res = resources[i];
-        createMarketToggles(res);
+    function createMarketToggles(){
+        for (let i = 0; i < resources.length; i++) {
+            let res = resources[i];
+            createMarketToggle(res);
+        }
     }
 
+    function removeMarketToggles(){
+        $('.ea-market-toggle').remove();
+    }
 
     /***
     *
@@ -582,5 +679,13 @@
         var current = getResourceAmount(res);
         var max = getResourceStorage(res);
         return current / max;
+    }
+
+    function isResourceUnlocked(resource){
+        return $('#res'+resource.name)[0].style.display != 'none';
+    }
+
+    function isMarketUnlocked(){
+        return $('#tech-market > .oldTech').length > 0;
     }
 })($);
