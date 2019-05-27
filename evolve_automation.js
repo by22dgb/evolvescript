@@ -502,7 +502,7 @@
             if($('#autoCraft').length == 0){
                 createSettingToggle('autoCraft', createCraftToggles, removeCraftToggles);
             }
-            if($('#autoBuild').length == 0){
+            if($('#autoBuild').length == 0 || $('.ea-building-toggle').length == 0){
                 createSettingToggle('autoBuild', createBuildingToggles, removeBuildingToggles);
             }
             if($('#autoMarket').length == 0 && isMarketUnlocked()){
