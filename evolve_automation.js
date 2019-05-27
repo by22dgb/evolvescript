@@ -499,14 +499,20 @@
             if($('#autoFight').length == 0){
                 createSettingToggle('autoFight');
             }
-            if($('#autoCraft').length == 0 || $('.ea-craft-toggle').length == 0){
+            if($('#autoCraft').length == 0){
                 createSettingToggle('autoCraft', createCraftToggles, removeCraftToggles);
+            }else if($('.ea-craft-toggle').length == 0){
+                createCraftToggles();
             }
-            if($('#autoBuild').length == 0 || $('.ea-building-toggle').length == 0){
+            if($('#autoBuild').length == 0){
                 createSettingToggle('autoBuild', createBuildingToggles, removeBuildingToggles);
+            }else if($('.ea-building-toggle').length == 0){
+                createBuildingToggles();
             }
-            if(($('#autoMarket').length == 0 || $('.ea-market-toggle').length == 0)&& isMarketUnlocked()){
+            if($('#autoMarket').length == 0 && isMarketUnlocked()){
                 createSettingToggle('autoMarket', createMarketToggles, removeMarketToggles);
+            }else if($('.ea-market-toggle').length == 0){
+                createMarketToggles()
             }
             if($('#autoResearch').length == 0){
                 createSettingToggle('autoResearch');
