@@ -6,6 +6,7 @@
 // @author       Fafnir
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
+// @require      https://code.jquery.com/jquery-3.3.1.min.js
 // ==/UserScript==
 
 (function($) {
@@ -277,6 +278,12 @@
         },{
             name: "fission_power",
             enabled: false,
+        },{
+            name: "lodge",
+            enabled: false,
+        },{
+            name: "smokehouse",
+            enabled: false,
         }
     ];
     for (let i = 0; i < buildings.length; i++) {
@@ -322,10 +329,21 @@
         if(!settings.hasOwnProperty('autoResearch')){
             settings.autoResearch = true;
         }
+        if(!settings.hasOwnProperty('minimumMoney')){
+            settings.minimumMoney = 0;
+        }
+        if(!settings.hasOwnProperty('arpa')){
+            settings.arpa = {
+                lhc: false,
+                stock_exchange: false,
+                monument: false
+            };
+        }
         localStorage.setItem('settings', JSON.stringify(settings));
     }
 
 
+    updateSettings();
 
     /***
     *
@@ -403,7 +421,7 @@
                     let counter = 0;
                     while(true){
                         //break if not enough money or not enough resource storage
-                        if(current - buyValue <= 0 || resCurrent + qty > resMax - 3 * qty || counter++ > 2) {
+                        if(wouldBreakMoneyFloor(buyValue) || current - buyValue <= 0 || resCurrent + qty > resMax - 3 * qty || counter++ > 2) {
                             break;
                         }
                         current -= buyValue;
@@ -432,8 +450,31 @@
         let items = document.querySelectorAll('#tech .action');
         for(let i = 0; i < items.length; i++){
             if(items[i].className.indexOf("cna") < 0){
-                items[i].children[0].click();
-                break;
+                if(items[i].className.indexOf('fanaticism') == -1 && items[i].className.indexOf('anthropology') == -1 ){
+                    items[i].children[0].click();
+                    break;
+                }
+            }
+        }
+    }
+
+    function autoArpa(){
+        if(settings.arpa.lhc){
+            let btn = document.querySelector("#arpalhc > div.buy > button.button.x1");
+            if(btn != null && !wouldBreakMoneyFloor(26500)){
+                btn.click();
+            }
+        }
+        if(settings.arpa.stock_exchange){
+            let btn = document.querySelector("#arpastock_exchange > div.buy > button.button.x1");
+            if(btn != null && ! wouldBreakMoneyFloor(30000)){
+                btn.click();
+            }
+        }
+        if(settings.arpa.monument){
+            let btn = document.querySelector("#arpamonument > div.buy > button.button.x1");
+            if(btn != null){
+                btn.click();
             }
         }
     }
@@ -445,11 +486,7 @@
         }
         setTimeout(125);
         if(settings.autoARPA){
-            //just supercollider
-            let btn = document.querySelector("#arpalhc > div.buy > button.button.x1");
-            if(btn != null){
-                btn.click();
-            }
+            autoArpa();
         }
         if(settings.autoBuild){
             autoBuild();
@@ -522,13 +559,33 @@
                 createSettingToggle('autoResearch');
             }
             if($('#autoARPA').length == 0){
-                createSettingToggle('autoARPA');
+                createSettingToggle('autoARPA', createArpaToggles, removeArpaToggles);
+            }else if(settings.autoArpa && $('.ea-arpa-toggle').length == 0){
+                createArpaToggles();
             }
-            if($('#bulkSell').length == 0 && isMarketUnlocked()){
-                let bulkSell = $('<a class="button is-dark" id="bulkSell"><span class="aTitle">Bulk Sell</span></a>');
+            if($('#bulk-sell').length == 0 && isMarketUnlocked()){
+                let bulkSell = $('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
                 $('#resources').append(bulkSell);
                 bulkSell.on('mouseup', function(e){
                     autoMarket(true, true);
+                });
+            }if($('#ea-settings').length == 0){
+                let settingsDiv = $('<div id="ea-settings"></div>');
+                let minMoneyTxt = $('<div>Minimum money to keep :</div>')
+                let minMoneyInput = $('<input type="text" class="input is-small" style="width:32%"/>');
+                minMoneyInput.val(settings.minimumMoney);
+                let setBtn = $('<a class="button is-dark is-small" id="set-min-money"><span>set</span></a>');
+                settingsDiv.append(minMoneyTxt).append(minMoneyInput).append(setBtn);
+                $('#resources').append(settingsDiv);
+
+                setBtn.on('mouseup', function(){
+                    let val = minMoneyInput.val();
+                    let minMoney = getRealValue(parseFloat(val), val);
+                    if(!isNaN(minMoney)){
+                        console.log('setting minimum money to : '+minMoney);
+                        settings.minimumMoney = minMoney;
+                        updateSettings();
+                    }
                 });
             }
         }else{
@@ -541,6 +598,34 @@
         }
     }
 
+    function createArpaToggle(name){
+        let arpaDiv = $('#arpa'+name +' .head');
+        let toggle = $('<label tabindex="0" class="switch ea-arpa-toggle" style="position:relative; max-width:75px;margin-top: -36px;left:45%;float:left;"><input type="checkbox" value=false> <span class="check" style="height:5px;"></span></label>');
+        arpaDiv.append(toggle);
+        if(settings.arpa[name]){
+            toggle.click();
+            toggle.children('input').attr('value', true);
+        }
+        toggle.on('mouseup', function(e){
+            let input = e.currentTarget.children[0];
+            let state = !(input.getAttribute('value') === "true");
+            input.setAttribute('value', state);
+            settings.arpa[name] = state;
+            updateSettings();
+        });
+    }
+
+    function createArpaToggles(){
+        removeArpaToggles();
+        createArpaToggle('lhc');
+        createArpaToggle('stock_exchange');
+        createArpaToggle('monument');
+    }
+
+    function removeArpaToggles(){
+        $('.ea-arpa-toggle').remove();
+    }
+
     function createCraftToggle(resource){
         let resourceSpan = $('#res'+resource.name);
         let toggle = $('<label tabindex="0" class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:8%;"><input type="checkbox" value=false> <span class="check" style="height:5px;"></span></label>');
@@ -550,7 +635,6 @@
             toggle.children('input').attr('value', true);
         }
         toggle.on('mouseup', function(e){
-            console.log(e);
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
             input.setAttribute('value', state);
@@ -700,5 +784,10 @@
 
     function isMarketUnlocked(){
         return $('#tech-market > .oldTech').length > 0;
+    }
+
+    function wouldBreakMoneyFloor(buyValue){
+        let money = getResourceAmount({name:"Money"});
+        return money - buyValue < settings.minimumMoney;
     }
 })($);
