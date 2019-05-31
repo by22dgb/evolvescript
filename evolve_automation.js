@@ -421,7 +421,7 @@
                     let counter = 0;
                     while(true){
                         //break if not enough money or not enough resource storage
-                        if(wouldBreakMoneyFloor(buyValue) || current - buyValue <= 0 || resCurrent + qty > resMax - 3 * qty || counter++ > 2) {
+                        if(current - buyValue <= settings.minimumMoney || resCurrent + qty > resMax - 3 * qty || counter++ > 2) {
                             break;
                         }
                         current -= buyValue;
