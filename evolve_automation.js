@@ -497,7 +497,7 @@
         if(settings.autoResearch){
             autoResearch();
         }
-        if(settings.autoMarket){
+        if(settings.autoMarket && isMarketUnlocked()){
             autoMarket();
         }
     }
