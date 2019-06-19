@@ -1511,7 +1511,7 @@
         state.cityBuildings.FissionPower.addRequiredResource(state.resources.Copper);
         state.cityBuildings.FissionPower.addRequiredResource(state.resources.Cement);
         state.cityBuildings.FissionPower.addRequiredResource(state.resources.Titanium);
-        state.cityBuildings.FissionPower.addPowerConsumption(-14); // TODO: goes up to 18 after uranium tech 4
+        state.cityBuildings.FissionPower.addPowerConsumption(-14); // Goes up to 18 after breeder reactor tech researched. This is set in UpdateState().
         state.cityBuildings.FissionPower.addResourceConsumption(state.resources.Uranium, 0.1);
         state.cityBuildingList.push(state.cityBuildings.Lodge); // Cath only
         state.cityBuildings.Lodge.addRequiredResource(state.resources.Lumber);
@@ -2313,21 +2313,18 @@
     function autoSmelter() {
         // No smelter; no auto smelter
         if (!state.cityBuildings.Smelter.isUnlocked()) {
-            log("Smelter is not unlocked");
             return;
         }
         
         // Only one modal window can be open at a time
         // If there is already another modal window open then we can't also open the smelters modal window
         if (state.modal.isOpen() && state.modal.currentModalWindowTitle != "Smelter") {
-            log("Smelter other modal window open: " + state.modal.currentModalWindowTitle);
             return;
         }
 
         // Only adjust smelters once per number of smelters owned. eg. if we own 10 smelters and have already adjusted them
         // then don't adjust them again until we own 11 or more smelters
         if (state.cityBuildings.Smelter.count == state.lastSmelterCount) {
-            log("Smelter count same as last time");
             return;
         }
 
@@ -2370,13 +2367,10 @@
                 return;
             }
         }
-        
-        log("Smelter adjusting");
 
         let smelterSteelBtn = document.querySelector('#specialModal .smelting > span:nth-child(2) > button');
         
         if (smelterSteelBtn === null) {
-            log("Smelter can't find steel button");
             state.lastSmelterCount = state.cityBuildings.Smelter.count;
             state.lastSmelterOpenedCoalRateOfChange = 0;
             state.lastSmelterOpenedIronRateOfChange = 0;
@@ -2388,13 +2382,11 @@
         let smelterIronCount = parseInt(smelterIronBtn.textContent.split(': ')[1]);
         let smelterSteelCount = parseInt(smelterSteelBtn.textContent.split(': ')[1]);
         
-        if (state.cityBuildings.Cottage.count < 20) {
+        if (state.cityBuildings.Cottage.count < 15) {
             if (smelterSteelCount < smelterIronCount) {
-                log("Smelter adding steel 1");
                 // @ts-ignore
                 smelterSteelBtn.click();
             } else {
-                log("Smelter closing 1");
                 state.lastSmelterCount = state.cityBuildings.Smelter.count;
                 state.lastSmelterOpenedCoalRateOfChange = 0;
                 state.lastSmelterOpenedIronRateOfChange = 0;
@@ -2402,22 +2394,18 @@
             }
         } else if (state.cityBuildings.CoalMine.count < 10) {
             if (smelterIronCount * 2 > smelterSteelCount) {
-                log("Smelter adding steel 2");
                 // @ts-ignore
                 smelterSteelBtn.click();
             } else {
-                log("Smelter closing 2");
                 state.lastSmelterCount = state.cityBuildings.Smelter.count;
                 state.lastSmelterOpenedCoalRateOfChange = 0;
                 state.lastSmelterOpenedIronRateOfChange = 0;
                 state.modal.closeModalWindow();
             }
         } else if (smelterIronCount > 2) {
-            log("Smelter adding steel 3");
             // @ts-ignore
             smelterSteelBtn.click();
         } else {
-            log("Smelter closing 3");
             state.lastSmelterCount = state.cityBuildings.Smelter.count;
             state.lastSmelterOpenedCoalRateOfChange = 0;
             state.lastSmelterOpenedIronRateOfChange = 0;
@@ -2619,64 +2607,66 @@
         let multipliers = $('#market-qty').children();
         let tradeQuantity = 1000;
         
-        if (multipliers.length >= 5) {
+        if (multipliers.length >= 5 && !multipliers[4].children[0].checked) {
+            // Set trade value to be 1000x. We'll come back next loop to do the trade
             multipliers[4].click();
+            return;
         }
-        else {
+        else if (multipliers.length < 5 && !multipliers[2].children[0].checked) {
+            // Set trade value to be 100x. We'll come back next loop to do the trade
             multipliers[2].click();
             tradeQuantity = 100;
+            return;
         }
         
-        setTimeout(function() { //timeout needed to let the click on multiplier take effect
-            for (let i = 0; i < state.tradableResourceList.length; i++) {
-                let resource = state.tradableResourceList[i];
-                let currentResourceQuantity = resource.currentQuantity;
+        for (let i = 0; i < state.tradableResourceList.length; i++) {
+            let resource = state.tradableResourceList[i];
+            let currentResourceQuantity = resource.currentQuantity;
 
-                if (!resource.isUnlocked() || !resource.isTradable()) {
-                    continue;
-                }
-                
-                if (resource.autoSellEnabled === true && (ignoreSellRatio ? true : resource.storageRatio > resource.sellRatio)) {
-                    let sellBtn = $('#market-' + resource.id + ' .order')[1];
-                    let value = sellBtn.textContent.substr(1);
-                    let sellValue = getRealNumber(value);
-                    let counter = 0;
+            if (!resource.isUnlocked() || !resource.isTradable()) {
+                continue;
+            }
+            
+            if (resource.autoSellEnabled === true && (ignoreSellRatio ? true : resource.storageRatio > resource.sellRatio)) {
+                let sellBtn = $('#market-' + resource.id + ' .order')[1];
+                let value = sellBtn.textContent.substr(1);
+                let sellValue = getRealNumber(value);
+                let counter = 0;
 
-                    while(true) {
-                        // break if not enough resource or not enough money storage
-                        if (currentMoney + sellValue >= state.resources.Money.maxQuantity || currentResourceQuantity - tradeQuantity <= 0 || counter++ > 10) {
-                            break;
-                        }
-
-                        currentMoney += sellValue;
-                        currentResourceQuantity -= tradeQuantity;
-                        sellBtn.click();
+                while(true) {
+                    // break if not enough resource or not enough money storage
+                    if (currentMoney + sellValue >= state.resources.Money.maxQuantity || currentResourceQuantity - tradeQuantity <= 0 || counter++ > 10) {
+                        break;
                     }
-                }
 
-                if (bulkSell === true) {
-                    continue;
-                }
-
-                if (resource.autoBuyEnabled === true && resource.storageRatio < resource.buyRatio) {
-                    let buyBtn = $('#market-' + resource.id + ' .order')[0];
-                    let value = buyBtn.textContent.substr(1);
-                    let buyValue = getRealNumber(value);
-                    let counter = 0;
-
-                    while(true) {
-                        // break if not enough money or not enough resource storage
-                        if (currentMoney - buyValue <= settings.minimumMoney || resource.currentQuantity + tradeQuantity > resource.maxQuantity - 3 * tradeQuantity || counter++ > 2) {
-                            break;
-                        }
-
-                        currentMoney -= buyValue;
-                        currentResourceQuantity += tradeQuantity;
-                        buyBtn.click();
-                    }
+                    currentMoney += sellValue;
+                    currentResourceQuantity -= tradeQuantity;
+                    sellBtn.click();
                 }
             }
-        }, 25);
+
+            if (bulkSell === true) {
+                continue;
+            }
+
+            if (resource.autoBuyEnabled === true && resource.storageRatio < resource.buyRatio) {
+                let buyBtn = $('#market-' + resource.id + ' .order')[0];
+                let value = buyBtn.textContent.substr(1);
+                let buyValue = getRealNumber(value);
+                let counter = 0;
+
+                while(true) {
+                    // break if not enough money or not enough resource storage
+                    if (currentMoney - buyValue <= settings.minimumMoney || resource.currentQuantity + tradeQuantity > resource.maxQuantity - 3 * tradeQuantity || counter++ > 2) {
+                        break;
+                    }
+
+                    currentMoney -= buyValue;
+                    currentResourceQuantity += tradeQuantity;
+                    buyBtn.click();
+                }
+            }
+        }
     }
 
     //#endregion Auto Market
@@ -2981,6 +2971,8 @@
     
     //#region Auto Power
 
+    var autoBuildingPriorityLoggedOnce = false;
+
     function autoBuildingPriority() {
         let availablePowerNode = document.querySelector('#powerMeter');
         
@@ -3014,10 +3006,18 @@
             }
         }
 
+        //if (!autoBuildingPriorityLoggedOnce) console.log("starting available power: " + availablePowerNode.textContent);
+        //if (!autoBuildingPriorityLoggedOnce) console.log("available power: " + availablePower);
+
         // Start assigning buildings from the top of our priority list to the bottom
         for (let i = 0; i < state.consumptionPriorityList.length; i++) {
             let building = state.consumptionPriorityList[i];
             let requiredStateOn = 0;
+
+            // Some buildings have state that turn on later... ignore them if they don't have state yet!
+            if (!building.hasState()) {
+                continue;
+            }
 
             for (let j = 0; j < building.count; j++) {
                 if (building.consumption.power > 0) {
@@ -3046,6 +3046,7 @@
                 // All resources passed the test so take them.
                 if ( resourcesToTake == building.consumption.resourceTypes.length) {
                     availablePower -= building.consumption.power;
+                    //if (!autoBuildingPriorityLoggedOnce) console.log("building " + building.id + " taking power " + building.consumption.power + " leaving " + availablePower);
 
                     for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
                         let resourceType = building.consumption.resourceTypes[k];
@@ -3060,6 +3061,7 @@
             }
 
             let adjustment = requiredStateOn - building.stateOnCount;
+            //if (!autoBuildingPriorityLoggedOnce) console.log("building " + building.id + " adjustment " + adjustment);
 
             // If the warning indicator is on then we don't know how many buildings are over-resourced
             // Just take them all off and sort it out next loop
@@ -3073,6 +3075,8 @@
 
             building.tryAdjustState(adjustment);
         }
+
+        autoBuildingPriorityLoggedOnce = true;
     }
 
     //#endregion Auto Power
@@ -3317,6 +3321,13 @@
         }
 
         state.modal.openThisLoop = false;
+
+        // This would be better done in the class itself
+        if (document.querySelector("#tech-breeder_reactor .oldTech") == null) {
+            state.cityBuildings.FissionPower.consumption.power = -14;
+        } else {
+            state.cityBuildings.FissionPower.consumption.power = -18;
+        }
     }
 
     function automate() {
