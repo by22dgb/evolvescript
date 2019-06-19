@@ -33,9 +33,11 @@
             this._isBuilding = isBuilding;
             this.autoBuildEnabled = true;
 
-            this.stateOn = {
-                powerInput: 0,
-                powerOutput: 0,
+            this.consumption = {
+                power: 0,
+
+                /** @type {{ resource: Resource, initialRate: number, rate: number, }[]} */
+                resourceTypes: [],
             };
 
             /** @type {Resource[]} */
@@ -107,6 +109,28 @@
             return false;
         }
 
+        /**
+         * @param {number} rate
+         */
+        addPowerConsumption(rate) {
+            this.consumption.power = rate;
+        }
+
+        /**
+         * @param {Resource} resource
+         * @param {number} rate
+         */
+        addResourceConsumption(resource, rate) {
+            this.consumption.resourceTypes.push({ resource: resource, initialRate: rate, rate: rate });
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        addRequiredResource(resource) {
+            this.requiredResourcesToAction.push(resource);
+        }
+
         //#endregion Standard actions
 
         //#region Buildings
@@ -156,10 +180,57 @@
             let containerNode = document.getElementById(this._tabPrefix + "-" + this.id);
             return parseInt(containerNode.querySelector(' .off').textContent);
         }
+
+        isStateOnWarning() {
+            if (!this.hasState()) {
+                return false;
+            }
+
+            if (this.stateOnCount == 0) {
+                return false;
+            }
+            
+            let containerNode = document.getElementById(this._tabPrefix + "-" + this.id);
+            return containerNode.querySelector(' .warn') != null;
+        }
         
         // Make the click a little more meaningful for a building
         tryBuild() {
             return this.click();
+        }
+
+        /**
+         * @param {number} adjustCount
+         */
+        tryAdjustState(adjustCount) {
+            if (!this.hasState() || adjustCount == 0) {
+                return false;
+            }
+
+            let containerNode = document.getElementById(this._tabPrefix + "-" + this.id);
+            
+            if (adjustCount > 0) {
+                let onNode = containerNode.querySelector(' .on');
+
+                for (let i = 0; i < adjustCount; i++) {
+                    // @ts-ignore
+                    onNode.click();
+                }
+
+                return;
+            }
+
+            if (adjustCount < 0) {
+                let offNode = containerNode.querySelector(' .off');
+                adjustCount = adjustCount * -1;
+
+                for (let i = 0; i < adjustCount; i++) {
+                    // @ts-ignore
+                    offNode.click();
+                }
+
+                return;
+            }
         }
         
         trySetStateOn() {
@@ -228,6 +299,8 @@
 
             this._isCraftable = isCraftable;
             this.craftRatio = craftRatio;
+
+            this.calculatedRateOfChange = 0;
 
             /** @type {Action[]} */
             this.usedInBuildings = [];
@@ -528,6 +601,194 @@
         //#endregion Craftable resource
     }
 
+    class Power extends Resource {
+        // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
+        constructor() {
+            super("", "powerMeter", false, -1, -1, false, -1);
+        }
+
+        //#region Standard resource
+
+        get id() {
+            return this._id;
+        }
+
+        hasOptions() {
+            return false;
+        }
+
+        get currentQuantity() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            return parseInt(document.getElementById("powerMeter").textContent);
+        }
+
+        get maxQuantity() {
+            return Number.MAX_SAFE_INTEGER;
+        }
+        
+        get storageRatio() {
+            return this.currentQuantity / this.maxQuantity;
+        }
+
+        get rateOfChange() {
+            // This isn't really a resource so we'll be super tricky here and set the rate of change to be the available quantity
+            return this.currentQuantity;
+        }
+
+        //#endregion Standard resource
+
+        //#region Basic resource
+
+        isOptionsOpen() {
+            return false;
+        }
+        
+        openOptions() {
+            return;
+        }
+
+        updateOptions() {
+            return false;
+        }
+
+        tryConstructCrate() {
+            return false;
+        }
+
+        tryAssignCrate() {
+            return false;
+        }
+
+        tryUnassignCrate() {
+            return false;
+        }
+
+        tryConstructContainer() {
+            return false;
+        }
+
+        tryAssignContainer() {
+            return false;
+        }
+
+        tryUnassignContainer() {
+            return false;
+        }
+
+        //#endregion Basic resource
+
+        //#region Craftable resource
+
+        /**
+         * @param {string} toCraft
+         */
+        tryCraftX(toCraft) {
+            return false;
+        }
+
+        //#endregion Craftable resource
+    }
+
+    class Support extends Resource {
+        // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
+        
+        /**
+         * @param {string} id
+         */
+        constructor(id) {
+            super("", id, false, -1, -1, false, -1);
+        }
+
+        //#region Standard resource
+
+        get id() {
+            return this._id;
+        }
+
+        hasOptions() {
+            return false;
+        }
+
+        get currentQuantity() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            // "43/47"
+            return parseInt(document.querySelector("#" + this.id + " > span:nth-child(2)").textContent.split("/")[0]);
+        }
+
+        get maxQuantity() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            // "43/47"
+            return parseInt(document.querySelector("#" + this.id + " > span:nth-child(2)").textContent.split("/")[1]);
+        }
+
+        get rateOfChange() {
+            // This isn't really a resource so we'll be super tricky here and set the rate of change to be the available quantity
+            return this.maxQuantity - this.currentQuantity;
+        }
+
+        //#endregion Standard resource
+
+        //#region Basic resource
+
+        isOptionsOpen() {
+            return false;
+        }
+        
+        openOptions() {
+            return;
+        }
+
+        updateOptions() {
+            return false;
+        }
+
+        tryConstructCrate() {
+            return false;
+        }
+
+        tryAssignCrate() {
+            return false;
+        }
+
+        tryUnassignCrate() {
+            return false;
+        }
+
+        tryConstructContainer() {
+            return false;
+        }
+
+        tryAssignContainer() {
+            return false;
+        }
+
+        tryUnassignContainer() {
+            return false;
+        }
+
+        //#endregion Basic resource
+
+        //#region Craftable resource
+
+        /**
+         * @param {string} toCraft
+         */
+        tryCraftX(toCraft) {
+            return false;
+        }
+
+        //#endregion Craftable resource
+    }
+
     class ModalWindowManager {
         constructor() {
             this.openThisLoop = false;
@@ -727,8 +988,9 @@
         constructor() {
             super("space", "star_dock", true);
 
-            this.Probes = new Action("spcdock", "probes", true),
-            this.Ship = new Action("spcdock", "seeder", true),
+            this.Probes = new Action("spcdock", "probes", true);
+            this.Ship = new Action("spcdock", "seeder", true);
+            this.Launch = new Action("spcdock", "launch_ship", true);
 
             this._isOptionsUpdated = false;
 
@@ -827,6 +1089,14 @@
 
             return canClick;
         }
+
+        tryLaunchShip() {
+            if (!this.isOptionsOpen()) {
+                return false;
+            }
+
+            return this.Launch.click();
+        }
     }
     
     //#endregion Class Declarations
@@ -865,6 +1135,13 @@
             Containers: new Resource("res", "Containers", false, -1, -1, false, -1),
             Plasmids: new Resource("res", "Plasmid", false, -1, -1, false, -1),
 
+            // Special not-really-resources-but-we'll-treat-them-like-resources resources
+            Power: new Power(),
+            MoonSupport: new Support("srspc_moon"),
+            RedSupport: new Support("srspc_red"),
+            SunSupport: new Support("srspc_sun"),
+            BeltSupport: new Support("srspc_belt"),
+
             // Basic resources (can trade for these)
             Food: new Resource("res", "Food", true, 0.5, 0.9, false, -1),
             Lumber: new Resource("res", "Lumber", true, 0.5, 0.9, false, -1),
@@ -901,6 +1178,8 @@
         evolutions: {
             Rna: new Action("evo", "rna", false),
             Dna: new Action("evo", "dna", false),
+
+            RaceAntids: new Action("evo", "antid", false),
 
             Sentience: new Action("evo", "sentience", false),
             //Ectothermic: new Action("evo", "ectothermic", false),
@@ -1034,6 +1313,11 @@
             DwarfWorldCollider: new Action("space", "world_collider", true),
             DwarfWorldController: new Action("space", "world_controller", true),
         },
+
+        /** @type {Action[]} */
+        consumptionPriorityList: [],
+
+        
     };
 
     function initialiseState() {
@@ -1070,6 +1354,20 @@
 
         // Construct all resource list
         state.allResourceList = state.tradableResourceList.concat(state.craftableResourceList);
+        state.allResourceList.push(state.resources.Money);
+        state.allResourceList.push(state.resources.Population);
+        state.allResourceList.push(state.resources.Knowledge);
+        state.allResourceList.push(state.resources.Crates);
+        state.allResourceList.push(state.resources.Containers);
+        state.allResourceList.push(state.resources.Plasmids);
+        state.allResourceList.push(state.resources.Power);
+        state.allResourceList.push(state.resources.MoonSupport);
+        state.allResourceList.push(state.resources.RedSupport);
+        state.allResourceList.push(state.resources.SunSupport);
+        state.allResourceList.push(state.resources.BeltSupport);
+        state.allResourceList.push(state.resources.Neutronium);
+        state.allResourceList.push(state.resources.Elerium);
+        state.allResourceList.push(state.resources.NanoTube);
 
         state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Copper, 1.86, 100));
         state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Titanium, 0.36, 10));
@@ -1081,6 +1379,7 @@
         // Construct evolution phase list
         state.evolutionList.push(state.evolutions.Rna);
         state.evolutionList.push(state.evolutions.Dna);
+        state.evolutionList.push(state.evolutions.RaceAntids);
         state.evolutionList.push(state.evolutions.Sentience);
         state.evolutionList.push(state.evolutions.Arthropods);
         state.evolutionList.push(state.evolutions.BilateralSymmetry);
@@ -1095,144 +1394,149 @@
         
         // Construct city builds list
         state.cityBuildingList.push(state.cityBuildings.University);
-        state.cityBuildings.University.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.University.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.University.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.University.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Wardenclyffe);
-        state.cityBuildings.Wardenclyffe.requiredResourcesToAction.push(state.resources.Copper);
-        state.cityBuildings.Wardenclyffe.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.Wardenclyffe.requiredResourcesToAction.push(state.resources.SheetMetal);
-        state.cityBuildings.Wardenclyffe.stateOn.powerInput = 2;
+        state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.Copper);
+        state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.SheetMetal);
+        state.cityBuildings.Wardenclyffe.addPowerConsumption(2);
         state.cityBuildingList.push(state.cityBuildings.Mine);
-        state.cityBuildings.Mine.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Mine.stateOn.powerInput = 1;
+        state.cityBuildings.Mine.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Mine.addPowerConsumption(1);
         state.cityBuildingList.push(state.cityBuildings.CoalMine);
-        state.cityBuildings.CoalMine.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.CoalMine.requiredResourcesToAction.push(state.resources.WroughtIron);
-        state.cityBuildings.CoalMine.stateOn.powerInput = 1;
+        state.cityBuildings.CoalMine.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.CoalMine.addRequiredResource(state.resources.WroughtIron);
+        state.cityBuildings.CoalMine.addPowerConsumption(1);
         state.cityBuildingList.push(state.cityBuildings.Smelter);
-        state.cityBuildings.Smelter.requiredResourcesToAction.push(state.resources.Iron);
+        state.cityBuildings.Smelter.addRequiredResource(state.resources.Iron);
         state.cityBuildingList.push(state.cityBuildings.CoalPower);
-        state.cityBuildings.CoalPower.requiredResourcesToAction.push(state.resources.Copper);
-        state.cityBuildings.CoalPower.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.CoalPower.requiredResourcesToAction.push(state.resources.Steel);
-        state.cityBuildings.CoalPower.stateOn.powerOutput = 5;
+        state.cityBuildings.CoalPower.addRequiredResource(state.resources.Copper);
+        state.cityBuildings.CoalPower.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.CoalPower.addRequiredResource(state.resources.Steel);
+        state.cityBuildings.CoalPower.addPowerConsumption(-5);
+        state.cityBuildings.CoalPower.addResourceConsumption(state.resources.Coal, 0.35);
         state.cityBuildingList.push(state.cityBuildings.Temple);
-        state.cityBuildings.Temple.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Temple.requiredResourcesToAction.push(state.resources.Furs);
-        state.cityBuildings.Temple.requiredResourcesToAction.push(state.resources.Cement);
+        state.cityBuildings.Temple.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Temple.addRequiredResource(state.resources.Furs);
+        state.cityBuildings.Temple.addRequiredResource(state.resources.Cement);
         state.cityBuildingList.push(state.cityBuildings.OilWell);
-        state.cityBuildings.OilWell.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.OilWell.requiredResourcesToAction.push(state.resources.Steel);
+        state.cityBuildings.OilWell.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.OilWell.addRequiredResource(state.resources.Steel);
         state.cityBuildingList.push(state.cityBuildings.BioLab);
-        state.cityBuildings.BioLab.requiredResourcesToAction.push(state.resources.Copper);
-        state.cityBuildings.BioLab.requiredResourcesToAction.push(state.resources.Alloy);
-        state.cityBuildings.BioLab.stateOn.powerInput = 2;
+        state.cityBuildings.BioLab.addRequiredResource(state.resources.Copper);
+        state.cityBuildings.BioLab.addRequiredResource(state.resources.Alloy);
+        state.cityBuildings.BioLab.addPowerConsumption(2);
         state.cityBuildingList.push(state.cityBuildings.StorageYard);
-        state.cityBuildings.StorageYard.requiredResourcesToAction.push(state.resources.Brick);
-        state.cityBuildings.StorageYard.requiredResourcesToAction.push(state.resources.WroughtIron);
+        state.cityBuildings.StorageYard.addRequiredResource(state.resources.Brick);
+        state.cityBuildings.StorageYard.addRequiredResource(state.resources.WroughtIron);
         state.cityBuildingList.push(state.cityBuildings.Warehouse);
-        state.cityBuildings.Warehouse.requiredResourcesToAction.push(state.resources.Iron);
-        state.cityBuildings.Warehouse.requiredResourcesToAction.push(state.resources.Cement);
+        state.cityBuildings.Warehouse.addRequiredResource(state.resources.Iron);
+        state.cityBuildings.Warehouse.addRequiredResource(state.resources.Cement);
         state.cityBuildingList.push(state.cityBuildings.OilPower);
-        state.cityBuildings.OilPower.requiredResourcesToAction.push(state.resources.Copper);
-        state.cityBuildings.OilPower.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.OilPower.requiredResourcesToAction.push(state.resources.Steel);
-        state.cityBuildings.OilPower.stateOn.powerOutput = 6;
+        state.cityBuildings.OilPower.addRequiredResource(state.resources.Copper);
+        state.cityBuildings.OilPower.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.OilPower.addRequiredResource(state.resources.Steel);
+        state.cityBuildings.OilPower.addPowerConsumption(-6);
+        state.cityBuildings.OilPower.addResourceConsumption(state.resources.Oil, 0.65);
         state.cityBuildingList.push(state.cityBuildings.Bank);
-        state.cityBuildings.Bank.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Bank.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Bank.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Bank.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Garrison);
-        state.cityBuildings.Garrison.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Garrison.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.House);
-        state.cityBuildings.House.requiredResourcesToAction.push(state.resources.Lumber);
+        state.cityBuildings.House.addRequiredResource(state.resources.Lumber);
         state.cityBuildingList.push(state.cityBuildings.Cottage);
-        state.cityBuildings.Cottage.requiredResourcesToAction.push(state.resources.Plywood);
-        state.cityBuildings.Cottage.requiredResourcesToAction.push(state.resources.Brick);
-        state.cityBuildings.Cottage.requiredResourcesToAction.push(state.resources.WroughtIron);
+        state.cityBuildings.Cottage.addRequiredResource(state.resources.Plywood);
+        state.cityBuildings.Cottage.addRequiredResource(state.resources.Brick);
+        state.cityBuildings.Cottage.addRequiredResource(state.resources.WroughtIron);
         state.cityBuildingList.push(state.cityBuildings.Apartment);
-        state.cityBuildings.Apartment.requiredResourcesToAction.push(state.resources.Furs);
-        state.cityBuildings.Apartment.requiredResourcesToAction.push(state.resources.Copper);
-        state.cityBuildings.Apartment.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.Apartment.requiredResourcesToAction.push(state.resources.Steel);
-        state.cityBuildings.Apartment.stateOn.powerInput = 1;
+        state.cityBuildings.Apartment.addRequiredResource(state.resources.Furs);
+        state.cityBuildings.Apartment.addRequiredResource(state.resources.Copper);
+        state.cityBuildings.Apartment.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.Apartment.addRequiredResource(state.resources.Steel);
+        state.cityBuildings.Apartment.addPowerConsumption(1);
         state.cityBuildingList.push(state.cityBuildings.Farm);
-        state.cityBuildings.Farm.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Farm.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Farm.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Farm.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Mill);
-        state.cityBuildings.Mill.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Mill.requiredResourcesToAction.push(state.resources.Iron);
-        state.cityBuildings.Mill.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.Mill.stateOn.powerOutput = 1;
+        state.cityBuildings.Mill.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Mill.addRequiredResource(state.resources.Iron);
+        state.cityBuildings.Mill.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.Mill.addPowerConsumption(-1);
         state.cityBuildingList.push(state.cityBuildings.Silo);
-        state.cityBuildings.Silo.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Silo.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Silo.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Silo.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Shed); // Is this one special? Will have to think about how to do this one
-        state.cityBuildings.Shed.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Shed.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Shed.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Shed.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.LumberYard);
-        state.cityBuildings.LumberYard.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.LumberYard.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.LumberYard.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.LumberYard.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.RockQuarry);
-        state.cityBuildings.RockQuarry.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.RockQuarry.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.RockQuarry.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.RockQuarry.addRequiredResource(state.resources.Stone);
+        state.cityBuildings.RockQuarry.addPowerConsumption(1);
         state.cityBuildingList.push(state.cityBuildings.CementPlant);
-        state.cityBuildings.CementPlant.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.CementPlant.requiredResourcesToAction.push(state.resources.Stone);
-        state.cityBuildings.CementPlant.stateOn.powerInput = 2;
+        state.cityBuildings.CementPlant.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.CementPlant.addRequiredResource(state.resources.Stone);
+        state.cityBuildings.CementPlant.addPowerConsumption(2);
         state.cityBuildingList.push(state.cityBuildings.Foundry);
-        state.cityBuildings.Foundry.requiredResourcesToAction.push(state.resources.Copper);
-        state.cityBuildings.Foundry.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Foundry.addRequiredResource(state.resources.Copper);
+        state.cityBuildings.Foundry.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Factory);
-        state.cityBuildings.Factory.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.Factory.requiredResourcesToAction.push(state.resources.Steel);
-        state.cityBuildings.Factory.requiredResourcesToAction.push(state.resources.Titanium);
-        state.cityBuildings.Factory.stateOn.powerInput = 3;
+        state.cityBuildings.Factory.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.Factory.addRequiredResource(state.resources.Steel);
+        state.cityBuildings.Factory.addRequiredResource(state.resources.Titanium);
+        state.cityBuildings.Factory.addPowerConsumption(3);
         state.cityBuildingList.push(state.cityBuildings.OilDepot);
-        state.cityBuildings.OilDepot.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.OilDepot.requiredResourcesToAction.push(state.resources.SheetMetal);
+        state.cityBuildings.OilDepot.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.OilDepot.addRequiredResource(state.resources.SheetMetal);
         state.cityBuildingList.push(state.cityBuildings.Trade);
-        state.cityBuildings.Trade.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Trade.requiredResourcesToAction.push(state.resources.Stone);
-        state.cityBuildings.Trade.requiredResourcesToAction.push(state.resources.Furs);
+        state.cityBuildings.Trade.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Trade.addRequiredResource(state.resources.Stone);
+        state.cityBuildings.Trade.addRequiredResource(state.resources.Furs);
         state.cityBuildingList.push(state.cityBuildings.Amphitheatre);
-        state.cityBuildings.Amphitheatre.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Amphitheatre.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Amphitheatre.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Amphitheatre.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Library);
-        state.cityBuildings.Library.requiredResourcesToAction.push(state.resources.Furs);
-        state.cityBuildings.Library.requiredResourcesToAction.push(state.resources.Plywood);
-        state.cityBuildings.Library.requiredResourcesToAction.push(state.resources.Brick);
+        state.cityBuildings.Library.addRequiredResource(state.resources.Furs);
+        state.cityBuildings.Library.addRequiredResource(state.resources.Plywood);
+        state.cityBuildings.Library.addRequiredResource(state.resources.Brick);
         state.cityBuildingList.push(state.cityBuildings.Sawmill);
-        state.cityBuildings.Sawmill.requiredResourcesToAction.push(state.resources.Iron);
-        state.cityBuildings.Sawmill.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.Sawmill.stateOn.powerInput = 1;
+        state.cityBuildings.Sawmill.addRequiredResource(state.resources.Iron);
+        state.cityBuildings.Sawmill.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.Sawmill.addPowerConsumption(1);
         state.cityBuildingList.push(state.cityBuildings.FissionPower);
-        state.cityBuildings.FissionPower.requiredResourcesToAction.push(state.resources.Copper);
-        state.cityBuildings.FissionPower.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.FissionPower.requiredResourcesToAction.push(state.resources.Titanium);
-        state.cityBuildings.FissionPower.stateOn.powerOutput = 14;
+        state.cityBuildings.FissionPower.addRequiredResource(state.resources.Copper);
+        state.cityBuildings.FissionPower.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.FissionPower.addRequiredResource(state.resources.Titanium);
+        state.cityBuildings.FissionPower.addPowerConsumption(-14); // TODO: goes up to 18 after uranium tech 4
+        state.cityBuildings.FissionPower.addResourceConsumption(state.resources.Uranium, 0.1);
         state.cityBuildingList.push(state.cityBuildings.Lodge); // Cath only
-        state.cityBuildings.Lodge.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Lodge.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Lodge.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Lodge.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Smokehouse); // Cath only
-        state.cityBuildings.Smokehouse.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Smokehouse.requiredResourcesToAction.push(state.resources.Stone);
+        state.cityBuildings.Smokehouse.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Smokehouse.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Casino);
-        state.cityBuildings.Casino.requiredResourcesToAction.push(state.resources.Furs);
-        state.cityBuildings.Casino.requiredResourcesToAction.push(state.resources.Plywood);
-        state.cityBuildings.Casino.requiredResourcesToAction.push(state.resources.Brick);
+        state.cityBuildings.Casino.addRequiredResource(state.resources.Furs);
+        state.cityBuildings.Casino.addRequiredResource(state.resources.Plywood);
+        state.cityBuildings.Casino.addRequiredResource(state.resources.Brick);
         state.cityBuildingList.push(state.cityBuildings.TouristCenter);
-        state.cityBuildings.TouristCenter.requiredResourcesToAction.push(state.resources.Stone);
-        state.cityBuildings.TouristCenter.requiredResourcesToAction.push(state.resources.Furs);
-        state.cityBuildings.TouristCenter.requiredResourcesToAction.push(state.resources.Plywood);
+        state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Stone);
+        state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Furs);
+        state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Plywood);
+        state.cityBuildings.TouristCenter.addResourceConsumption(state.resources.Food, 50);
         state.cityBuildingList.push(state.cityBuildings.MassDriver);
-        state.cityBuildings.MassDriver.requiredResourcesToAction.push(state.resources.Copper);
-        state.cityBuildings.MassDriver.requiredResourcesToAction.push(state.resources.Iron);
-        state.cityBuildings.MassDriver.requiredResourcesToAction.push(state.resources.Iridium);
-        state.cityBuildings.MassDriver.stateOn.powerInput = 5;
+        state.cityBuildings.MassDriver.addRequiredResource(state.resources.Copper);
+        state.cityBuildings.MassDriver.addRequiredResource(state.resources.Iron);
+        state.cityBuildings.MassDriver.addRequiredResource(state.resources.Iridium);
+        state.cityBuildings.MassDriver.addPowerConsumption(5);
         state.cityBuildingList.push(state.cityBuildings.Wharf);
-        state.cityBuildings.Wharf.requiredResourcesToAction.push(state.resources.Lumber);
-        state.cityBuildings.Wharf.requiredResourcesToAction.push(state.resources.Cement);
-        state.cityBuildings.Wharf.requiredResourcesToAction.push(state.resources.Oil);
+        state.cityBuildings.Wharf.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Wharf.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.Wharf.addRequiredResource(state.resources.Oil);
 
         // Construct space buildsings list
         // TODO: Space! resource requirements, power on state (eg. -25 food) and planet "support"
@@ -1241,57 +1545,97 @@
         state.spaceBuildingList.push(state.spaceBuildings.SpaceGps);
         state.spaceBuildingList.push(state.spaceBuildings.SpacePropellantDepot);
         state.spaceBuildingList.push(state.spaceBuildings.SpaceNavBeacon);
-        state.spaceBuildings.SpaceNavBeacon.stateOn.powerInput = 2;
+        state.spaceBuildings.SpaceNavBeacon.addPowerConsumption(2);
+        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(state.resources.MoonSupport, -1);
 
         state.spaceBuildingList.push(state.spaceBuildings.MoonMission);
         state.spaceBuildingList.push(state.spaceBuildings.MoonBase); // this building resets ui when clicked
-        state.spaceBuildings.MoonBase.stateOn.powerInput = 4;
+        state.spaceBuildings.MoonBase.addPowerConsumption(4);
+        state.spaceBuildings.MoonBase.addResourceConsumption(state.resources.MoonSupport, -2);
+        state.spaceBuildings.MoonBase.addResourceConsumption(state.resources.Oil, 2);
         state.spaceBuildingList.push(state.spaceBuildings.MoonIridiumMine);
+        state.spaceBuildings.MoonIridiumMine.addResourceConsumption(state.resources.MoonSupport, 1);
         state.spaceBuildingList.push(state.spaceBuildings.MoonHeliumMine);
+        state.spaceBuildings.MoonHeliumMine.addResourceConsumption(state.resources.MoonSupport, 1);
         state.spaceBuildingList.push(state.spaceBuildings.MoonObservatory);
+        state.spaceBuildings.MoonObservatory.addResourceConsumption(state.resources.MoonSupport, 1);
 
         state.spaceBuildingList.push(state.spaceBuildings.RedMission);
         state.spaceBuildingList.push(state.spaceBuildings.RedSpaceport); // this building resets ui when clicked
-        state.spaceBuildings.RedSpaceport.stateOn.powerInput = 5;
+        state.spaceBuildings.RedSpaceport.addPowerConsumption(5);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.RedSupport, -3);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.Helium_3, 1.25);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.Food, 25);
         state.spaceBuildingList.push(state.spaceBuildings.RedTower);
+        state.spaceBuildings.RedTower.addPowerConsumption(2);
+        state.spaceBuildings.RedTower.addResourceConsumption(state.resources.RedSupport, -1);
         state.spaceBuildingList.push(state.spaceBuildings.RedLivingQuarters);
+        state.spaceBuildings.RedLivingQuarters.addResourceConsumption(state.resources.RedSupport, 1);
         state.spaceBuildingList.push(state.spaceBuildings.RedGarage);
         state.spaceBuildingList.push(state.spaceBuildings.RedMine);
+        state.spaceBuildings.RedMine.addResourceConsumption(state.resources.RedSupport, 1);
         state.spaceBuildingList.push(state.spaceBuildings.RedFabrication);
+        state.spaceBuildings.RedFabrication.addResourceConsumption(state.resources.RedSupport, 1);
         state.spaceBuildingList.push(state.spaceBuildings.RedFactory);
+        state.spaceBuildings.RedFactory.addPowerConsumption(3);
+        state.spaceBuildings.RedFactory.addResourceConsumption(state.resources.Helium_3, 1);
         state.spaceBuildingList.push(state.spaceBuildings.RedBiodome);
+        state.spaceBuildings.RedBiodome.addResourceConsumption(state.resources.RedSupport, 1);
         state.spaceBuildingList.push(state.spaceBuildings.RedExoticLab); // this building resets ui when clicked
+        state.spaceBuildings.RedExoticLab.addResourceConsumption(state.resources.RedSupport, 1);
         state.spaceBuildingList.push(state.spaceBuildings.RedSpaceBarracks);
+        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(state.resources.Oil, 2);
+        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(state.resources.Food, 10);
 
         state.spaceBuildingList.push(state.spaceBuildings.HellMission);
         state.spaceBuildingList.push(state.spaceBuildings.HellGeothermal);
+        state.spaceBuildings.HellGeothermal.addPowerConsumption(-8);
+        state.spaceBuildings.HellGeothermal.addResourceConsumption(state.resources.Helium_3, 0.5);
         state.spaceBuildingList.push(state.spaceBuildings.HellSwarmPlant);
 
         state.spaceBuildingList.push(state.spaceBuildings.SunMission);
         state.spaceBuildingList.push(state.spaceBuildings.SunSwarmControl);
+        state.spaceBuildings.SunSwarmControl.addResourceConsumption(state.resources.SunSupport, -4);
         state.spaceBuildingList.push(state.spaceBuildings.SunSwarmSatellite);
+        state.spaceBuildings.SunSwarmSatellite.addPowerConsumption(-1);
+        state.spaceBuildings.SunSwarmSatellite.addResourceConsumption(state.resources.SunSupport, 1);
 
         state.spaceBuildingList.push(state.spaceBuildings.GasMission);
         state.spaceBuildingList.push(state.spaceBuildings.GasMining);
+        state.spaceBuildings.GasMining.addPowerConsumption(2);
         state.spaceBuildingList.push(state.spaceBuildings.GasStorage);
         state.spaceBuildingList.push(state.spaceBuildings.GasSpaceDock);
 
         state.spaceBuildingList.push(state.spaceBuildings.GasMoonMission);
         state.spaceBuildingList.push(state.spaceBuildings.GasMoonOutpost);
+        state.spaceBuildings.GasMoonOutpost.addPowerConsumption(3);
+        state.spaceBuildings.GasMoonOutpost.addResourceConsumption(state.resources.Oil, 2);
         state.spaceBuildingList.push(state.spaceBuildings.GasMoonDrone);
         state.spaceBuildingList.push(state.spaceBuildings.GasMoonOilExtractor);
+        state.spaceBuildings.GasMoonOilExtractor.addPowerConsumption(1);
 
         state.spaceBuildingList.push(state.spaceBuildings.BeltMission);
         state.spaceBuildingList.push(state.spaceBuildings.BeltSpaceStation); // this building resets ui when clicked
+        state.spaceBuildings.BeltSpaceStation.addPowerConsumption(3);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.BeltSupport, -3);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.Food, 10);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.Helium_3, 2.5);
         state.spaceBuildingList.push(state.spaceBuildings.BeltEleriumShip);
+        state.spaceBuildings.BeltEleriumShip.addResourceConsumption(state.resources.BeltSupport, 2);
         state.spaceBuildingList.push(state.spaceBuildings.BeltIridiumShip);
+        state.spaceBuildings.BeltIridiumShip.addResourceConsumption(state.resources.BeltSupport, 1);
         state.spaceBuildingList.push(state.spaceBuildings.BeltIronShip);
+        state.spaceBuildings.BeltIronShip.addResourceConsumption(state.resources.BeltSupport, 1);
 
         state.spaceBuildingList.push(state.spaceBuildings.DwarfMission);
         state.spaceBuildingList.push(state.spaceBuildings.DwarfEleriumContainer);
+        state.spaceBuildings.DwarfEleriumContainer.addPowerConsumption(6);
         state.spaceBuildingList.push(state.spaceBuildings.DwarfEleriumReactor);
+        state.spaceBuildings.DwarfEleriumReactor.addPowerConsumption(-25);
+        state.spaceBuildings.DwarfEleriumReactor.addResourceConsumption(state.resources.Elerium, 0.05);
         state.spaceBuildingList.push(state.spaceBuildings.DwarfWorldCollider);
         state.spaceBuildingList.push(state.spaceBuildings.DwarfWorldController);
+        state.spaceBuildings.DwarfWorldController.addPowerConsumption(20);
         
         // Construct all buildings list
         state.allBuildingList = state.cityBuildingList.concat(state.spaceBuildingList);
@@ -1327,6 +1671,54 @@
                 building.requiredBasicResourcesToAction[l].usedInBuildings.push(building);
             }
         }
+
+        // This list is the priority order that we want to power our buildings in
+        state.consumptionPriorityList.push(state.cityBuildings.Apartment);
+        state.consumptionPriorityList.push(state.cityBuildings.Wardenclyffe);
+        state.consumptionPriorityList.push(state.cityBuildings.BioLab);
+        state.consumptionPriorityList.push(state.cityBuildings.Mine);
+        state.consumptionPriorityList.push(state.cityBuildings.CementPlant);
+        state.consumptionPriorityList.push(state.cityBuildings.Sawmill);
+        state.consumptionPriorityList.push(state.cityBuildings.RockQuarry);
+        state.consumptionPriorityList.push(state.cityBuildings.CoalMine);
+        state.consumptionPriorityList.push(state.cityBuildings.Factory);
+
+        state.consumptionPriorityList.push(state.spaceBuildings.GasMoonOutpost);
+        state.consumptionPriorityList.push(state.spaceBuildings.HellGeothermal); // produces power
+
+        state.consumptionPriorityList.push(state.spaceBuildings.BeltSpaceStation);
+        state.consumptionPriorityList.push(state.spaceBuildings.BeltEleriumShip);
+        state.consumptionPriorityList.push(state.spaceBuildings.DwarfEleriumReactor); // produces power
+        state.consumptionPriorityList.push(state.spaceBuildings.BeltIridiumShip);
+        state.consumptionPriorityList.push(state.spaceBuildings.BeltIronShip);
+
+        state.consumptionPriorityList.push(state.spaceBuildings.SpaceNavBeacon);
+
+        state.consumptionPriorityList.push(state.spaceBuildings.MoonBase);
+        state.consumptionPriorityList.push(state.spaceBuildings.MoonIridiumMine);
+        state.consumptionPriorityList.push(state.spaceBuildings.MoonHeliumMine);
+
+        state.consumptionPriorityList.push(state.spaceBuildings.GasMining);
+
+        state.consumptionPriorityList.push(state.spaceBuildings.RedSpaceport);
+        state.consumptionPriorityList.push(state.spaceBuildings.RedTower);
+        state.consumptionPriorityList.push(state.spaceBuildings.RedLivingQuarters);
+        state.consumptionPriorityList.push(state.spaceBuildings.RedFabrication);
+        state.consumptionPriorityList.push(state.spaceBuildings.RedMine);
+        state.consumptionPriorityList.push(state.spaceBuildings.RedBiodome);
+        state.consumptionPriorityList.push(state.spaceBuildings.RedExoticLab);
+
+        // Don't need to add Sun as they can't be turned on / off
+
+        state.consumptionPriorityList.push(state.spaceBuildings.GasMoonOilExtractor);
+
+        state.consumptionPriorityList.push(state.spaceBuildings.DwarfEleriumContainer);
+        state.consumptionPriorityList.push(state.spaceBuildings.DwarfWorldController);
+        state.consumptionPriorityList.push(state.spaceBuildings.RedSpaceBarracks);
+        state.consumptionPriorityList.push(state.spaceBuildings.RedFactory);
+        state.consumptionPriorityList.push(state.spaceBuildings.MoonObservatory);
+        state.consumptionPriorityList.push(state.cityBuildings.TouristCenter);
+        state.consumptionPriorityList.push(state.cityBuildings.MassDriver);
     }
 
     initialiseState();
@@ -1385,46 +1777,49 @@
             settings['sell' + resource.id] = resource.autoSellEnabled;
         }
         if (!settings.hasOwnProperty('autoEvolution')) {
-            settings.autoEvolution = true;
+            settings.autoEvolution = false;
         }
         if (!settings.hasOwnProperty('autoMarket')) {
-            settings.autoMarket = true;
+            settings.autoMarket = false;
         }
         if (!settings.hasOwnProperty('autoFight')) {
-            settings.autoFight = true;
+            settings.autoFight = false;
         }
         if (!settings.hasOwnProperty('autoCraft')) {
-            settings.autoCraft = true;
+            settings.autoCraft = false;
         }
         if (!settings.hasOwnProperty('autoARPA')) {
-            settings.autoARPA = true;
+            settings.autoARPA = false;
         }
         if (!settings.hasOwnProperty('autoBuild')) {
-            settings.autoBuild = true;
+            settings.autoBuild = false;
         }
         if (!settings.hasOwnProperty('autoResearch')) {
-            settings.autoResearch = true;
+            settings.autoResearch = false;
         }
         if (!settings.hasOwnProperty('autoJobs')) {
-            settings.autoJobs = true;
+            settings.autoJobs = false;
         }
         if (!settings.hasOwnProperty('autoPower')) {
-            settings.autoPower = true;
+            settings.autoPower = false;
         }
         if (!settings.hasOwnProperty('autoTradeSpecialResources')) {
-            settings.autoTradeSpecialResources = true;
+            settings.autoTradeSpecialResources = false;
         }
         if (!settings.hasOwnProperty('autoSmelter')) {
-            settings.autoSmelter = true;
+            settings.autoSmelter = false;
         }
         if (!settings.hasOwnProperty('autoFactory')) {
-            settings.autoFactory = true;
+            settings.autoFactory = false;
         }
         if (!settings.hasOwnProperty('autoMAD')) {
-            settings.autoMAD = true;
+            settings.autoMAD = false;
         }
         if (!settings.hasOwnProperty('autoSpace')) {
             settings.autoSpace = false; // Space currently equals less plasmids so off by default. Also kind of conflicts with MAD don't you think?
+        }
+        if (!settings.hasOwnProperty('autoSeeder')) {
+            settings.autoSeeder = false;
         }
         if (!settings.hasOwnProperty('autoLogging')) {
             settings.autoLogging = false;
@@ -1454,9 +1849,19 @@
             return;
         }
 
+        // If we have performed a soft reset with a bioseeded ship then we get to choose our planet
+        autoPlanetSelection();
+
+        // Gather some resources and evolve (currently targeting Antids)
         autoGatherResource(state.evolutions.Rna, 10);
         autoGatherResource(state.evolutions.Dna, 10);
         
+        // If we have performed a soft reset with a bioseeded ship then we get to choose our race directly
+        if (state.evolutions.RaceAntids.isUnlocked()) {
+            state.evolutions.RaceAntids.click();
+            return;
+        }
+
         state.evolutions.Sentience.click();
         state.evolutions.Arthropods.click();
         state.evolutions.BilateralSymmetry.click();
@@ -1470,6 +1875,41 @@
         buildIfCountLessThan(state.evolutions.EukaryoticCell, 5);
         buildIfCountLessThan(state.evolutions.Mitochondria, 3);
         buildIfCountLessThan(state.evolutions.Membrane, 10);
+    }
+
+    function autoPlanetSelection() {
+        // This section is for if we bioseeded life and we get to choose our path a little bit
+        let potentialPlanets = document.querySelectorAll('#evolution .action');
+        let selectedPlanet = "";
+
+        selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Forest");
+        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Grassland"); }
+        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Oceanic"); }
+        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Desert"); }
+        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Volcanic"); }
+        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Tundra"); }
+
+        // This one is a little bit special. We need to trigger the "mouseover" first as it creates a global javascript varaible
+        // that is then destroyed in the "click"
+        if (selectedPlanet != "") {
+            var evObj = document.createEvent("Events");
+            evObj.initEvent("mouseover", true, false);
+            document.getElementById(selectedPlanet).dispatchEvent(evObj);
+            // @ts-ignore
+            document.getElementById(selectedPlanet).children[0].click()
+        }
+    }
+
+    function evolutionPlanetSelection (potentialPlanets, planetType) {
+        for (let i = 0; i < potentialPlanets.length; i++) {
+            if (potentialPlanets[i].id.startsWith(planetType)) {
+                // @ts-ignore
+                //potentialPlanets[i].children[0].click();
+                return potentialPlanets[i].id;
+            }
+        }
+
+        return "";
     }
 
     //#endregion Auto Evolution
@@ -2042,7 +2482,7 @@
     }
 
     /**
-     * @param {any[] | { factoryGoods: number; quantity: number; }[]} productionChanges
+     * @param {{ factoryGoods: number; quantity: number; }[]} productionChanges
      * @param {{ quantity: number; }} remainingOperatingFactories
      * @param {Resource} resource
      * @param {number} factoryGoods
@@ -2086,7 +2526,9 @@
         }
         
         // Let's wait until we have a good enough population count
-        if (state.goal != "PreparingMAD" && state.resources.Population.currentQuantity < 245) {
+        if (state.goal != "PreparingMAD" && state.resources.Plasmids.currentQuantity < 500 && state.resources.Population.currentQuantity < 210) {
+            return;
+        } else if (state.goal != "PreparingMAD" && state.resources.Plasmids.currentQuantity >= 500 && state.resources.Population.currentQuantity < 245) {
             return;
         }
         
@@ -2116,6 +2558,42 @@
     }
 
     //#endregion Auto MAD
+
+    //#region Auto Seeder Ship
+
+    function autoSeeder() {
+        if (!state.spaceBuildings.GasSpaceDock.isUnlocked() || state.spaceBuildings.GasSpaceDock.count < 1) {
+            return;
+        }
+
+        // We want to have a good population level before resetting
+        if (state.resources.Population.currentQuantity < 400) {
+            return;
+        }
+
+        // We want at least 4 probes and a completed ship
+        if (state.spaceBuildings.GasSpaceDock.lastProbeCount < 4 || state.spaceBuildings.GasSpaceDock.lastShipSegmentCount < 100) {
+            return;
+        }
+
+        // Only one modal window can be open at a time
+        // If there is already another modal window open then we can't also open the space dock modal window
+        if (state.modal.isOpen() && state.modal.currentModalWindowTitle != "Space Dock") {
+            return;
+        }
+
+        // Let's do this!
+        if (!state.modal.isOpen()) {
+            state.goal = "LaunchingSeeder";
+            state.spaceBuildings.GasSpaceDock.openOptions();
+            return;
+        }
+
+        console.log("Soft resetting game with BioSeeder ship");
+        state.spaceBuildings.GasSpaceDock.tryLaunchShip();
+    }
+
+    //#endregion Auto Seeder Ship
     
     //#region Auto Space
 
@@ -2254,12 +2732,12 @@
     }
 
     function autoBuildSpaceDockChildren() {
-        if (!state.spaceBuildings.GasSpaceDock.isUnlocked() || state.spaceBuildings.GasSpaceDock.count < 1) {
+        if (!state.spaceBuildings.GasSpaceDock.isUnlocked() || state.spaceBuildings.GasSpaceDock.count < 1 || state.goal == "LaunchingSeeder") {
             return;
         }
 
-        // We don't want more than 5 probes or more than 100 ship segments
-        if (state.spaceBuildings.GasSpaceDock.lastProbeCount >= 5 && state.spaceBuildings.GasSpaceDock.lastShipSegmentCount >= 100) {
+        // We don't want more than 4 probes or more than 100 ship segments
+        if (state.spaceBuildings.GasSpaceDock.lastProbeCount >= 4 && state.spaceBuildings.GasSpaceDock.lastShipSegmentCount >= 100) {
             return;
         }
 
@@ -2270,7 +2748,7 @@
         }
 
         // This one involves opening options so don't do it too often
-        if (!state.spaceBuildings.GasSpaceDock.isOptionsOpen() && state.loopCounter % 240 != 0 && state.spaceBuildings.GasSpaceDock.isOptionsUpdated()) {
+        if (!state.spaceBuildings.GasSpaceDock.isOptionsOpen() && state.loopCounter % 500 != 0 && state.spaceBuildings.GasSpaceDock.isOptionsUpdated()) {
             return;
         }
 
@@ -2285,8 +2763,8 @@
         // We've opened the options window so lets update where we are currently
         state.spaceBuildings.GasSpaceDock.updateOptions();
 
-        // We want to build 5 probes max
-        if (state.spaceBuildings.GasSpaceDock.lastProbeCount < 5) {
+        // We want to build 4 probes max
+        if (state.spaceBuildings.GasSpaceDock.lastProbeCount < 4) {
             state.spaceBuildings.GasSpaceDock.tryBuildProbe();
         }
 
@@ -2503,150 +2981,98 @@
     
     //#region Auto Power
 
-    /**
-     * @param {Action} building
-     * @param {number} availablePower
-     * @param {number} powerUsage
-     * @return {boolean}
-     */
-    function checkAndClickBuildingPowerOn(building, availablePower, powerUsage) {
-        log("building: " + building.id + ", stateOffCount: " + building.stateOffCount + ", availablePower " + availablePower + ", powerUsage: " + powerUsage)
-        if (building.stateOffCount > 0 && availablePower >= powerUsage) {
-        log("turning on building: " + building.id);
-            building.trySetStateOn();
-            return true;
-        }
-        
-        return false;
-    }
-    
-    /**
-     * @param {Action} building
-     * @return {boolean}
-     */
-    function checkAndClickBuildingPowerOff(building) {
-        log("stateOnCount: " + building.stateOnCount);
-        if (building.stateOnCount > 0) {
-        log("turning off building: " + building.id);
-            building.trySetStateOff();
-            return true;
-        }
-        
-        return false;
-    }
-    
-    /**
-     * @param {string} text
-     */
-    function log(text) {
-        if (settings.autoLogging) {
-            console.log(text);
-        }
-    }
-    
-    function unpowerBuildingsIfRequired() {
+    function autoBuildingPriority() {
         let availablePowerNode = document.querySelector('#powerMeter');
         
+        // Only start doing this once power becomes available. Isn't useful before then
         if (availablePowerNode === null) {
             return;
         }
         
+        // Calculate the available power / resource rates of change that we have to work with
         let availablePower = parseInt(availablePowerNode.textContent);
-        if (availablePower > 5) {
-            return;
-        }
-        
-        let totalUnpowered = state.cityBuildings.Apartment.stateOffCount + state.cityBuildings.Wardenclyffe.stateOffCount
-            + state.cityBuildings.BioLab.stateOffCount + state.cityBuildings.Mine.stateOffCount
-            + state.cityBuildings.CementPlant.stateOffCount + state.cityBuildings.Sawmill.stateOffCount
-            + state.cityBuildings.RockQuarry.stateOffCount + state.cityBuildings.CoalMine.stateOffCount
-            + state.cityBuildings.Factory.stateOffCount;
-            
-        log("totalUnpowered: " + totalUnpowered);
-        
-        if (availablePower < 0) {
-            totalUnpowered-= availablePower;
-        }
-        
-        if (totalUnpowered > 0) {
-            totalUnpowered -= state.cityBuildings.Factory.stateOffCount;
-            if (checkAndUnpowerBuilding(state.cityBuildings.Factory, totalUnpowered)) { return state.cityBuildings.Factory.id };
-            
-            totalUnpowered -= state.cityBuildings.CoalMine.stateOffCount;
-            if (checkAndUnpowerBuilding(state.cityBuildings.CoalMine, totalUnpowered)) { return state.cityBuildings.CoalMine.id };
-        
-            totalUnpowered -= state.cityBuildings.RockQuarry.stateOffCount;
-            if (checkAndUnpowerBuilding(state.cityBuildings.RockQuarry, totalUnpowered)) { return state.cityBuildings.RockQuarry.id };
-            
-            totalUnpowered -= state.cityBuildings.Sawmill.stateOffCount;
-            if (checkAndUnpowerBuilding(state.cityBuildings.Sawmill, totalUnpowered)) { return state.cityBuildings.Sawmill.id };
+        let spaceFuelMultiplier = 0.95 ** state.cityBuildings.MassDriver.stateOnCount;
 
-            totalUnpowered -= state.cityBuildings.CementPlant.stateOffCount;
-            if (checkAndUnpowerBuilding(state.cityBuildings.CementPlant, totalUnpowered)) { return state.cityBuildings.CementPlant.id };
+        for (let i = 0; i < state.allResourceList.length; i++) {
+            state.allResourceList[i].calculatedRateOfChange = state.allResourceList[i].rateOfChange;
+        }
 
-            totalUnpowered -= state.cityBuildings.Mine.stateOffCount;
-            if (checkAndUnpowerBuilding(state.cityBuildings.Mine, totalUnpowered)) { return state.cityBuildings.Mine.id };
-        }
-    }
-    
-    /**
-     * @param {Action} building
-     * @param {number} totalUnpowered
-     * @return {boolean}
-     */
-    function checkAndUnpowerBuilding(building, totalUnpowered) {
-        if (totalUnpowered <= 0) {
-            return false;
-        }
-        
-        if (building.stateOnCount > 0 && totalUnpowered > 0) {
-            checkAndClickBuildingPowerOff(building);
-            return true;
-        }
-        
-        return false;
-    }
-    
-    function autoPower() {
-        let availablePowerNode = document.querySelector('#powerMeter');
-        
-        if (availablePowerNode === null) {
-            return;
-        }
-        
-        let unpoweredBuilding = unpowerBuildingsIfRequired();
-        
-        let availablePower = parseInt(availablePowerNode.textContent);
-        
-        // Power generating
-        checkAndClickBuildingPowerOn(state.cityBuildings.Mill, availablePower, 0);
-        
-        // Power consuming
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.Apartment, availablePower, 1)) { return; }
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.Wardenclyffe, availablePower, 2)) { return; } else if (state.cityBuildings.Wardenclyffe.stateOffCount > 0) { return; }
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.BioLab, availablePower, 2)) { return; } else if (state.cityBuildings.BioLab.stateOffCount > 0) { return; }
+        for (let i = 0; i < state.consumptionPriorityList.length; i++) {
+            let building = state.consumptionPriorityList[i];
+            availablePower += (building.consumption.power * building.stateOnCount);
 
-        if (unpoweredBuilding == state.cityBuildings.Mine.id) { return };
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.Mine, availablePower, 1)) { return; }
+            for (let j = 0; j < building.consumption.resourceTypes.length; j++) {
+                let resourceType = building.consumption.resourceTypes[j];
 
-        if (unpoweredBuilding == state.cityBuildings.CementPlant.id) { return };
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.CementPlant, availablePower, 2)) { return; } else if (state.cityBuildings.CementPlant.stateOffCount > 0) { return; }
-        
-        if (unpoweredBuilding == state.cityBuildings.Sawmill.id) { return };
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.Sawmill, availablePower, 1)) { return; }
-        
-        if (unpoweredBuilding == state.cityBuildings.RockQuarry.id) { return };
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.RockQuarry, availablePower, 1)) { return; }
-        
-        if (unpoweredBuilding == state.cityBuildings.CoalMine.id) { return };
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.CoalMine, availablePower, 1)) { return; }
-        
-        if (unpoweredBuilding == state.cityBuildings.Factory.id) { return };
-        if (checkAndClickBuildingPowerOn(state.cityBuildings.Factory, availablePower, 3)) {
-            // Reset the factory count so that we will check factory settings again
-            state.cityBuildings.Factory.lastFactoryCount = 0;
-            return;
-        } else if (state.cityBuildings.Factory.stateOffCount > 0) { return; }
+                // Mass driver effect
+                if (resourceType.resource === state.resources.Oil || resourceType.resource === state.resources.Helium_3) {
+                    resourceType.rate = resourceType.initialRate * spaceFuelMultiplier;
+                }
+                
+                // Just like for power, get our total resources available
+                resourceType.resource.calculatedRateOfChange += resourceType.rate * building.stateOnCount;
+            }
+        }
+
+        // Start assigning buildings from the top of our priority list to the bottom
+        for (let i = 0; i < state.consumptionPriorityList.length; i++) {
+            let building = state.consumptionPriorityList[i];
+            let requiredStateOn = 0;
+
+            for (let j = 0; j < building.count; j++) {
+                if (building.consumption.power > 0) {
+                    // Building needs power and we don't have any
+                    if ((availablePower <= 0 && building.consumption.power > 0) || (availablePower - building.consumption.power < 0)) {
+                        continue;
+                    }
+                }
+
+                let resourcesToTake = 0;
+
+                for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
+                    let resourceType = building.consumption.resourceTypes[k];
+                    
+                    // TODO: Implement minimum rates of change for each resource
+                    // If resource rate is negative then we are gaining resources. So, only check if we are consuming resources
+                    if (resourceType.rate > 0) {
+                        if (resourceType.resource.calculatedRateOfChange <= 0 || resourceType.resource.calculatedRateOfChange - resourceType.rate < 0) {
+                            continue;
+                        }
+                    }
+
+                    resourcesToTake++;
+                }
+
+                // All resources passed the test so take them.
+                if ( resourcesToTake == building.consumption.resourceTypes.length) {
+                    availablePower -= building.consumption.power;
+
+                    for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
+                        let resourceType = building.consumption.resourceTypes[k];
+                        resourceType.resource.calculatedRateOfChange -= resourceType.rate;
+                    }
+
+                    requiredStateOn++;
+                } else {
+                    // We couldn't get the resources so skip the rest of this building type
+                    break;
+                }
+            }
+
+            let adjustment = requiredStateOn - building.stateOnCount;
+
+            // If the warning indicator is on then we don't know how many buildings are over-resourced
+            // Just take them all off and sort it out next loop
+            if (building.isStateOnWarning()) {
+                adjustment = -building.stateOnCount;
+            }
+
+            if (adjustment != 0 && (building === state.cityBuildings.Factory || building === state.spaceBuildings.RedFactory)) {
+                state.cityBuildings.Factory.lastFactoryCount = 0;
+            }
+
+            building.tryAdjustState(adjustment);
+        }
     }
 
     //#endregion Auto Power
@@ -2744,6 +3170,20 @@
 
         if (settings.autoSpace) {
             if (assignCrates(state.resources.Iridium, 20)) { return };
+
+            if (state.resources.Population.currentQuantity > 400) {
+                if (assignCrates(state.resources.Steel, 1200)) { return };
+                if (assignCrates(state.resources.Titanium, 200)) { return };
+                if (assignCrates(state.resources.Alloy, 200)) { return };
+                if (assignCrates(state.resources.Polymer, 200)) { return };
+                if (assignCrates(state.resources.Iridium, 200)) { return };
+            } else if (state.resources.Population.currentQuantity > 300) {
+                if (assignCrates(state.resources.Steel, 1000)) { return };
+                if (assignCrates(state.resources.Titanium, 100)) { return };
+                if (assignCrates(state.resources.Alloy, 100)) { return };
+                if (assignCrates(state.resources.Polymer, 100)) { return };
+                if (assignCrates(state.resources.Iridium, 100)) { return };
+            }
         }
     }
     
@@ -2910,7 +3350,7 @@
                 autoJobs();
             }
             if (settings.autoPower) {
-                autoPower();
+                autoBuildingPriority();
             }
             if (settings.autoTradeSpecialResources) {
                 autoTradeSpecialResources();
@@ -2926,6 +3366,9 @@
             }
             if (settings.autoSpace) {
                 autoSpace();
+            }
+            if (settings.autoSeeder) {
+                autoSeeder();
             }
         }
         
@@ -3027,6 +3470,9 @@
         }
         if ($('#autoSpace').length == 0) {
             createSettingToggle('autoSpace');
+        }
+        if ($('#autoSeeder').length == 0) {
+            createSettingToggle('autoSeeder');
         }
 //        if ($('#autoLogging').length == 0) {
 //            createSettingToggle('autoLogging');
@@ -3204,7 +3650,7 @@
             console.log(state);
         });
     }
-    
+
     function createMarketToggles() {
         removeMarketToggles();
         for (let i = 0; i < state.tradableResourceList.length; i++) {
@@ -3269,6 +3715,15 @@
         }
         
         return raceNameNode.textContent;
+    }
+
+    /**
+     * @param {string} text
+     */
+    function log(text) {
+        if (settings.autoLogging) {
+            console.log(text);
+        }
     }
 
     //#endregion Utility Functions
