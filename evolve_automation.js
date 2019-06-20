@@ -1673,6 +1673,7 @@
         }
 
         // This list is the priority order that we want to power our buildings in
+        state.consumptionPriorityList.push(state.cityBuildings.Mill);
         state.consumptionPriorityList.push(state.cityBuildings.Apartment);
         state.consumptionPriorityList.push(state.cityBuildings.Wardenclyffe);
         state.consumptionPriorityList.push(state.cityBuildings.BioLab);
@@ -2112,7 +2113,7 @@
             let filledJobs = parseInt(btnArray[0]);
             
             if (jobType == "miner" || jobType == "banker") {
-                if (state.resources.Population.currentQuantity <= 60) {
+                if (state.resources.Population.currentQuantity <= 70) {
                     if (availableJobs > 3) {
                         availableJobs = 3;
                     }
@@ -2235,7 +2236,7 @@
             if (document.getElementById('civ-miner').style.display != 'none') {
                 let minerArray = document.querySelector('#civ-miner .job_label > span:nth-child(2)').textContent.split(' / ');
                 
-                if (minerArray[0] != minerArray[1] && (parseInt(minerArray[0]) < 3 || state.resources.Population.currentQuantity > 60))
+                if (minerArray[0] != minerArray[1] && (parseInt(minerArray[0]) < 3 || state.resources.Population.currentQuantity > 70))
                 {
                     let minerAddButton = document.querySelector('#civ-miner .controls > .add');
                     // @ts-ignore
@@ -2248,7 +2249,7 @@
             if (document.getElementById('civ-banker').style.display != 'none') {
                 let bankerArray = document.querySelector('#civ-banker .job_label > span:nth-child(2)').textContent.split(' / ');
                 
-                if (bankerArray[0] != bankerArray[1] && (parseInt(bankerArray[0]) < 3 || state.resources.Population.currentQuantity > 60))
+                if (bankerArray[0] != bankerArray[1] && (parseInt(bankerArray[0]) < 3 || state.resources.Population.currentQuantity > 70))
                 {
                     let bankerAddButton = document.querySelector('#civ-banker .controls > .add');
                     // @ts-ignore
