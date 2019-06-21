@@ -789,51 +789,6 @@
         //#endregion Craftable resource
     }
 
-    class ModalWindowManager {
-        constructor() {
-            this.openThisLoop = false;
-        }
-
-        get currentModalWindowTitle() {
-            let modalTitleNode = document.getElementById("modalBoxTitle");
-            if (modalTitleNode === null) {
-                return "";
-            }
-
-            // Modal title will either be a single name or a combination of resource and storage 
-            // eg. single name "Smelter" or "Factory"
-            // eg. combination "Iridium - 26.4K/279.9K"
-            let indexOfDash = modalTitleNode.textContent.indexOf(" - ");
-            if (indexOfDash == -1) {
-                return modalTitleNode.textContent;
-            } else {
-                return modalTitleNode.textContent.substring(0, indexOfDash);
-            }
-        }
-
-        openModalWindow() {
-            this.openThisLoop = true;
-        }
-
-        isOpen() {
-            // We want to give the modal time to close so if there was a modal open this loop then just say there is a modal open
-            let isOpen = document.getElementById("modalBox") != null;
-            if (isOpen) {
-                this.openThisLoop = true;
-            }
-
-            return isOpen || this.openThisLoop;
-        }
-
-        closeModalWindow() {
-            let modalCloseBtn = document.querySelector('.modal > .modal-close');
-            if (modalCloseBtn != null) {
-                // @ts-ignore
-                modalCloseBtn.click();
-            }
-        }
-    }
-
     const FactoryGoods = {
         Luxury: 0,
         Alloy: 1,
@@ -1098,6 +1053,223 @@
             return this.Launch.click();
         }
     }
+
+    class ModalWindowManager {
+        constructor() {
+            this.openThisLoop = false;
+        }
+
+        get currentModalWindowTitle() {
+            let modalTitleNode = document.getElementById("modalBoxTitle");
+            if (modalTitleNode === null) {
+                return "";
+            }
+
+            // Modal title will either be a single name or a combination of resource and storage 
+            // eg. single name "Smelter" or "Factory"
+            // eg. combination "Iridium - 26.4K/279.9K"
+            let indexOfDash = modalTitleNode.textContent.indexOf(" - ");
+            if (indexOfDash == -1) {
+                return modalTitleNode.textContent;
+            } else {
+                return modalTitleNode.textContent.substring(0, indexOfDash);
+            }
+        }
+
+        openModalWindow() {
+            this.openThisLoop = true;
+        }
+
+        isOpen() {
+            // We want to give the modal time to close so if there was a modal open this loop then just say there is a modal open
+            let isOpen = document.getElementById("modalBox") != null;
+            if (isOpen) {
+                this.openThisLoop = true;
+            }
+
+            return isOpen || this.openThisLoop;
+        }
+
+        closeModalWindow() {
+            let modalCloseBtn = document.querySelector('.modal > .modal-close');
+            if (modalCloseBtn != null) {
+                // @ts-ignore
+                modalCloseBtn.click();
+            }
+        }
+    }
+
+    const AttackTypes = {
+        Ambush: 0,
+        Raid: 1,
+        Pillage: 2,
+        Assault: 3,
+        Siege: 4,
+    }
+
+    class BattleManager {
+        constructor() {
+            this.campaigns = [
+                { name: "Ambush", rating: 10 },
+                { name: "Raid", rating: 50 },
+                { name: "Pillage", rating: 100 },
+                { name: "Assault", rating: 200 },
+                { name: "Siege", rating: 500 }
+            ];
+        }
+
+        isUnlocked() {
+            return document.querySelector("#garrison .campaign") != null;
+        }
+
+        launchCampaign() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            //@ts-ignore
+            document.querySelector("#garrison .campaign").click();
+            return true;
+        }
+
+        isMercenaryUnlocked() {
+            return document.querySelector("#garrison .first") != null;
+        }
+
+        hireMercenary() {
+            if (!this.isMercenaryUnlocked()) {
+                return false;
+            }
+
+            //@ts-ignore
+            document.querySelector("#garrison .first").click();
+            return true;
+        }
+
+        get currentOffensiveRating() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            return parseFloat(document.querySelector("#garrison .header > span:nth-child(2) > span:nth-child(1)").textContent);
+        }
+
+        get maxOffensiveRating() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            return parseFloat(document.querySelector("#garrison .header > span:nth-child(2) > span:nth-child(2)").textContent);
+        }
+
+        get currentSoldiers() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            return parseInt(document.querySelector("#garrison .barracks > span:nth-Child(2)").textContent.split(" / ")[0]);
+        }
+
+        get maxSoldiers() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            return parseInt(document.querySelector("#garrison .barracks > span:nth-Child(2)").textContent.split(" / ")[1]);
+        }
+
+        get woundedSoldiers() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            return parseInt(document.querySelector("#garrison .barracks:nth-child(2) > span:nth-child(2)").textContent);
+        }
+
+        get attackType() {
+            if (!this.isUnlocked()) {
+                return "";
+            }
+
+            return document.querySelector("#tactics .current").textContent;
+        }
+
+        increaseCampaignDifficulty() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            //@ts-ignore
+            document.querySelector("#tactics .add").click();
+            return true;
+        }
+
+        decreaseCampaignDifficulty() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            //@ts-ignore
+            document.querySelector("#tactics .sub").click();
+            return true;
+        }
+
+        get currentBattalion() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            return parseInt(document.querySelector("#battalion .current").textContent);
+        }
+
+        addBattalion() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            //@ts-ignore
+            document.querySelector("#battalion .add").click();
+            return true;
+        }
+
+        removeBattalion() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            //@ts-ignore
+            document.querySelector("#battalion .sub").click();
+            return true;
+        }
+
+       /**
+         * @return {boolean}
+         */
+        switchToBestAttackType() {
+            let offense = this.currentOffensiveRating;
+            let currentAttackTypeIndex = findArrayIndex(this.campaigns, "name", this.attackType);
+
+            if (this.campaigns.length == 0 || currentAttackTypeIndex == -1) {
+                return false;
+            }
+
+            for (let i = this.campaigns.length - 1; i >= 0; i--) {
+                let campaign = this.campaigns[i];
+                
+                if (offense >= campaign.rating && currentAttackTypeIndex < i) {
+                    this.increaseCampaignDifficulty();
+                    return false;
+                }
+
+                if (offense < campaign.rating && currentAttackTypeIndex >= i && i > 0) {
+                    this.decreaseCampaignDifficulty();
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
     
     //#endregion Class Declarations
 
@@ -1107,6 +1279,7 @@
         loopCounter: 1,
 
         modal: new ModalWindowManager(),
+        battle: new BattleManager(),
         
         lastGenomeSequenceValue: 0,
         lastSmelterCount: 0,
@@ -1992,110 +2165,26 @@
 
     function autoBattle() {
         // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
-        if (state.goal == "PreparingMAD") {
+        if (state.goal == "PreparingMAD" || !state.battle.isUnlocked()) {
             return;
         }
         
-        let addBattalion = document.querySelector('#battalion > .add');
-
-        // There is no battalion node... world peace maybe?
-        if (addBattalion === null) {
-            return;
-        }
-
-        let tabElms = document.querySelectorAll('#tabs div.b-tabs nav.tabs ul li');
-        let soldierCounts = document.querySelector('#garrison .barracks > span:nth-child(2)').textContent.split(' / ');
-        let woundedCount = parseInt(document.querySelector('#garrison .barracks:nth-child(2) > span:nth-child(2)').textContent);
-        let battleButton = document.querySelector('#garrison > div:nth-child(4) > div:nth-child(2) > span > button');
-        if (tabElms.item(2).className = "is-active") {
-            // @ts-ignore
-            addBattalion.click();
-            
-            if (!switchAttackTypeIfRequired()) {
+        // Don't launch an attack until we are happy with our battalion size (returns true if we've added a battalion)
+        if (state.battle.currentSoldiers > state.battle.currentBattalion) {
+            if (state.battle.addBattalion()) {
                 return;
             }
-            
-            if (soldierCounts[0] == soldierCounts[1] && parseInt(soldierCounts[0]) != 0 && woundedCount == 0) {
-                // @ts-ignore
-                battleButton.click();
-            }
         }
-    }
+        
+        // If we're switching attack types this loop then don't launch an attack. Wait for the UI to catch up (returns true when we are at the right attack type)
+        if (!state.battle.switchToBestAttackType()) {
+            return;
+        }
 
-   /**
-     * @return {boolean}
-     */
-    function switchAttackTypeIfRequired() {
-        let offensiveRating = parseInt(document.querySelector('#garrison > div:nth-child(1) > span:nth-child(2) > span:nth-child(2)').textContent);
-        let attackType = document.querySelector('#tactics > span:nth-child(3) > span').textContent;
-        let increaseAttackDifficultyBtn = document.querySelector('#tactics > span:nth-child(4)');
-        let decreaseAttackDifficultyBtn = document.querySelector('#tactics > span:nth-child(2)');
-        
-        if (offensiveRating > 500 && attackType == "Siege") {
-            return true;
-        } else if (offensiveRating > 500 && attackType != "Siege") {
-            // @ts-ignore
-            increaseAttackDifficultyBtn.click();
-            return false;
+        // If we have solders, they're not wounded and they're ready to go, then charge!
+        if (state.battle.maxSoldiers != 0 && state.battle.woundedSoldiers == 0 && state.battle.currentSoldiers == state.battle.maxSoldiers) {
+            state.battle.launchCampaign();
         }
-        
-        if (offensiveRating > 200 && attackType == "Assault") {
-            return true;
-        } else if (offensiveRating > 200 && attackType != "Assault") {
-            if (attackType == "Siege") {
-                // @ts-ignore
-                decreaseAttackDifficultyBtn.click();
-                return false;
-            } else {
-                // @ts-ignore
-                increaseAttackDifficultyBtn.click();
-                return false;
-            }
-        }
-        
-        if (offensiveRating > 100 && attackType == "Pillage") {
-            return true;
-        } else if (offensiveRating > 100 && attackType != "Pillage") {
-            if (attackType == "Siege" || attackType == "Assault") {
-                // @ts-ignore
-                decreaseAttackDifficultyBtn.click();
-                return false;
-            } else {
-                // @ts-ignore
-                increaseAttackDifficultyBtn.click();
-                return false;
-            }
-        }
-        
-        if (offensiveRating > 50 && attackType == "Raid") {
-            return true;
-        } else if (offensiveRating > 50 && attackType != "Raid") {
-            if (attackType == "Siege" || attackType == "Assault" || attackType == "Pillage") {
-                // @ts-ignore
-                decreaseAttackDifficultyBtn.click();
-                return false;
-            } else {
-                // @ts-ignore
-                increaseAttackDifficultyBtn.click();
-                return false;
-            }
-        }
-        
-        if (attackType == "Ambush") {
-            return true;
-        } else if (attackType != "Ambush") {
-            if (attackType == "Siege" || attackType == "Assault" || attackType == "Pillage" || attackType == "Raid") {
-                // @ts-ignore
-                decreaseAttackDifficultyBtn.click();
-                return false;
-            } else {
-                // @ts-ignore
-                increaseAttackDifficultyBtn.click();
-                return false;
-            }
-        }
-        
-        return true;
     }
 
     //#endregion Auto Battle
@@ -2533,11 +2622,10 @@
             // @ts-ignore
             armMissilesBtn.click();
             state.goal = "PreparingMAD";
+            return; // Give the UI time to update
         }
         
-        let soldierCounts = document.querySelector('#garrison .barracks > span:nth-child(2)').textContent.split(' / ');
-        let woundedCount = parseInt(document.querySelector('#garrison .barracks:nth-child(2) > span:nth-child(2)').textContent);
-        if (soldierCounts[0] == soldierCounts[1]&& woundedCount == 0) {
+        if (state.battle.currentSoldiers == state.battle.maxSoldiers && state.battle.woundedSoldiers == 0) {
             // Push... the button
             console.log("Soft resetting game with MAD");
             state.goal = "GameOverMan";
@@ -2697,11 +2785,11 @@
         autoGatherResource(state.cityBuildings.Stone, 10);
     }
     
-	/**
+    /**
      * @param {Action} gatherable
      * @param {number} nbrOfClicks
      */
-	function autoGatherResource(gatherable, nbrOfClicks) {
+    function autoGatherResource(gatherable, nbrOfClicks) {
         if (!gatherable.isUnlocked()) {
             return;
         }
@@ -2709,7 +2797,7 @@
         for (let i = 0; i < nbrOfClicks; i++) {
             gatherable.click();
         }
-	}
+    }
     
     /**
      * @param {Action} building
@@ -3176,14 +3264,14 @@
         if (settings.autoSpace) {
             if (assignCrates(state.resources.Iridium, 20)) { return };
 
-            if (state.resources.Population.currentQuantity > 400) {
-                if (assignCrates(state.resources.Steel, 1200)) { return };
+            if (state.resources.Population.currentQuantity > 380) {
+                if (assignCrates(state.resources.Steel, 400)) { return };
                 if (assignCrates(state.resources.Titanium, 200)) { return };
                 if (assignCrates(state.resources.Alloy, 200)) { return };
                 if (assignCrates(state.resources.Polymer, 200)) { return };
                 if (assignCrates(state.resources.Iridium, 200)) { return };
-            } else if (state.resources.Population.currentQuantity > 300) {
-                if (assignCrates(state.resources.Steel, 1000)) { return };
+            } else if (state.resources.Population.currentQuantity > 280) {
+                if (assignCrates(state.resources.Steel, 200)) { return };
                 if (assignCrates(state.resources.Titanium, 100)) { return };
                 if (assignCrates(state.resources.Alloy, 100)) { return };
                 if (assignCrates(state.resources.Polymer, 100)) { return };
@@ -3727,6 +3815,21 @@
         }
         
         return raceNameNode.textContent;
+    }
+
+    /**
+     * @param {any[]} array
+     * @param {string} propertyName
+     * @param {any} propertyValue
+     */
+    function findArrayIndex(array, propertyName, propertyValue) {
+        for (var i = 0; i < array.length; i++) {
+            if (array[i][propertyName] == propertyValue) {
+                return i;
+            }
+        }
+        
+        return -1;
     }
 
     /**
