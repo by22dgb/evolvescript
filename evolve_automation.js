@@ -32,7 +32,7 @@
             this._id = id;
             this._elementId = this._tabPrefix + "-" + this.id;
             this._isBuilding = isBuilding;
-            this.autoBuildEnabled = true;
+            this.autoBuildEnabled = false;
 
             this.consumption = {
                 power: 0,
@@ -284,7 +284,7 @@
             this._prefix = prefix;
             this._id = id;
             this._isPopulation = (id === "Population"); // We can't store the full elementId because we don't know the name of the population node until later
-            this.autoCraftEnabled = true;
+            this.autoCraftEnabled = false;
 
             this._isTradable = isTradable;
             this.autoBuyEnabled = false;
@@ -2253,7 +2253,7 @@
             if (settings.hasOwnProperty(settingKey)) {
                 state.craftableResourceList[i].autoCraftEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = true;
+                settings[settingKey] = false;
             }
         }
         
@@ -2263,7 +2263,7 @@
             if (settings.hasOwnProperty(settingKey)) {
                 state.allBuildingList[i].autoBuildEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = true;
+                settings[settingKey] = false;
             }
         }
     }
