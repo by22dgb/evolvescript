@@ -1652,6 +1652,7 @@
             Furs: new Resource("res", "Furs", true, 0.5, 0.9, false, -1),
             Copper: new Resource("res", "Copper", true, 0.5, 0.9, false, -1),
             Iron: new Resource("res", "Iron", true, 0.5, 0.9, false, -1),
+            Aluminium: new Resource("res", "Aluminium", true, 0.5, 0.9, false, -1),
             Cement: new Resource("res", "Cement", true, 0.3, 0.9, false, -1),
             Coal: new Resource("res", "Coal", true, 0.5, 0.9, false, -1),
             Oil: new Resource("res", "Oil", true, 0.5, 0.9, false, -1),
@@ -1748,6 +1749,7 @@
             TouristCenter: new Action("city", "tourist_center", true),
             MassDriver: new Action("city", "mass_driver", true),
             Wharf: new Action("city", "wharf", true),
+            MetalRefinery: new Action("city", "metal_refinery", true),
         },
         
         /** @type {Action[]} */
@@ -1831,6 +1833,7 @@
         state.tradableResourceList.push(state.resources.Furs);
         state.tradableResourceList.push(state.resources.Copper);
         state.tradableResourceList.push(state.resources.Iron);
+        state.tradableResourceList.push(state.resources.Aluminium);
         state.tradableResourceList.push(state.resources.Cement);
         state.tradableResourceList.push(state.resources.Coal);
         state.tradableResourceList.push(state.resources.Oil);
@@ -1850,7 +1853,7 @@
         state.craftableResourceList.push(state.resources.WroughtIron);
         state.resources.WroughtIron.requiredResourcesToAction.push(state.resources.Iron);
         state.craftableResourceList.push(state.resources.SheetMetal);
-        state.resources.SheetMetal.requiredResourcesToAction.push(state.resources.Steel);
+        state.resources.SheetMetal.requiredResourcesToAction.push(state.resources.Aluminium);
         state.craftableResourceList.push(state.resources.Mythril);
         state.resources.Mythril.requiredResourcesToAction.push(state.resources.Iridium);
         state.resources.Mythril.requiredResourcesToAction.push(state.resources.Alloy);
@@ -1872,8 +1875,12 @@
         state.allResourceList.push(state.resources.Elerium);
         state.allResourceList.push(state.resources.NanoTube);
 
+        // TODO: Depending on tech level. Will have to adjust
+        // copper: [0.75,1.12,1.49,1.86],
+        // aluminium: [1,1.5,2,2.5],
+        // output: [0.075,0.112,0.149,0.186]
         state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Copper, 1.86, 75)); //1.49
-        state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Titanium, 0.36, 5)); //0.29
+        state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Aluminium, 2, 5)); //0.29
         state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Oil, 0.45, 10));
         state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Lumber, 36, 1000));
         state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Coal, 20, 30));
@@ -1941,7 +1948,7 @@
         state.cityBuildingList.push(state.cityBuildings.OilPower);
         state.cityBuildings.OilPower.addRequiredResource(state.resources.Copper);
         state.cityBuildings.OilPower.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.OilPower.addRequiredResource(state.resources.Steel);
+        state.cityBuildings.OilPower.addRequiredResource(state.resources.Aluminium);
         state.cityBuildings.OilPower.addPowerConsumption(-6);
         state.cityBuildings.OilPower.addResourceConsumption(state.resources.Oil, 0.65);
         state.cityBuildingList.push(state.cityBuildings.Bank);
@@ -2042,9 +2049,11 @@
         state.cityBuildings.Wharf.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Wharf.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Wharf.addRequiredResource(state.resources.Oil);
+        state.cityBuildingList.push(state.cityBuildings.MetalRefinery);
+        state.cityBuildings.MetalRefinery.addRequiredResource(state.resources.Steel);
 
         // Construct space buildsings list
-        // TODO: Space! resource requirements, power on state (eg. -25 food) and planet "support"
+        // TODO: Space! resource requirements
         state.spaceBuildingList.push(state.spaceBuildings.SpaceTestLaunch);
         state.spaceBuildingList.push(state.spaceBuildings.SpaceSatellite);
         state.spaceBuildingList.push(state.spaceBuildings.SpaceGps);
@@ -3639,11 +3648,8 @@
         if (state.resources.Plasmids.currentQuantity < 500) {
             // If you don't have many plasmids then you need quite a few crates
             if (assignCrates(state.resources.Steel, 50)) { return }
-        } else if(state.cityBuildings.Wardenclyffe.count >= 12) {
-            // Slow down steel a bit so that we can build a few Wardenclyffe's before other steel related structures
-            if (assignCrates(state.resources.Steel, 20)) { return }
         } else {
-            if (assignCrates(state.resources.Steel, 10)) { return }
+            if (assignCrates(state.resources.Steel, 20)) { return }
         }
 
         if (assignCrates(state.resources.Titanium, 20)) { return }
@@ -3655,12 +3661,14 @@
 
             if (state.resources.Population.currentQuantity > 380) {
                 if (assignCrates(state.resources.Steel, 400)) { return }
+                if (assignCrates(state.resources.Aluminium, 100)) { return }
                 if (assignCrates(state.resources.Titanium, 200)) { return }
                 if (assignCrates(state.resources.Alloy, 200)) { return }
                 if (assignCrates(state.resources.Polymer, 200)) { return }
                 if (assignCrates(state.resources.Iridium, 200)) { return }
             } else if (state.resources.Population.currentQuantity > 280) {
                 if (assignCrates(state.resources.Steel, 200)) { return }
+                if (assignCrates(state.resources.Aluminium, 50)) { return }
                 if (assignCrates(state.resources.Titanium, 100)) { return }
                 if (assignCrates(state.resources.Alloy, 100)) { return }
                 if (assignCrates(state.resources.Polymer, 100)) { return }
