@@ -9,6 +9,7 @@
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.3.1.min.js
 // ==/UserScript==
+// 
 
 //@ts-check
 (function($) {
@@ -19,7 +20,255 @@
         settings = JSON.parse(jsonSettings);
     }
 
+    var defaultEnabled = false;
+
     //#region Class Declarations
+
+    class Job {
+        /**
+         * @param {string} tabPrefix
+         * @param {any} concatenator
+         * @param {string} id
+         * @param {any} isCraftsman
+         * @param {number[]} breakpointMaxs
+         */
+        constructor(tabPrefix, concatenator, id, isCraftsman, breakpointMaxs) {
+            this._tabPrefix = tabPrefix;
+            this._concatenator = concatenator;
+            this._id = id;
+            this._elementId = this._tabPrefix + this._concatenator + this.id;
+            this._isCraftsman = isCraftsman;
+
+            /** @type {number[]} */
+            this.breakpointMaxs = breakpointMaxs;
+        }
+
+        get id() {
+            return this._id;
+        }
+        
+        isUnlocked() {
+            let containerNode = document.getElementById(this._elementId);
+            return containerNode !== null && containerNode.style.display !== "none";
+        }
+
+        isCraftsman() {
+            return this._isCraftsman;
+        }
+
+        get current() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            let jobNode = document.querySelector("#" + this._elementId + " .count");
+            if (jobNode !== null) {
+                // 2 possibilities:
+                // eg. "13 / 16" the current is 13
+                // eg. "12" the current is 12
+                if (jobNode.textContent.indexOf("/") === -1) {
+                    return getRealNumber(jobNode.textContent);
+                }
+
+                return getRealNumber(jobNode.textContent.split(" / ")[0]);
+            }
+
+            return 0;
+        }
+
+        get max() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            let jobNode = document.querySelector("#" + this._elementId + " .count");
+            if (jobNode !== null) {
+                // 2 possibilities:
+                // eg. "13 / 16" the current is 13
+                // eg. "12" the current is 12
+                if (jobNode.textContent.indexOf("/") === -1) {
+                    return Number.MAX_SAFE_INTEGER;
+                }
+
+                return getRealNumber(jobNode.textContent.split(" / ")[1]);
+            }
+
+            return 0;
+        }
+
+        get available() {
+            return this.max - this.current;
+        }
+
+        /**
+         * @param {number} breakpoint
+         */
+        breakpointEmployees(breakpoint) {
+            if ((breakpoint >= 0 && this.breakpointMaxs.length === 0) || breakpoint < 0 || breakpoint > this.breakpointMaxs.length - 1) {
+                return 0;
+            }
+
+            // if (this.isCraftsman() && !settings.autoCraftsmen) {
+            //     return 0;
+            // }
+
+            let breakpointActual = this.breakpointMaxs[breakpoint];
+
+            // -1 equals unlimited up to the maximum available jobs for this job
+            if (breakpointActual === -1) {
+                breakpointActual = Number.MAX_SAFE_INTEGER;
+            }
+
+            // return the actual workers required for this breakpoint (either our breakpoint or our max, whichever is lower)
+            return Math.min(breakpointActual, this.max)
+        }
+
+        getAddButton() {
+            return document.querySelector("#" + this._elementId + " .add");
+        }
+
+        getSubButton() {
+            return document.querySelector("#" + this._elementId + " .sub");
+        }
+
+        /**
+         * @param {number} count
+         */
+        addWorkers(count) {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            if (count < 0) {
+                this.removeWorkers(-1 * count);
+            }
+
+            if (this.current + count > this.max) {
+                count = this.max - this.current;
+            }
+
+            let addButton = this.getAddButton();
+            if (addButton !== null) {
+                for (let i = 0; i < count; i++) {
+                    // @ts-ignore
+                    addButton.click();                
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        /**
+         * @param {number} count
+         */
+        removeWorkers(count) {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            if (count < 0) {
+                this.addWorkers(-1 * count);
+            }
+
+            if (this.current - count < 0) {
+                count = this.current;
+            }
+
+            let subButton = this.getSubButton();
+            if (subButton !== null) {
+                for (let i = 0; i < count; i++) {
+                    // @ts-ignore
+                    subButton.click();                
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        addWorker() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            // We already have all the workers of this type that we can
+            if (this.current >= this.max) {
+                return;
+            }
+
+            let addButton = this.getAddButton();
+            if (addButton !== null) {
+                // @ts-ignore
+                addButton.click();
+                return true;
+            }
+
+            return false;
+        }
+
+        removeWorker() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            // Can't remove workers if we don't have any
+            if (this.current <= 0) {
+                return;
+            }
+
+            let subButton = this.getSubButton();
+            if (subButton !== null) {
+                // @ts-ignore
+                subButton.click();
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    class CraftingJob extends Job {
+        /**
+         * @param {string} tabPrefix
+         * @param {any} concatenator
+         * @param {string} id
+         * @param {any} isCraftsman
+         * @param {number[]} breakpointMaxs
+         * @param {any} craftingPriority
+         */
+        constructor(tabPrefix, concatenator, id, isCraftsman, breakpointMaxs, craftingPriority) {
+            super(tabPrefix, concatenator, id, isCraftsman, breakpointMaxs);
+            this._craftingPriority = craftingPriority;
+        }
+
+        getAddButton() {
+            return document.querySelector("#" + this._elementId).parentElement.querySelector(".add")
+        }
+
+        getSubButton() {
+            return document.querySelector("#" + this._elementId).parentElement.querySelector(".sub")
+        }
+
+        get max() {
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+
+            let maxCrafters = state.jobManager.maxCraftsmen;
+            let unlockedCrafters = state.jobManager.unlockedCraftsmen;
+            let quotient = Math.floor(maxCrafters / unlockedCrafters);
+            let remainder = maxCrafters % unlockedCrafters;
+
+            if (remainder >= this._craftingPriority) {
+                quotient++;
+            }
+
+            return quotient;
+        }
+    }
 
     class Action {
         /**
@@ -32,7 +281,7 @@
             this._id = id;
             this._elementId = this._tabPrefix + "-" + this.id;
             this._isBuilding = isBuilding;
-            this.autoBuildEnabled = false;
+            this.autoBuildEnabled = defaultEnabled;
 
             this.consumption = {
                 power: 0,
@@ -284,7 +533,7 @@
             this._prefix = prefix;
             this._id = id;
             this._isPopulation = (id === "Population"); // We can't store the full elementId because we don't know the name of the population node until later
-            this.autoCraftEnabled = false;
+            this.autoCraftEnabled = defaultEnabled;
 
             this._isTradable = isTradable;
             this.autoBuyEnabled = false;
@@ -428,7 +677,7 @@
                 return;
             }
 
-            return (state.modal.isOpen() && state.modal.currentModalWindowTitle === this.id);
+            return (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === this.id);
         }
         
         openOptions() {
@@ -437,7 +686,7 @@
             }
             
             let optionsNode = document.getElementById("con" + this.id);
-            state.modal.openModalWindow();
+            state.windowManager.openModalWindow();
             optionsNode.click();
         }
 
@@ -580,6 +829,14 @@
 
         //#region Craftable resource
 
+        isCraftingUnlocked() {
+            if (!this.isUnlocked()) {
+                return false
+            }
+
+            return document.getElementById("inc" + this.id + "A") !== null;
+        }
+
         /**
          * @param {string} toCraft
          */
@@ -589,7 +846,13 @@
             }
 
             // Get the required clickable craft node and if we find it, clilck it
-            let craftClickNode = document.getElementById("inc" + this.id + toCraft).getElementsByTagName("a")[0];
+            let craftClickNode = document.getElementById("inc" + this.id + toCraft);
+
+            if (craftClickNode === null) {
+                return false;
+            }
+            
+            craftClickNode = craftClickNode.getElementsByTagName("a")[0];
 
             if (craftClickNode !== null) {
                 craftClickNode.click();
@@ -947,7 +1210,7 @@
                 return;
             }
 
-            return state.modal.isOpen() && state.modal.currentModalWindowTitle === "Smelter";
+            return state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === "Smelter";
         }
         
         openOptions() {
@@ -956,7 +1219,7 @@
             }
             
             let optionsNode = document.querySelector("#city-smelter .special");
-            state.modal.openModalWindow();
+            state.windowManager.openModalWindow();
             // @ts-ignore
             optionsNode.click();
         }
@@ -1168,7 +1431,7 @@
                 return;
             }
 
-            return state.modal.isOpen() && state.modal.currentModalWindowTitle === "Factory";
+            return state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === "Factory";
         }
         
         openOptions() {
@@ -1177,7 +1440,7 @@
             }
             
             let optionsNode = document.querySelector("#city-factory .special");
-            state.modal.openModalWindow();
+            state.windowManager.openModalWindow();
             // @ts-ignore
             optionsNode.click();
         }
@@ -1312,7 +1575,7 @@
                 return;
             }
 
-            return state.modal.isOpen() && state.modal.currentModalWindowTitle === "Space Dock";
+            return state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === "Space Dock";
         }
         
         openOptions() {
@@ -1321,7 +1584,7 @@
             }
             
             let optionsNode = document.querySelector("#space-star_dock .special");
-            state.modal.openModalWindow();
+            state.windowManager.openModalWindow();
             // @ts-ignore
             optionsNode.click();
         }
@@ -1603,6 +1866,151 @@
             return true;
         }
     }
+
+    class JobManager {
+        constructor() {
+            /** @type {Job[]} */
+            this._jobPriorityList = [];
+            this.maxJobBreakpoints = -1;
+
+            this._unemployed = new Job("civ", "-", "free", false, []);
+
+            this._lastLoopCounter = 0;
+            /** @type {Job[]} */
+            this._unlockedJobPriorityList = null;
+        }
+
+        isUnlocked() {
+            return this._unemployed.isUnlocked();
+        }
+
+        /**
+         * @param {Job} job
+         */
+        addJobToPriorityList(job) {
+            this._jobPriorityList.push(job);
+            this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, job.breakpointMaxs.length);
+        }
+
+        unlockedJobPriorityList() {
+            if (this._lastLoopCounter != state.loopCounter) {
+                this._unlockedJobPriorityList = null;
+            }
+
+            if (this._unlockedJobPriorityList === null) {
+                this._unlockedJobPriorityList = [];
+
+                for (let i = 0; i < this._jobPriorityList.length; i++) {
+                    const job = this._jobPriorityList[i];
+    
+                    if (job.isUnlocked()) {
+                        if (!job.isCraftsman() || (job.isCraftsman() && settings.autoCraftsmen)) {
+                            this._unlockedJobPriorityList.push(job);
+                        }
+                    }
+                }
+            }
+
+            return this._unlockedJobPriorityList;
+        }
+
+        get unemployed() {
+            if (!this._unemployed.isUnlocked()) {
+                return 0;
+            }
+
+            return this._unemployed.current;
+        }
+
+        get employed() {
+            let employed = 0;
+            let jobList = this.unlockedJobPriorityList();
+
+            for (let i = 0; i < jobList.length; i++) {
+                employed += jobList[i].current;
+            }
+
+            return employed;
+        }
+
+        get totalEmployees() {
+            let employees = this.unemployed + this.employed;
+            
+            return employees;
+        }
+
+        get breakpointCount() {
+            // We're getting the count of how many breakpoints we have so just use the normal list and get the first one
+            return this._jobPriorityList[0].breakpointMaxs.length;
+        }
+
+        /**
+         * @param {number} breakpoint
+         */
+        actualForBreakpoint(breakpoint) {
+            if (breakpoint < 0 || breakpoint > 1) {
+                return 0;
+            }
+
+            let total = 0;
+            let jobList = this.unlockedJobPriorityList();
+
+            for (let i = 0; i < jobList.length; i++) {
+                total += Math.max(0, jobList[i].breakpointEmployees(breakpoint));
+            }
+
+            return total;
+        }
+
+        isFoundryUnlocked() {
+            let containerNode = document.getElementById("foundry");
+            return containerNode !== null && containerNode.style.display !== "none";
+        }
+
+        canManualCraft() {
+            return state.jobs.Brick.isUnlocked() && state.resources.Brick.isCraftingUnlocked();
+        }
+
+        get unlockedCraftsmen() {
+            if (!this.isFoundryUnlocked) {
+                return 0;
+            }
+
+            let unlockedCrafters = 0;
+            if (state.jobs.Plywood.isUnlocked()) unlockedCrafters++;
+            if (state.jobs.Brick.isUnlocked()) unlockedCrafters++;
+            if (state.jobs.WroughtIron.isUnlocked()) unlockedCrafters++;
+            if (state.jobs.SheetMetal.isUnlocked()) unlockedCrafters++;
+            if (state.jobs.Mythril.isUnlocked()) unlockedCrafters++;
+            return unlockedCrafters;
+        }
+
+        get currentCraftsmen() {
+            if (!this.isFoundryUnlocked()) {
+                return 0;
+            }
+
+            let foundryCountNode = document.querySelector("#foundry .count");
+            if (foundryCountNode !== null) {
+                return getRealNumber(foundryCountNode.textContent.split(" / ")[0]);
+            }
+
+            return 0;
+        }
+
+        get maxCraftsmen() {
+            if (!this.isFoundryUnlocked()) {
+                return 0;
+            }
+
+            let foundryCountNode = document.querySelector("#foundry .count");
+            if (foundryCountNode !== null) {
+                return getRealNumber(foundryCountNode.textContent.split(" / ")[1]);
+            }
+
+            return 0;
+        }
+    }
     
     //#endregion Class Declarations
 
@@ -1611,8 +2019,9 @@
     var state = {
         loopCounter: 1,
 
-        modal: new ModalWindowManager(),
-        battle: new BattleManager(),
+        windowManager: new ModalWindowManager(),
+        battleManager: new BattleManager(),
+        jobManager: new JobManager(),
         
         lastGenomeSequenceValue: 0,
         lastCratesOwned: -1,
@@ -1676,29 +2085,135 @@
             SheetMetal: new Resource("res", "Sheet_Metal", false, -1, -1, true, 0.5),
             Mythril: new Resource("res", "Mythril", false, -1, -1, true, 0.5),
         },
+
+        jobs: {
+            // Uncapped jobs
+            Farmer: new Job("civ", "-", "farmer", false, [0, 0, 0]), // Farmers are calculated based on food rate of change only, ignoring cap
+            Lumberjack: new Job("civ", "-", "lumberjack", false, [5, 10, 10]), // Lumberjacks and quarry workers are special - remaining worker divided between them
+            QuarryWorker: new Job("civ", "-", "quarry_worker", false, [5, 10, 10]),  // Lumberjacks and quarry workers are special - remaining worker divided between them
+
+            // Capped jobs
+            Miner: new Job("civ", "-", "miner", false, [3, 5, -1]),
+            CoalMiner: new Job("civ", "-", "coal_miner", false, [1, 2, -1]),
+            CementWorker: new Job("civ", "-", "cement_worker", false, [4, 8, -1]), // Cement works are based on cap and stone rate of change
+            Entertainer: new Job("civ", "-", "entertainer", false, [5, 10, -1]),
+            Professor: new Job("civ", "-", "professor", false, [3, 6, -1]),
+            Scientist: new Job("civ", "-", "scientist", false, [3, 6, -1]),
+            Banker: new Job("civ", "-", "banker", false, [3, 5, -1]),
+            Colonist: new Job("civ", "-", "colonist", false, [0, 0, -1]),
+            SpaceMiner: new Job("civ", "-", "space_miner", false, [0, 0, -1]),
+
+            // Crafting jobs
+            Plywood: new CraftingJob("craft", "", "Plywood", true, [2, 4, -1], 1),
+            Brick: new CraftingJob("craft", "", "Brick", true, [2, 4, -1], 2),
+            WroughtIron: new CraftingJob("craft", "", "Wrought_Iron", true, [2, 4, -1], 3),
+            SheetMetal: new CraftingJob("craft", "", "Sheet_Metal", true, [2, 4, -1], 4),
+            Mythril: new CraftingJob("craft", "", "Mythril", true, [2, 4, -1], 5),
+        },
         
-        /** @type {Action[]} */
-        evolutionList: [],
         evolutions: {
             Rna: new Action("evo", "rna", false),
             Dna: new Action("evo", "dna", false),
-
-            RaceAntids: new Action("evo", "antid", false),
-
-            Sentience: new Action("evo", "sentience", false),
-            //Ectothermic: new Action("evo", "ectothermic", false),
-            //Eggshell: new Action("evo", "eggshell", false),
-            Arthropods: new Action("evo", "athropods", false),
-            BilateralSymmetry: new Action("evo", "bilateral_symmetry", false),
-            Multicellular: new Action("evo", "multicellular", false),
-            Phagocytosis: new Action("evo", "phagocytosis", false),
-            SexualReproduction: new Action("evo", "sexual_reproduction", false),
-            
             Membrane: new Action("evo", "membrane", true),
             Organelles: new Action("evo", "organelles", true),
             Nucleus: new Action("evo", "nucleus", true),
             EukaryoticCell: new Action("evo", "eukaryotic_cell", true),
             Mitochondria: new Action("evo", "mitochondria", true),
+
+            RaceAntid: new Action("evo", "antid", false),
+
+            Sentience: new Action("evo", "sentience", false),
+            Arthropods: new Action("evo", "athropods", false),
+            BilateralSymmetry: new Action("evo", "bilateral_symmetry", false),
+            Multicellular: new Action("evo", "multicellular", false),
+            Phagocytosis: new Action("evo", "phagocytosis", false),
+            SexualReproduction: new Action("evo", "sexual_reproduction", false),
+
+            // SexualReproduction: new Action("evo", "sexual_reproduction", false),
+
+            //     Phagocytosis: new Action("evo", "phagocytosis", false),
+            //         Multicellular: new Action("evo", "multicellular", false),
+            //             BilateralSymmetry: new Action("evo", "bilateral_symmetry", false),
+            //                 Arthropods: new Action("evo", "athropods", false),
+            //                     Sentience: new Action("evo", "sentience", false),
+            //                     Bunker: new Action("evo", "bunker", false),
+            //                     RaceMantis: new Action("evo", "mantis", false),
+            //                     RaceScorpid: new Action("evo", "scorpid", false),
+            //                     RaceAntid: new Action("evo", "antid", false),
+
+            //                 Mammals: new Action("evo", "mammals", false),
+            //                     Humanoid: new Action("evo", "humanoid", false),
+            //                         Sentience: new Action("evo", "sentience", false),
+            //                         Bunker: new Action("evo", "bunker", false),
+            //                         RaceHuman: new Action("evo", "human", false),
+            //                         RaceOrc: new Action("evo", "orc", false),
+            //                         RaceElven: new Action("evo", "elven", false),
+            //                     Gigantism: new Action("evo", "gigantism", false),
+            //                         Sentience: new Action("evo", "sentience", false),
+            //                         Bunker: new Action("evo", "bunker", false),
+            //                         RaceTroll: new Action("evo", "troll", false),
+            //                         RaceOgre: new Action("evo", "orge", false),
+            //                         RaceCyclops: new Action("evo", "cyclops", false),
+            //                     Dwarfism: new Action("evo", "dwarfism", false),
+            //                         Sentience: new Action("evo", "sentience", false),
+            //                         Bunker: new Action("evo", "bunker", false),
+            //                         RaceKobold: new Action("evo", "kobold", false),
+            //                         RaceGoblin: new Action("evo", "goblin", false),
+            //                         RaceGnome: new Action("evo", "gnome", false),
+            //                     Animalism: new Action("evo", "animalism", false),
+            //                         Sentience: new Action("evo", "sentience", false),
+            //                         Bunker: new Action("evo", "bunker", false),
+            //                         RaceCath: new Action("evo", "cath", false),
+            //                         RaceWolven: new Action("evo", "wolven", false),
+            //                         RaceCentaur: new Action("evo", "centaur", false),
+
+            //                 Eggshell: new Action("evo", "eggshell", false),
+            //                     Endothermic: new Action("evo", "endothermic", false),
+            //                         Sentience: new Action("evo", "sentience", false),
+            //                         Bunker: new Action("evo", "bunker", false),
+            //                         RaceArraak: new Action("evo", "arraak", false),
+            //                         RacePterodacti: new Action("evo", "pterodacti", false),
+            //                         RaceDracnid: new Action("evo", "dracnid", false),
+
+            //                     Ectothermic: new Action("evo", "ectothermic", false),
+            //                         Sentience: new Action("evo", "sentience", false),
+            //                         Bunker: new Action("evo", "bunker", false),
+            //                         RaceTortoisan: new Action("evo", "tortoisan", false),
+            //                         RaceGecko: new Action("evo", "gecko", false),
+            //                         RaceSlitheryn: new Action("evo", "slitheryn", false),
+
+            //                 Aquatic: new Action("evo", "aquatic", false), // ocean only
+            //                     Sentience: new Action("evo", "sentience", false),
+            //                     Bunker: new Action("evo", "bunker", false),
+            //                     RaceSharkin: new Action("evo", "sharkin", false),
+            //                     RaceOctigoran: new Action("evo", "octigoran", false),
+
+            //     Chloroplasts: new Action("evo", "chloroplasts", false),
+            //         Multicellular: new Action("evo", "multicellular", false),
+            //             Poikilohydric: new Action("evo", "poikilohydric", false),
+            //                 Bryophyte: new Action("evo", "bryophyte", false),
+            //                     Sentience: new Action("evo", "sentience", false),
+            //                     Bunker: new Action("evo", "bunker", false),
+            //                     RaceEntish: new Action("evo", "entish", false),
+            //                     RaceCacti: new Action("evo", "cacti", false),
+
+
+            //     Chitin: new Action("evo", "chitin", false),
+            //         Multicellular: new Action("evo", "multicellular", false),
+            //             Spores: new Action("evo", "spores", false),
+            //                 Bryophyte: new Action("evo", "bryophyte", false),
+            //                     Sentience: new Action("evo", "sentience", false),
+            //                     Bunker: new Action("evo", "bunker", false),
+            //                     RaceSporgar: new Action("evo", "sporgar", false),
+            //                     RaceShroomi: new Action("evo", "shroomi", false),
+
+
+            // Bunker: new Action("evo", "bunker", false),
+            // Plasmid: new Action("evo", "plasmid", false),
+            // Trade: new Action("evo", "trade", false),
+            // Craft: new Action("evo", "craft", false),
+            // Crispr: new Action("evo", "crispr", false),
+
         },
 
         /** @type {Action[]} */
@@ -1724,7 +2239,9 @@
             Warehouse: new Action("city", "warehouse", true),
             OilPower: new Action("city", "oil_power", true),
             Bank: new Action("city", "bank", true),
-            Garrison: new Action("city", "garrison", true),
+            Barracks: new Action("city", "garrison", true),
+            Hospital: new Action("city", "hospital", true),
+            BootCamp: new Action("city", "boot_camp", true),
             House: new Action("city", "house", true),
             Cottage: new Action("city", "cottage", true),
             Apartment: new Action("city", "apartment", true),
@@ -1885,22 +2402,24 @@
         state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Lumber, 36, 1000));
         state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Coal, 20, 30));
         state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Neutronium, 0.125, 1));
-        
-        // Construct evolution phase list
-        state.evolutionList.push(state.evolutions.Rna);
-        state.evolutionList.push(state.evolutions.Dna);
-        state.evolutionList.push(state.evolutions.RaceAntids);
-        state.evolutionList.push(state.evolutions.Sentience);
-        state.evolutionList.push(state.evolutions.Arthropods);
-        state.evolutionList.push(state.evolutions.BilateralSymmetry);
-        state.evolutionList.push(state.evolutions.Multicellular);
-        state.evolutionList.push(state.evolutions.Phagocytosis);
-        state.evolutionList.push(state.evolutions.SexualReproduction);
-        state.evolutionList.push(state.evolutions.Membrane);
-        state.evolutionList.push(state.evolutions.Organelles);
-        state.evolutionList.push(state.evolutions.Nucleus);
-        state.evolutionList.push(state.evolutions.EukaryoticCell);
-        state.evolutionList.push(state.evolutions.Mitochondria);
+
+        state.jobManager.addJobToPriorityList(state.jobs.Farmer);
+        state.jobManager.addJobToPriorityList(state.jobs.Lumberjack);
+        state.jobManager.addJobToPriorityList(state.jobs.QuarryWorker);
+        state.jobManager.addJobToPriorityList(state.jobs.Plywood);
+        state.jobManager.addJobToPriorityList(state.jobs.Brick);
+        state.jobManager.addJobToPriorityList(state.jobs.WroughtIron);
+        state.jobManager.addJobToPriorityList(state.jobs.SheetMetal);
+        state.jobManager.addJobToPriorityList(state.jobs.Mythril);
+        state.jobManager.addJobToPriorityList(state.jobs.Entertainer);
+        state.jobManager.addJobToPriorityList(state.jobs.Scientist);
+        state.jobManager.addJobToPriorityList(state.jobs.Professor);
+        state.jobManager.addJobToPriorityList(state.jobs.CementWorker);
+        state.jobManager.addJobToPriorityList(state.jobs.Miner);
+        state.jobManager.addJobToPriorityList(state.jobs.CoalMiner);
+        state.jobManager.addJobToPriorityList(state.jobs.Banker);
+        state.jobManager.addJobToPriorityList(state.jobs.Colonist);
+        state.jobManager.addJobToPriorityList(state.jobs.SpaceMiner);
         
         // Construct city builds list
         state.cityBuildingList.push(state.cityBuildings.University);
@@ -1954,8 +2473,15 @@
         state.cityBuildingList.push(state.cityBuildings.Bank);
         state.cityBuildings.Bank.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Bank.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Garrison);
-        state.cityBuildings.Garrison.addRequiredResource(state.resources.Stone);
+        state.cityBuildingList.push(state.cityBuildings.Barracks);
+        state.cityBuildings.Barracks.addRequiredResource(state.resources.Stone);
+        state.cityBuildingList.push(state.cityBuildings.Hospital);
+        state.cityBuildings.Hospital.addRequiredResource(state.resources.Furs);
+        state.cityBuildings.Hospital.addRequiredResource(state.resources.Aluminium);
+        state.cityBuildingList.push(state.cityBuildings.BootCamp);
+        state.cityBuildings.BootCamp.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.BootCamp.addRequiredResource(state.resources.Aluminium);
+        state.cityBuildings.BootCamp.addRequiredResource(state.resources.Brick);
         state.cityBuildingList.push(state.cityBuildings.House);
         state.cityBuildings.House.addRequiredResource(state.resources.Lumber);
         state.cityBuildingList.push(state.cityBuildings.Cottage);
@@ -2193,9 +2719,17 @@
         state.consumptionPriorityList.push(state.cityBuildings.BioLab);
         state.consumptionPriorityList.push(state.cityBuildings.Mine);
         state.consumptionPriorityList.push(state.cityBuildings.CementPlant);
-        state.consumptionPriorityList.push(state.cityBuildings.Sawmill);
-        state.consumptionPriorityList.push(state.cityBuildings.RockQuarry);
-        state.consumptionPriorityList.push(state.cityBuildings.CoalMine);
+        
+        if (state.resources.Plasmids.currentQuantity >= 500 && state.jobManager.canManualCraft()) {
+            state.consumptionPriorityList.push(state.cityBuildings.Sawmill);
+            state.consumptionPriorityList.push(state.cityBuildings.RockQuarry);
+            state.consumptionPriorityList.push(state.cityBuildings.CoalMine);
+        } else {
+            state.consumptionPriorityList.push(state.cityBuildings.CoalMine);
+            state.consumptionPriorityList.push(state.cityBuildings.Sawmill);
+            state.consumptionPriorityList.push(state.cityBuildings.RockQuarry);
+        }
+
         state.consumptionPriorityList.push(state.cityBuildings.Factory);
 
         state.consumptionPriorityList.push(state.spaceBuildings.GasMoonOutpost);
@@ -2262,7 +2796,7 @@
             if (settings.hasOwnProperty(settingKey)) {
                 state.craftableResourceList[i].autoCraftEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = false;
+                settings[settingKey] = defaultEnabled;
             }
         }
         
@@ -2272,7 +2806,7 @@
             if (settings.hasOwnProperty(settingKey)) {
                 state.allBuildingList[i].autoBuildEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = false;
+                settings[settingKey] = defaultEnabled;
             }
         }
     }
@@ -2292,40 +2826,43 @@
             settings['sell' + resource.id] = resource.autoSellEnabled;
         }
         if (!settings.hasOwnProperty('autoEvolution')) {
-            settings.autoEvolution = false;
+            settings.autoEvolution = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoMarket')) {
-            settings.autoMarket = false;
+            settings.autoMarket = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoFight')) {
-            settings.autoFight = false;
+            settings.autoFight = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoCraft')) {
-            settings.autoCraft = false;
+            settings.autoCraft = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoARPA')) {
-            settings.autoARPA = false;
+            settings.autoARPA = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoBuild')) {
-            settings.autoBuild = false;
+            settings.autoBuild = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoResearch')) {
-            settings.autoResearch = false;
+            settings.autoResearch = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoJobs')) {
-            settings.autoJobs = false;
+            settings.autoJobs = defaultEnabled;
+        }
+        if (!settings.hasOwnProperty('autoCraftsmen')) {
+            settings.autoCraftsmen = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoPower')) {
-            settings.autoPower = false;
+            settings.autoPower = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoTradeSpecialResources')) {
-            settings.autoTradeSpecialResources = false;
+            settings.autoTradeSpecialResources = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoSmelter')) {
-            settings.autoSmelter = false;
+            settings.autoSmelter = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoFactory')) {
-            settings.autoFactory = false;
+            settings.autoFactory = defaultEnabled;
         }
         if (!settings.hasOwnProperty('autoMAD')) {
             settings.autoMAD = false;
@@ -2370,10 +2907,10 @@
         // Gather some resources and evolve (currently targeting Antids)
         autoGatherResource(state.evolutions.Rna, 10);
         autoGatherResource(state.evolutions.Dna, 10);
-        
+
         // If we have performed a soft reset with a bioseeded ship then we get to choose our race directly
-        if (state.evolutions.RaceAntids.isUnlocked()) {
-            state.evolutions.RaceAntids.click();
+        if (state.evolutions.RaceAntid.isUnlocked()) {
+            state.evolutions.RaceAntid.click();
             return;
         }
 
@@ -2389,7 +2926,6 @@
         buildIfCountLessThan(state.evolutions.Nucleus, 5);
         buildIfCountLessThan(state.evolutions.EukaryoticCell, 5);
         buildIfCountLessThan(state.evolutions.Mitochondria, 3);
-        buildIfCountLessThan(state.evolutions.Membrane, 10);
     }
 
     function autoPlanetSelection() {
@@ -2505,31 +3041,31 @@
     //#region Auto Battle
 
     function autoBattle() {
-        if (!state.battle.isUnlocked()) {
+        if (!state.battleManager.isUnlocked()) {
             return;
         }
 
         // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
         if (state.goal === "PreparingMAD") {
-            state.battle.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
+            state.battleManager.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
             return;
         }
         
         // Don't launch an attack until we are happy with our battalion size (returns true if we've added a battalion)
-        if (state.battle.currentSoldiers > state.battle.currentBattalion) {
-            if (state.battle.addBattalion()) {
+        if (state.battleManager.currentSoldiers > state.battleManager.currentBattalion) {
+            if (state.battleManager.addBattalion()) {
                 return;
             }
         }
         
         // If we're switching attack types this loop then don't launch an attack. Wait for the UI to catch up (returns true when we are at the right attack type)
-        if (!state.battle.switchToBestAttackType()) {
+        if (!state.battleManager.switchToBestAttackType()) {
             return;
         }
 
         // If we have solders, they're not wounded and they're ready to go, then charge!
-        if (state.battle.maxSoldiers !== 0 && state.battle.woundedSoldiers === 0 && state.battle.currentSoldiers === state.battle.maxSoldiers) {
-            state.battle.launchCampaign();
+        if (state.battleManager.maxSoldiers !== 0 && state.battleManager.woundedSoldiers === 0 && state.battleManager.currentSoldiers === state.battleManager.maxSoldiers) {
+            state.battleManager.launchCampaign();
         }
     }
 
@@ -2537,212 +3073,156 @@
     
     //#region Auto Jobs
 
-    /**
-     * @param {string} jobType
-     * @return {number}
-     */
-    function getUnfilledJobsSplit(jobType) {
-        if (document.getElementById('civ-' + jobType).style.display !== 'none') {
-            let btnArray = document.querySelector('#civ-' + jobType + ' .job_label > span:nth-child(2)').textContent.split(' / ');
-            let availableJobs = parseInt(btnArray[1]);
-            let filledJobs = parseInt(btnArray[0]);
-            
-            if (jobType === "miner" || jobType === "banker") {
-                if (state.resources.Population.currentQuantity <= 70) {
-                    if (availableJobs > 3) {
-                        availableJobs = 3;
+    function autoJobs() {
+        let jobList = state.jobManager.unlockedJobPriorityList();
+
+        // No jobs unlocked yet
+        if (jobList.length === 0) {
+            return;
+        }
+
+        let availableEmployees = state.jobManager.totalEmployees;
+        let requiredJobs = [];
+        let jobAdjustments = [];
+        let lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
+        let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
+
+        // First figure out how many farmers are required
+        if (state.jobs.Farmer.isUnlocked()) {
+            if (!state.jobs.Lumberjack.isUnlocked() && !state.jobs.QuarryWorker.isUnlocked()) {
+                // No other jobs are unlocked - everyone on farming!
+                requiredJobs.push(availableEmployees);
+            } else if (state.resources.Food.rateOfChange < 0 && state.resources.Food.storageRatio < 0.1) {
+                // Getting a bit critical... add a farmer
+                requiredJobs.push(state.jobs.Farmer.current + 1);
+            } else if (state.resources.Food.rateOfChange < -1 * state.resources.Population.currentQuantity / 10 && state.resources.Food.storageRatio < 0.25) {
+                // If we're losing a bit of food then add a farmer - we can lose some food as we loot some from our enemies in battle!
+                // To crush your enemies. See them driven before you. And hear the lamentation of their women.
+                // We don't know how many we need to get back to stable so just add one each loop until we're good
+                requiredJobs.push(state.jobs.Farmer.current + 1);
+            } else if ((state.resources.Food.rateOfChange > 2 && state.jobs.Farmer.current > 0) || (state.resources.Food.rateOfChange > -1 * state.resources.Population.currentQuantity / 8 && state.resources.Food.storageRatio > 0.5  && state.jobs.Farmer.current > 0)) {
+                // If we're making enough food then remove a farmer. One each loop until they're gone.
+                requiredJobs.push(state.jobs.Farmer.current - 1);
+            } else {
+                // We're good; leave farmers as they are
+                requiredJobs.push(state.jobs.Farmer.current);
+            }
+
+            jobAdjustments.push(requiredJobs[0] - state.jobs.Farmer.current);
+            availableEmployees -= requiredJobs[0];
+        }
+
+        for (let i = 0; i < state.jobManager.maxJobBreakpoints; i++) {
+            for (let j = 0; j < jobList.length; j++) {
+                const job = jobList[j];
+
+                // We've already done the farmer above
+                if (job === state.jobs.Farmer) {
+                    continue;
+                }
+
+                if (i !== 0) {
+                    // If we're going up to the next breakpoint then add back the workers from this job from the last one
+                    // so that we don't double-take them
+                    availableEmployees += requiredJobs[j];
+                }
+
+                //console.log("job " + job.id + " job.breakpointEmployees(i) " + job.breakpointEmployees(i) + " availableEmployees " + availableEmployees);
+                let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
+
+                if (job === state.jobs.Banker && state.resources.Money.currentQuantity === state.resources.Money.maxQuantity) {
+                    jobsToAssign = 0;
+                }
+
+                if (job === state.jobs.CementWorker) {
+                    let currentCementWorkers = job.current;
+                    //console.log("jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", state.resources.Stone.rateOfChange " + state.resources.Stone.rateOfChange);
+
+                    if (jobsToAssign < currentCementWorkers) {
+                        // great, remove workers as we want less than we have
+                    } else if (jobsToAssign >= currentCementWorkers && state.resources.Stone.rateOfChange < 5) {
+                        // If we're making less than 5 stone then lets remove a cement worker even if we want more
+                        jobsToAssign = job.current - 1;
+                    } else if (jobsToAssign > job.current && state.resources.Stone.rateOfChange > 8) {
+                        // If we want more cement workers and we're making more than 8 stone then add a cement worker
+                        jobsToAssign = job.current + 1;
+                    } else {
+                        // We're not making enough stone to add a new cement worker so leave it
+                        jobsToAssign = job.current;
                     }
                 }
-            }
 
-            // We don't want more cement workers if we don't have any stone
-            if (jobType === "cement_worker" && state.resources.Stone.rateOfChange < 8) {
-                return 0;
-            }
-            
-            let unfilledJobs = availableJobs - filledJobs;
-            return unfilledJobs;
-        }
-        
-        return 0;
-    }
-    
-    /**
-     * @param {string} jobType
-     * @return {number}
-     */
-    function getJobsSingle(jobType) {
-        if (document.getElementById('civ-' + jobType).style.display !== 'none') {
-            return parseInt(document.querySelector('#civ-' + jobType + ' .job_label > span:nth-child(2)').textContent);
-        }
-        
-        return 0;
-    }
-    
-    /**
-     * @param {number} unemployed
-     */
-    function unassignJobsIfRequired(unemployed) {
-        if (document.getElementById('civ-farmer').style.display !== 'none') {
-            let farmers = parseInt(document.querySelector('#civ-farmer .job_label > span:nth-child(2)').textContent);
-
-            // If food is critical then add some farmers...
-            if (unemployed > 0 && state.resources.Food.rateOfChange < -1 * state.resources.Population.currentQuantity / 10) {
-                let farmerAddButton = document.querySelector('#civ-farmer .controls > .add');
-                // @ts-ignore
-                farmerAddButton.click();
-            }
-
-            // If food isn't great and we have less than 10 farmers then add them up to 10
-            if (unemployed > 0 && farmers < 10 && state.resources.Food.rateOfChange < 0) {
-                let farmerAddButton = document.querySelector('#civ-farmer .controls > .add');
-                // @ts-ignore
-                farmerAddButton.click();
-            }
-            
-            // If we have an abundence of food then remove some farmers
-            if (state.resources.Food.rateOfChange > 10) {
-                let farmerSubButton = document.querySelector('#civ-farmer .controls > .sub');
-                // @ts-ignore
-                farmerSubButton.click();
-            }
-
-            // *****************
-            // If farmer job is not unlocked then leave as unemployed (especially cath! - get food from unemployed)
-            // If no other jobs are unlocked then make them farmers
-            // *****************
-        }
-
-        // Fire some cement workers if we're not making any stone
-        if (state.resources.Stone.rateOfChange < 5) {
-            let cementWorkerSubButton = document.querySelector('#civ-cement_worker .controls > .sub');
-            // @ts-ignore
-            cementWorkerSubButton.click();
-        }
-        
-        if (unemployed > 0) {
-            return;
-        }
-        
-        let entertainerUnfilled = getUnfilledJobsSplit("entertainer");
-        let scientistUnfilled = getUnfilledJobsSplit("scientist");
-        let professorUnfilled = getUnfilledJobsSplit("professor");
-        let cement_workerUnfilled = getUnfilledJobsSplit("cement_worker");
-        let minerUnfilled = getUnfilledJobsSplit("miner");
-        let coal_minerUnfilled = getUnfilledJobsSplit("coal_miner");
-        let bankerUnfilled = getUnfilledJobsSplit("banker");
-        let colonistUnfilled = getUnfilledJobsSplit("colonist");
-        let space_minerUnfilled = getUnfilledJobsSplit("space_miner");
-        
-        let totalUnfilled = entertainerUnfilled + scientistUnfilled + professorUnfilled + cement_workerUnfilled + minerUnfilled
-            + coal_minerUnfilled + bankerUnfilled + colonistUnfilled + space_minerUnfilled;
-        
-        if (totalUnfilled > 0) {
-            let lumberjackFilled = getJobsSingle("lumberjack");
-            let quarry_workerFilled = getJobsSingle("quarry_worker");
-            
-            if (state.resources.Population.currentQuantity > 80 && lumberjackFilled > 10 && lumberjackFilled > quarry_workerFilled + 5) {
-                let subButton = document.querySelector('#civ-lumberjack .controls > .sub');
-                // @ts-ignore
-                subButton.click();
-            } else if (lumberjackFilled > 10 && lumberjackFilled > quarry_workerFilled) {
-                let subButton = document.querySelector('#civ-lumberjack .controls > .sub');
-                // @ts-ignore
-                subButton.click();
-            } else if (quarry_workerFilled > 10) {
-                let subButton = document.querySelector('#civ-quarry_worker .controls > .sub');
-                // @ts-ignore
-                subButton.click();
-            }
-        }
-    }
-    
-    function autoJobs() {
-        if (!state.resources.Population.isUnlocked()) {
-            return;
-        }
-        
-        let unemployed = parseInt(document.querySelector('#civ-free .job_label > span:nth-child(2)').textContent);
-        
-        unassignJobsIfRequired(unemployed);
-        
-        if (unemployed > 0)
-        {
-            clickJobSplitButtonIfRequired("entertainer");
-            clickJobSplitButtonIfRequired("scientist");
-            clickJobSplitButtonIfRequired("professor");
-            clickJobSplitButtonIfRequired("cement_worker");
-            
-            if (document.getElementById('civ-miner').style.display !== 'none') {
-                let minerArray = document.querySelector('#civ-miner .job_label > span:nth-child(2)').textContent.split(' / ');
+                if (i === 0) {
+                    requiredJobs.push(jobsToAssign);
+                    jobAdjustments.push(jobsToAssign - job.current);
+                } else {
+                    requiredJobs[j] = jobsToAssign;
+                    jobAdjustments[j] = jobsToAssign - job.current;
+                }
                 
-                if (parseInt(minerArray[0]) !== parseInt(minerArray[1]) && (parseInt(minerArray[0]) < 3 || state.resources.Population.currentQuantity > 70))
-                {
-                    let minerAddButton = document.querySelector('#civ-miner .controls > .add');
-                    // @ts-ignore
-                    minerAddButton.click();
-                }
+                availableEmployees -= jobsToAssign;
+
+                //console.log("job " + job.id +  " has jobsToAssign: " + jobsToAssign + ", availableEmployees " + availableEmployees);
             }
-            
-            clickJobSplitButtonIfRequired("coal_miner");
-            
-            if (document.getElementById('civ-banker').style.display !== 'none') {
-                let bankerArray = document.querySelector('#civ-banker .job_label > span:nth-child(2)').textContent.split(' / ');
-                
-                if (parseInt(bankerArray[0]) !== parseInt(bankerArray[1]) && (parseInt(bankerArray[0]) < 3 || state.resources.Population.currentQuantity > 70))
-                {
-                    let bankerAddButton = document.querySelector('#civ-banker .controls > .add');
-                    // @ts-ignore
-                    bankerAddButton.click();
-                }
+
+            // No more workers available
+            if (availableEmployees <= 0) {
+                break;
             }
-            
-            clickJobSplitButtonIfRequired("colonist");
-            clickJobSplitButtonIfRequired("space_miner");
-            
-            let lumberjackFilled = getJobsSingle("lumberjack");
-            let quarry_workerFilled = getJobsSingle("quarry_worker");
-            
-            if (document.getElementById('civ-lumberjack').style.display !== 'none') {
-                if (lumberjackFilled <= quarry_workerFilled) {
-                    let lumberjackAddButton = document.querySelector('#civ-lumberjack .controls > .add');
-                    // @ts-ignore
-                    lumberjackAddButton.click();
-                    return;
-                } else if (state.resources.Population.currentQuantity > 100 && lumberjackFilled <= quarry_workerFilled + 5) {
-                    let lumberjackAddButton = document.querySelector('#civ-lumberjack .controls > .add');
-                    // @ts-ignore
-                    lumberjackAddButton.click();
-                    return;
-                }
-            }
-            
-            if (document.getElementById('civ-quarry_worker').style.display !== 'none') {
-                let quarryWorkerAddButton = document.querySelector('#civ-quarry_worker .controls > .add');
-                // @ts-ignore
-                quarryWorkerAddButton.click();
-            }
-        }
-    }
-    
-    /**
-     * @param {string} jobType
-     */
-    function clickJobSplitButtonIfRequired(jobType) {
-        // We don't want more cement workers if we're not making any stone
-        if (jobType === "cement_worker" && state.resources.Stone.rateOfChange < 8) {
-            return;
         }
 
-        if (document.getElementById('civ-' + jobType).style.display !== 'none')
-        {
-            let btnArray = document.querySelector('#civ-' + jobType + ' .job_label > span:nth-child(2)').textContent.split(' / ');
-            
-            if (parseInt(btnArray[0]) !== parseInt(btnArray[1]))
-            {
-                let jobAddButton = document.querySelector('#civ-' + jobType + ' .controls > .add');
-                // @ts-ignore
-                jobAddButton.click();
+        // Balance lumberjacks and quarry workers if they are unlocked
+        if (lumberjackIndex !== -1 || quarryWorkerIndex !== -1) {
+            if (availableEmployees >= 0 && lumberjackIndex === -1) {
+                // No lumber jacks so can only have quarry workers
+                requiredJobs[quarryWorkerIndex] += availableEmployees;
+                jobAdjustments[quarryWorkerIndex] += availableEmployees;
+                availableEmployees = 0
+            } else if (availableEmployees >= 0 && quarryWorkerIndex === -1) {
+                // No quarry workers so can only have lumber jacks
+                requiredJobs[lumberjackIndex] += availableEmployees;
+                jobAdjustments[lumberjackIndex] += availableEmployees;
+                availableEmployees = 0
+            } else {
+                let lumberjacks = 0;
+                availableEmployees += requiredJobs[lumberjackIndex];
+                requiredJobs[lumberjackIndex] = 0;
+                jobAdjustments[lumberjackIndex] = 0 - state.jobs.Lumberjack.current;
+                availableEmployees += requiredJobs[quarryWorkerIndex];
+                requiredJobs[quarryWorkerIndex] = 0;
+                jobAdjustments[quarryWorkerIndex] = 0 - state.jobs.QuarryWorker.current;
+
+                // If we've got over 100 population then keep lumberjacks 5 more than quarry workers (due to sawmills providing bonus)
+                if (state.resources.Population.currentQuantity >= 100) {
+                    lumberjacks = Math.min(availableEmployees, 4);
+                    requiredJobs[lumberjackIndex] += lumberjacks;
+                    jobAdjustments[lumberjackIndex] += lumberjacks;
+                    availableEmployees -= lumberjacks;
+                }
+
+                // Split the remainder between lumberjacks and quarry workers
+                lumberjacks = Math.ceil(availableEmployees / 2);
+                requiredJobs[lumberjackIndex] += lumberjacks;
+                jobAdjustments[lumberjackIndex] += lumberjacks;
+                availableEmployees -= lumberjacks;
+                requiredJobs[quarryWorkerIndex] += availableEmployees;
+                jobAdjustments[quarryWorkerIndex] += availableEmployees;
+            }
+        }
+
+        for (let i = 0; i < jobAdjustments.length; i++) {
+            let adjustment = jobAdjustments[i];
+            if (adjustment < 0) {
+                jobList[i].removeWorkers(-1 * adjustment);
+                //console.log("Adjusting job " + jobList[i].id + " down by " + adjustment);
+            }
+        }
+
+        for (let i = 0; i < jobAdjustments.length; i++) {
+            let adjustment = jobAdjustments[i];
+            if (adjustment > 0) {
+                jobList[i].addWorkers(adjustment);
+                //console.log("Adjusting job " + jobList[i].id + " up by " + adjustment);
             }
         }
     }
@@ -2768,12 +3248,12 @@
         }
 
         // User opened the modal - don't interfere with what they're doing
-        if (state.modal.isOpen() && !state.modal.openedByScript) {
+        if (state.windowManager.isOpen() && !state.windowManager.openedByScript) {
             return;
         }
         
         // If there is already another modal window open then we can't also open the smelters modal window
-        if (state.modal.isOpen() && state.modal.currentModalWindowTitle !== "Smelter") {
+        if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== "Smelter") {
             return;
         }
 
@@ -2828,7 +3308,7 @@
                 let adjustmentToSteelCount = desiredSteelCount - smelterSteelCount;
 
                 // Only bother adjusting if it is more than 1 off, otherwise don't open the window
-                if (!state.modal.isOpen()) {
+                if (!state.windowManager.isOpen()) {
                     if (adjustmentToSteelCount >= -1 && adjustmentToSteelCount <= 1) {
                         return;
                     }
@@ -2842,7 +3322,7 @@
                         state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Iron, adjustmentToSteelCount * -1);
                     }
 
-                    state.modal.closeModalWindow();
+                    state.windowManager.closeModalWindow();
                     return;
                 }
             }
@@ -2851,7 +3331,7 @@
         // We want to adjust the smelters iron / steel production so open the smelter options, update our cached numbers and adjust if required
         // Open the modal in the first loop
         // Update our numbers and perform the adjustment and close the modal in the second loop
-        if (!state.modal.isOpen() && state.cityBuildings.Smelter.hasOptions()) {
+        if (!state.windowManager.isOpen() && state.cityBuildings.Smelter.hasOptions()) {
             state.cityBuildings.Smelter.openOptions();
             return
         }
@@ -2873,13 +3353,13 @@
         }
 
         // User opened the modal - don't interfere with what they're doing
-        if (state.modal.isOpen() && !state.modal.openedByScript) {
+        if (state.windowManager.isOpen() && !state.windowManager.openedByScript) {
             return;
         }
         
         // Only one modal window can be open at a time
         // If there is already another modal window open then we can't also open the factories modal window
-        if (state.modal.isOpen() && state.modal.currentModalWindowTitle !== "Factory") {
+        if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== "Factory") {
             return;
         }
 
@@ -2894,7 +3374,7 @@
             updateProductionChange(productionChanges, remainingOperatingFactories, state.resources.Polymer, FactoryGoods.Polymer);
             updateProductionChange(productionChanges, remainingOperatingFactories, state.resources.LuxuryGoods, FactoryGoods.LuxuryGoods);
     
-            if (!state.modal.isOpen()) {
+            if (!state.windowManager.isOpen()) {
                 // If there aren't any changes required then don't open the modal window
                 if (productionChanges.length === 0) {
                     return;
@@ -2926,7 +3406,7 @@
                     if (productionChange.quantity > 0) { state.cityBuildings.Factory.increaseProduction(productionChange.factoryGoods, productionChange.quantity) }
                 }
 
-                state.modal.closeModalWindow();
+                state.windowManager.closeModalWindow();
                 return;
             }
         }
@@ -2934,7 +3414,7 @@
         // We want to adjust the factory production so open the factory options and adjust
         // Open the modal in the first loop
         // Perform the adjustment and close the modal in the second loop
-        if (!state.modal.isOpen() && state.cityBuildings.Factory.hasOptions()) {
+        if (!state.windowManager.isOpen() && state.cityBuildings.Factory.hasOptions()) {
             state.cityBuildings.Factory.openOptions();
             return;
         }
@@ -2990,9 +3470,9 @@
         }
         
         // Let's wait until we have a good enough population count
-        if (state.goal !== "PreparingMAD" && state.resources.Plasmids.currentQuantity < 500 && state.resources.Population.currentQuantity < 210) {
+        if (state.goal !== "PreparingMAD" && (state.resources.Plasmids.currentQuantity < 500 || !state.jobManager.canManualCraft()) && state.resources.Population.currentQuantity < 195) {
             return;
-        } else if (state.goal !== "PreparingMAD" && state.resources.Plasmids.currentQuantity >= 500 && state.resources.Population.currentQuantity < 245) {
+        } else if (state.goal !== "PreparingMAD" && (state.resources.Plasmids.currentQuantity >= 500 && state.jobManager.canManualCraft()) && state.resources.Population.currentQuantity < 245) {
             return;
         }
         
@@ -3011,7 +3491,7 @@
             return; // Give the UI time to update
         }
         
-        if (state.battle.currentSoldiers === state.battle.maxSoldiers && state.battle.woundedSoldiers === 0) {
+        if (state.battleManager.currentSoldiers === state.battleManager.maxSoldiers && state.battleManager.woundedSoldiers === 0) {
             // Push... the button
             console.log("Soft resetting game with MAD");
             state.goal = "GameOverMan";
@@ -3041,12 +3521,12 @@
 
         // Only one modal window can be open at a time
         // If there is already another modal window open then we can't also open the space dock modal window
-        if (state.modal.isOpen() && state.modal.currentModalWindowTitle !== "Space Dock") {
+        if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== "Space Dock") {
             return;
         }
 
         // Let's do this!
-        if (!state.modal.isOpen()) {
+        if (!state.windowManager.isOpen()) {
             state.goal = "LaunchingSeeder";
             state.spaceBuildings.GasSpaceDock.openOptions();
             return;
@@ -3081,6 +3561,11 @@
         let currentMoney = state.resources.Money.currentQuantity;
         let multipliers = $('#market-qty').children();
         let tradeQuantity = 1000;
+
+        // Maybe a no trade challenge?
+        if (multipliers === null || multipliers.length === 0) {
+            return;
+        }
         
         if (multipliers.length >= 5 && !multipliers[4].children[0].checked) {
             // Set trade value to be 1000x. We'll come back next loop to do the trade
@@ -3202,7 +3687,7 @@
         }
 
         // User opened the modal - don't interfere with what they're doing
-        if (state.modal.isOpen() && !state.modal.openedByScript) {
+        if (state.windowManager.isOpen() && !state.windowManager.openedByScript) {
             return;
         }
 
@@ -3213,7 +3698,7 @@
 
         // Only one modal window can be open at a time
         // If there is already another modal window open then we can't also open the space dock modal window
-        if (state.modal.isOpen() && state.modal.currentModalWindowTitle !== "Space Dock") {
+        if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== "Space Dock") {
             return;
         }
 
@@ -3225,7 +3710,7 @@
         // We want to try to build some space dock children... The little rascals!
         // Open the modal in the first loop
         // Try to build and close the modal in the second loop
-        if (!state.modal.isOpen()) {
+        if (!state.windowManager.isOpen()) {
             state.spaceBuildings.GasSpaceDock.openOptions();
             return;
         }
@@ -3243,7 +3728,7 @@
             state.spaceBuildings.GasSpaceDock.tryBuildShipSegment();
         }
 
-        state.modal.closeModalWindow();
+        state.windowManager.closeModalWindow();
     }
     
     function autoBuild() {
@@ -3259,7 +3744,7 @@
 
         // A bit of trickery early game to get our craftables up. Once we reach 8 amphitheatre's and have < 10 libraries then wait for
         // crafting to catch up again (or less than 10 cottages, or less than 5 coal mines)
-        if (state.cityBuildings.Amphitheatre.count > 7  && state.cityBuildings.Amphitheatre.count < 11) {
+        if (state.cityBuildings.Amphitheatre.count > 7  && state.cityBuildings.Amphitheatre.count < 11 && state.jobManager.canManualCraft()) {
             log("Checking for early game target building");
             if (state.cityBuildings.Library.autoBuildEnabled && state.cityBuildings.Library.isUnlocked()) {
                 state.cityBuildings.Library.tryBuild();
@@ -3269,7 +3754,7 @@
                 }
             }
 
-            if (targetBuilding === null && state.cityBuildings.Cottage.autoBuildEnabled && state.cityBuildings.Cottage.isUnlocked()) {
+            if (targetBuilding === null && state.cityBuildings.Cottage.autoBuildEnabled && state.cityBuildings.Cottage.isUnlocked() && state.cityBuildings.Smelter.count > 5) {
                 state.cityBuildings.Cottage.tryBuild();
                 if (state.cityBuildings.Cottage.count < 10) {
                     log("Target building: cottage");
@@ -3277,7 +3762,7 @@
                }
             }
             
-            if (targetBuilding === null && state.cityBuildings.CoalMine.autoBuildEnabled && state.cityBuildings.CoalMine.isUnlocked()) {
+            if (targetBuilding === null && state.cityBuildings.CoalMine.autoBuildEnabled && state.cityBuildings.CoalMine.isUnlocked() && state.cityBuildings.Smelter.count > 5) {
                 state.cityBuildings.CoalMine.tryBuild();
                 if (state.cityBuildings.CoalMine.count < 5) {
                     log("Target building: coal mine");
@@ -3285,7 +3770,7 @@
                }
             }
 
-            if (targetBuilding === null && state.cityBuildings.StorageYard.autoBuildEnabled && state.cityBuildings.StorageYard.isUnlocked()) {
+            if (targetBuilding === null && state.cityBuildings.StorageYard.autoBuildEnabled && state.cityBuildings.StorageYard.isUnlocked() && state.cityBuildings.Smelter.count > 5) {
                 state.cityBuildings.StorageYard.tryBuild();
                 if (state.cityBuildings.StorageYard.count < 5) {
                     log("Target building: freight yard");
@@ -3319,7 +3804,8 @@
             }
 
             if (building === state.cityBuildings.CoalPower) {
-                if (state.resources.Plasmids.currentQuantity > 0) {
+                // I'd like to check if we are in a "no plasmids" run but not sure how... so check manual crafting instead
+                if (state.resources.Plasmids.currentQuantity > 0 && state.jobManager.canManualCraft()) {
                     buildIfEnoughProduction(building, state.resources.Coal, 2.35);
                 } else {
                     buildIfEnoughProduction(building, state.resources.Coal, 0.5); // If we don't have plasmids then have to go much lower
@@ -3335,10 +3821,10 @@
                 }
             }
 
-            if (!settings.autoSpace && state.resources.Plasmids.currentQuantity > 2000 && building === state.cityBuildings.OilPower) {
+            if (!settings.autoSpace && state.resources.Plasmids.currentQuantity > 2000 && building === state.cityBuildings.OilPower && state.jobManager.canManualCraft()) {
                 buildIfCountLessThan(building, 5);
                 continue;
-            } else if (state.resources.Plasmids.currentQuantity < 500 && building === state.cityBuildings.OilPower) {
+            } else if ((state.resources.Plasmids.currentQuantity < 500 || !state.jobManager.canManualCraft()) && building === state.cityBuildings.OilPower) {
                 buildIfEnoughProduction(building, state.resources.Oil, 1);
                 continue;
             } else if (building === state.cityBuildings.OilPower) {
@@ -3348,20 +3834,6 @@
 
             if (building === state.cityBuildings.FissionPower) {
                 buildIfEnoughProduction(building, state.resources.Uranium, 0.5);
-                continue;
-            }
-
-            // If we're not going to space and we have a lot of plasmids then we don't need as many buildings. In fact, too many will slow us down
-            if (!settings.autoSpace && state.resources.Plasmids.currentQuantity > 2000 && building === state.cityBuildings.OilWell) {
-                buildIfCountLessThan(building, 5);
-                continue;
-            }
-            if (!settings.autoSpace && state.resources.Plasmids.currentQuantity > 2000 && building === state.cityBuildings.OilDepot) {
-                buildIfCountLessThan(building, 2);
-                continue;
-            }
-            if (!settings.autoSpace && state.resources.Plasmids.currentQuantity > 500 && building === state.cityBuildings.Wharf) {
-                buildIfCountLessThan(building, 2);
                 continue;
             }
 
@@ -3499,7 +3971,7 @@
             let requiredStateOn = 0;
 
             // Some buildings have state that turn on later... ignore them if they don't have state yet!
-            if (!building.hasState()) {
+            if (!building.hasState() || (building === state.cityBuildings.Mill && state.resources.Plasmids.currentQuantity < 500)) {
                 continue;
             }
 
@@ -3648,8 +4120,10 @@
         if (state.resources.Plasmids.currentQuantity < 500) {
             // If you don't have many plasmids then you need quite a few crates
             if (assignCrates(state.resources.Steel, 50)) { return }
+            if (assignCrates(state.resources.Aluminium, 50)) { return }
         } else {
             if (assignCrates(state.resources.Steel, 20)) { return }
+            if (assignCrates(state.resources.Aluminium, 20)) { return }
         }
 
         if (assignCrates(state.resources.Titanium, 20)) { return }
@@ -3691,7 +4165,7 @@
         }
 
         // User opened the modal - don't interfere with what they're doing
-        if (state.modal.isOpen() && !state.modal.openedByScript) {
+        if (state.windowManager.isOpen() && !state.windowManager.openedByScript) {
             return true;
         }
 
@@ -3702,8 +4176,8 @@
         }
         
         // There can only be one modal active at a time. If there is another modal active then don't continue
-        if (state.modal.isOpen() && state.modal.currentModalWindowTitle !== resource.id) {
-            log("resource: " + resource.id + ", other modal active: " + state.modal.currentModalWindowTitle);
+        if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== resource.id) {
+            log("resource: " + resource.id + ", other modal active: " + state.windowManager.currentModalWindowTitle);
             return false;
         }
 
@@ -3720,7 +4194,7 @@
                 log("resource: " + resource.id + ", OR awaiting loop, last loop: " + resource.lastConstructStorageAttemptLoopCounter + ", current loop: " + state.loopCounter);
 
                 // Ok, we failed to construct a crate. Close the modal window if it is open and we'll try again in some number of loops
-                state.modal.closeModalWindow();
+                state.windowManager.closeModalWindow();
                 return true;
         } else {
             // We've waited out our loop timer, let's try again!
@@ -3728,9 +4202,9 @@
         }
 
         // Open the modal this loop then continue processing next loop to give the modal time to open
-        if (!state.modal.isOpen()) {
+        if (!state.windowManager.isOpen()) {
             log("resource: " + resource.id + " opening options");
-            state.modal.openModalWindow();
+            state.windowManager.openModalWindow();
             resource.openOptions();
             return true;
         }
@@ -3770,7 +4244,7 @@
         // time to close
         if (resource.assignedCrates >= nbrCrates) {
             log("resource: " + resource.id + ", enough crates 3, assigned: " + resource.assignedCrates);
-            state.modal.closeModalWindow();
+            state.windowManager.closeModalWindow();
             return true;
         }
 
@@ -3795,7 +4269,7 @@
 
             // We didn't try constructing a crate but not having enough room for crates is basically the same thing so set our last loop counter
             // This is the last loop that we tried to construct a crate
-            state.modal.closeModalWindow();
+            state.windowManager.closeModalWindow();
             return true;
         }
     }
@@ -3812,12 +4286,12 @@
         }
 
         // Reset modal window open indicator
-        state.modal.openThisLoop = false;
+        state.windowManager.openThisLoop = false;
 
         // If our script opened a modal window but it is now closed (and the script didn't close it) then the user did so don't continue
         // with whatever our script was doing with the open modal window.
-        if (state.modal.openedByScript && !state.modal.isOpen()) {
-            state.modal.openedByScript = false;
+        if (state.windowManager.openedByScript && !state.windowManager.isOpen()) {
+            state.windowManager.openedByScript = false;
         }
 
         // This would be better done in the class itself
@@ -3864,11 +4338,11 @@
             if (settings.autoTradeSpecialResources) {
                 autoTradeSpecialResources();
             }
-            if (settings.autoSmelter) {
-                autoSmelter();
-            }
             if (settings.autoFactory) {
                 autoFactory();
+            }
+            if (settings.autoSmelter) {
+                autoSmelter();
             }
             if (settings.autoMAD) {
                 autoMAD();
@@ -3961,6 +4435,9 @@
         }
         if ($('#autoJobs').length === 0) {
             createSettingToggle('autoJobs');
+        }
+        if ($('#autoCraftsmen').length === 0) {
+            createSettingToggle('autoCraftsmen');
         }
         if ($('#autoPower').length === 0) {
             createSettingToggle('autoPower');
