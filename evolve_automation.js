@@ -9,6 +9,34 @@
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.3.1.min.js
 // ==/UserScript==
+//
+// * autoEvolution - Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids. See user overrides below
+//         to target another specific race or use autoAchievements to target races that you don't have extinction achievements for yet.
+//  ** autoAchievements - Works through all evolution paths until all race's extinction achievements have been completed (also works with autoChallenge for starred achievements)
+//  ** autoChallenge - Chooses ALL challenge options during evolution
+// * autoFight - Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attach type when offensive
+//         rating is greater than the rating cutoff for that attack type.
+// * autoCraft - Craft when a specified crafting ratio is met. This changes throughout the game (lower in the beginning and rising as the game progresses)
+// * autoBuild - Builds city and space building when it can an production allows (eg. Won't build a Fission Reactor if you don't have enough uranium production).
+//         Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker. eg. If you don't have enough libraries / 
+//         cottages / coal mines then it will stop building anything that uses the same materials for a while to allow you to craft the resources to build them.
+//         Will only build the buildings that the user enables.
+// * autoMarket - Allows for automatic buying and selling of resources once specific ratios are met. Not currently user configurable.
+// * autoResearch - Performs research when minimum requirements are met. User can override theology and unification in user overrides section.
+// * autoARPA - Builds ARPA projects if user enables them to be built
+// * autoJobs - Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on
+//         lumber / stone then fill up capped jobs first.  Not currently user configurable.
+//  ** autoCraftsmen - Enable this when performing challenge runs and autoJobs will also manage craftsmen
+// * autoPower - Manages power based on a priority order of buildings. Starts with city based building then space based. Not currently user configurable.
+// * autoTradeSpecialResources - Boths sets up trading routes for special resources (titanium, alloy, polymer, iridium, helium_3) and also assigns
+//         crates to allow storage of those resources. Only assigns a enough crates to reach MAD unless enabling autoSpace.
+// * autoSmelter - Manages smelter output at different stages at the game. Not currently user configurable.
+// * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
+//         Not currently user configurable.
+// * autoMAD - Once population is over 195 (low plasmids) / 245 (high plasmids) and MAD is unlocked will stop sending out troops and will perform MAD
+// * autoSpace - If population is over 250 then it will start funding the launch facility regardless of arpa settings
+// * autoSeeder - Will send out the seeder ship once at least 4 probes are constructed. Currently tries to find a forest world, then grassland, then the others.
+//         Not currently user configurable.
 // 
 
 //@ts-check
@@ -20,7 +48,28 @@
         settings = JSON.parse(jsonSettings);
     }
 
-    var defaultEnabled = false;
+    var defaultAllOptionsEnabled = false;
+
+    // --------------------
+    // User overrides
+    // --------------------
+    var userOverrideEvolutionPath = ""; // eg. Dracnid, Human, etc. This only guaranetees the right evolution path is followed. The game still has randomness.
+                                        // If resetting via seeder ship then race is guaranteed. Overrides autoAchievements. With no other modifiers targets Antid.
+                                        // Options: Mantis, Scorpid, Antid, Human, Orc, Elven, Troll, Ogre, Cyclops, Kobold, Goblin, Gnome, Cath, Wolven, Centaur,
+                                        //   Arraak, Pterodacti, Dracnid, Tortoisan, Gecko, Slitheryn, Sharkin, Octigoran, Entish, Cacti, Sporgar, Shroomi
+    var userOverrideTheology = ""; // Pick one of: "tech-anthropology" OR "tech-fanaticism". If blank targets tech-anthropology for MAD runs and tech-fanaticism for Space runs.
+    var userOverrideUnification = ""; // Pick one of: tech-wc_reject OR tech-wc_money OR tech-wc_morale OR tech-wc_conquest. If blanks targets the first one it can get that is not reject.
+
+    // When your offensive rating is greater than the rating below it will target that attack type. If it doesn't meet any of the ratings then it will target the lowest.
+    var userOverrideCampaigns = [
+        { name: "Ambush", rating: 10 },
+        { name: "Raid", rating: 50 },
+        { name: "Pillage", rating: 100 },
+        { name: "Assault", rating: 200 },
+        { name: "Siege", rating: 500 }
+    ];
+
+    // --------------------
 
     //#region Class Declarations
 
@@ -252,6 +301,56 @@
             return document.querySelector("#" + this._elementId).parentElement.querySelector(".sub")
         }
 
+        /**
+         * @param {number} count
+         */
+        addWorkers(count) {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            if (count < 0) {
+                this.removeWorkers(-1 * count);
+            }
+
+            let addButton = this.getAddButton();
+            if (addButton !== null) {
+                for (let i = 0; i < count; i++) {
+                    // @ts-ignore
+                    addButton.click();                
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        /**
+         * @param {number} count
+         */
+        removeWorkers(count) {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            if (count < 0) {
+                this.addWorkers(-1 * count);
+            }
+
+            let subButton = this.getSubButton();
+            if (subButton !== null) {
+                for (let i = 0; i < count; i++) {
+                    // @ts-ignore
+                    subButton.click();                
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
         get max() {
             if (!this.isUnlocked()) {
                 return 0;
@@ -281,7 +380,7 @@
             this._id = id;
             this._elementId = this._tabPrefix + "-" + this.id;
             this._isBuilding = isBuilding;
-            this.autoBuildEnabled = defaultEnabled;
+            this.autoBuildEnabled = defaultAllOptionsEnabled;
 
             this.consumption = {
                 power: 0,
@@ -524,18 +623,20 @@
          * @param {string} prefix
          * @param {string} id
          * @param {boolean} isTradable
+         * @param {number} tradeRouteQuantity
          * @param {number} buyRatio
          * @param {number} sellRatio
          * @param {boolean} isCraftable
          * @param {number} craftRatio
          */
-        constructor(prefix, id, isTradable, buyRatio, sellRatio, isCraftable, craftRatio) {
+        constructor(prefix, id, isTradable, tradeRouteQuantity, buyRatio, sellRatio, isCraftable, craftRatio) {
             this._prefix = prefix;
             this._id = id;
             this._isPopulation = (id === "Population"); // We can't store the full elementId because we don't know the name of the population node until later
-            this.autoCraftEnabled = defaultEnabled;
+            this.autoCraftEnabled = defaultAllOptionsEnabled;
 
             this._isTradable = isTradable;
+            this.tradeRouteQuantity = tradeRouteQuantity;
             this.autoBuyEnabled = false;
             this.autoSellEnabled = false;
             this.buyRatio = buyRatio;
@@ -868,7 +969,7 @@
     class Power extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("", "powerMeter", false, -1, -1, false, -1);
+            super("", "powerMeter", false, -1, -1, -1, false, -1);
         }
 
         //#region Standard resource
@@ -963,7 +1064,7 @@
          * @param {string} id
          */
         constructor(id) {
-            super("", id, false, -1, -1, false, -1);
+            super("", id, false, -1, -1, -1, false, -1);
         }
 
         //#region Standard resource
@@ -1056,7 +1157,7 @@
     class LuxuryGoods extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("", "LuxuryGoods", false, -1, -1, false, -1);
+            super("", "LuxuryGoods", false, -1, -1, -1, false, -1);
         }
 
         //#region Standard resource
@@ -2011,6 +2112,56 @@
             return 0;
         }
     }
+
+    class Race {
+        /**
+         * @param {String} name
+         * @param {boolean} isEvolutionConditional
+         */
+        constructor(name, isEvolutionConditional, achievementText) {
+            this.name = name;
+            this.isEvolutionConditional = isEvolutionConditional;
+            this.achievementText = achievementText;
+
+            /** @type {Action[]} */
+            this.evolutionTree = [];
+        }
+
+        /**
+         * @param {number} [level]
+         */
+        isAchievementUnlocked(level) {
+            // check if achievement exists and what star level
+            // Levels 1,2,3,4,5
+            let achievementTitles = document.querySelectorAll("#achievePanel .achievement > span:nth-child(1)");
+
+            if (achievementTitles === null || achievementTitles.length === 0) {
+                return false;
+            }
+
+            for (let i = 0; i < achievementTitles.length; i++) {
+                const node = achievementTitles[i];
+                if (node.textContent === this.achievementText) {
+                    if (level <= 1) {
+                        return true;
+                    }
+
+                    let flairNode = node.nextElementSibling.nextElementSibling;
+
+                    if (flairNode === null) {
+                        return;
+                    }
+
+                    // @ts-ignore
+                    if (flairNode.firstElementChild.getAttribute("class") === "star" + level) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+    }
     
     //#endregion Class Declarations
 
@@ -2039,12 +2190,12 @@
         craftableResourceList: [],
         resources: {
             // Base resources
-            Money: new Resource("res", "Money", false, -1, -1, false, -1),
-            Population: new Resource("res", "Population", false, -1, -1, false, -1), // The population node is special and its id will change to the race name
-            Knowledge: new Resource("res", "Knowledge", false, -1, -1, false, -1),
-            Crates: new Resource("res", "Crates", false, -1, -1, false, -1),
-            Containers: new Resource("res", "Containers", false, -1, -1, false, -1),
-            Plasmids: new Resource("res", "Plasmid", false, -1, -1, false, -1),
+            Money: new Resource("res", "Money", false, -1, -1, -1, false, -1),
+            Population: new Resource("res", "Population", false, -1, -1, -1, false, -1), // The population node is special and its id will change to the race name
+            Knowledge: new Resource("res", "Knowledge", false, -1, -1, -1, false, -1),
+            Crates: new Resource("res", "Crates", false, -1, -1, -1, false, -1),
+            Containers: new Resource("res", "Containers", false, -1, -1, -1, false, -1),
+            Plasmids: new Resource("res", "Plasmid", false, -1, -1, -1, false, -1),
 
             // Special not-really-resources-but-we'll-treat-them-like-resources resources
             Power: new Power(),
@@ -2055,35 +2206,35 @@
             BeltSupport: new Support("srspc_belt"),
 
             // Basic resources (can trade for these)
-            Food: new Resource("res", "Food", true, 0.5, 0.9, false, -1),
-            Lumber: new Resource("res", "Lumber", true, 0.5, 0.9, false, -1),
-            Stone: new Resource("res", "Stone", true, 0.5, 0.9, false, -1),
-            Furs: new Resource("res", "Furs", true, 0.5, 0.9, false, -1),
-            Copper: new Resource("res", "Copper", true, 0.5, 0.9, false, -1),
-            Iron: new Resource("res", "Iron", true, 0.5, 0.9, false, -1),
-            Aluminium: new Resource("res", "Aluminium", true, 0.5, 0.9, false, -1),
-            Cement: new Resource("res", "Cement", true, 0.3, 0.9, false, -1),
-            Coal: new Resource("res", "Coal", true, 0.5, 0.9, false, -1),
-            Oil: new Resource("res", "Oil", true, 0.5, 0.9, false, -1),
-            Uranium: new Resource("res", "Uranium", true, 0.5, 0.9, false, -1),
-            Steel: new Resource("res", "Steel", true, 0.5, 0.9, false, -1),
-            Titanium: new Resource("res", "Titanium", true, 0.8, 0.9, false, -1),
-            Alloy: new Resource("res", "Alloy", true, 0.8, 0.9, false, -1),
-            Polymer: new Resource("res", "Polymer", true, 0.8, 0.9, false, -1),
-            Iridium: new Resource("res", "Iridium", true, 0.8, 0.9, false, -1),
-            Helium_3: new Resource("res", "Helium_3", true, 0.8, 0.9, false, -1),
+            Food: new Resource("res", "Food", true, 2, 0.5, 0.9, false, -1),
+            Lumber: new Resource("res", "Lumber", true, 2, 0.5, 0.9, false, -1),
+            Stone: new Resource("res", "Stone", true, 2, 0.5, 0.9, false, -1),
+            Furs: new Resource("res", "Furs", true, 1, 0.5, 0.9, false, -1),
+            Copper: new Resource("res", "Copper", true, 1, 0.5, 0.9, false, -1),
+            Iron: new Resource("res", "Iron", true, 1, 0.5, 0.9, false, -1),
+            Aluminium: new Resource("res", "Aluminium", true, 1, 0.5, 0.9, false, -1),
+            Cement: new Resource("res", "Cement", true, 1, 0.3, 0.9, false, -1),
+            Coal: new Resource("res", "Coal", true, 1, 0.5, 0.9, false, -1),
+            Oil: new Resource("res", "Oil", true, 0.5, 0.5, 0.9, false, -1),
+            Uranium: new Resource("res", "Uranium", true, 0.25, 0.5, 0.9, false, -1),
+            Steel: new Resource("res", "Steel", true, 0.5, 0.5, 0.9, false, -1),
+            Titanium: new Resource("res", "Titanium", true, 0.25, 0.8, 0.9, false, -1),
+            Alloy: new Resource("res", "Alloy", true, 0.2, 0.8, 0.9, false, -1),
+            Polymer: new Resource("res", "Polymer", true, 0.2, 0.8, 0.9, false, -1),
+            Iridium: new Resource("res", "Iridium", true, 0.1, 0.8, 0.9, false, -1),
+            Helium_3: new Resource("res", "Helium_3", true, 0.1, 0.8, 0.9, false, -1),
 
             // Advanced resources (can't trade for these)
-            Neutronium: new Resource("res", "Neutronium", false, -1, -1, false, -1),
-            Elerium: new Resource("res", "Elerium", false, -1, -1, false, -1),
-            NanoTube: new Resource("res", "Nano_Tube", false, -1, -1, false, -1),
+            Neutronium: new Resource("res", "Neutronium", false, -1, -1, -1, false, -1),
+            Elerium: new Resource("res", "Elerium", false, -1, -1, -1, false, -1),
+            NanoTube: new Resource("res", "Nano_Tube", false, -1, -1, -1, false, -1),
             
             // Craftable resources
-            Plywood: new Resource("res", "Plywood", false, -1, -1, true, 0.5),
-            Brick: new Resource("res", "Brick", false, -1, -1, true, 0.5),
-            WroughtIron: new Resource("res", "Wrought_Iron", false, -1, -1, true, 0.5),
-            SheetMetal: new Resource("res", "Sheet_Metal", false, -1, -1, true, 0.5),
-            Mythril: new Resource("res", "Mythril", false, -1, -1, true, 0.5),
+            Plywood: new Resource("res", "Plywood", false, -1, -1, -1, true, 0.5),
+            Brick: new Resource("res", "Brick", false, -1, -1, -1, true, 0.5),
+            WroughtIron: new Resource("res", "Wrought_Iron", false, -1, -1, -1, true, 0.5),
+            SheetMetal: new Resource("res", "Sheet_Metal", false, -1, -1, -1, true, 0.5),
+            Mythril: new Resource("res", "Mythril", false, -1, -1, -1, true, 0.5),
         },
 
         jobs: {
@@ -2094,7 +2245,7 @@
 
             // Capped jobs
             Miner: new Job("civ", "-", "miner", false, [3, 5, -1]),
-            CoalMiner: new Job("civ", "-", "coal_miner", false, [1, 2, -1]),
+            CoalMiner: new Job("civ", "-", "coal_miner", false, [2, 4, -1]),
             CementWorker: new Job("civ", "-", "cement_worker", false, [4, 8, -1]), // Cement works are based on cap and stone rate of change
             Entertainer: new Job("civ", "-", "entertainer", false, [5, 10, -1]),
             Professor: new Job("civ", "-", "professor", false, [3, 6, -1]),
@@ -2104,13 +2255,14 @@
             SpaceMiner: new Job("civ", "-", "space_miner", false, [0, 0, -1]),
 
             // Crafting jobs
-            Plywood: new CraftingJob("craft", "", "Plywood", true, [2, 4, -1], 1),
-            Brick: new CraftingJob("craft", "", "Brick", true, [2, 4, -1], 2),
-            WroughtIron: new CraftingJob("craft", "", "Wrought_Iron", true, [2, 4, -1], 3),
-            SheetMetal: new CraftingJob("craft", "", "Sheet_Metal", true, [2, 4, -1], 4),
+            Plywood: new CraftingJob("craft", "", "Plywood", true, [2, 4, -1], 2),
+            Brick: new CraftingJob("craft", "", "Brick", true, [2, 4, -1], 3),
+            WroughtIron: new CraftingJob("craft", "", "Wrought_Iron", true, [2, 4, -1], 4),
+            SheetMetal: new CraftingJob("craft", "", "Sheet_Metal", true, [2, 4, -1], 1),
             Mythril: new CraftingJob("craft", "", "Mythril", true, [2, 4, -1], 5),
         },
         
+
         evolutions: {
             Rna: new Action("evo", "rna", false),
             Dna: new Action("evo", "dna", false),
@@ -2120,7 +2272,7 @@
             EukaryoticCell: new Action("evo", "eukaryotic_cell", true),
             Mitochondria: new Action("evo", "mitochondria", true),
 
-            RaceAntid: new Action("evo", "antid", false),
+            Antid: new Action("evo", "antid", false),
 
             Sentience: new Action("evo", "sentience", false),
             Arthropods: new Action("evo", "athropods", false),
@@ -2129,91 +2281,129 @@
             Phagocytosis: new Action("evo", "phagocytosis", false),
             SexualReproduction: new Action("evo", "sexual_reproduction", false),
 
-            // SexualReproduction: new Action("evo", "sexual_reproduction", false),
+           // SexualReproduction: new Action("evo", "sexual_reproduction", false),
 
-            //     Phagocytosis: new Action("evo", "phagocytosis", false),
-            //         Multicellular: new Action("evo", "multicellular", false),
-            //             BilateralSymmetry: new Action("evo", "bilateral_symmetry", false),
-            //                 Arthropods: new Action("evo", "athropods", false),
-            //                     Sentience: new Action("evo", "sentience", false),
-            //                     Bunker: new Action("evo", "bunker", false),
-            //                     RaceMantis: new Action("evo", "mantis", false),
-            //                     RaceScorpid: new Action("evo", "scorpid", false),
-            //                     RaceAntid: new Action("evo", "antid", false),
+               // Phagocytosis: new Action("evo", "phagocytosis", false),
+                   // Multicellular: new Action("evo", "multicellular", false),
+                       // BilateralSymmetry: new Action("evo", "bilateral_symmetry", false),
+                           // Arthropods: new Action("evo", "athropods", false),
+                              //  Sentience: new Action("evo", "sentience", false),
+                                Bunker: new Action("evo", "bunker", false),
+                                Mantis: new Action("evo", "mantis", false),
+                                Scorpid: new Action("evo", "scorpid", false),
+                               // Antid: new Action("evo", "antid", false),
 
-            //                 Mammals: new Action("evo", "mammals", false),
-            //                     Humanoid: new Action("evo", "humanoid", false),
-            //                         Sentience: new Action("evo", "sentience", false),
-            //                         Bunker: new Action("evo", "bunker", false),
-            //                         RaceHuman: new Action("evo", "human", false),
-            //                         RaceOrc: new Action("evo", "orc", false),
-            //                         RaceElven: new Action("evo", "elven", false),
-            //                     Gigantism: new Action("evo", "gigantism", false),
-            //                         Sentience: new Action("evo", "sentience", false),
-            //                         Bunker: new Action("evo", "bunker", false),
-            //                         RaceTroll: new Action("evo", "troll", false),
-            //                         RaceOgre: new Action("evo", "orge", false),
-            //                         RaceCyclops: new Action("evo", "cyclops", false),
-            //                     Dwarfism: new Action("evo", "dwarfism", false),
-            //                         Sentience: new Action("evo", "sentience", false),
-            //                         Bunker: new Action("evo", "bunker", false),
-            //                         RaceKobold: new Action("evo", "kobold", false),
-            //                         RaceGoblin: new Action("evo", "goblin", false),
-            //                         RaceGnome: new Action("evo", "gnome", false),
-            //                     Animalism: new Action("evo", "animalism", false),
-            //                         Sentience: new Action("evo", "sentience", false),
-            //                         Bunker: new Action("evo", "bunker", false),
-            //                         RaceCath: new Action("evo", "cath", false),
-            //                         RaceWolven: new Action("evo", "wolven", false),
-            //                         RaceCentaur: new Action("evo", "centaur", false),
+                            Mammals: new Action("evo", "mammals", false),
+                                Humanoid: new Action("evo", "humanoid", false),
+                                   // Sentience: new Action("evo", "sentience", false),
+                                   // Bunker: new Action("evo", "bunker", false),
+                                    Human: new Action("evo", "human", false),
+                                    Orc: new Action("evo", "orc", false),
+                                    Elven: new Action("evo", "elven", false),
+                                Gigantism: new Action("evo", "gigantism", false),
+                                   // Sentience: new Action("evo", "sentience", false),
+                                   // Bunker: new Action("evo", "bunker", false),
+                                    Troll: new Action("evo", "troll", false),
+                                    Ogre: new Action("evo", "orge", false),
+                                    Cyclops: new Action("evo", "cyclops", false),
+                                Dwarfism: new Action("evo", "dwarfism", false),
+                                   // Sentience: new Action("evo", "sentience", false),
+                                   // Bunker: new Action("evo", "bunker", false),
+                                    Kobold: new Action("evo", "kobold", false),
+                                    Goblin: new Action("evo", "goblin", false),
+                                    Gnome: new Action("evo", "gnome", false),
+                                Animalism: new Action("evo", "animalism", false),
+                                    //Sentience: new Action("evo", "sentience", false),
+                                   // Bunker: new Action("evo", "bunker", false),
+                                    Cath: new Action("evo", "cath", false),
+                                    Wolven: new Action("evo", "wolven", false),
+                                    Centaur: new Action("evo", "centaur", false),
 
-            //                 Eggshell: new Action("evo", "eggshell", false),
-            //                     Endothermic: new Action("evo", "endothermic", false),
-            //                         Sentience: new Action("evo", "sentience", false),
-            //                         Bunker: new Action("evo", "bunker", false),
-            //                         RaceArraak: new Action("evo", "arraak", false),
-            //                         RacePterodacti: new Action("evo", "pterodacti", false),
-            //                         RaceDracnid: new Action("evo", "dracnid", false),
+                            Eggshell: new Action("evo", "eggshell", false),
+                                Endothermic: new Action("evo", "endothermic", false),
+                                    //Sentience: new Action("evo", "sentience", false),
+                                   // Bunker: new Action("evo", "bunker", false),
+                                    Arraak: new Action("evo", "arraak", false),
+                                    Pterodacti: new Action("evo", "pterodacti", false),
+                                    Dracnid: new Action("evo", "dracnid", false),
 
-            //                     Ectothermic: new Action("evo", "ectothermic", false),
-            //                         Sentience: new Action("evo", "sentience", false),
-            //                         Bunker: new Action("evo", "bunker", false),
-            //                         RaceTortoisan: new Action("evo", "tortoisan", false),
-            //                         RaceGecko: new Action("evo", "gecko", false),
-            //                         RaceSlitheryn: new Action("evo", "slitheryn", false),
+                                Ectothermic: new Action("evo", "ectothermic", false),
+                                    //Sentience: new Action("evo", "sentience", false),
+                                    //Bunker: new Action("evo", "bunker", false),
+                                    Tortoisan: new Action("evo", "tortoisan", false),
+                                    Gecko: new Action("evo", "gecko", false),
+                                    Slitheryn: new Action("evo", "slitheryn", false),
 
-            //                 Aquatic: new Action("evo", "aquatic", false), // ocean only
-            //                     Sentience: new Action("evo", "sentience", false),
-            //                     Bunker: new Action("evo", "bunker", false),
-            //                     RaceSharkin: new Action("evo", "sharkin", false),
-            //                     RaceOctigoran: new Action("evo", "octigoran", false),
+                            Aquatic: new Action("evo", "aquatic", false), // ocean only
+                                //Sentience: new Action("evo", "sentience", false),
+                                //Bunker: new Action("evo", "bunker", false),
+                                Sharkin: new Action("evo", "sharkin", false),
+                                Octigoran: new Action("evo", "octigoran", false),
 
-            //     Chloroplasts: new Action("evo", "chloroplasts", false),
-            //         Multicellular: new Action("evo", "multicellular", false),
-            //             Poikilohydric: new Action("evo", "poikilohydric", false),
-            //                 Bryophyte: new Action("evo", "bryophyte", false),
-            //                     Sentience: new Action("evo", "sentience", false),
-            //                     Bunker: new Action("evo", "bunker", false),
-            //                     RaceEntish: new Action("evo", "entish", false),
-            //                     RaceCacti: new Action("evo", "cacti", false),
-
-
-            //     Chitin: new Action("evo", "chitin", false),
-            //         Multicellular: new Action("evo", "multicellular", false),
-            //             Spores: new Action("evo", "spores", false),
-            //                 Bryophyte: new Action("evo", "bryophyte", false),
-            //                     Sentience: new Action("evo", "sentience", false),
-            //                     Bunker: new Action("evo", "bunker", false),
-            //                     RaceSporgar: new Action("evo", "sporgar", false),
-            //                     RaceShroomi: new Action("evo", "shroomi", false),
+                Chloroplasts: new Action("evo", "chloroplasts", false),
+                    //Multicellular: new Action("evo", "multicellular", false),
+                        Poikilohydric: new Action("evo", "poikilohydric", false),
+                            Bryophyte: new Action("evo", "bryophyte", false),
+                                //Sentience: new Action("evo", "sentience", false),
+                                //Bunker: new Action("evo", "bunker", false),
+                                Entish: new Action("evo", "entish", false),
+                                Cacti: new Action("evo", "cacti", false),
 
 
-            // Bunker: new Action("evo", "bunker", false),
-            // Plasmid: new Action("evo", "plasmid", false),
-            // Trade: new Action("evo", "trade", false),
-            // Craft: new Action("evo", "craft", false),
-            // Crispr: new Action("evo", "crispr", false),
+                Chitin: new Action("evo", "chitin", false),
+                    //Multicellular: new Action("evo", "multicellular", false),
+                        Spores: new Action("evo", "spores", false),
+                            //Bryophyte: new Action("evo", "bryophyte", false),
+                                //Sentience: new Action("evo", "sentience", false),
+                                //Bunker: new Action("evo", "bunker", false),
+                                Sporgar: new Action("evo", "sporgar", false),
+                                Shroomi: new Action("evo", "shroomi", false),
 
+
+            //Bunker: new Action("evo", "bunker", false),
+            Plasmid: new Action("evo", "plasmid", false),
+            Trade: new Action("evo", "trade", false),
+            Craft: new Action("evo", "craft", false),
+            Crispr: new Action("evo", "crispr", false),
+
+        },
+
+        /** @type {Race[]} */
+        raceAchievementList: [],
+        /** @type {Action[]} */
+        evolutionChallengeList: [],
+        /** @type {Race} */
+        evolutionTarget: null,
+        /** @type {Race} */
+        evolutionFallback: null,
+        races: {
+            Antid: new Race("Antid", false, "Ophiocordyceps Unilateralis"),
+            Mantis: new Race("Mantis", false, "Praying Unanswered"),
+            Scorpid: new Race("Scorpid", false, "Pulmonoscorpius"),
+            Human: new Race("Human", false, "Homo Adeadus"),
+            Orc: new Race("Orc", false, "Outlander"),
+            Elven: new Race("Elven", false, "The few, the proud, the dead"),
+            Troll: new Race("Troll", false, "Bad Juju"),
+            Ogre: new Race("Ogre", false, "Too stupid to live"),
+            Cyclops: new Race("Cyclops", false, "Blind Ambition"),
+            Kobold: new Race("Kobold", false, "Took their candle"),
+            Goblin: new Race("Goblin", false, "Greed before Need"),
+            Gnome: new Race("Gnome", false, "Unathletic"),
+            Cath: new Race("Cath", false, "Saber Tooth Tiger"),
+            Wolven: new Race("Wolven", false, "Dire Wolf"),
+            Centaur: new Race("Centaur", false, "Ferghana"),
+            Arraak: new Race("Arraak", false, "Way of the Dodo"),
+            Pterodacti: new Race("Pterodacti", false, "Chicxulub"),
+            Dracnid: new Race("Dracnid", false, "Desolate Smaug"),
+            Tortoisan: new Race("Tortoisan", false, "Circle of Life"),
+            Gecko: new Race("Gecko", false, "No Savings"),
+            Slitheryn: new Race("Slitheryn", false, "Final Shedding"),
+            Sharkin: new Race("Sharkin", true, "Megalodon"),
+            Octigoran: new Race("Octigoran", true, "Calamari"),
+            Entish: new Race("Entish", false, "Saruman's Revenge"),
+            Cacti: new Race("Cacti", false, "Desert Deserted"),
+            Sporgar: new Race("Sporgar", false, "Fungicide"),
+            Shroomi: new Race("Shroomi", false, "Bad Trip"),
         },
 
         /** @type {Action[]} */
@@ -2344,23 +2534,23 @@
 
     function initialiseState() {
         // Construct tradable resource list
-        state.tradableResourceList.push(state.resources.Food);
-        state.tradableResourceList.push(state.resources.Lumber);
-        state.tradableResourceList.push(state.resources.Stone);
-        state.tradableResourceList.push(state.resources.Furs);
-        state.tradableResourceList.push(state.resources.Copper);
-        state.tradableResourceList.push(state.resources.Iron);
-        state.tradableResourceList.push(state.resources.Aluminium);
-        state.tradableResourceList.push(state.resources.Cement);
-        state.tradableResourceList.push(state.resources.Coal);
-        state.tradableResourceList.push(state.resources.Oil);
-        state.tradableResourceList.push(state.resources.Uranium);
-        state.tradableResourceList.push(state.resources.Steel);
-        state.tradableResourceList.push(state.resources.Titanium);
-        state.tradableResourceList.push(state.resources.Alloy);
-        state.tradableResourceList.push(state.resources.Polymer);
-        state.tradableResourceList.push(state.resources.Iridium);
-        state.tradableResourceList.push(state.resources.Helium_3);
+        state.tradableResourceList.push(state.resources.Alloy); //67
+        state.tradableResourceList.push(state.resources.Polymer); //54
+        state.tradableResourceList.push(state.resources.Iridium); //40
+        state.tradableResourceList.push(state.resources.Uranium); //40
+        state.tradableResourceList.push(state.resources.Steel); //28
+        state.tradableResourceList.push(state.resources.Helium_3); //27
+        state.tradableResourceList.push(state.resources.Titanium); //27
+        state.tradableResourceList.push(state.resources.Copper); //27
+        state.tradableResourceList.push(state.resources.Aluminium); //17
+        state.tradableResourceList.push(state.resources.Iron); //17
+        state.tradableResourceList.push(state.resources.Stone); //11
+        state.tradableResourceList.push(state.resources.Lumber); //8
+        state.tradableResourceList.push(state.resources.Food); //7
+        state.tradableResourceList.push(state.resources.Oil); //8
+        state.tradableResourceList.push(state.resources.Coal); //8
+        state.tradableResourceList.push(state.resources.Cement); //5
+        state.tradableResourceList.push(state.resources.Furs); //5
 
         // Construct craftable resource list
         state.craftableResourceList.push(state.resources.Plywood);
@@ -2768,6 +2958,93 @@
         state.consumptionPriorityList.push(state.spaceBuildings.MoonObservatory);
         state.consumptionPriorityList.push(state.cityBuildings.TouristCenter);
         state.consumptionPriorityList.push(state.cityBuildings.MassDriver);
+
+        state.evolutionChallengeList.push(state.evolutions.Plasmid);
+        state.evolutionChallengeList.push(state.evolutions.Trade);
+        state.evolutionChallengeList.push(state.evolutions.Craft);
+        state.evolutionChallengeList.push(state.evolutions.Crispr);
+        state.evolutionChallengeList.push(state.evolutions.Bunker);
+
+        let e = state.evolutions;
+
+        let bilateralSymmetry = [e.BilateralSymmetry, e.Multicellular, e.Phagocytosis, e.SexualReproduction];
+
+        let arthropods = [e.Sentience, e.Arthropods].concat(bilateralSymmetry);
+        state.races.Antid.evolutionTree = [e.Antid].concat(arthropods);
+        state.races.Scorpid.evolutionTree = [e.Scorpid].concat(arthropods);
+        state.races.Mantis.evolutionTree = [e.Mantis].concat(arthropods);
+
+        let humanoid = [e.Sentience, e.Humanoid, e.Mammals].concat(bilateralSymmetry);
+        state.races.Human.evolutionTree = [e.Human].concat(humanoid);
+        state.races.Orc.evolutionTree = [e.Orc].concat(humanoid);
+        state.races.Elven.evolutionTree = [e.Elven].concat(humanoid);
+
+        let gigantism = [e.Sentience, e.Gigantism, e.Mammals].concat(bilateralSymmetry);
+        state.races.Troll.evolutionTree = [e.Troll].concat(gigantism);
+        state.races.Ogre.evolutionTree = [e.Ogre].concat(gigantism);
+        state.races.Cyclops.evolutionTree = [e.Cyclops].concat(gigantism);
+
+        let dwarfism = [e.Sentience, e.Dwarfism, e.Mammals].concat(bilateralSymmetry);
+        state.races.Kobold.evolutionTree = [e.Kobold].concat(dwarfism);
+        state.races.Goblin.evolutionTree = [e.Goblin].concat(dwarfism);
+        state.races.Gnome.evolutionTree = [e.Gnome].concat(dwarfism);
+
+        let animalism = [e.Sentience, e.Animalism, e.Mammals].concat(bilateralSymmetry);
+        state.races.Cath.evolutionTree = [e.Cath].concat(animalism);
+        state.races.Wolven.evolutionTree = [e.Wolven].concat(animalism);
+        state.races.Centaur.evolutionTree = [e.Centaur].concat(animalism);
+
+        let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
+        state.races.Arraak.evolutionTree = [e.Arraak].concat(endothermic);
+        state.races.Pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
+        state.races.Dracnid.evolutionTree = [e.Dracnid].concat(endothermic);
+
+        let ectothermic = [e.Sentience, e.Ectothermic, e.Eggshell].concat(bilateralSymmetry);
+        state.races.Tortoisan.evolutionTree = [e.Tortoisan].concat(ectothermic);
+        state.races.Gecko.evolutionTree = [e.Gecko].concat(ectothermic);
+        state.races.Slitheryn.evolutionTree = [e.Slitheryn].concat(ectothermic);
+
+        let aquatic = [e.Sentience, e.Aquatic].concat(bilateralSymmetry);
+        state.races.Sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
+        state.races.Octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
+
+        let chloroplasts = [e.Sentience, e.Bryophyte, e.Poikilohydric, e.Multicellular, e.Chloroplasts, e.SexualReproduction];
+        state.races.Entish.evolutionTree = [e.Entish].concat(chloroplasts);
+        state.races.Cacti.evolutionTree = [e.Cacti].concat(chloroplasts);
+
+        let chitin = [e.Sentience, e.Bryophyte, e.Spores, e.Multicellular, e.Chitin, e.SexualReproduction];
+        state.races.Sporgar.evolutionTree = [e.Sporgar].concat(chitin);
+        state.races.Shroomi.evolutionTree = [e.Shroomi].concat(chitin);
+
+        state.raceAchievementList.push(state.races.Sharkin);
+        state.raceAchievementList.push(state.races.Octigoran);
+        state.raceAchievementList.push(state.races.Antid);
+        state.raceAchievementList.push(state.races.Human);
+        state.raceAchievementList.push(state.races.Troll);
+        state.raceAchievementList.push(state.races.Kobold);
+        state.raceAchievementList.push(state.races.Cath);
+        state.raceAchievementList.push(state.races.Arraak);
+        state.raceAchievementList.push(state.races.Tortoisan);
+        state.raceAchievementList.push(state.races.Entish);
+        state.raceAchievementList.push(state.races.Sporgar);
+        state.raceAchievementList.push(state.races.Mantis);
+        state.raceAchievementList.push(state.races.Orc);
+        state.raceAchievementList.push(state.races.Ogre);
+        state.raceAchievementList.push(state.races.Goblin);
+        state.raceAchievementList.push(state.races.Wolven);
+        state.raceAchievementList.push(state.races.Pterodacti);
+        state.raceAchievementList.push(state.races.Gecko);
+        state.raceAchievementList.push(state.races.Cacti);
+        state.raceAchievementList.push(state.races.Shroomi);
+        state.raceAchievementList.push(state.races.Scorpid);
+        state.raceAchievementList.push(state.races.Elven);
+        state.raceAchievementList.push(state.races.Cyclops);
+        state.raceAchievementList.push(state.races.Gnome);
+        state.raceAchievementList.push(state.races.Centaur);
+        state.raceAchievementList.push(state.races.Dracnid);
+        state.raceAchievementList.push(state.races.Slitheryn);
+
+        state.battleManager.campaigns = userOverrideCampaigns;
     }
 
     initialiseState();
@@ -2796,7 +3073,7 @@
             if (settings.hasOwnProperty(settingKey)) {
                 state.craftableResourceList[i].autoCraftEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = defaultEnabled;
+                settings[settingKey] = defaultAllOptionsEnabled;
             }
         }
         
@@ -2806,7 +3083,7 @@
             if (settings.hasOwnProperty(settingKey)) {
                 state.allBuildingList[i].autoBuildEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = defaultEnabled;
+                settings[settingKey] = defaultAllOptionsEnabled;
             }
         }
     }
@@ -2826,43 +3103,49 @@
             settings['sell' + resource.id] = resource.autoSellEnabled;
         }
         if (!settings.hasOwnProperty('autoEvolution')) {
-            settings.autoEvolution = defaultEnabled;
+            settings.autoEvolution = defaultAllOptionsEnabled;
+        }
+        if (!settings.hasOwnProperty('autoAchievements')) {
+            settings.autoAchievements = false;
+        }
+        if (!settings.hasOwnProperty('autoChallenge')) {
+            settings.autoChallenge = false;
         }
         if (!settings.hasOwnProperty('autoMarket')) {
-            settings.autoMarket = defaultEnabled;
+            settings.autoMarket = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoFight')) {
-            settings.autoFight = defaultEnabled;
+            settings.autoFight = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoCraft')) {
-            settings.autoCraft = defaultEnabled;
+            settings.autoCraft = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoARPA')) {
-            settings.autoARPA = defaultEnabled;
+            settings.autoARPA = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoBuild')) {
-            settings.autoBuild = defaultEnabled;
+            settings.autoBuild = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoResearch')) {
-            settings.autoResearch = defaultEnabled;
+            settings.autoResearch = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoJobs')) {
-            settings.autoJobs = defaultEnabled;
+            settings.autoJobs = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoCraftsmen')) {
-            settings.autoCraftsmen = defaultEnabled;
+            settings.autoCraftsmen = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoPower')) {
-            settings.autoPower = defaultEnabled;
+            settings.autoPower = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoTradeSpecialResources')) {
-            settings.autoTradeSpecialResources = defaultEnabled;
+            settings.autoTradeSpecialResources = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoSmelter')) {
-            settings.autoSmelter = defaultEnabled;
+            settings.autoSmelter = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoFactory')) {
-            settings.autoFactory = defaultEnabled;
+            settings.autoFactory = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoMAD')) {
             settings.autoMAD = false;
@@ -2908,18 +3191,75 @@
         autoGatherResource(state.evolutions.Rna, 10);
         autoGatherResource(state.evolutions.Dna, 10);
 
-        // If we have performed a soft reset with a bioseeded ship then we get to choose our race directly
-        if (state.evolutions.RaceAntid.isUnlocked()) {
-            state.evolutions.RaceAntid.click();
-            return;
+        if (settings.autoChallenge) {
+            for (let i = 0; i < state.evolutionChallengeList.length; i++) {
+                // If we successfully click a challenge then return so the ui has time to update
+                if (state.evolutionChallengeList[i].click()) {
+                    return;
+                }
+            }
         }
 
-        state.evolutions.Sentience.click();
-        state.evolutions.Arthropods.click();
-        state.evolutions.BilateralSymmetry.click();
-        state.evolutions.Multicellular.click();
-        state.evolutions.Phagocytosis.click();
-        state.evolutions.SexualReproduction.click();
+        // If user wants a specific evolution then go with that one
+        if (state.evolutionTarget === null && userOverrideEvolutionPath !== "") {
+            state.evolutionTarget = state.races[userOverrideEvolutionPath];
+        }
+
+        if (state.evolutionTarget === null) {
+            if (settings.autoAchievements) {
+                for (let i = 0; i < state.raceAchievementList.length; i++) {
+                    const race = state.raceAchievementList[i];
+                    const achievementLevel = settings.autoChallenge ? 5 : 1; // If autoChallenge set then go for full 5 stars
+    
+                    if (state.evolutionTarget === null && !race.isAchievementUnlocked(achievementLevel)) {
+                        console.log("Extinction achievement targeting " + race.name);
+                        state.evolutionTarget = race;
+
+                        if (!race.isEvolutionConditional) {
+                            break;
+                        }
+                    }
+
+                    if (state.evolutionTarget !== null && state.evolutionFallback === null && !race.isEvolutionConditional && !race.isAchievementUnlocked(achievementLevel)) {
+                        console.log("Extinction achievement fallback " + race.name);
+                        state.evolutionFallback = race;
+                    }
+                }
+
+                if (state.evolutionTarget === null) {
+                    console.log("No race extinction achievements remaining. Choosing Antid.");
+                    state.evolutionTarget = state.races.Antid;
+                }
+
+                if (state.evolutionFallback === null) {
+                    console.log("No remaining extinction achievement fallback. hoosing Antid.");
+                    state.evolutionFallback = state.races.Antid;
+                }
+            } else {
+                // Just go for antids
+                console.log("autoAchievements disabled. Choosing Antid.");
+                state.evolutionTarget = state.races.Antid;
+                state.evolutionFallback = state.races.Antid;
+            }
+        }
+
+        // Lets go for our targeted evolution
+        for (let i = 0; i < state.evolutionTarget.evolutionTree.length; i++) {
+            if (state.evolutionTarget.evolutionTree[i].click()) {
+                // If we successfully click the action then return to give the ui some time to refresh
+                return;
+            }
+        }
+
+        // If we can't find our targeted evolution then use the fallback (eg. our target is an Aquatic race but we're not on an ocean planet)
+        if (state.evolutionTarget.isEvolutionConditional) {
+            for (let i = 0; i < state.evolutionFallback.evolutionTree.length; i++) {
+                if (state.evolutionFallback.evolutionTree[i].click()) {
+                    // If we successfully click the action then return to give the ui some time to refresh
+                    return;
+                }
+            }
+        }
         
         buildIfCountLessThan(state.evolutions.Membrane, 10);
         buildIfCountLessThan(state.evolutions.Organelles, 15);
@@ -3207,6 +3547,55 @@
                 availableEmployees -= lumberjacks;
                 requiredJobs[quarryWorkerIndex] += availableEmployees;
                 jobAdjustments[quarryWorkerIndex] += availableEmployees;
+            }
+        }
+
+        if (settings.autoCraftsmen) {
+            if (state.cityBuildings.Wardenclyffe.count < 15) {
+                let sheetMetalIndex = jobList.indexOf(state.jobs.SheetMetal);
+
+                if (sheetMetalIndex != -1 && state.cityBuildings.Cottage.count > 10 && state.cityBuildings.Library.count > 15 && state.cityBuildings.CoalMine.count > 8) {
+                    let plywoodIndex = jobList.indexOf(state.jobs.Plywood);
+                    let brickIndex = jobList.indexOf(state.jobs.Brick);
+                    let wroughtIronIndex = jobList.indexOf(state.jobs.WroughtIron);
+                    let additionalSheetMetalJobs = 0;
+                    
+                    if (plywoodIndex !== -1) {
+                        // add plywood jobs above 1 to sheet metal
+                        let plywoodJobs = requiredJobs[plywoodIndex];
+
+                        if (plywoodJobs > 1) {
+                            requiredJobs[plywoodIndex] = 1;
+                            jobAdjustments[plywoodIndex] -= (plywoodJobs - 1);
+                            additionalSheetMetalJobs += (plywoodJobs - 1);
+                        }
+                    }
+
+                    if (brickIndex !== -1) {
+                        // add brick jobs above 1 to sheet metal
+                        let brickJobs = requiredJobs[brickIndex];
+
+                        if (brickJobs > 1) {
+                            requiredJobs[brickIndex] = 1;
+                            jobAdjustments[brickIndex] -= (brickJobs - 1);
+                            additionalSheetMetalJobs += (brickJobs - 1);
+                        }
+                    }
+
+                    if (wroughtIronIndex !== -1) {
+                        // add wroughtIron jobs above 1 to sheet metal
+                        let wroughtIronJobs = requiredJobs[wroughtIronIndex];
+
+                        if (wroughtIronJobs > 1) {
+                            requiredJobs[wroughtIronIndex] = 1;
+                            jobAdjustments[wroughtIronIndex] -= (wroughtIronJobs - 1);
+                            additionalSheetMetalJobs += (wroughtIronJobs - 1);
+                        }
+                    }
+
+                    requiredJobs[sheetMetalIndex] += additionalSheetMetalJobs;
+                    jobAdjustments[sheetMetalIndex] += additionalSheetMetalJobs;
+                }
             }
         }
 
@@ -3855,21 +4244,51 @@
         let items = document.querySelectorAll('#tech .action');
         for (let i = 0; i < items.length; i++) {
             if (items[i].className.indexOf("cna") < 0) {
-                if (settings.autoSpace) {
-                    // If we're going to space then research fanatacism
-                    // Also, don't reject world unity. We want the +25% resource bonus
-                    if (items[i].id !== "tech-anthropology" && items[i].id !== "tech-wc_reject") {
-                        // @ts-ignore
-                        items[i].children[0].click();
-                        continue;
-                    }
+                const itemId = items[i].id;
+                let click = false;
+
+                if (itemId !== "tech-anthropology" && itemId !== "tech-fanaticism" && itemId !== "tech-wc_reject"
+                    && itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest") {
+                        click = true;
                 } else {
-                    // If we're not going to space then research anthropology
-                    if (items[i].id !== "tech-fanaticism") {
-                        // @ts-ignore
-                        items[i].children[0].click();
-                        continue;
+                    if (itemId === userOverrideTheology) {
+                        // use the user's override choice
+                        console.log("Picking user's choice of theology: " + itemId);
+                        click = true;
                     }
+
+                    if (userOverrideTheology === "") {
+                        if (!settings.autoSpace && itemId === "tech-anthropology") {
+                            // If we're not going to space then research anthropology
+                            console.log("Picking: " + itemId);
+                            click = true;
+                        }
+                        if (settings.autoSpace && itemId === "tech-fanaticism") {
+                            // If we're going to space then research fanatacism
+                            console.log("Picking: " + itemId);
+                            click = true;
+                        }
+                    }
+
+                    if (itemId === userOverrideUnification) {
+                        // use the user's override choice
+                        console.log("Picking user's choice of unification: " + itemId);
+                        click = true;
+                    }
+
+                    if (userOverrideUnification === "") {
+                        // Don't reject world unity. We want the +25% resource bonus
+                        if (itemId === "tech-wc_money" || itemId === "tech-wc_morale"|| itemId === "tech-wc_conquest") {
+                            console.log("Picking: " + itemId);
+                            click = true;
+                        }
+                    }
+                }
+
+                if (click) {
+                    // @ts-ignore
+                    items[i].children[0].click();
+                    return;
                 }
             }
         }
@@ -4406,6 +4825,12 @@
         
         if ($('#autoEvolution').length === 0) {
             createSettingToggle('autoEvolution');
+        }
+        if ($('#autoAchievements').length === 0) {
+            createSettingToggle('autoAchievements');
+        }
+        if ($('#autoChallenge').length === 0) {
+            createSettingToggle('autoChallenge');
         }
         if ($('#autoFight').length === 0) {
             createSettingToggle('autoFight');
