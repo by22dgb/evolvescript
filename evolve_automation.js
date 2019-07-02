@@ -2910,7 +2910,7 @@
         state.consumptionPriorityList.push(state.cityBuildings.Mine);
         state.consumptionPriorityList.push(state.cityBuildings.CementPlant);
         
-        if (state.resources.Plasmids.currentQuantity >= 500 && state.jobManager.canManualCraft()) {
+        if (!isLowPlasmidCount()) {
             state.consumptionPriorityList.push(state.cityBuildings.Sawmill);
             state.consumptionPriorityList.push(state.cityBuildings.RockQuarry);
             state.consumptionPriorityList.push(state.cityBuildings.CoalMine);
@@ -3274,11 +3274,11 @@
         let selectedPlanet = "";
 
         selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Forest");
-        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Grassland"); }
-        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Oceanic"); }
-        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Desert"); }
-        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Volcanic"); }
-        if (selectedPlanet === "") { evolutionPlanetSelection(potentialPlanets, "Tundra"); }
+        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Grassland"); }
+        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Oceanic"); }
+        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Desert"); }
+        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Volcanic"); }
+        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Tundra"); }
 
         // This one is a little bit special. We need to trigger the "mouseover" first as it creates a global javascript varaible
         // that is then destroyed in the "click"
@@ -3859,9 +3859,9 @@
         }
         
         // Let's wait until we have a good enough population count
-        if (state.goal !== "PreparingMAD" && (state.resources.Plasmids.currentQuantity < 500 || !state.jobManager.canManualCraft()) && state.resources.Population.currentQuantity < 195) {
+        if (state.goal !== "PreparingMAD" && isLowPlasmidCount() && state.resources.Population.currentQuantity < 195) {
             return;
-        } else if (state.goal !== "PreparingMAD" && (state.resources.Plasmids.currentQuantity >= 500 && state.jobManager.canManualCraft()) && state.resources.Population.currentQuantity < 245) {
+        } else if (state.goal !== "PreparingMAD" && !isLowPlasmidCount() && state.resources.Population.currentQuantity < 245) {
             return;
         }
         
@@ -4126,7 +4126,8 @@
         let targetBuilding = null;
 
         // Special for very beginning of game - If we've unlocked cement plants but don't have any yet then buy at least 2
-        if (state.cityBuildings.CementPlant.autoBuildEnabled && state.cityBuildings.CementPlant.isUnlocked() && state.cityBuildings.CementPlant.count < 2) {
+        if (state.cityBuildings.CementPlant.autoBuildEnabled && state.cityBuildings.CementPlant.isUnlocked()
+                && state.cityBuildings.CementPlant.count < 2 && !isLowPlasmidCount()) {
             state.cityBuildings.CementPlant.tryBuild();
             return;
         }
@@ -4194,7 +4195,7 @@
 
             if (building === state.cityBuildings.CoalPower) {
                 // I'd like to check if we are in a "no plasmids" run but not sure how... so check manual crafting instead
-                if (state.resources.Plasmids.currentQuantity > 0 && state.jobManager.canManualCraft()) {
+                if (!isLowPlasmidCount()) {
                     buildIfEnoughProduction(building, state.resources.Coal, 2.35);
                 } else {
                     buildIfEnoughProduction(building, state.resources.Coal, 0.5); // If we don't have plasmids then have to go much lower
@@ -4203,17 +4204,10 @@
                 continue;
             }
 
-            if (building === state.cityBuildings.Apartment) {
-                if (state.resources.Plasmids.currentQuantity < 500) {
-                    buildIfCountLessThan(building, state.cityBuildings.CoalPower.count);
-                    continue;
-                }
-            }
-
             if (!settings.autoSpace && state.resources.Plasmids.currentQuantity > 2000 && building === state.cityBuildings.OilPower && state.jobManager.canManualCraft()) {
                 buildIfCountLessThan(building, 5);
                 continue;
-            } else if ((state.resources.Plasmids.currentQuantity < 500 || !state.jobManager.canManualCraft()) && building === state.cityBuildings.OilPower) {
+            } else if (isLowPlasmidCount() && building === state.cityBuildings.OilPower) {
                 buildIfEnoughProduction(building, state.resources.Oil, 1);
                 continue;
             } else if (building === state.cityBuildings.OilPower) {
@@ -4390,7 +4384,8 @@
             let requiredStateOn = 0;
 
             // Some buildings have state that turn on later... ignore them if they don't have state yet!
-            if (!building.hasState() || (building === state.cityBuildings.Mill && state.resources.Plasmids.currentQuantity < 500)) {
+            // Also, don't manage mills if we don't have many plasmids or are doing the no plasmid challenge
+            if (!building.hasState() || (building === state.cityBuildings.Mill && isLowPlasmidCount())) {
                 continue;
             }
 
@@ -5076,6 +5071,15 @@
     //#endregion UI
 
     //#region Utility Functions
+
+    function isNoPlasmidChallenge() {
+        // This isn't a good way to detect this but it will do for now
+        return !state.jobManager.canManualCraft()
+    }
+
+    function isLowPlasmidCount() {
+        return state.resources.Plasmids.currentQuantity < 500 || isNoPlasmidChallenge()
+    }
 
     var numberSuffix = {
         K: 1000,
