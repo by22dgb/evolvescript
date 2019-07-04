@@ -2370,6 +2370,8 @@
 
         /** @type {Race[]} */
         raceAchievementList: [],
+        /** @type {Race[][]} */
+        raceGroupAchievementList: [ [] ],
         /** @type {Action[]} */
         evolutionChallengeList: [],
         /** @type {Race} */
@@ -2969,52 +2971,62 @@
 
         let bilateralSymmetry = [e.BilateralSymmetry, e.Multicellular, e.Phagocytosis, e.SexualReproduction];
 
+        let aquatic = [e.Sentience, e.Aquatic].concat(bilateralSymmetry);
+        state.races.Sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
+        state.races.Octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
+        state.raceGroupAchievementList.push([ state.races.Sharkin, state.races.Octigoran ]);
+
         let arthropods = [e.Sentience, e.Arthropods].concat(bilateralSymmetry);
         state.races.Antid.evolutionTree = [e.Antid].concat(arthropods);
         state.races.Scorpid.evolutionTree = [e.Scorpid].concat(arthropods);
         state.races.Mantis.evolutionTree = [e.Mantis].concat(arthropods);
+        state.raceGroupAchievementList.push([ state.races.Antid, state.races.Scorpid, state.races.Mantis ]);
 
         let humanoid = [e.Sentience, e.Humanoid, e.Mammals].concat(bilateralSymmetry);
         state.races.Human.evolutionTree = [e.Human].concat(humanoid);
         state.races.Orc.evolutionTree = [e.Orc].concat(humanoid);
         state.races.Elven.evolutionTree = [e.Elven].concat(humanoid);
+        state.raceGroupAchievementList.push([ state.races.Human, state.races.Orc, state.races.Elven ]);
 
         let gigantism = [e.Sentience, e.Gigantism, e.Mammals].concat(bilateralSymmetry);
         state.races.Troll.evolutionTree = [e.Troll].concat(gigantism);
         state.races.Ogre.evolutionTree = [e.Ogre].concat(gigantism);
         state.races.Cyclops.evolutionTree = [e.Cyclops].concat(gigantism);
+        state.raceGroupAchievementList.push([ state.races.Troll, state.races.Ogre, state.races.Cyclops ]);
 
         let dwarfism = [e.Sentience, e.Dwarfism, e.Mammals].concat(bilateralSymmetry);
         state.races.Kobold.evolutionTree = [e.Kobold].concat(dwarfism);
         state.races.Goblin.evolutionTree = [e.Goblin].concat(dwarfism);
         state.races.Gnome.evolutionTree = [e.Gnome].concat(dwarfism);
+        state.raceGroupAchievementList.push([ state.races.Kobold, state.races.Goblin, state.races.Gnome ]);
 
         let animalism = [e.Sentience, e.Animalism, e.Mammals].concat(bilateralSymmetry);
         state.races.Cath.evolutionTree = [e.Cath].concat(animalism);
         state.races.Wolven.evolutionTree = [e.Wolven].concat(animalism);
         state.races.Centaur.evolutionTree = [e.Centaur].concat(animalism);
+        state.raceGroupAchievementList.push([ state.races.Cath, state.races.Wolven, state.races.Centaur ]);
 
         let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
         state.races.Arraak.evolutionTree = [e.Arraak].concat(endothermic);
         state.races.Pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
         state.races.Dracnid.evolutionTree = [e.Dracnid].concat(endothermic);
+        state.raceGroupAchievementList.push([ state.races.Arraak, state.races.Pterodacti, state.races.Dracnid ]);
 
         let ectothermic = [e.Sentience, e.Ectothermic, e.Eggshell].concat(bilateralSymmetry);
         state.races.Tortoisan.evolutionTree = [e.Tortoisan].concat(ectothermic);
         state.races.Gecko.evolutionTree = [e.Gecko].concat(ectothermic);
         state.races.Slitheryn.evolutionTree = [e.Slitheryn].concat(ectothermic);
-
-        let aquatic = [e.Sentience, e.Aquatic].concat(bilateralSymmetry);
-        state.races.Sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
-        state.races.Octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
+        state.raceGroupAchievementList.push([ state.races.Tortoisan, state.races.Gecko, state.races.Slitheryn ]);
 
         let chloroplasts = [e.Sentience, e.Bryophyte, e.Poikilohydric, e.Multicellular, e.Chloroplasts, e.SexualReproduction];
         state.races.Entish.evolutionTree = [e.Entish].concat(chloroplasts);
         state.races.Cacti.evolutionTree = [e.Cacti].concat(chloroplasts);
+        state.raceGroupAchievementList.push([ state.races.Entish, state.races.Cacti ]);
 
         let chitin = [e.Sentience, e.Bryophyte, e.Spores, e.Multicellular, e.Chitin, e.SexualReproduction];
         state.races.Sporgar.evolutionTree = [e.Sporgar].concat(chitin);
         state.races.Shroomi.evolutionTree = [e.Shroomi].concat(chitin);
+        state.raceGroupAchievementList.push([ state.races.Sporgar, state.races.Shroomi ]);
 
         state.raceAchievementList.push(state.races.Sharkin);
         state.raceAchievementList.push(state.races.Octigoran);
@@ -3203,44 +3215,56 @@
         // If user wants a specific evolution then go with that one
         if (state.evolutionTarget === null && userOverrideEvolutionPath !== "") {
             state.evolutionTarget = state.races[userOverrideEvolutionPath];
+            state.evolutionFallback = state.races.Antid;
+
+            console.log("Targeting user specified race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
         }
 
         if (state.evolutionTarget === null) {
-            if (settings.autoAchievements) {
-                for (let i = 0; i < state.raceAchievementList.length; i++) {
-                    const race = state.raceAchievementList[i];
-                    const achievementLevel = settings.autoChallenge ? 5 : 1; // If autoChallenge set then go for full 5 stars
-    
-                    if (state.evolutionTarget === null && !race.isAchievementUnlocked(achievementLevel)) {
-                        console.log("Extinction achievement targeting " + race.name);
-                        state.evolutionTarget = race;
+            state.evolutionTarget = state.races.Antid;
+            state.evolutionFallback = state.races.Antid;
 
-                        if (!race.isEvolutionConditional) {
-                            break;
+            if (settings.autoAchievements) {
+                const achievementLevel = settings.autoChallenge ? 5 : 1; // If autoChallenge set then go for full 5 stars
+                let targetedGroup = { group: null, race: null, remainingPercent: 0 };
+                let fallbackGroup = { group: null, race: null, remainingPercent: 0 };
+
+                for (let i = 0; i < state.raceGroupAchievementList.length; i++) {
+                    const raceGroup = state.raceGroupAchievementList[i];
+                    let remainingAchievements = 0;
+                    let remainingRace = null;
+                    
+                    for (let j = 0; j < raceGroup.length; j++) {
+                        const race = raceGroup[j];
+                        if (!race.isAchievementUnlocked(achievementLevel)) {
+                            remainingRace = race;
+                            remainingAchievements++;
                         }
                     }
 
-                    if (state.evolutionTarget !== null && state.evolutionFallback === null && !race.isEvolutionConditional && !race.isAchievementUnlocked(achievementLevel)) {
-                        console.log("Extinction achievement fallback " + race.name);
-                        state.evolutionFallback = race;
+                    // We'll target the group with the highest percentage chance of getting an achievement
+                    let remainingPercent = remainingAchievements / raceGroup.length;
+
+                    // If this group has the most races left with remaining achievements then target an uncompleted race in this group
+                    if (remainingPercent > targetedGroup.remainingPercent) {
+                        targetedGroup.group = raceGroup;
+                        targetedGroup.race = remainingRace;
+                        targetedGroup.remainingPercent = remainingPercent;
+                    }
+
+                    // Just in case the targeted race has a condition attached (eg. acquatic requires an ocean world) then have a fallback... just in case
+                    if (remainingPercent > fallbackGroup.remainingPercent && !remainingRace.isEvolutionConditional) {
+                        fallbackGroup.group = raceGroup;
+                        fallbackGroup.race = remainingRace;
+                        fallbackGroup.remainingPercent = remainingPercent;
                     }
                 }
 
-                if (state.evolutionTarget === null) {
-                    console.log("No race extinction achievements remaining. Choosing Antid.");
-                    state.evolutionTarget = state.races.Antid;
-                }
-
-                if (state.evolutionFallback === null) {
-                    console.log("No remaining extinction achievement fallback. hoosing Antid.");
-                    state.evolutionFallback = state.races.Antid;
-                }
-            } else {
-                // Just go for antids
-                console.log("autoAchievements disabled. Choosing Antid.");
-                state.evolutionTarget = state.races.Antid;
-                state.evolutionFallback = state.races.Antid;
+                if (targetedGroup.group != null) { state.evolutionTarget = targetedGroup.race; }
+                if (fallbackGroup.group != null) { state.evolutionFallback = fallbackGroup.race; }
             }
+
+            console.log("Targeting race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
         }
 
         // Lets go for our targeted evolution
@@ -3272,9 +3296,9 @@
         // This section is for if we bioseeded life and we get to choose our path a little bit
         let potentialPlanets = document.querySelectorAll('#evolution .action');
         let selectedPlanet = "";
-
-        selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Forest");
-        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Grassland"); }
+        
+        selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Grassland");
+        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Forest"); }
         if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Oceanic"); }
         if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Desert"); }
         if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Volcanic"); }
@@ -3470,8 +3494,26 @@
                 //console.log("job " + job.id + " job.breakpointEmployees(i) " + job.breakpointEmployees(i) + " availableEmployees " + availableEmployees);
                 let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
 
-                if (job === state.jobs.Banker && state.resources.Money.currentQuantity === state.resources.Money.maxQuantity) {
+                // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
+                if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking")
+                        && state.resources.Money.currentQuantity === state.resources.Money.maxQuantity) {
                     jobsToAssign = 0;
+                }
+
+                // Races with the Intelligent trait get bonus production based on the number of professors and scientists
+                // Only unassign them when knowledge is max if the race is not intelligent
+                if (!isRaceTraitIntelligent(getRaceName())) {
+                    // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
+                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination")
+                            && state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
+                        jobsToAssign = 0;
+                    }
+
+                    // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our money knowledge cap
+                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal")
+                            && state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
+                        jobsToAssign = 0;
+                    }
                 }
 
                 if (job === state.jobs.CementWorker) {
@@ -3859,7 +3901,7 @@
         }
         
         // Let's wait until we have a good enough population count
-        if (state.goal !== "PreparingMAD" && isLowPlasmidCount() && state.resources.Population.currentQuantity < 195) {
+        if (state.goal !== "PreparingMAD" && isLowPlasmidCount() && state.resources.Population.currentQuantity < 190) {
             return;
         } else if (state.goal !== "PreparingMAD" && !isLowPlasmidCount() && state.resources.Population.currentQuantity < 245) {
             return;
@@ -5110,6 +5152,20 @@
      */
     function isMarketUnlocked() {
         return $('#tech-market > .oldTech').length > 0;
+    }
+
+    /**
+     * @param {string} research
+     */
+    function isResearchUnlocked(research) {
+        return document.querySelector("#tech-" + research + " .oldTech") !== null
+    }
+
+    /**
+     * @param {string} race
+     */
+    function isRaceTraitIntelligent(race) {
+        return race === "Cyclops";
     }
 
     /**
