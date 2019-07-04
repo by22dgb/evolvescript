@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.1
 // @description  try to take over the world!
 // @author       Fafnir
 // @author       TMVictor
@@ -2439,6 +2439,7 @@
             Apartment: new Action("city", "apartment", true),
             Farm: new Action("city", "farm", true),
             Mill: new Action("city", "mill", true),
+            Windmill: new Action("city", "windmill", true),
             Silo: new Action("city", "silo", true),
             Shed: new Action("city", "shed", true),
             LumberYard: new Action("city", "lumber_yard", true),
@@ -2694,6 +2695,11 @@
         state.cityBuildings.Mill.addRequiredResource(state.resources.Iron);
         state.cityBuildings.Mill.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Mill.addPowerConsumption(-1);
+        state.cityBuildingList.push(state.cityBuildings.Windmill);
+        state.cityBuildings.Windmill.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.Windmill.addRequiredResource(state.resources.Iron);
+        state.cityBuildings.Windmill.addRequiredResource(state.resources.Cement);
+        state.cityBuildings.Windmill.addPowerConsumption(-1);
         state.cityBuildingList.push(state.cityBuildings.Silo);
         state.cityBuildings.Silo.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Silo.addRequiredResource(state.resources.Stone);
@@ -2905,6 +2911,7 @@
         }
 
         // This list is the priority order that we want to power our buildings in
+        state.consumptionPriorityList.push(state.cityBuildings.Windmill);
         state.consumptionPriorityList.push(state.cityBuildings.Mill);
         state.consumptionPriorityList.push(state.cityBuildings.Apartment);
         state.consumptionPriorityList.push(state.cityBuildings.Wardenclyffe);
