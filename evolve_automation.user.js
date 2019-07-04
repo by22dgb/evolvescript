@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.3
 // @description  try to take over the world!
 // @author       Fafnir
 // @author       TMVictor
