@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  try to take over the world!
 // @author       Fafnir
 // @author       TMVictor
@@ -3463,16 +3463,11 @@
             if (!state.jobs.Lumberjack.isUnlocked() && !state.jobs.QuarryWorker.isUnlocked()) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs.push(availableEmployees);
-            } else if (state.resources.Food.rateOfChange < 0 && state.resources.Food.storageRatio < 0.1) {
-                // Getting a bit critical... add a farmer
+            } else if (state.resources.Food.storageRatio < 0.2 && state.resources.Food.rateOfChange < 0) {
+                // We want food to fluctuate between 0.2 and 0.8 only. We only want to add one per loop until positive
                 requiredJobs.push(state.jobs.Farmer.current + 1);
-            } else if (state.resources.Food.rateOfChange < -1 * state.resources.Population.currentQuantity / 10 && state.resources.Food.storageRatio < 0.25) {
-                // If we're losing a bit of food then add a farmer - we can lose some food as we loot some from our enemies in battle!
-                // To crush your enemies. See them driven before you. And hear the lamentation of their women.
-                // We don't know how many we need to get back to stable so just add one each loop until we're good
-                requiredJobs.push(state.jobs.Farmer.current + 1);
-            } else if ((state.resources.Food.rateOfChange > 2 && state.jobs.Farmer.current > 0) || (state.resources.Food.rateOfChange > -1 * state.resources.Population.currentQuantity / 8 && state.resources.Food.storageRatio > 0.5  && state.jobs.Farmer.current > 0)) {
-                // If we're making enough food then remove a farmer. One each loop until they're gone.
+            } else if (state.resources.Food.storageRatio > 0.8 && state.resources.Food.rateOfChange > 0) {
+                // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
                 requiredJobs.push(state.jobs.Farmer.current - 1);
             } else {
                 // We're good; leave farmers as they are
