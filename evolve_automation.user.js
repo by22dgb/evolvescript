@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.6
 // @description  try to take over the world!
 // @author       Fafnir
 // @author       TMVictor
@@ -9,6 +9,10 @@
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.3.1.min.js
 // ==/UserScript==
+//
+// DIRECT LINK FOR GREASEMONKEY / TAMPERMONKEY: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
+// Just navigate to that link with one of the monkeys installed and it will load the script.
+// You can update to latest through the relevent UI for each extension.
 //
 // * autoEvolution - Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids. See user overrides below
 //         to target another specific race or use autoAchievements to target races that you don't have extinction achievements for yet.
@@ -3465,10 +3469,10 @@
                 requiredJobs.push(availableEmployees);
             } else if (state.resources.Food.storageRatio < 0.2 && state.resources.Food.rateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to add one per loop until positive
-                requiredJobs.push(state.jobs.Farmer.current + 1);
+                requiredJobs.push(Math.min(state.jobs.Farmer.current + 1, availableEmployees));
             } else if (state.resources.Food.storageRatio > 0.8 && state.resources.Food.rateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
-                requiredJobs.push(state.jobs.Farmer.current - 1);
+                requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
             } else {
                 // We're good; leave farmers as they are
                 requiredJobs.push(state.jobs.Farmer.current);
