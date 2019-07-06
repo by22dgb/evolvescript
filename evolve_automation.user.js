@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.5
 // @description  try to take over the world!
 // @author       Fafnir
 // @author       TMVictor
@@ -4404,6 +4404,13 @@
 
         for (let i = 0; i < state.consumptionPriorityList.length; i++) {
             let building = state.consumptionPriorityList[i];
+
+            // Some buildings have state that turn on later... ignore them if they don't have state yet!
+            // Also, don't manage mills if we don't have many plasmids or are doing the no plasmid challenge
+            if (!building.hasState() || (building === state.cityBuildings.Mill && isLowPlasmidCount())) {
+                continue;
+            }
+
             availablePower += (building.consumption.power * building.stateOnCount);
 
             for (let j = 0; j < building.consumption.resourceTypes.length; j++) {
@@ -4852,14 +4859,19 @@
     }
 
     function updateUI() {
+        let resetScrollPositionRequired = false;
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
         if ($('#autoScriptContainer').length === 0) {
             let autoScriptContainer = $('<div id="autoScriptContainer"></div>');
             $('#resources').append(autoScriptContainer);
+            resetScrollPositionRequired = true;
         }
         
         let autoScriptContainerNode = document.querySelector('#autoScriptContainer');
         if (autoScriptContainerNode.nextSibling !== null) {
             autoScriptContainerNode.parentNode.appendChild(autoScriptContainerNode);
+            resetScrollPositionRequired = true;
         }
         
         if ($('#autoEvolution').length === 0) {
@@ -4951,6 +4963,11 @@
                     updateSettingsFromState();
                 }
             });
+        }
+
+        if (resetScrollPositionRequired) {
+            // Leave the scroll position where it was before all our updates to the UI above
+            document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
         }
     }
 
