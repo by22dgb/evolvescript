@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.7
 // @description  try to take over the world!
+// @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
 // @author       TMVictor
 // @match        https://pmotschmann.github.io/Evolve/
@@ -60,8 +61,10 @@
     var userOverrideEvolutionPath = ""; // eg. Dracnid, Human, etc. This only guaranetees the right evolution path is followed. The game still has randomness.
                                         // If resetting via seeder ship then race is guaranteed. Overrides autoAchievements. With no other modifiers targets Antid.
                                         // Options: Mantis, Scorpid, Antid, Human, Orc, Elven, Troll, Ogre, Cyclops, Kobold, Goblin, Gnome, Cath, Wolven, Centaur,
-                                        //   Arraak, Pterodacti, Dracnid, Tortoisan, Gecko, Slitheryn, Sharkin, Octigoran, Entish, Cacti, Sporgar, Shroomi
-    var userOverrideTheology = ""; // Pick one of: "tech-anthropology" OR "tech-fanaticism". If blank targets tech-anthropology for MAD runs and tech-fanaticism for Space runs.
+                                        //   Arraak, Pterodacti, Dracnid, Tortoisan, Gecko, Slitheryn, Sharkin, Octigoran, Entish, Cacti, Sporgar, Shroomi,
+                                        //   Balorg, Imp
+    var userOverrideTheology1 = ""; // Pick one of: "tech-anthropology" OR "tech-fanaticism". If blank targets tech-anthropology for MAD runs and tech-fanaticism for Space runs.
+    var userOverrideTheology2 = ""; // Pick one of: "tech-study" OR "tech-deify". If blank targets tech deify
     var userOverrideUnification = ""; // Pick one of: tech-wc_reject OR tech-wc_money OR tech-wc_morale OR tech-wc_conquest. If blanks targets the first one it can get that is not reject.
 
     // When your offensive rating is greater than the rating below it will target that attack type. If it doesn't meet any of the ratings then it will target the lowest.
@@ -94,6 +97,14 @@
 
             /** @type {number[]} */
             this.breakpointMaxs = breakpointMaxs;
+        }
+
+        /**
+         * @param {string} newId
+         */
+        updateId(newId) {
+            this._id = newId;
+            this._elementId = this._tabPrefix + this._concatenator + this.id;
         }
 
         get id() {
@@ -2024,6 +2035,10 @@
                 return 0;
             }
 
+            if (isHunterRace()) {
+                return 0;
+            }
+
             return this._unemployed.current;
         }
 
@@ -2299,57 +2314,46 @@
 
                             Mammals: new Action("evo", "mammals", false),
                                 Humanoid: new Action("evo", "humanoid", false),
-                                   // Sentience: new Action("evo", "sentience", false),
-                                   // Bunker: new Action("evo", "bunker", false),
                                     Human: new Action("evo", "human", false),
                                     Orc: new Action("evo", "orc", false),
                                     Elven: new Action("evo", "elven", false),
                                 Gigantism: new Action("evo", "gigantism", false),
-                                   // Sentience: new Action("evo", "sentience", false),
-                                   // Bunker: new Action("evo", "bunker", false),
                                     Troll: new Action("evo", "troll", false),
                                     Ogre: new Action("evo", "orge", false),
                                     Cyclops: new Action("evo", "cyclops", false),
                                 Dwarfism: new Action("evo", "dwarfism", false),
-                                   // Sentience: new Action("evo", "sentience", false),
-                                   // Bunker: new Action("evo", "bunker", false),
                                     Kobold: new Action("evo", "kobold", false),
                                     Goblin: new Action("evo", "goblin", false),
                                     Gnome: new Action("evo", "gnome", false),
                                 Animalism: new Action("evo", "animalism", false),
-                                    //Sentience: new Action("evo", "sentience", false),
-                                   // Bunker: new Action("evo", "bunker", false),
                                     Cath: new Action("evo", "cath", false),
                                     Wolven: new Action("evo", "wolven", false),
                                     Centaur: new Action("evo", "centaur", false),
+                                Demonic: new Action("evo", "demonic", false), // hellscape only
+                                    Balorg: new Action("evo", "balorg", false),
+                                    Imp: new Action("evo", "imp", false),
 
                             Eggshell: new Action("evo", "eggshell", false),
                                 Endothermic: new Action("evo", "endothermic", false),
-                                    //Sentience: new Action("evo", "sentience", false),
-                                   // Bunker: new Action("evo", "bunker", false),
                                     Arraak: new Action("evo", "arraak", false),
                                     Pterodacti: new Action("evo", "pterodacti", false),
                                     Dracnid: new Action("evo", "dracnid", false),
 
                                 Ectothermic: new Action("evo", "ectothermic", false),
-                                    //Sentience: new Action("evo", "sentience", false),
-                                    //Bunker: new Action("evo", "bunker", false),
                                     Tortoisan: new Action("evo", "tortoisan", false),
                                     Gecko: new Action("evo", "gecko", false),
                                     Slitheryn: new Action("evo", "slitheryn", false),
 
                             Aquatic: new Action("evo", "aquatic", false), // ocean only
-                                //Sentience: new Action("evo", "sentience", false),
-                                //Bunker: new Action("evo", "bunker", false),
                                 Sharkin: new Action("evo", "sharkin", false),
                                 Octigoran: new Action("evo", "octigoran", false),
+
+
 
                 Chloroplasts: new Action("evo", "chloroplasts", false),
                     //Multicellular: new Action("evo", "multicellular", false),
                         Poikilohydric: new Action("evo", "poikilohydric", false),
                             Bryophyte: new Action("evo", "bryophyte", false),
-                                //Sentience: new Action("evo", "sentience", false),
-                                //Bunker: new Action("evo", "bunker", false),
                                 Entish: new Action("evo", "entish", false),
                                 Cacti: new Action("evo", "cacti", false),
 
@@ -2358,8 +2362,6 @@
                     //Multicellular: new Action("evo", "multicellular", false),
                         Spores: new Action("evo", "spores", false),
                             //Bryophyte: new Action("evo", "bryophyte", false),
-                                //Sentience: new Action("evo", "sentience", false),
-                                //Bunker: new Action("evo", "bunker", false),
                                 Sporgar: new Action("evo", "sporgar", false),
                                 Shroomi: new Action("evo", "shroomi", false),
 
@@ -2398,6 +2400,8 @@
             Cath: new Race("Cath", false, "Saber Tooth Tiger"),
             Wolven: new Race("Wolven", false, "Dire Wolf"),
             Centaur: new Race("Centaur", false, "Ferghana"),
+            Balorg: new Race("Balorg", true, "Self immolation"),
+            Imp: new Race("Imp", true, "Deal with the devil"),
             Arraak: new Race("Arraak", false, "Way of the Dodo"),
             Pterodacti: new Race("Pterodacti", false, "Chicxulub"),
             Dracnid: new Race("Dracnid", false, "Desolate Smaug"),
@@ -2422,6 +2426,8 @@
             Lumber: new Action("city", "lumber", false),
             Stone: new Action("city", "stone", false),
 
+            Slaughter: new Action("city", "slaughter", false),
+
             University: new Action("city", "university", true),
             Wardenclyffe: new Action("city", "wardenclyffe", true),
             Mine: new Action("city", "mine", true),
@@ -2442,6 +2448,7 @@
             Cottage: new Action("city", "cottage", true),
             Apartment: new Action("city", "apartment", true),
             Farm: new Action("city", "farm", true),
+            SoulWell: new Action("city", "soul_well", true),
             Mill: new Action("city", "mill", true),
             Windmill: new Action("city", "windmill", true),
             Silo: new Action("city", "silo", true),
@@ -2495,6 +2502,7 @@
             RedBiodome: new Action("space", "biodome", true),
             RedExoticLab: new Action("space", "exotic_lab", true),
             RedSpaceBarracks: new Action("space", "space_barracks", true),
+            Ziggurat: new Action("space", "ziggurat", true),
             
             // Hell
             HellMission: new Action("space", "hell_mission", true),
@@ -2593,12 +2601,12 @@
         // copper: [0.75,1.12,1.49,1.86],
         // aluminium: [1,1.5,2,2.5],
         // output: [0.075,0.112,0.149,0.186]
-        state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Copper, 1.86, 75)); //1.49
+        state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Copper, 1.86, 5)); //1.49
         state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Aluminium, 2, 5)); //0.29
-        state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Oil, 0.45, 10));
-        state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Lumber, 36, 1000));
-        state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Coal, 20, 30));
-        state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Neutronium, 0.125, 1));
+        state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Oil, 0.45, 2));
+        state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Lumber, 36, 50));
+        state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Coal, 20, 5));
+        state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Neutronium, 0.125, 0.5));
 
         state.jobManager.addJobToPriorityList(state.jobs.Farmer);
         state.jobManager.addJobToPriorityList(state.jobs.Lumberjack);
@@ -2694,6 +2702,9 @@
         state.cityBuildingList.push(state.cityBuildings.Farm);
         state.cityBuildings.Farm.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Farm.addRequiredResource(state.resources.Stone);
+        state.cityBuildingList.push(state.cityBuildings.SoulWell);
+        state.cityBuildings.SoulWell.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.SoulWell.addRequiredResource(state.resources.Stone);
         state.cityBuildingList.push(state.cityBuildings.Mill);
         state.cityBuildings.Mill.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Mill.addRequiredResource(state.resources.Iron);
@@ -2828,6 +2839,7 @@
         state.spaceBuildingList.push(state.spaceBuildings.RedSpaceBarracks);
         state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(state.resources.Oil, 2);
         state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(state.resources.Food, 10);
+        state.spaceBuildingList.push(state.spaceBuildings.Ziggurat);
 
         state.spaceBuildingList.push(state.spaceBuildings.HellMission);
         state.spaceBuildingList.push(state.spaceBuildings.HellGeothermal);
@@ -2959,6 +2971,7 @@
         state.consumptionPriorityList.push(state.spaceBuildings.RedMine);
         state.consumptionPriorityList.push(state.spaceBuildings.RedBiodome);
         state.consumptionPriorityList.push(state.spaceBuildings.RedExoticLab);
+        state.consumptionPriorityList.push(state.spaceBuildings.Ziggurat);
 
         // Don't need to add Sun as they can't be turned on / off
 
@@ -2985,7 +2998,7 @@
         let aquatic = [e.Sentience, e.Aquatic].concat(bilateralSymmetry);
         state.races.Sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
         state.races.Octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
-        state.raceGroupAchievementList.push([ state.races.Sharkin, state.races.Octigoran ]);
+        // state.raceGroupAchievementList.push([ state.races.Sharkin, state.races.Octigoran ]);
 
         let arthropods = [e.Sentience, e.Arthropods].concat(bilateralSymmetry);
         state.races.Antid.evolutionTree = [e.Antid].concat(arthropods);
@@ -3017,6 +3030,11 @@
         state.races.Centaur.evolutionTree = [e.Centaur].concat(animalism);
         state.raceGroupAchievementList.push([ state.races.Cath, state.races.Wolven, state.races.Centaur ]);
 
+        let demonic = [e.Sentience, e.Demonic, e.Mammals].concat(bilateralSymmetry);
+        state.races.Balorg.evolutionTree = [e.Balorg].concat(demonic);
+        state.races.Imp.evolutionTree = [e.Imp].concat(demonic);
+        // state.raceGroupAchievementList.push([ state.races.Balorg, state.races.Imp ]);
+
         let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
         state.races.Arraak.evolutionTree = [e.Arraak].concat(endothermic);
         state.races.Pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
@@ -3041,6 +3059,8 @@
 
         state.raceAchievementList.push(state.races.Sharkin);
         state.raceAchievementList.push(state.races.Octigoran);
+        state.raceAchievementList.push(state.races.Balorg);
+        state.raceAchievementList.push(state.races.Imp);
         state.raceAchievementList.push(state.races.Antid);
         state.raceAchievementList.push(state.races.Human);
         state.raceAchievementList.push(state.races.Troll);
@@ -3214,6 +3234,12 @@
         autoGatherResource(state.evolutions.Rna, 10);
         autoGatherResource(state.evolutions.Dna, 10);
 
+        buildIfCountLessThan(state.evolutions.Membrane, 10);
+        buildIfCountLessThan(state.evolutions.Organelles, 15);
+        buildIfCountLessThan(state.evolutions.Nucleus, 5);
+        buildIfCountLessThan(state.evolutions.EukaryoticCell, 5);
+        buildIfCountLessThan(state.evolutions.Mitochondria, 3);
+
         if (settings.autoChallenge) {
             for (let i = 0; i < state.evolutionChallengeList.length; i++) {
                 // If we successfully click a challenge then return so the ui has time to update
@@ -3279,15 +3305,23 @@
         }
 
         // Lets go for our targeted evolution
+        let targetedEvolutionFound = false;
         for (let i = 0; i < state.evolutionTarget.evolutionTree.length; i++) {
-            if (state.evolutionTarget.evolutionTree[i].click()) {
-                // If we successfully click the action then return to give the ui some time to refresh
-                return;
+            if (state.evolutionTarget.evolutionTree[i].isUnlocked()) {
+                targetedEvolutionFound = true;
+
+                if (state.evolutionTarget.evolutionTree[i].click()) {
+                    // If we successfully click the action then return to give the ui some time to refresh
+                    return;
+                } else {
+                    // Our path is unlocked but we can't click it yet
+                    break;
+                }
             }
         }
 
         // If we can't find our targeted evolution then use the fallback (eg. our target is an Aquatic race but we're not on an ocean planet)
-        if (state.evolutionTarget.isEvolutionConditional) {
+        if (!targetedEvolutionFound && state.evolutionTarget.isEvolutionConditional) {
             for (let i = 0; i < state.evolutionFallback.evolutionTree.length; i++) {
                 if (state.evolutionFallback.evolutionTree[i].click()) {
                     // If we successfully click the action then return to give the ui some time to refresh
@@ -3295,12 +3329,6 @@
                 }
             }
         }
-        
-        buildIfCountLessThan(state.evolutions.Membrane, 10);
-        buildIfCountLessThan(state.evolutions.Organelles, 15);
-        buildIfCountLessThan(state.evolutions.Nucleus, 5);
-        buildIfCountLessThan(state.evolutions.EukaryoticCell, 5);
-        buildIfCountLessThan(state.evolutions.Mitochondria, 3);
     }
 
     function autoPlanetSelection() {
@@ -3449,6 +3477,11 @@
     //#region Auto Jobs
 
     function autoJobs() {
+        // Cath / Balorg / Imp race doesn't have farmers, unemployed are their farmers
+        if (isHunterRace && state.jobs.Farmer.id === "farmer") {
+            state.jobs.Farmer.updateId("free");
+        }
+
         let jobList = state.jobManager.unlockedJobPriorityList();
 
         // No jobs unlocked yet
@@ -4091,6 +4124,8 @@
         autoGatherResource(state.cityBuildings.Food, 10);
         autoGatherResource(state.cityBuildings.Lumber, 10);
         autoGatherResource(state.cityBuildings.Stone, 10);
+
+        autoGatherResource(state.cityBuildings.Slaughter, 10);
     }
     
     /**
@@ -4290,16 +4325,17 @@
                 let click = false;
 
                 if (itemId !== "tech-anthropology" && itemId !== "tech-fanaticism" && itemId !== "tech-wc_reject"
-                    && itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest") {
+                    && itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest"
+                    && itemId !== "tech-study" && itemId !== "tech-deify") {
                         click = true;
                 } else {
-                    if (itemId === userOverrideTheology) {
+                    if (itemId === userOverrideTheology1) {
                         // use the user's override choice
-                        console.log("Picking user's choice of theology: " + itemId);
+                        console.log("Picking user's choice of theology 1: " + itemId);
                         click = true;
                     }
 
-                    if (userOverrideTheology === "") {
+                    if (userOverrideTheology1 === "") {
                         if (!settings.autoSpace && itemId === "tech-anthropology") {
                             // If we're not going to space then research anthropology
                             console.log("Picking: " + itemId);
@@ -4307,6 +4343,20 @@
                         }
                         if (settings.autoSpace && itemId === "tech-fanaticism") {
                             // If we're going to space then research fanatacism
+                            console.log("Picking: " + itemId);
+                            click = true;
+                        }
+                    }
+
+                    if (itemId === userOverrideTheology2) {
+                        // use the user's override choice
+                        console.log("Picking user's choice of theology 2: " + itemId);
+                        click = true;
+                    }
+
+                    if (userOverrideTheology2 === "") {
+                        if (itemId === "tech-deify") {
+                            // Just pick deify for now
                             console.log("Picking: " + itemId);
                             click = true;
                         }
@@ -4346,6 +4396,7 @@
             if (btn !== null && !wouldBreakMoneyFloor(26500)) {
                 // @ts-ignore
                 btn.click();
+                return;
             }
         }
         if (settings.arpa.stock_exchange) {
@@ -4353,6 +4404,7 @@
             if (btn !== null && ! wouldBreakMoneyFloor(30000)) {
                 // @ts-ignore
                 btn.click();
+                return;
             }
         }
         if (settings.arpa.monument) {
@@ -4360,6 +4412,7 @@
             if (btn !== null) {
                 // @ts-ignore
                 btn.click();
+                return;
             }
         }
         if (settings.arpa.launch_facility) {
@@ -4367,6 +4420,7 @@
             if (btn !== null) {
                 // @ts-ignore
                 btn.click();
+                return;
             }
         }
         
@@ -4378,6 +4432,7 @@
             if (sequenceValue === state.lastGenomeSequenceValue) {
                 // @ts-ignore
                 sequenceBtn.click();
+                return;
             }
             
             state.lastGenomeSequenceValue = sequenceValue;
@@ -5149,6 +5204,12 @@
     var numberSuffix = {
         K: 1000,
         M: 1000000,
+        G: 1000000000,
+        T: 1000000000000,
+        P: 1000000000000000,
+        E: 1000000000000000000,
+        Z: 1000000000000000000000,
+        Y: 1000000000000000000000000,
     }
 
     /**
@@ -5209,6 +5270,11 @@
         }
         
         return raceNameNode.textContent;
+    }
+
+    function isHunterRace() {
+        let raceName = getRaceName();
+        return raceName === state.races.Cath.name || raceName === state.races.Balorg.name || raceName === state.races.Imp.name;
     }
 
     /**
