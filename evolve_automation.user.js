@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.7
+// @version      0.8
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3478,7 +3478,7 @@
 
     function autoJobs() {
         // Cath / Balorg / Imp race doesn't have farmers, unemployed are their farmers
-        if (isHunterRace && state.jobs.Farmer.id === "farmer") {
+        if (isHunterRace() && state.jobs.Farmer.id === "farmer") {
             state.jobs.Farmer.updateId("free");
         }
 
