@@ -2879,12 +2879,12 @@
     };
 
     function initialiseState() {
-		// let moduleSpecifier = './vars.js';
-	  
-		// import(moduleSpecifier).then((moduleObject) => {
+        // let moduleSpecifier = './vars.js';
+      
+        // import(moduleSpecifier).then((moduleObject) => {
         //     //dynamicImportGlobal(module.global);
         //     state.global = moduleObject.global;
-		// });
+        // });
 
         // Construct tradable resource list
         state.marketManager.addTradableResource(state.resources.Alloy);
@@ -4529,10 +4529,10 @@
             return;
         }
 
-        if (state.marketManager.isMultiplierUnlocked(1000)) {
+        if (state.marketManager.isMultiplierUnlocked(1000) && state.marketManager.getMultiplier() != 1000) {
             state.marketManager.setMultiplier(1000);
             return;
-        } else if (state.marketManager.isMultiplierUnlocked(100)) {
+        } else if (!state.marketManager.isMultiplierUnlocked(1000) && state.marketManager.isMultiplierUnlocked(100) && state.marketManager.getMultiplier() != 100) {
             state.marketManager.setMultiplier(100);
             tradeQuantity = 100;
             return;
