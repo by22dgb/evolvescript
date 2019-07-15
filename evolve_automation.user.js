@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.8
+// @version      0.9
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -9,6 +9,7 @@
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.3.1.min.js
+// @require      https://code.jquery.com/ui/1.12.1/jquery-ui.min.js
 // ==/UserScript==
 //
 // DIRECT LINK FOR GREASEMONKEY / TAMPERMONKEY: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
@@ -58,15 +59,9 @@
     // --------------------
     // User overrides
     // --------------------
-    var userOverrideEvolutionPath = ""; // eg. Dracnid, Human, etc. This only guaranetees the right evolution path is followed. The game still has randomness.
-                                        // If resetting via seeder ship then race is guaranteed. Overrides autoAchievements. With no other modifiers targets Antid.
-                                        // Options: Mantis, Scorpid, Antid, Human, Orc, Elven, Troll, Ogre, Cyclops, Kobold, Goblin, Gnome, Cath, Wolven, Centaur,
-                                        //   Arraak, Pterodacti, Dracnid, Tortoisan, Gecko, Slitheryn, Sharkin, Octigoran, Entish, Cacti, Sporgar, Shroomi,
-                                        //   Balorg, Imp
-    var userOverrideTheology1 = ""; // Pick one of: "tech-anthropology" OR "tech-fanaticism". If blank targets tech-anthropology for MAD runs and tech-fanaticism for Space runs.
-    var userOverrideTheology2 = ""; // Pick one of: "tech-study" OR "tech-deify". If blank targets tech deify
-    var userOverrideUnification = ""; // Pick one of: tech-wc_reject OR tech-wc_money OR tech-wc_morale OR tech-wc_conquest. If blanks targets the first one it can get that is not reject.
-
+    //
+    // Please see the Settings tab in game for more script settings. Target evolution, research, jobs and more!
+    //
     // When your offensive rating is greater than the rating below it will target that attack type. If it doesn't meet any of the ratings then it will target the lowest.
     var userOverrideCampaigns = [
         { name: "Ambush", rating: 10 },
@@ -82,27 +77,33 @@
 
     class Job {
         /**
+         * @param {string} name
          * @param {string} tabPrefix
          * @param {any} concatenator
          * @param {string} id
          * @param {any} isCraftsman
-         * @param {number[]} breakpointMaxs
          */
-        constructor(tabPrefix, concatenator, id, isCraftsman, breakpointMaxs) {
+        constructor(name, tabPrefix, concatenator, id, isCraftsman) {
+            this.name = name;
             this._tabPrefix = tabPrefix;
             this._concatenator = concatenator;
             this._id = id;
             this._elementId = this._tabPrefix + this._concatenator + this.id;
             this._isCraftsman = isCraftsman;
 
+            this.autoJobEnabled = true; // Don't use defaultAllOptionsEnabled. By default assign all new jobs.
+            this.priority = 0;
+
             /** @type {number[]} */
-            this.breakpointMaxs = breakpointMaxs;
+            this.breakpointMaxs = [];
         }
 
         /**
+         * @param {string} newName
          * @param {string} newId
          */
-        updateId(newId) {
+        updateId(newName, newId) {
+            this.name = newName;
             this._id = newId;
             this._elementId = this._tabPrefix + this._concatenator + this.id;
         }
@@ -114,6 +115,10 @@
         isUnlocked() {
             let containerNode = document.getElementById(this._elementId);
             return containerNode !== null && containerNode.style.display !== "none";
+        }
+
+        isManaged() {
+            return this.isUnlocked() && settings['job_' + this.id];
         }
 
         isCraftsman() {
@@ -166,15 +171,26 @@
 
         /**
          * @param {number} breakpoint
+         * @param {number} employees
+         */
+        setBreakpoint(breakpoint, employees) {
+            this.breakpointMaxs[breakpoint - 1] = employees;
+        }
+
+        /**
+         * @param {number} breakpoint
+         */
+        getBreakpoint(breakpoint) {
+            return this.breakpointMaxs[breakpoint - 1];
+        }
+
+        /**
+         * @param {number} breakpoint
          */
         breakpointEmployees(breakpoint) {
             if ((breakpoint >= 0 && this.breakpointMaxs.length === 0) || breakpoint < 0 || breakpoint > this.breakpointMaxs.length - 1) {
                 return 0;
             }
-
-            // if (this.isCraftsman() && !settings.autoCraftsmen) {
-            //     return 0;
-            // }
 
             let breakpointActual = this.breakpointMaxs[breakpoint];
 
@@ -296,16 +312,18 @@
 
     class CraftingJob extends Job {
         /**
+         * @param {string} name
          * @param {string} tabPrefix
          * @param {any} concatenator
          * @param {string} id
          * @param {any} isCraftsman
-         * @param {number[]} breakpointMaxs
-         * @param {any} craftingPriority
          */
-        constructor(tabPrefix, concatenator, id, isCraftsman, breakpointMaxs, craftingPriority) {
-            super(tabPrefix, concatenator, id, isCraftsman, breakpointMaxs);
-            this._craftingPriority = craftingPriority;
+        constructor(name, tabPrefix, concatenator, id, isCraftsman) {
+            super(name, tabPrefix, concatenator, id, isCraftsman);
+
+            this._max = -1;
+
+            this.resource = null;
         }
 
         getAddButton() {
@@ -366,21 +384,20 @@
             return false;
         }
 
+        set max(employees) {
+            this._max = employees;
+        }
+
         get max() {
             if (!this.isUnlocked()) {
                 return 0;
             }
 
-            let maxCrafters = state.jobManager.maxCraftsmen;
-            let unlockedCrafters = state.jobManager.unlockedCraftsmen;
-            let quotient = Math.floor(maxCrafters / unlockedCrafters);
-            let remainder = maxCrafters % unlockedCrafters;
-
-            if (remainder >= this._craftingPriority) {
-                quotient++;
+            if (this._max === -1) {
+                state.jobManager.calculateCraftingMaxs();
             }
 
-            return quotient;
+            return this._max;
         }
     }
 
@@ -652,6 +669,10 @@
 
             this._isTradable = isTradable;
             this.tradeRouteQuantity = tradeRouteQuantity;
+            this.currentTradeRouteBuyPrice = 0;
+            this.currentTradeRouteSellPrice = 0;
+            this.currentTradeRoutes = 0;
+
             this.autoBuyEnabled = false;
             this.autoSellEnabled = false;
             this.buyRatio = buyRatio;
@@ -1986,10 +2007,12 @@
     class JobManager {
         constructor() {
             /** @type {Job[]} */
-            this._jobPriorityList = [];
+            this.jobPriorityList = [];
+            /** @type {CraftingJob[]} */
+            this.craftingJobs = [];
             this.maxJobBreakpoints = -1;
 
-            this._unemployed = new Job("civ", "-", "free", false, []);
+            this._unemployed = new Job("Unemployed", "civ", "-", "free", false);
 
             this._lastLoopCounter = 0;
             /** @type {Job[]} */
@@ -2004,11 +2027,28 @@
          * @param {Job} job
          */
         addJobToPriorityList(job) {
-            this._jobPriorityList.push(job);
+            this.jobPriorityList.push(job);
             this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, job.breakpointMaxs.length);
         }
 
-        unlockedJobPriorityList() {
+        /**
+         * @param {CraftingJob} job
+         */
+        addCraftingJob(job) {
+            this.craftingJobs.push(job);
+        }
+
+        sortJobPriority() {
+            this.jobPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+
+            for (let i = 0; i < this.jobPriorityList.length; i++) {
+                this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, this.jobPriorityList[i].breakpointMaxs.length);
+            }
+
+            this.craftingJobs.sort(function (a, b) { return a.priority - b.priority } );
+        }
+
+        managedJobPriorityList() {
             if (this._lastLoopCounter != state.loopCounter) {
                 this._unlockedJobPriorityList = null;
             }
@@ -2016,10 +2056,10 @@
             if (this._unlockedJobPriorityList === null) {
                 this._unlockedJobPriorityList = [];
 
-                for (let i = 0; i < this._jobPriorityList.length; i++) {
-                    const job = this._jobPriorityList[i];
+                for (let i = 0; i < this.jobPriorityList.length; i++) {
+                    const job = this.jobPriorityList[i];
     
-                    if (job.isUnlocked()) {
+                    if (job.isManaged()) {
                         if (!job.isCraftsman() || (job.isCraftsman() && settings.autoCraftsmen)) {
                             this._unlockedJobPriorityList.push(job);
                         }
@@ -2044,7 +2084,7 @@
 
         get employed() {
             let employed = 0;
-            let jobList = this.unlockedJobPriorityList();
+            let jobList = this.managedJobPriorityList();
 
             for (let i = 0; i < jobList.length; i++) {
                 employed += jobList[i].current;
@@ -2061,7 +2101,7 @@
 
         get breakpointCount() {
             // We're getting the count of how many breakpoints we have so just use the normal list and get the first one
-            return this._jobPriorityList[0].breakpointMaxs.length;
+            return this.jobPriorityList[0].breakpointMaxs.length;
         }
 
         /**
@@ -2073,7 +2113,7 @@
             }
 
             let total = 0;
-            let jobList = this.unlockedJobPriorityList();
+            let jobList = this.managedJobPriorityList();
 
             for (let i = 0; i < jobList.length; i++) {
                 total += Math.max(0, jobList[i].breakpointEmployees(breakpoint));
@@ -2091,18 +2131,18 @@
             return state.jobs.Brick.isUnlocked() && state.resources.Brick.isCraftingUnlocked();
         }
 
-        get unlockedCraftsmen() {
+        get managedCraftsmen() {
             if (!this.isFoundryUnlocked) {
                 return 0;
             }
 
-            let unlockedCrafters = 0;
-            if (state.jobs.Plywood.isUnlocked()) unlockedCrafters++;
-            if (state.jobs.Brick.isUnlocked()) unlockedCrafters++;
-            if (state.jobs.WroughtIron.isUnlocked()) unlockedCrafters++;
-            if (state.jobs.SheetMetal.isUnlocked()) unlockedCrafters++;
-            if (state.jobs.Mythril.isUnlocked()) unlockedCrafters++;
-            return unlockedCrafters;
+            let managedCrafters = 0;
+            if (state.jobs.Plywood.isManaged()) managedCrafters++;
+            if (state.jobs.Brick.isManaged()) managedCrafters++;
+            if (state.jobs.WroughtIron.isManaged()) managedCrafters++;
+            if (state.jobs.SheetMetal.isManaged()) managedCrafters++;
+            if (state.jobs.Mythril.isManaged()) managedCrafters++;
+            return managedCrafters;
         }
 
         get currentCraftsmen() {
@@ -2130,12 +2170,305 @@
 
             return 0;
         }
+
+        calculateCraftingMaxs() {
+            if (!this.isFoundryUnlocked()) {
+                return;
+            }
+
+            let foundryCountNode = document.querySelector("#foundry .count");
+            if (foundryCountNode === null) {
+                return;
+            }
+
+            let max = getRealNumber(foundryCountNode.textContent.split(" / ")[1]);
+            let remainingJobs = [];
+
+            for (let i = 0; i < this.craftingJobs.length; i++) {
+                const job = this.craftingJobs[i];
+
+                if (!settings['craft' + job.resource.id]) {
+                    // The job isn't unlocked or the user has said to not craft the resource associated with this job
+                    job.max = 0;
+                } else if (!job.isManaged()) {
+                    // The user has said to not manage this job
+                    job.max = job.current;
+                    max -= job.current;
+                } else {
+                    let setting = parseInt(settings['job_b3_' + job.id]);
+                    if (setting != -1) {
+                        // The user has set a specific max for this job so we'll honour it
+                        job.max = setting;
+                        max -= setting;
+                    } else {
+                        remainingJobs.push(job);
+                    }
+                }
+            }
+
+            // Divide the remaining jobs between the remaining crafting jobs
+            let remainingWorkersToAssign = max;
+
+            for (let i = 0; i < remainingJobs.length; i++) {
+                const job = remainingJobs[i];
+                job.max = Math.floor(max / remainingJobs.length);
+                remainingWorkersToAssign -= job.max;
+            }
+
+            if (remainingWorkersToAssign > 0) {
+                for (let i = 0; i < remainingJobs.length; i++) {
+                    if (remainingWorkersToAssign > 0) {
+                        const job = remainingJobs[i];
+                        job.max++;
+                        remainingWorkersToAssign--;
+                    }
+                }
+            }
+        }
+    }
+
+    class MarketManager {
+        constructor() {
+            /** @type {Resource[]} */
+            this.resources = [];
+        }
+
+        isUnlocked() {
+            let marketTest = document.getElementById("market-qty");
+            return marketTest !== null && marketTest.style.display !== "none";
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        addTradableResource(resource) {
+            if (resource.isTradable()) {
+                this.resources.push(resource);
+            }
+        }
+
+        getSortedTradeRouteSellList() {
+            let sortedList = [];
+
+            for (let i = 0; i < this.resources.length; i++) {
+                const resource = this.resources[i];
+
+                if (this.isResourceUnlocked(resource)) {
+                    resource.currentTradeRouteBuyPrice = this.getTradeRouteBuyPrice(resource);
+                    resource.currentTradeRouteSellPrice = this.getTradeRouteSellPrice(resource);
+                    resource.currentTradeRoutes = this.getTradeRoutes(resource);
+                    sortedList.push(resource);
+                }
+            }
+
+            sortedList.sort(function (a, b) { return b.currentTradeRouteSellPrice - a.currentTradeRouteSellPrice } );
+            return sortedList;
+        }
+
+        /**
+         * @param {number} multiplier
+         */
+        isMultiplierUnlocked(multiplier) {
+            return this.isUnlocked() && document.querySelector("#market-qty input[value='" + multiplier + "']") !== null;
+        }
+
+        getMultiplier() {
+            if (!this.isUnlocked()) {
+                return -1;
+            }
+
+            let checked = document.querySelector("#market-qty input:checked");
+
+            if (checked !== null) {
+                return getRealNumber(checked["value"]);
+            }
+
+            return -1;
+        }
+
+        /**
+         * @param {number} multiplier
+         */
+        setMultiplier(multiplier) {
+            if (!this.isUnlocked()) {
+                return -1;
+            }
+
+            let multiplierNode = document.querySelector("#market-qty input[value='" + multiplier + "']");
+
+            if (multiplierNode !== null) {
+                //@ts-ignore
+                multiplierNode.click();
+                return true;
+            }
+
+            return false;
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        isResourceUnlocked(resource) {
+            if (!this.isUnlocked()) {
+                return -1;
+            }
+
+            let node = document.getElementById("market-" + resource.id);
+            return node !== null && node.style.display !== "none";
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        getBuyPrice(resource) {
+            let priceNodes = document.querySelectorAll("#market-" + resource.id + " .order");
+
+            if (priceNodes !== null && priceNodes.length > 0) {
+                return getRealNumber(priceNodes[0].textContent);
+            }
+
+            return -1;
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        getSellPrice(resource) {
+            let priceNodes = document.querySelectorAll("#market-" + resource.id + " .order");
+
+            if (priceNodes !== null && priceNodes.length > 1) {
+                return getRealNumber(priceNodes[1].textContent);
+            }
+
+            return -1;
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        buy(resource) {
+            if (!this.isResourceUnlocked(resource)) {
+                return false;
+            }
+
+            let buttons = document.querySelectorAll("#market-" + resource.id + " .order");
+
+            if (buttons !== null && buttons.length > 0) {
+                //@ts-ignore
+                buttons[0].click();
+                return true;
+            }
+
+            return false;
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        sell(resource) {
+            if (!this.isResourceUnlocked(resource)) {
+                return false;
+            }
+
+            let buttons = document.querySelectorAll("#market-" + resource.id + " .order");
+
+            if (buttons !== null && buttons.length > 1) {
+                //@ts-ignore
+                buttons[1].click();
+                return true;
+            }
+
+            return false;
+        }
+
+        getCurrentTradeRoutes() {
+            return parseFloat(document.querySelector("#tradeTotal .tradeTotal").textContent.split(" / ")[0].match(/\d+/)[0])
+        }
+
+        getMaxTradeRoutes() {
+            return parseFloat(document.querySelector("#tradeTotal .tradeTotal").textContent.split(" / ")[1]);
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        getTradeRoutes(resource) {
+            return parseFloat(document.querySelector("#market-" + resource.id + " .current").textContent);
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        getTradeRouteQuantity(resource) {
+            return parseFloat(document.querySelector("#market-" + resource.id + " .trade .is-primary").getAttribute("data-label").match(/\d+(?:\.\d+)?/g)[0]);
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        getTradeRouteBuyPrice(resource) {
+            return parseFloat(document.querySelectorAll("#market-" + resource.id + " .trade .is-primary")[0].getAttribute("data-label").match(/\d+(?:\.\d+)?/g)[1]);
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        getTradeRouteSellPrice(resource) {
+            return parseFloat(document.querySelectorAll("#market-" + resource.id + " .trade .is-primary")[1].getAttribute("data-label").match(/\d+(?:\.\d+)?/g)[1]);
+        }
+
+        /**
+         * @param {Resource} resource
+         * @param {number} toAdd
+         */
+        addTradeRoutes(resource, toAdd) {
+            if (!this.isResourceUnlocked(resource)) {
+                return false;
+            }
+
+            let button = document.querySelector("#market-" + resource.id + " .sub .route");
+
+            if (button !== null) {
+                for (let i = 0; i < toAdd; i++) {
+                    // @ts-ignore
+                    button.click();
+                }
+                
+                return true;
+            }
+
+            return false
+        }
+
+        /**
+         * @param {Resource} resource
+         * @param {number} toRemove
+         */
+        removeTradeRoutes(resource, toRemove) {
+            if (!this.isResourceUnlocked(resource)) {
+                return false;
+            }
+
+            let button = document.querySelector("#market-" + resource.id + " .add .route");
+
+            if (button !== null) {
+                for (let i = 0; i < toRemove; i++) {
+                    // @ts-ignore
+                    button.click();
+                }
+
+                return true;
+            }
+
+            return false
+        }
     }
 
     class Race {
         /**
          * @param {String} name
          * @param {boolean} isEvolutionConditional
+         * @param {string} achievementText
          */
         constructor(name, isEvolutionConditional, achievementText) {
             this.name = name;
@@ -2192,6 +2525,7 @@
         windowManager: new ModalWindowManager(),
         battleManager: new BattleManager(),
         jobManager: new JobManager(),
+        marketManager: new MarketManager(),
         
         lastGenomeSequenceValue: 0,
         lastCratesOwned: -1,
@@ -2201,9 +2535,6 @@
 
         /** @type {Resource[]} */
         allResourceList: [],
-
-        /** @type {Resource[]} */
-        tradableResourceList: [],
 
         /** @type {Resource[]} */
         craftableResourceList: [],
@@ -2244,9 +2575,9 @@
             Helium_3: new Resource("res", "Helium_3", true, 0.1, 0.8, 0.9, false, -1),
 
             // Advanced resources (can't trade for these)
-            Neutronium: new Resource("res", "Neutronium", false, -1, -1, -1, false, -1),
-            Elerium: new Resource("res", "Elerium", false, -1, -1, -1, false, -1),
-            NanoTube: new Resource("res", "Nano_Tube", false, -1, -1, -1, false, -1),
+            Elerium: new Resource("res", "Elerium", false, 0.1, -1, -1, false, -1),
+            Neutronium: new Resource("res", "Neutronium", false, 0.1, -1, -1, false, -1),
+            NanoTube: new Resource("res", "Nano_Tube", false, 0.1, -1, -1, false, -1),
             
             // Craftable resources
             Plywood: new Resource("res", "Plywood", false, -1, -1, -1, true, 0.5),
@@ -2258,29 +2589,28 @@
 
         jobs: {
             // Uncapped jobs
-            Farmer: new Job("civ", "-", "farmer", false, [0, 0, 0]), // Farmers are calculated based on food rate of change only, ignoring cap
-            Lumberjack: new Job("civ", "-", "lumberjack", false, [5, 10, 10]), // Lumberjacks and quarry workers are special - remaining worker divided between them
-            QuarryWorker: new Job("civ", "-", "quarry_worker", false, [5, 10, 10]),  // Lumberjacks and quarry workers are special - remaining worker divided between them
+            Farmer: new Job("Farmer", "civ", "-", "farmer", false), // Farmers are calculated based on food rate of change only, ignoring cap
+            Lumberjack: new Job("Lumberjack", "civ", "-", "lumberjack", false), // Lumberjacks and quarry workers are special - remaining worker divided between them
+            QuarryWorker: new Job("Quarry Worker", "civ", "-", "quarry_worker", false),  // Lumberjacks and quarry workers are special - remaining worker divided between them
 
             // Capped jobs
-            Miner: new Job("civ", "-", "miner", false, [3, 5, -1]),
-            CoalMiner: new Job("civ", "-", "coal_miner", false, [2, 4, -1]),
-            CementWorker: new Job("civ", "-", "cement_worker", false, [4, 8, -1]), // Cement works are based on cap and stone rate of change
-            Entertainer: new Job("civ", "-", "entertainer", false, [5, 10, -1]),
-            Professor: new Job("civ", "-", "professor", false, [3, 6, -1]),
-            Scientist: new Job("civ", "-", "scientist", false, [3, 6, -1]),
-            Banker: new Job("civ", "-", "banker", false, [3, 5, -1]),
-            Colonist: new Job("civ", "-", "colonist", false, [0, 0, -1]),
-            SpaceMiner: new Job("civ", "-", "space_miner", false, [0, 0, -1]),
+            Miner: new Job("Miner", "civ", "-", "miner", false),
+            CoalMiner: new Job("Coal Miner", "civ", "-", "coal_miner", false),
+            CementWorker: new Job("Cement Plant Worker", "civ", "-", "cement_worker", false), // Cement works are based on cap and stone rate of change
+            Entertainer: new Job("Entertainer", "civ", "-", "entertainer", false),
+            Professor: new Job("Professor", "civ", "-", "professor", false),
+            Scientist: new Job("Scientist", "civ", "-", "scientist", false),
+            Banker: new Job("Banker", "civ", "-", "banker", false),
+            Colonist: new Job("Colonist", "civ", "-", "colonist", false),
+            SpaceMiner: new Job("Space Miner", "civ", "-", "space_miner", false),
 
             // Crafting jobs
-            Plywood: new CraftingJob("craft", "", "Plywood", true, [2, 4, -1], 2),
-            Brick: new CraftingJob("craft", "", "Brick", true, [2, 4, -1], 3),
-            WroughtIron: new CraftingJob("craft", "", "Wrought_Iron", true, [2, 4, -1], 4),
-            SheetMetal: new CraftingJob("craft", "", "Sheet_Metal", true, [2, 4, -1], 1),
-            Mythril: new CraftingJob("craft", "", "Mythril", true, [2, 4, -1], 5),
+            Plywood: new CraftingJob("Plywood Crafter", "craft", "", "Plywood", true),
+            Brick: new CraftingJob("Brick Crafter", "craft", "", "Brick", true),
+            WroughtIron: new CraftingJob("Wrought Iron Crafter", "craft", "", "Wrought_Iron", true),
+            SheetMetal: new CraftingJob("Sheet Metal Crafter", "craft", "", "Sheet_Metal", true),
+            Mythril: new CraftingJob("Mythril Crafter", "craft", "", "Mythril", true),
         },
-        
 
         evolutions: {
             Rna: new Action("evo", "rna", false),
@@ -2380,6 +2710,7 @@
         raceGroupAchievementList: [ [] ],
         /** @type {Action[]} */
         evolutionChallengeList: [],
+
         /** @type {Race} */
         evolutionTarget: null,
         /** @type {Race} */
@@ -2544,28 +2875,35 @@
         /** @type {Action[]} */
         consumptionPriorityList: [],
 
-        
+        //global: null,
     };
 
     function initialiseState() {
+		// let moduleSpecifier = './vars.js';
+	  
+		// import(moduleSpecifier).then((moduleObject) => {
+        //     //dynamicImportGlobal(module.global);
+        //     state.global = moduleObject.global;
+		// });
+
         // Construct tradable resource list
-        state.tradableResourceList.push(state.resources.Alloy); //67
-        state.tradableResourceList.push(state.resources.Polymer); //54
-        state.tradableResourceList.push(state.resources.Iridium); //40
-        state.tradableResourceList.push(state.resources.Uranium); //40
-        state.tradableResourceList.push(state.resources.Steel); //28
-        state.tradableResourceList.push(state.resources.Helium_3); //27
-        state.tradableResourceList.push(state.resources.Titanium); //27
-        state.tradableResourceList.push(state.resources.Copper); //27
-        state.tradableResourceList.push(state.resources.Aluminium); //17
-        state.tradableResourceList.push(state.resources.Iron); //17
-        state.tradableResourceList.push(state.resources.Stone); //11
-        state.tradableResourceList.push(state.resources.Lumber); //8
-        state.tradableResourceList.push(state.resources.Food); //7
-        state.tradableResourceList.push(state.resources.Oil); //8
-        state.tradableResourceList.push(state.resources.Coal); //8
-        state.tradableResourceList.push(state.resources.Cement); //5
-        state.tradableResourceList.push(state.resources.Furs); //5
+        state.marketManager.addTradableResource(state.resources.Alloy);
+        state.marketManager.addTradableResource(state.resources.Polymer);
+        state.marketManager.addTradableResource(state.resources.Iridium);
+        state.marketManager.addTradableResource(state.resources.Uranium);
+        state.marketManager.addTradableResource(state.resources.Steel);
+        state.marketManager.addTradableResource(state.resources.Helium_3);
+        state.marketManager.addTradableResource(state.resources.Titanium);
+        state.marketManager.addTradableResource(state.resources.Copper);
+        state.marketManager.addTradableResource(state.resources.Aluminium);
+        state.marketManager.addTradableResource(state.resources.Iron);
+        state.marketManager.addTradableResource(state.resources.Stone);
+        state.marketManager.addTradableResource(state.resources.Lumber);
+        state.marketManager.addTradableResource(state.resources.Food);
+        state.marketManager.addTradableResource(state.resources.Oil);
+        state.marketManager.addTradableResource(state.resources.Coal);
+        state.marketManager.addTradableResource(state.resources.Cement);
+        state.marketManager.addTradableResource(state.resources.Furs);
 
         // Construct craftable resource list
         state.craftableResourceList.push(state.resources.Plywood);
@@ -2581,7 +2919,7 @@
         state.resources.Mythril.requiredResourcesToAction.push(state.resources.Alloy);
 
         // Construct all resource list
-        state.allResourceList = state.tradableResourceList.concat(state.craftableResourceList);
+        state.allResourceList = state.marketManager.resources.concat(state.craftableResourceList);
         state.allResourceList.push(state.resources.Money);
         state.allResourceList.push(state.resources.Population);
         state.allResourceList.push(state.resources.Knowledge);
@@ -2625,6 +2963,19 @@
         state.jobManager.addJobToPriorityList(state.jobs.Banker);
         state.jobManager.addJobToPriorityList(state.jobs.Colonist);
         state.jobManager.addJobToPriorityList(state.jobs.SpaceMiner);
+
+        state.jobs.Plywood.resource = state.resources.Plywood;
+        state.jobManager.addCraftingJob(state.jobs.Plywood);
+        state.jobs.Brick.resource = state.resources.Brick;
+        state.jobManager.addCraftingJob(state.jobs.Brick);
+        state.jobs.WroughtIron.resource = state.resources.WroughtIron;
+        state.jobManager.addCraftingJob(state.jobs.WroughtIron);
+        state.jobs.SheetMetal.resource = state.resources.SheetMetal;
+        state.jobManager.addCraftingJob(state.jobs.SheetMetal);
+        state.jobs.Mythril.resource = state.resources.Mythril;
+        state.jobManager.addCraftingJob(state.jobs.Mythril);
+
+        resetJobState();
         
         // Construct city builds list
         state.cityBuildingList.push(state.cityBuildings.University);
@@ -3090,12 +3441,63 @@
         state.battleManager.campaigns = userOverrideCampaigns;
     }
 
+    function resetEvolutionSettings() {
+        settings.userEvolutionTargetName = "auto";
+    }
+
+    function resetResearchSettings() {
+        settings.userResearchTheology_1 = "auto";
+        settings.userResearchTheology_2 = "auto";
+        settings.userResearchUnification = "auto";
+    }
+
+    function resetJobState() {
+        state.jobs.Farmer.breakpointMaxs = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
+        state.jobs.Farmer.priority = 0;
+        state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Lumberjacks and quarry workers are special - remaining worker divided between them
+        state.jobs.Lumberjack.priority = 1;
+        state.jobs.QuarryWorker.breakpointMaxs = [5, 10, 10]; // Lumberjacks and quarry workers are special - remaining worker divided between them
+        state.jobs.QuarryWorker.priority = 2;
+
+        state.jobs.SheetMetal.breakpointMaxs = [2, 4, -1];
+        state.jobs.SheetMetal.priority = 3;
+        state.jobs.Plywood.breakpointMaxs = [2, 4, -1];
+        state.jobs.Plywood.priority = 4;
+        state.jobs.Brick.breakpointMaxs = [2, 4, -1];
+        state.jobs.Brick.priority = 5;
+        state.jobs.WroughtIron.breakpointMaxs = [2, 4, -1];
+        state.jobs.WroughtIron.priority = 6;
+        state.jobs.Mythril.breakpointMaxs = [2, 4, -1];
+        state.jobs.Mythril.priority = 7;
+
+        state.jobs.Entertainer.breakpointMaxs = [5, 10, -1];
+        state.jobs.Entertainer.priority = 8;
+        state.jobs.Scientist.breakpointMaxs = [3, 6, -1];
+        state.jobs.Scientist.priority = 9;
+        state.jobs.Professor.breakpointMaxs = [3, 6, -1];
+        state.jobs.Professor.priority = 10;
+        state.jobs.CementWorker.breakpointMaxs = [4, 8, -1]; // Cement works are based on cap and stone rate of change
+        state.jobs.CementWorker.priority = 11;
+        state.jobs.Miner.breakpointMaxs = [3, 5, -1];
+        state.jobs.Miner.priority = 12;
+        state.jobs.CoalMiner.breakpointMaxs = [2, 4, -1];
+        state.jobs.CoalMiner.priority = 13;
+        state.jobs.Banker.breakpointMaxs = [3, 5, -1];
+        state.jobs.Banker.priority = 14;
+        state.jobs.Colonist.breakpointMaxs = [0, 0, -1];
+        state.jobs.Colonist.priority = 15;
+        state.jobs.SpaceMiner.breakpointMaxs = [0, 0, -1];
+        state.jobs.SpaceMiner.priority = 16;
+
+        state.jobManager.sortJobPriority();
+    }
+
     initialiseState();
     
     function updateStateFromSettings() {
         // Retrieve settings for buying and selling tradable resources
-        for (let i = 0; i < state.tradableResourceList.length; i++) {
-            let resource = state.tradableResourceList[i];
+        for (let i = 0; i < state.marketManager.resources.length; i++) {
+            let resource = state.marketManager.resources[i];
             let sellSettingKey = 'sell' + resource.id;
             if (settings.hasOwnProperty(sellSettingKey)) {
                 resource.autoSellEnabled = settings[sellSettingKey];
@@ -3120,7 +3522,7 @@
             }
         }
         
-        // Retrieve settings for buying buildings resources
+        // Retrieve settings for buying buildings
         for (let i = 0; i < state.allBuildingList.length; i++) {
             let settingKey = 'bat' + state.allBuildingList[i].id;
             if (settings.hasOwnProperty(settingKey)) {
@@ -3128,6 +3530,63 @@
             } else {
                 settings[settingKey] = defaultAllOptionsEnabled;
             }
+        }
+
+        // Retrieve settings for assigning jobs
+        for (let i = 0; i < state.jobManager.jobPriorityList.length; i++) {
+            const job = state.jobManager.jobPriorityList[i];
+
+            let settingKey = 'job_' + job.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                job.autoJobEnabled = settings[settingKey];
+            } else {
+                settings[settingKey] = true; // Don't use defaultAllOptionsEnabled. By default assign all new jobs.
+            }
+
+            settingKey = 'job_p_' + job.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                job.priority = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = job.priority;
+            }
+
+            settingKey = 'job_b1_' + job.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                job.setBreakpoint(1, settings[settingKey]);
+            } else {
+                settings[settingKey] = job.getBreakpoint(1);
+            }
+
+            settingKey = 'job_b2_' + job.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                job.setBreakpoint(2, settings[settingKey]);
+            } else {
+                settings[settingKey] = job.getBreakpoint(2);
+            }
+
+            settingKey = 'job_b3_' + job.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                job.setBreakpoint(3, settings[settingKey]);
+            } else {
+                settings[settingKey] = job.getBreakpoint(3);
+            }
+        }
+        state.jobManager.sortJobPriority();
+
+        if (!settings.hasOwnProperty('userEvolutionTargetName')) {
+            settings.userEvolutionTargetName = "auto";
+        }
+        if (!settings.hasOwnProperty('userResearchTheology_1')) {
+            settings.userResearchTheology_1 = "auto";
+        }
+        if (!settings.hasOwnProperty('userResearchTheology_2')) {
+            settings.userResearchTheology_2 = "auto";
+        }
+        if (!settings.hasOwnProperty('userResearchUnification')) {
+            settings.userResearchUnification = "auto";
+        }
+        if (!settings.hasOwnProperty("tradeRouteMinimumMoneyPerSecond")) {
+            settings.tradeRouteMinimumMoneyPerSecond = 200;
         }
     }
 
@@ -3140,8 +3599,16 @@
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             settings['craft' + state.craftableResourceList[i].id] = state.craftableResourceList[i].autoCraftEnabled;
         }
-        for (let i = 0; i < state.tradableResourceList.length; i++) {
-            let resource = state.tradableResourceList[i];
+        for (let i = 0; i < state.jobManager.jobPriorityList.length; i++) {
+            const job = state.jobManager.jobPriorityList[i];
+            settings['job_' + job.id] = job.autoJobEnabled;
+            settings['job_p_' + job.id] = job.priority;
+            settings['job_b1_' + job.id] = job.getBreakpoint(1);
+            settings['job_b2_' + job.id] = job.getBreakpoint(2);
+            settings['job_b3_' + job.id] = job.getBreakpoint(3);
+        }
+        for (let i = 0; i < state.marketManager.resources.length; i++) {
+            let resource = state.marketManager.resources[i];
             settings['buy' + resource.id] = resource.autoBuyEnabled;
             settings['sell' + resource.id] = resource.autoSellEnabled;
         }
@@ -3213,6 +3680,23 @@
                 launch_facility: false,
             };
         }
+
+        if (!settings.hasOwnProperty('userEvolutionTargetName')) {
+            settings.userEvolutionTargetName = "auto";
+        }
+        if (!settings.hasOwnProperty('userResearchTheology_1')) {
+            settings.userResearchTheology_1 = "auto";
+        }
+        if (!settings.hasOwnProperty('userResearchTheology_2')) {
+            settings.userResearchTheology_2 = "auto";
+        }
+        if (!settings.hasOwnProperty('userResearchUnification')) {
+            settings.userResearchUnification = "auto";
+        }
+        if (!settings.hasOwnProperty("tradeRouteMinimumMoneyPerSecond")) {
+            settings.tradeRouteMinimumMoneyPerSecond = 200;
+        }
+
         localStorage.setItem('settings', JSON.stringify(settings));
     }
 
@@ -3249,15 +3733,14 @@
             }
         }
 
-        // If user wants a specific evolution then go with that one
-        if (state.evolutionTarget === null && userOverrideEvolutionPath !== "") {
-            state.evolutionTarget = state.races[userOverrideEvolutionPath];
+        // If the user has specified a target evolution then use that
+        if (state.evolutionTarget === null && settings.userEvolutionTargetName != "auto") {
+            state.evolutionTarget = state.races[settings.userEvolutionTargetName];
             state.evolutionFallback = state.races.Antid;
 
             console.log("Targeting user specified race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
-        }
-
-        if (state.evolutionTarget === null) {
+        } else if (state.evolutionTarget === null) {
+            // User has automatic race selection enabled - Antids or autoAchievements
             state.evolutionTarget = state.races.Antid;
             state.evolutionFallback = state.races.Antid;
 
@@ -3301,7 +3784,7 @@
                 if (fallbackGroup.group != null) { state.evolutionFallback = fallbackGroup.race; }
             }
 
-            console.log("Targeting race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
+            console.log("Script chosen race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
         }
 
         // Lets go for our targeted evolution
@@ -3479,10 +3962,11 @@
     function autoJobs() {
         // Cath / Balorg / Imp race doesn't have farmers, unemployed are their farmers
         if (isHunterRace() && state.jobs.Farmer.id === "farmer") {
-            state.jobs.Farmer.updateId("free");
+            state.jobs.Farmer.updateId("Hunter", "free");
         }
 
-        let jobList = state.jobManager.unlockedJobPriorityList();
+        state.jobManager.calculateCraftingMaxs();
+        let jobList = state.jobManager.managedJobPriorityList();
 
         // No jobs unlocked yet
         if (jobList.length === 0) {
@@ -3494,9 +3978,10 @@
         let jobAdjustments = [];
         let lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
         let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
+        let farmerRemoved = false;
 
         // First figure out how many farmers are required
-        if (state.jobs.Farmer.isUnlocked()) {
+        if (state.jobs.Farmer.isManaged()) {
             if (!state.jobs.Lumberjack.isUnlocked() && !state.jobs.QuarryWorker.isUnlocked()) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs.push(availableEmployees);
@@ -3506,6 +3991,7 @@
             } else if (state.resources.Food.storageRatio > 0.8 && state.resources.Food.rateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
+                farmerRemoved = true;
             } else {
                 // We're good; leave farmers as they are
                 requiredJobs.push(state.jobs.Farmer.current);
@@ -3632,7 +4118,7 @@
         }
 
         if (settings.autoCraftsmen) {
-            if (state.cityBuildings.Wardenclyffe.count < 15) {
+            if (state.cityBuildings.Wardenclyffe.count < 18) {
                 let sheetMetalIndex = jobList.indexOf(state.jobs.SheetMetal);
 
                 if (sheetMetalIndex != -1 && state.cityBuildings.Cottage.count > 10 && state.cityBuildings.Library.count > 15 && state.cityBuildings.CoalMine.count > 8) {
@@ -3678,6 +4164,13 @@
                     jobAdjustments[sheetMetalIndex] += additionalSheetMetalJobs;
                 }
             }
+        }
+
+        // For some reason we only have farmers available... User turned off all other job management? PEBKAC!
+        // Assign all remaining jobs to be farmers (as long as we didn't remove one... otherwise there will be one remaining. Don't use that one)
+        if (!farmerRemoved && state.jobs.Farmer.isManaged() && availableEmployees > 0) {
+            requiredJobs[0] += availableEmployees;
+            jobAdjustments[0] += availableEmployees;
         }
 
         for (let i = 0; i < jobAdjustments.length; i++) {
@@ -3940,7 +4433,7 @@
         }
         
         // Let's wait until we have a good enough population count
-        if (state.goal !== "PreparingMAD" && isLowPlasmidCount() && state.resources.Population.currentQuantity < 190) {
+        if (state.goal !== "PreparingMAD" && isLowPlasmidCount() && state.resources.Population.currentQuantity < 180) {
             return;
         } else if (state.goal !== "PreparingMAD" && !isLowPlasmidCount() && state.resources.Population.currentQuantity < 245) {
             return;
@@ -4029,28 +4522,24 @@
      */
     function autoMarket(bulkSell, ignoreSellRatio) {
         let currentMoney = state.resources.Money.currentQuantity;
-        let multipliers = $('#market-qty').children();
         let tradeQuantity = 1000;
 
         // Maybe a no trade challenge?
-        if (multipliers === null || multipliers.length === 0) {
+        if (!state.marketManager.isUnlocked()) {
             return;
         }
-        
-        if (multipliers.length >= 5 && !multipliers[4].children[0].checked) {
-            // Set trade value to be 1000x. We'll come back next loop to do the trade
-            multipliers[4].click();
+
+        if (state.marketManager.isMultiplierUnlocked(1000)) {
+            state.marketManager.setMultiplier(1000);
             return;
-        }
-        else if (multipliers.length < 5 && !multipliers[2].children[0].checked) {
-            // Set trade value to be 100x. We'll come back next loop to do the trade
-            multipliers[2].click();
+        } else if (state.marketManager.isMultiplierUnlocked(100)) {
+            state.marketManager.setMultiplier(100);
             tradeQuantity = 100;
             return;
         }
         
-        for (let i = 0; i < state.tradableResourceList.length; i++) {
-            let resource = state.tradableResourceList[i];
+        for (let i = 0; i < state.marketManager.resources.length; i++) {
+            let resource = state.marketManager.resources[i];
             let currentResourceQuantity = resource.currentQuantity;
 
             if (!resource.isUnlocked() || !resource.isTradable()) {
@@ -4329,13 +4818,13 @@
                     && itemId !== "tech-study" && itemId !== "tech-deify") {
                         click = true;
                 } else {
-                    if (itemId === userOverrideTheology1) {
+                    if (itemId === settings.userResearchTheology_1) {
                         // use the user's override choice
                         console.log("Picking user's choice of theology 1: " + itemId);
                         click = true;
                     }
 
-                    if (userOverrideTheology1 === "") {
+                    if (settings.userResearchTheology_1 === "auto") {
                         if (!settings.autoSpace && itemId === "tech-anthropology") {
                             // If we're not going to space then research anthropology
                             console.log("Picking: " + itemId);
@@ -4348,13 +4837,13 @@
                         }
                     }
 
-                    if (itemId === userOverrideTheology2) {
+                    if (itemId === settings.userResearchTheology_2) {
                         // use the user's override choice
                         console.log("Picking user's choice of theology 2: " + itemId);
                         click = true;
                     }
 
-                    if (userOverrideTheology2 === "") {
+                    if (settings.userResearchTheology_2 === "auto") {
                         if (itemId === "tech-deify") {
                             // Just pick deify for now
                             console.log("Picking: " + itemId);
@@ -4362,13 +4851,13 @@
                         }
                     }
 
-                    if (itemId === userOverrideUnification) {
+                    if (itemId === settings.userResearchUnification) {
                         // use the user's override choice
                         console.log("Picking user's choice of unification: " + itemId);
                         click = true;
                     }
 
-                    if (userOverrideUnification === "") {
+                    if (settings.userResearchUnification === "auto") {
                         // Don't reject world unity. We want the +25% resource bonus
                         if (itemId === "tech-wc_money" || itemId === "tech-wc_morale"|| itemId === "tech-wc_conquest") {
                             console.log("Picking: " + itemId);
@@ -4456,10 +4945,6 @@
         // Calculate the available power / resource rates of change that we have to work with
         let availablePower = parseInt(availablePowerNode.textContent);
         let spaceFuelMultiplier = 0.95 ** state.cityBuildings.MassDriver.stateOnCount;
-
-        for (let i = 0; i < state.allResourceList.length; i++) {
-            state.allResourceList[i].calculatedRateOfChange = state.allResourceList[i].rateOfChange;
-        }
 
         for (let i = 0; i < state.consumptionPriorityList.length; i++) {
             let building = state.consumptionPriorityList[i];
@@ -4606,41 +5091,8 @@
             }
         }
     }
-    
-    function autoTradeSpecialResources() {
-        // Some special logic for if we aren't making much money
-        if (state.resources.Money.rateOfChange < 200) {
-            if (state.resources.Money.storageRatio < 0.2) {
-                autoTradeBalanceResource(state.resources.Titanium, 0);
-                autoTradeBalanceResource(state.resources.Alloy, 0);
-                autoTradeBalanceResource(state.resources.Polymer, 0);
-                autoTradeBalanceResource(state.resources.Iridium, 0);
-            } else if (state.resources.Money.storageRatio > 0.6) {
-                autoTradeResource(state.resources.Titanium, 1);
-                autoTradeResource(state.resources.Alloy, 1);
-                autoTradeResource(state.resources.Polymer, 1);
-                autoTradeResource(state.resources.Iridium, 1);
-            }
-        } else {
-            // Automatically trade for easier resources
-            if (state.resources.Plasmids.currentQuantity !== 0) {
-                autoTradeResource(state.resources.Titanium, 5);
-            } else {
-                autoTradeResource(state.resources.Titanium, 1);
-            }
 
-            if (state.resources.Plasmids.currentQuantity > 0 && state.resources.Population.currentQuantity < 220) {
-                autoTradeResource(state.resources.Alloy, 5);
-            } else if (state.resources.Plasmids.currentQuantity > 0) {
-                autoTradeResource(state.resources.Alloy, 10);
-            } else {
-                autoTradeResource(state.resources.Alloy, 1);
-            }
-
-            autoTradeResource(state.resources.Polymer, 5);
-            autoTradeResource(state.resources.Iridium, 5);
-        }
-        
+    function autoStorage() {
         if (state.resources.Plasmids.currentQuantity < 500) {
             // If you don't have many plasmids then you need quite a few crates
             if (assignCrates(state.resources.Steel, 50)) { return }
@@ -4652,7 +5104,13 @@
 
         if (assignCrates(state.resources.Titanium, 20)) { return }
         if (assignCrates(state.resources.Alloy, 20)) { return }
-        if (assignCrates(state.resources.Polymer, 20)) { return }
+
+        // Polymer required for pre MAD tech is about 800. So just keep adding crates until we have that much storage space
+        if (state.resources.Polymer.isUnlocked() && state.resources.Polymer.maxQuantity < 800) {
+            state.resources.Polymer.updateOptions();
+            let requiredCrates = state.resources.Polymer.assignedCrates + 1;
+            if (assignCrates(state.resources.Polymer, requiredCrates)) { return }
+        }
 
         if (settings.autoSpace) {
             if (assignCrates(state.resources.Iridium, 20)) { return }
@@ -4674,6 +5132,184 @@
             }
         }
     }
+
+    /**
+     * @param {any[] | { resource: any; requiredTradeRoutes: any; completed: boolean; index: number; }[]} requiredTradeRouteResources
+     * @param {Resource[]} marketResources
+     * @param {Resource} resource
+     * @param {number} nbrRequiredTradeRoutes
+     */
+    function addResourceToTrade(requiredTradeRouteResources, marketResources, resource, nbrRequiredTradeRoutes) {
+        requiredTradeRouteResources.push( {
+            resource: resource,
+            requiredTradeRoutes: nbrRequiredTradeRoutes,
+            completed: false,
+            index: findArrayIndex(marketResources, "id", resource.id),
+        } );
+    }
+    
+    function autoTradeSpecialResources() {
+        autoStorage();
+
+        let m = state.marketManager;
+        let resources = m.getSortedTradeRouteSellList();
+        let maxTradeRoutes = m.getMaxTradeRoutes();
+        let tradeRoutesUsed = 0;
+        let currentMoneyPerSecond = state.resources.Money.rateOfChange;
+        let requiredTradeRoutes = [];
+        let adjustmentTradeRoutes = [];
+
+        // Calculate the resources and money that we would have if we weren't trading anything on the market
+        for (let i = 0; i < resources.length; i++) {
+            const resource = resources[i];
+
+            if (resource.currentTradeRoutes > 0) {
+                currentMoneyPerSecond += resource.currentTradeRoutes * resource.currentTradeRouteBuyPrice;
+            } else {
+                currentMoneyPerSecond += resource.currentTradeRoutes * resource.currentTradeRouteSellPrice;
+            }
+
+            resource.calculatedRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
+        }
+
+        // Fill our trade routes with selling
+        for (let i = 0; i < resources.length; i++) {
+            const resource = resources[i];
+            requiredTradeRoutes.push(0);
+
+            while (tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.99 && resource.calculatedRateOfChange > 7) {
+                tradeRoutesUsed++;
+                requiredTradeRoutes[i]--;
+                resource.calculatedRateOfChange -= resource.tradeRouteQuantity;
+                currentMoneyPerSecond += resource.currentTradeRouteSellPrice;
+            }
+
+            //console.log(resource.id + " tradeRoutesUsed " + tradeRoutesUsed + ", maxTradeRoutes " + maxTradeRoutes + ", storageRatio " + resource.storageRatio + ", calculatedRateOfChange " + resource.calculatedRateOfChange)
+        }
+
+        let resourcesToTrade = [];
+
+        if (!settings.autoSpace) {
+            addResourceToTrade(resourcesToTrade, resources, state.resources.Titanium, 5);
+            addResourceToTrade(resourcesToTrade, resources, state.resources.Alloy, 20);
+            addResourceToTrade(resourcesToTrade, resources, state.resources.Polymer, 5);
+        } else if (settings.autoSpace) {
+            addResourceToTrade(resourcesToTrade, resources, state.resources.Titanium, 20);
+            addResourceToTrade(resourcesToTrade, resources, state.resources.Alloy, 20);
+            addResourceToTrade(resourcesToTrade, resources, state.resources.Polymer, 20);
+            addResourceToTrade(resourcesToTrade, resources, state.resources.Iridium, 20);
+            addResourceToTrade(resourcesToTrade, resources, state.resources.Helium_3, 20);
+        }
+
+        //console.log("current money per second: " + currentMoneyPerSecond);
+
+        while (findArrayIndex(resourcesToTrade, "completed", false) != -1) {
+            for (let i = 0; i < resourcesToTrade.length; i++) {
+                const resourceToTrade = resourcesToTrade[i];
+                //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " testing...")
+
+                // The resources is not currenlty unlocked or we've done all we can or we already have max storage so don't trade for more of it
+                if (resourceToTrade.index === -1 || resourceToTrade.completed || resourceToTrade.resource.storageRatio > 0.99) {
+                    //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 1 - " + resourceToTrade.index)
+                    resourceToTrade.completed = true;
+                    continue;
+                }
+
+                // If we have free trade routes and we want to trade for more resources and we can afford it then just do it
+                if (!resourceToTrade.completed
+                            && tradeRoutesUsed < maxTradeRoutes
+                            && resourceToTrade.requiredTradeRoutes > requiredTradeRoutes[resourceToTrade.index]
+                            && currentMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > settings.tradeRouteMinimumMoneyPerSecond) {
+                    currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
+                    tradeRoutesUsed++;
+                    requiredTradeRoutes[resourceToTrade.index]++;
+                }
+
+                // We're buying enough resources now or we don't have enough money to buy more anyway
+                if (resourceToTrade.requiredTradeRoutes === requiredTradeRoutes[resourceToTrade.index]
+                            || currentMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice < settings.tradeRouteMinimumMoneyPerSecond) {
+                    //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 2")
+                    resourceToTrade.completed = true;
+                    continue;
+                }
+
+                // We're out of trade routes because we're selling so much. Remove them one by one until we can afford to buy again
+                if (resourceToTrade.requiredTradeRoutes > requiredTradeRoutes[resourceToTrade.index]) {
+                    let addedTradeRoute = false;
+
+                    for (let i = resources.length - 1; i >= 0; i--) {
+                        if (addedTradeRoute) {
+                            break;
+                        }
+
+                        const resource = resources[i];
+                        let currentRequired = requiredTradeRoutes[i];
+                        let reducedMoneyPerSecond = 0;
+
+                        // We can't remove it if we're not selling it or if we are looking at the same resource
+                        if (currentRequired >= 0 || resourceToTrade.resource === resource) {
+                            continue;
+                        }
+                        
+                        while (currentRequired < 0 && resourceToTrade.requiredTradeRoutes > requiredTradeRoutes[resourceToTrade.index]) {
+                            currentRequired++;
+                            reducedMoneyPerSecond += resource.currentTradeRouteSellPrice;
+
+                            if (currentMoneyPerSecond - reducedMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > settings.tradeRouteMinimumMoneyPerSecond) {
+                                currentMoneyPerSecond -= reducedMoneyPerSecond;
+                                currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
+                                //console.log(state.loopCounter + " " + resourceToTrade.resource.id + "current money per second: " + currentMoneyPerSecond);
+                                requiredTradeRoutes[resourceToTrade.index]++;
+                                requiredTradeRoutes[i] = currentRequired;
+                                addedTradeRoute = true;
+
+                                if (requiredTradeRoutes[resourceToTrade.index] === resourceToTrade.requiredTradeRoutes) {
+                                    //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 3")
+                                    resourceToTrade.completed = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    // We couldn't adjust enough trades to allow us to afford this resource
+                    if (!addedTradeRoute) {
+                        //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 4")
+                        resourceToTrade.completed = true;
+                    }
+                }
+            }
+        }
+
+        // Calculate adjustments
+        for (let i = 0; i < resources.length; i++) {
+            adjustmentTradeRoutes.push(requiredTradeRoutes[i] - resources[i].currentTradeRoutes);
+        }
+
+        // Adjust our trade routes - always adjust towards zero first to free up trade routes
+        for (let i = 0; i < resources.length; i++) {
+            const resource = resources[i];
+
+            if (adjustmentTradeRoutes[i] > 0 && resource.currentTradeRoutes < 0) {
+                m.addTradeRoutes(resource, adjustmentTradeRoutes[i]);
+                adjustmentTradeRoutes[i] = 0;
+            } else if (adjustmentTradeRoutes[i] < 0 && resource.currentTradeRoutes > 0) {
+                m.removeTradeRoutes(resource, -1 * adjustmentTradeRoutes[i]);
+                adjustmentTradeRoutes[i] = 0;
+            }
+        }
+
+        // Adjust our trade routes - we've adjusted towards zero, now adjust the rest
+        for (let i = 0; i < resources.length; i++) {
+            const resource = resources[i];
+
+            if (adjustmentTradeRoutes[i] > 0) {
+                m.addTradeRoutes(resource, adjustmentTradeRoutes[i]);
+            } else if (adjustmentTradeRoutes[i] < 0) {
+                m.removeTradeRoutes(resource, -1 * adjustmentTradeRoutes[i]);
+            }
+        }
+    }
     
     /**
      * @param {Resource} resource
@@ -4687,6 +5323,9 @@
             log("resource: " + resource.id + ", not unlocked");
             return false;
         }
+
+        // Update options no longer requires the modal window to be open
+        //resource.updateOptions();
 
         // User opened the modal - don't interfere with what they're doing
         if (state.windowManager.isOpen() && !state.windowManager.openedByScript) {
@@ -4835,6 +5474,11 @@
                 autoEvolution();
             }
         } else if (state.goal !== "GameOverMan") {
+            // Initial updates needed each loop
+            for (let i = 0; i < state.allResourceList.length; i++) {
+                state.allResourceList[i].calculatedRateOfChange = state.allResourceList[i].rateOfChange;
+            }
+
             if (settings.autoFight) {
                 autoBattle();
             }
@@ -4892,6 +5536,369 @@
 
     //#region UI
 
+    addScriptStyle();
+
+    function addScriptStyle() {
+        let styles = '#script_jobBody .scriptlastcolumn:after { float: right; content: "\\21c5"; }';
+        styles += '#script_jobBody .ui-sortable-helper { display: table; }'
+        styles += '#script_jobBody .draggable { cursor: move; cursor: grab; }';
+        styles += '#script_jobBody tr:active, tr.ui-sortable-helper { cursor: grabbing !important; }';
+
+        // Create style document
+        var css = document.createElement('style');
+        css.type = 'text/css';
+        css.appendChild(document.createTextNode(styles));
+        
+        // Append style to html head
+        document.getElementsByTagName("head")[0].appendChild(css);
+    }
+
+    const loadJQueryUI = (callback) => {
+        const existingScript = document.getElementById('script_jqueryui');
+      
+        if (!existingScript) {
+          const script = document.createElement('script');
+          script.src = 'https://code.jquery.com/ui/1.12.1/jquery-ui.min.js'
+          script.id = 'script_jqueryui'; // e.g., googleMaps or stripe
+          document.body.appendChild(script);
+      
+          script.onload = () => {
+            if (callback) callback();
+          };
+        }
+      
+        if (existingScript && callback) callback();
+      };
+
+    function createScriptSettings() {
+        loadJQueryUI(() => {
+            // Work to do after the library loads.
+            buildScriptSettings();
+          });  
+    }
+
+    function buildScriptSettings() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
+        $("#settings").append(scriptContentNode);
+
+        buildEvolutionSettings();
+        buildResearchSettings();
+        buildJobSettings();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function buildEvolutionSettings() {
+        let scriptContentNode = $("#script_settings");
+
+        let evolutionNode = '<div id="script_evolutionSettings">' +
+                                '<h3 class="text-center has-text-success">Evolution Settings</h3>' +
+                                '<div style="margin-top: 10px;"><button id="script_resetEvolution" class="button">Reset Evolution Settings</button></div>' +
+                                '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_evolutionBody"></div>'
+                            '</div>';
+
+        scriptContentNode.append(evolutionNode);
+        buildEvolutionSection();
+
+        $("#script_resetEvolution").on("click", function() {
+            resetEvolutionSettings();
+            updateSettingsFromState();
+            buildEvolutionSection();
+        });
+    }
+
+    function buildEvolutionSection() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let evolutionNode = $('#script_evolutionBody');
+        evolutionNode.empty().off("*");
+
+        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 300px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div>');
+        evolutionNode.append(targetEvolutionNode);
+
+        let selectNode = $('#script_userEvolutionTargetName');
+
+        let selected = settings.userEvolutionTargetName === "auto" ? ' selected="selected"' : "";
+        let node = $('<option value = "auto"' + selected + '>Script Managed</option>');
+        selectNode.append(node);
+
+        for (let i = 0; i < state.raceAchievementList.length; i++) {
+            const race = state.raceAchievementList[i];
+            let selected = settings.userEvolutionTargetName === race.name ? ' selected="selected"' : "";
+
+            if (!race.isEvolutionConditional) {
+                let raceNode = $('<option value = "' + race.name + '"' + selected + '>' + race.name + '</option>');
+                selectNode.append(raceNode);
+            }
+        }
+
+        selectNode.on('change', function() {
+            let value = $("#script_userEvolutionTargetName :selected").val();
+            settings.userEvolutionTargetName = value;
+            updateSettingsFromState();
+            //console.log("Chosen evolution target of " + value);
+        });
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function buildResearchSettings() {
+        let scriptContentNode = $("#script_settings");
+
+        let evolutionNode = '<div id="script_researchSettings">' +
+                                '<h3 class="text-center has-text-success">Research Settings</h3>' +
+                                '<div style="margin-top: 10px;"><button id="script_resetResearch" class="button">Reset Research Settings</button></div>' +
+                                '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_researchBody"></div>'
+                            '</div>';
+
+        scriptContentNode.append(evolutionNode);
+        buildResearchSection();
+
+        $("#script_resetResearch").on("click", function() {
+            resetResearchSettings();
+            updateSettingsFromState();
+            buildResearchSection();
+        });
+    }
+
+    function buildResearchSection() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let researchNode = $('#script_researchBody');
+        researchNode.empty().off("*");
+
+        // Theology 1
+        let theology1Node = $('<div style="margin-top: 5px; width: 300px"><label for="script_userResearchTheology_1">Target Theology 1:</label><select id="script_userResearchTheology_1" style="width: 150px; float: right;"></select></div>');
+        researchNode.append(theology1Node);
+
+        let selectNode = $('#script_userResearchTheology_1');
+        let selected = settings.userResearchTheology_1 === "auto" ? ' selected="selected"' : "";
+        let optionNode = $('<option value = "auto"' + selected + '>Script Managed</option>');
+        selectNode.append(optionNode);
+
+        selected = settings.userResearchTheology_1 === "tech-anthropology" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "tech-anthropology"' + selected + '>Anthropology</option>');
+        selectNode.append(optionNode);
+
+        selected = settings.userResearchTheology_1 === "tech-fanaticism" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "tech-fanaticism"' + selected + '>Fanaticism</option>');
+        selectNode.append(optionNode);
+
+        selectNode.on('change', function() {
+            let value = $("#script_userResearchTheology_1 :selected").val();
+            settings.userResearchTheology_1 = value;
+            updateSettingsFromState();
+            //console.log("Chosen theology 1 target of " + value);
+        });
+
+        // Theology 2
+        let theology2Node = $('<div style="margin-top: 5px; width: 300px"><label for="script_userResearchTheology_2">Target Theology 2:</label><select id="script_userResearchTheology_2" style="width: 150px; float: right;"></select></div>');
+        researchNode.append(theology2Node);
+
+        selectNode = $('#script_userResearchTheology_2');
+        selected = settings.userResearchTheology_2 === "auto" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "auto"' + selected + '>Script Managed</option>');
+        selectNode.append(optionNode);
+
+        selected = settings.userResearchTheology_2 === "tech-study" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "tech-study"' + selected + '>Study</option>');
+        selectNode.append(optionNode);
+
+        selected = settings.userResearchTheology_2 === "tech-deify" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "tech-deify"' + selected + '>Deify</option>');
+        selectNode.append(optionNode);
+
+        selectNode.on('change', function() {
+            let value = $("#script_userResearchTheology_2 :selected").val();
+            settings.userResearchTheology_2 = value;
+            updateSettingsFromState();
+            //console.log("Chosen theology 2 target of " + value);
+        });
+
+        // Unification
+        let unificationNode = $('<div style="margin-top: 5px; width: 300px"><label for="script_userResearchUnification">Target Unification:</label><select id="script_userResearchUnification" style="width: 150px; float: right;"></select></div>');
+        researchNode.append(unificationNode);
+
+        selectNode = $('#script_userResearchUnification');
+        selected = settings.userResearchUnification === "auto" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "auto"' + selected + '>Script Managed</option>');
+        selectNode.append(optionNode);
+
+        selected = settings.userResearchUnification === "tech-wc_reject" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "tech-wc_reject"' + selected + '>Reject</option>');
+        selectNode.append(optionNode);
+
+        selected = settings.userResearchUnification === "tech-wc_money" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "tech-wc_money"' + selected + '>Money</option>');
+        selectNode.append(optionNode);
+
+        selected = settings.userResearchUnification === "tech-wc_morale" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "tech-wc_morale"' + selected + '>Morale</option>');
+        selectNode.append(optionNode);
+
+        selected = settings.userResearchUnification === "tech-wc_conquest" ? ' selected="selected"' : "";
+        optionNode = $('<option value = "tech-wc_conquest"' + selected + '>Conquest</option>');
+        selectNode.append(optionNode);
+
+        selectNode.on('change', function() {
+            let value = $("#script_userResearchUnification :selected").val();
+            settings.userResearchUnification = value;
+            updateSettingsFromState();
+            //console.log("Chosen unification target of " + value);
+        });
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function buildJobSettings() {
+        let scriptContentNode = $("#script_settings");
+
+        let jobNode = '<div id="script_jobSettings"><h3 class="text-center has-text-success">Job Settings</h3>' +
+        '<div style="margin-top: 10px;"><button id="script_resetJobs" class="button">Reset Job Settings</button></div>' +
+        '<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Jobs</th><th class="has-text-warning" style="width:25%">1st Pass Max</th><th class="has-text-warning" style="width:25%">2nd Pass Max</th><th class="has-text-warning" style="width:25%">Final Max</th></tr>' +
+        '<tbody id="script_jobBody"></tbody></table></div>';
+
+        scriptContentNode.append(jobNode);
+        buildJobTableBody();
+
+        $("#script_resetJobs").on("click", function() {
+            resetJobState();
+            updateSettingsFromState();
+            buildJobTableBody();
+        });
+    }
+
+    function buildJobTableBody() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let tableBodyNode = $('#script_jobBody');
+        tableBodyNode.empty().off("*");
+
+        let newTableBodyText = "";
+
+        for (let i = 0; i < state.jobManager.jobPriorityList.length; i++) {
+            const job = state.jobManager.jobPriorityList[i];
+            let classAttribute = job !== state.jobs.Farmer ? ' class="draggable"' : ' class="unsortable"';
+            newTableBodyText += '<tr value="' + job.id + '"' + classAttribute + '><td id="script_' + job.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        for (let i = 0; i < state.jobManager.jobPriorityList.length; i++) {
+            const job = state.jobManager.jobPriorityList[i];
+            let jobElement = $('#script_' + job.id + 'Toggle');
+
+            var toggle = buildJobSettingsToggle(job);
+            jobElement.append(toggle);
+
+            if (job.autoJobEnabled) {
+                toggle.click();
+                toggle.children('input').attr('value', true);
+            }
+
+            jobElement = jobElement.next();
+            jobElement.append(buildJobSettingsInput(job, 1));
+            jobElement = jobElement.next();
+            jobElement.append(buildJobSettingsInput(job, 2));
+            jobElement = jobElement.next();
+            jobElement.append(buildJobSettingsInput(job, 3));
+        }
+
+        $('#script_jobBody').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let jobIds = $('#script_jobBody').sortable('toArray', {attribute: 'value'});
+
+                for (let i = 0; i < jobIds.length; i++) {
+                    // Job has been dragged... Update all job priorities
+                    state.jobManager.jobPriorityList[findArrayIndex(state.jobManager.jobPriorityList, "id", jobIds[i])].priority = i + 1; // farmers is always 0
+                }
+
+                state.jobManager.sortJobPriority();
+                updateSettingsFromState();
+            },
+        } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    /**
+     * @param {Job} job
+     */
+    function buildJobSettingsToggle(job) {
+        let classAttribute = !job.isCraftsman() ? ' class="has-text-info"' : ' class="has-text-danger"';
+        let marginTop = job !== state.jobs.Farmer ? ' margin-top: 4px;' : "";
+        let toggle = $('<label tabindex="0" class="switch ea-job-toggle" style="position:absolute;' + marginTop + ' margin-left: 10px;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span><span' + classAttribute + ' style="margin-left: 20px;">' + job.name + '</span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = !(input.getAttribute('value') === "true");
+            input.setAttribute('value', state);
+            job.autoJobEnabled = state;
+            updateSettingsFromState();
+            //console.log(job.name + " changed state to " + state);
+        });
+
+        return toggle;
+    }
+
+    /**
+     * @param {Job} job
+     * @param {number} breakpoint
+     */
+    function buildJobSettingsInput(job, breakpoint) {
+        let lastSpan = breakpoint === 3 && job !== state.jobs.Farmer ? '<span class="scriptlastcolumn"></span>' : "";
+
+        if (job === state.jobs.Farmer || (breakpoint === 3 && (job === state.jobs.Lumberjack || job === state.jobs.QuarryWorker))) {
+            let span = $('<span>Managed</span>' + lastSpan);
+            return span;
+        }
+
+        let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="width:25%"/>' + lastSpan);
+        jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job.id]);
+    
+        jobBreakpointTextbox.on('change', function() {
+            let val = jobBreakpointTextbox.val();
+            let employees = getRealNumber(val);
+            if (!isNaN(employees)) {
+                //console.log('Setting job breakpoint ' + breakpoint + ' for job ' + job.name + ' to be ' + employees);
+                job.setBreakpoint(breakpoint, employees);
+                updateSettingsFromState();
+            }
+        });
+
+        return jobBreakpointTextbox;
+    }
+
+    /**
+     * @param {Action} building
+     */
+    function createBuildingSettingsToggle(building) {
+        let buildingElement = $('#' + building.id + '_scriptToggle');
+        let toggle = $('<label tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span></label><span style="position:absolute; margin-left: 50px;">' + building.id + '</span>');
+        buildingElement.append(toggle);
+
+        if (building.autoBuildEnabled) {
+            toggle.click();
+            toggle.children('input').attr('value', true);
+        }
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = !(input.getAttribute('value') === "true");
+            input.setAttribute('value', state);
+            building.autoBuildEnabled = state;
+            updateSettingsFromState();
+        });
+
+        return toggle;
+    }
+
     function createSettingToggle(name, enabledCallBack, disabledCallBack) {
         let elm = $('#autoScriptContainer');
         let toggle = $('<label tabindex="0" class="switch" id="'+name+'" style=""><input type="checkbox" value=false> <span class="check"></span><span>'+name+'</span></label></br>');
@@ -4903,7 +5910,7 @@
                 enabledCallBack();
             }
         }
-        toggle.on('mouseup', function(e) {
+        toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
             input.setAttribute('value', state);
@@ -4926,13 +5933,21 @@
             $('#resources').append(autoScriptContainer);
             resetScrollPositionRequired = true;
         }
+
+        if ($("#script_settings").length === 0) {
+            createScriptSettings();
+        }
         
         let autoScriptContainerNode = document.querySelector('#autoScriptContainer');
         if (autoScriptContainerNode.nextSibling !== null) {
             autoScriptContainerNode.parentNode.appendChild(autoScriptContainerNode);
             resetScrollPositionRequired = true;
         }
-        
+        if ($('#autoScriptInfo').length === 0) {
+            let elm = $('#autoScriptContainer');
+            let span = $('<label id="autoScriptInfo">More options available in Settings tab</label></br>');
+            elm.append(span);
+        }
         if ($('#autoEvolution').length === 0) {
             createSettingToggle('autoEvolution');
         }
@@ -5041,7 +6056,7 @@
             toggle.click();
             toggle.children('input').attr('value', true);
         }
-        toggle.on('mouseup', function(e) {
+        toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
             input.setAttribute('value', state);
@@ -5076,7 +6091,7 @@
             toggle.click();
             toggle.children('input').attr('value', true);
         }
-        toggle.on('mouseup', function(e) {
+        toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
             input.setAttribute('value', state);
@@ -5109,7 +6124,7 @@
             toggle.click();
             toggle.children('input').attr('value', true);
         }
-        toggle.on('mouseup', function(e) {
+        toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
             input.setAttribute('value', state);
@@ -5147,7 +6162,7 @@
             toggleSell.click();
             toggleSell.children('input').attr('value', true);
         }
-        toggleBuy.on('mouseup', function(e) {
+        toggleBuy.on('change', function(e) {
             console.log(e);
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
@@ -5161,7 +6176,7 @@
             updateSettingsFromState();
             console.log(state);
         });
-        toggleSell.on('mouseup', function(e) {
+        toggleSell.on('change', function(e) {
             console.log(e);
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
@@ -5179,8 +6194,8 @@
 
     function createMarketToggles() {
         removeMarketToggles();
-        for (let i = 0; i < state.tradableResourceList.length; i++) {
-            createMarketToggle(state.tradableResourceList[i]);
+        for (let i = 0; i < state.marketManager.resources.length; i++) {
+            createMarketToggle(state.marketManager.resources[i]);
         }
     }
 
