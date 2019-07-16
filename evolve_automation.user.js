@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9
+// @version      0.9.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5113,6 +5113,7 @@
         }
 
         if (settings.autoSpace) {
+            if (assignCrates(state.resources.Polymer, 20)) { return }
             if (assignCrates(state.resources.Iridium, 20)) { return }
 
             if (state.resources.Population.currentQuantity > 380) {
@@ -5223,6 +5224,7 @@
                     currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
                     tradeRoutesUsed++;
                     requiredTradeRoutes[resourceToTrade.index]++;
+                    continue;
                 }
 
                 // We're buying enough resources now or we don't have enough money to buy more anyway
