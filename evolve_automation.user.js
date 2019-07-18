@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.1
+// @version      0.9.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4798,7 +4798,11 @@
                 continue;
             }
             
-            building.tryBuild();
+            if (building.tryBuild()) {
+                if (building._tabPrefix === "space") {
+                    removePoppers();
+                }
+            }
         }
     }
 
@@ -4869,6 +4873,7 @@
                 if (click) {
                     // @ts-ignore
                     items[i].children[0].click();
+                    removePoppers();
                     return;
                 }
             }
@@ -4885,7 +4890,6 @@
             if (btn !== null && !wouldBreakMoneyFloor(26500)) {
                 // @ts-ignore
                 btn.click();
-                return;
             }
         }
         if (settings.arpa.stock_exchange) {
@@ -4893,7 +4897,6 @@
             if (btn !== null && ! wouldBreakMoneyFloor(30000)) {
                 // @ts-ignore
                 btn.click();
-                return;
             }
         }
         if (settings.arpa.monument) {
@@ -4901,7 +4904,6 @@
             if (btn !== null) {
                 // @ts-ignore
                 btn.click();
-                return;
             }
         }
         if (settings.arpa.launch_facility) {
@@ -4909,7 +4911,6 @@
             if (btn !== null) {
                 // @ts-ignore
                 btn.click();
-                return;
             }
         }
         
@@ -4921,7 +4922,6 @@
             if (sequenceValue === state.lastGenomeSequenceValue) {
                 // @ts-ignore
                 sequenceBtn.click();
-                return;
             }
             
             state.lastGenomeSequenceValue = sequenceValue;
@@ -5470,6 +5470,10 @@
     function automate() {
         updateState();
         updateUI();
+
+        if (modifierKeyPressed) {
+            return;
+        }
         
         if (state.goal === "Evolution") {
             if (settings.autoEvolution) {
@@ -6294,6 +6298,15 @@
         return raceName === state.races.Cath.name || raceName === state.races.Balorg.name || raceName === state.races.Imp.name;
     }
 
+    function removePoppers() {
+        // TODO: Still testing
+        // let poppers = document.querySelectorAll('[id^="pop"]');
+
+        // for (let i = 0; i < poppers.length; i++) {
+        //     poppers[i].remove();
+        // }
+    }
+
     /**
      * @param {any[]} array
      * @param {string} propertyName
@@ -6307,6 +6320,17 @@
         }
         
         return -1;
+    }
+
+    var modifierKeyPressed = false;
+    $(document).keydown(function(e){
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
+    });
+    $(document).keyup(function(e){
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
+    });
+    window.onmousemove = function(e){
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
     }
 
     /**
