@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.2
+// @version      0.9.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -43,6 +43,7 @@
 // * autoSpace - If population is over 250 then it will start funding the launch facility regardless of arpa settings
 // * autoSeeder - Will send out the seeder ship once at least 4 probes are constructed. Currently tries to find a forest world, then grassland, then the others.
 //         Not currently user configurable.
+// * autoAssembleGene - Automatically assembles genes only when your knowledge is at max
 // 
 
 //@ts-check
@@ -2526,6 +2527,7 @@
         battleManager: new BattleManager(),
         jobManager: new JobManager(),
         marketManager: new MarketManager(),
+        //buildingManager: new BuildingManager(),
         
         lastGenomeSequenceValue: 0,
         lastCratesOwned: -1,
@@ -2546,6 +2548,7 @@
             Crates: new Resource("res", "Crates", false, -1, -1, -1, false, -1),
             Containers: new Resource("res", "Containers", false, -1, -1, -1, false, -1),
             Plasmids: new Resource("res", "Plasmid", false, -1, -1, -1, false, -1),
+            Genes: new Resource("res", "Genes", false, -1, -1, -1, false, -1),
 
             // Special not-really-resources-but-we'll-treat-them-like-resources resources
             Power: new Power(),
@@ -2926,6 +2929,7 @@
         state.allResourceList.push(state.resources.Crates);
         state.allResourceList.push(state.resources.Containers);
         state.allResourceList.push(state.resources.Plasmids);
+        state.allResourceList.push(state.resources.Genes);
         state.allResourceList.push(state.resources.Power);
         state.allResourceList.push(state.resources.MoonSupport);
         state.allResourceList.push(state.resources.RedSupport);
@@ -3665,6 +3669,9 @@
         }
         if (!settings.hasOwnProperty('autoSeeder')) {
             settings.autoSeeder = false;
+        }
+        if (!settings.hasOwnProperty('autoAssembleGene')) {
+            settings.autoAssembleGene = false;
         }
         if (!settings.hasOwnProperty('autoLogging')) {
             settings.autoLogging = false;
@@ -4514,6 +4521,23 @@
 
     //#endregion Auto Space
 
+    //#region Auto Assemble Gene
+
+    function autoAssembleGene() {
+        let button = document.querySelector('#arpaSequence .novo');
+
+        if (button === null) {
+            return;
+        }
+
+        if (state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
+            // @ts-ignore
+            button.click();
+        }
+    }
+
+    //#endregion Auto Assemble Gene
+
     //#region Auto Market
 
     /**
@@ -4909,8 +4933,19 @@
         if (settings.arpa.launch_facility) {
             let btn = document.querySelector("#arpalaunch_facility > div.buy > button.button.x1");
             if (btn !== null) {
+                if (getRealNumber(document.querySelector('#arpalaunch_facility progress').getAttribute("value")) === 99) {
+                    let evObj = document.createEvent("Events");
+                    evObj.initEvent("mouseover", true, false);
+                    btn.dispatchEvent(evObj);
+                }
+
                 // @ts-ignore
                 btn.click();
+
+                let popper = document.querySelector('popArpalaunch_facility');
+                if (popper !== null) {
+                    popper.remove();
+                }
             }
         }
         
@@ -5527,6 +5562,9 @@
             if (settings.autoSeeder) {
                 autoSeeder();
             }
+            if (settings.autoAssembleGene) {
+                autoAssembleGene();
+            }
         }
         
         if (state.loopCounter <= 10000) {
@@ -6016,6 +6054,9 @@
         if ($('#autoSeeder').length === 0) {
             createSettingToggle('autoSeeder');
         }
+        if ($('#autoAssembleGene').length === 0) {
+            createSettingToggle('autoAssembleGene');
+        }
 //        if ($('#autoLogging').length === 0) {
 //            createSettingToggle('autoLogging');
 //        }
@@ -6124,7 +6165,7 @@
      */
     function createBuildingToggle(building) {
         let buildingElement = $('#' + building._tabPrefix + '-' + building.id);
-        let toggle = $('<label tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 30px;left:8%;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span></label>');
+        let toggle = $('<label tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span></label>');
         buildingElement.append(toggle);
         if (building.autoBuildEnabled) {
             toggle.click();
@@ -6299,12 +6340,11 @@
     }
 
     function removePoppers() {
-        // TODO: Still testing
-        // let poppers = document.querySelectorAll('[id^="pop"]');
+        let poppers = document.querySelectorAll('[id^="pops"]'); // popspace_ and // popspc
 
-        // for (let i = 0; i < poppers.length; i++) {
-        //     poppers[i].remove();
-        // }
+        for (let i = 0; i < poppers.length; i++) {
+            poppers[i].remove();
+        }
     }
 
     /**
