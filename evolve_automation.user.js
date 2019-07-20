@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.4
+// @version      0.9.5
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2850,7 +2850,7 @@
             Scorpid: new Race("scorpid", "Scorpid", false, "Pulmonoscorpius"),
             Human: new Race("human", "Human", false, "Homo Adeadus"),
             Orc: new Race("orc", "Orc", false, "Outlander"),
-            Elven: new Race("elven", "Elven", false, "The few, the proud, the dead"),
+            Elven: new Race("elven", "Elf", false, "The few, the proud, the dead"),
             Troll: new Race("troll", "Troll", false, "Bad Juju"),
             Ogre: new Race("orge", "Ogre", false, "Too stupid to live"),
             Cyclops: new Race("cyclops", "Cyclops", false, "Blind Ambition"),
@@ -6793,8 +6793,9 @@
         if (raceNameNode === null) {
             return "";
         }
-        
-        return raceNameNode.textContent.toLowerCase();
+
+        let index = findArrayIndex(state.raceAchievementList, "name", raceNameNode.textContent);
+        return state.raceAchievementList[index].id;
     }
 
     function isHunterRace() {
