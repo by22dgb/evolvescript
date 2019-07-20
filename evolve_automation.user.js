@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.3
+// @version      0.9.4
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -39,9 +39,9 @@
 // * autoSmelter - Manages smelter output at different stages at the game. Not currently user configurable.
 // * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
 //         Not currently user configurable.
-// * autoMAD - Once population is over 195 (low plasmids) / 245 (high plasmids) and MAD is unlocked will stop sending out troops and will perform MAD
+// * autoMAD - Once population is over 180 (low plasmids) / 245 (high plasmids) and MAD is unlocked will stop sending out troops and will perform MAD
 // * autoSpace - If population is over 250 then it will start funding the launch facility regardless of arpa settings
-// * autoSeeder - Will send out the seeder ship once at least 4 probes are constructed. Currently tries to find a forest world, then grassland, then the others.
+// * autoSeeder - Will send out the seeder ship once at least 4 (or user entered max) probes are constructed. Currently tries to find a forest world, then grassland, then the others.
 //         Not currently user configurable.
 // * autoAssembleGene - Automatically assembles genes only when your knowledge is at max
 // 
@@ -404,16 +404,27 @@
 
     class Action {
         /**
+         * @param {string} name
          * @param {string} tabPrefix
          * @param {string} id
          * @param {boolean} isBuilding
          */
-        constructor(tabPrefix, id, isBuilding) {
+        constructor(name, tabPrefix, id, isBuilding) {
+            this.name = name;
             this._tabPrefix = tabPrefix;
             this._id = id;
             this._elementId = this._tabPrefix + "-" + this.id;
             this._isBuilding = isBuilding;
             this.autoBuildEnabled = defaultAllOptionsEnabled;
+            this.autoStateEnabled = true;
+
+            if (this._id === "probes") {
+                this._autoMax = 4; // Max of 4 Probes by default
+            } else {
+                this._autoMax = -1;
+            }
+
+            this.priority = 0;
 
             this.consumption = {
                 power: 0,
@@ -434,6 +445,27 @@
         get id() {
             return this._id;
         }
+
+        get autoMax() {
+            // There are a couple of special buildings that are "clickable" but really aren't clickable. Lets check them here
+            if (this.id === "star_dock") {
+                // Only clickable once but then hangs around in a "clickable" state even though you can't get more than one...
+                return this._autoMax === 0 ? 0 : 1;
+            } else if (this.id === "seeder") {
+                // Only clickable 100 times but then hangs around in a "clickable" state even though you can't get more than 100...
+                return this._autoMax >= 0 && this._autoMax <= 100 ? this._autoMax : 100;
+            } else if (this.id === "world_collider") {
+                // Only clickable 1859 times but then hangs around in a "clickable" state even though you can't get more than 1859...
+                return this._autoMax >= 0 && this._autoMax <= 1859 ? this._autoMax : 1859;
+            }
+
+            return this._autoMax < 0 ? Number.MAX_SAFE_INTEGER : this._autoMax;
+        }
+
+        set autoMax(value) {
+            if (value < 0) value = -1;
+            this._autoMax = value;
+        }
         
         isUnlocked() {
             return document.getElementById(this._elementId) !== null;
@@ -441,6 +473,10 @@
 
         isBuilding() {
             return this._isBuilding;
+        }
+
+        hasConsumption() {
+            return this.consumption.power !== 0 || this.consumption.resourceTypes.length > 0;
         }
 
         // Whether the container is clickable is determined by it's node class
@@ -461,7 +497,7 @@
             if (this.id === "star_dock") {
                 // Only clickable once but then hangs around in a "clickable" state even though you can't get more than one...
                 return this.count === 0;
-            } else if (this.id === "spcdock-seeder") {
+            } else if (this.id === "seeder") {
                 // Only clickable 100 times but then hangs around in a "clickable" state even though you can't get more than 100...
                 return this.count < 100;
             } else if (this.id === "world_collider") {
@@ -708,7 +744,7 @@
                 return this._id;
             }
 
-            return getRaceName();
+            return getRaceId();
         }
         
         isUnlocked() {
@@ -1301,7 +1337,7 @@
 
     class Smelter extends Action {
         constructor() {
-            super("city", "smelter", true);
+            super("Smelter", "city", "smelter", true);
 
             this.isUpdated = false;
 
@@ -1528,7 +1564,7 @@
 
     class Factory extends Action {
         constructor() {
-            super("city", "factory", true);
+            super("Factory", "city", "factory", true);
 
             this.isUpdated = false;
             this.currentOperating = 0;
@@ -1672,11 +1708,11 @@
 
     class SpaceDock extends Action {
         constructor() {
-            super("space", "star_dock", true);
+            super("Gas Space Dock", "space", "star_dock", true);
 
-            this.Probes = new Action("spcdock", "probes", true);
-            this.Ship = new Action("spcdock", "seeder", true);
-            this.Launch = new Action("spcdock", "launch_ship", true);
+            this.Probes = null;
+            this.Ship = null;
+            this.Launch = new Action("Gas Launch Ship", "spcdock", "launch_ship", true);
 
             this._isOptionsUpdated = false;
 
@@ -2008,7 +2044,7 @@
     class JobManager {
         constructor() {
             /** @type {Job[]} */
-            this.jobPriorityList = [];
+            this.priorityList = [];
             /** @type {CraftingJob[]} */
             this.craftingJobs = [];
             this.maxJobBreakpoints = -1;
@@ -2017,18 +2053,24 @@
 
             this._lastLoopCounter = 0;
             /** @type {Job[]} */
-            this._unlockedJobPriorityList = null;
+            this._managedPriorityList = null;
         }
 
         isUnlocked() {
             return this._unemployed.isUnlocked();
         }
 
+        clearPriorityList() {
+            this.priorityList = [];
+            this._managedPriorityList = null;
+        }
+
         /**
          * @param {Job} job
          */
         addJobToPriorityList(job) {
-            this.jobPriorityList.push(job);
+            job.priority = this.priorityList.length;
+            this.priorityList.push(job);
             this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, job.breakpointMaxs.length);
         }
 
@@ -2039,36 +2081,37 @@
             this.craftingJobs.push(job);
         }
 
-        sortJobPriority() {
-            this.jobPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+        sortByPriority() {
+            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
+            if (this._managedPriorityList !== null) this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
 
-            for (let i = 0; i < this.jobPriorityList.length; i++) {
-                this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, this.jobPriorityList[i].breakpointMaxs.length);
+            for (let i = 0; i < this.priorityList.length; i++) {
+                this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, this.priorityList[i].breakpointMaxs.length);
             }
 
             this.craftingJobs.sort(function (a, b) { return a.priority - b.priority } );
         }
 
-        managedJobPriorityList() {
+        managedPriorityList() {
             if (this._lastLoopCounter != state.loopCounter) {
-                this._unlockedJobPriorityList = null;
+                this._managedPriorityList = null;
             }
 
-            if (this._unlockedJobPriorityList === null) {
-                this._unlockedJobPriorityList = [];
+            if (this._managedPriorityList === null) {
+                this._managedPriorityList = [];
 
-                for (let i = 0; i < this.jobPriorityList.length; i++) {
-                    const job = this.jobPriorityList[i];
+                for (let i = 0; i < this.priorityList.length; i++) {
+                    const job = this.priorityList[i];
     
                     if (job.isManaged()) {
                         if (!job.isCraftsman() || (job.isCraftsman() && settings.autoCraftsmen)) {
-                            this._unlockedJobPriorityList.push(job);
+                            this._managedPriorityList.push(job);
                         }
                     }
                 }
             }
 
-            return this._unlockedJobPriorityList;
+            return this._managedPriorityList;
         }
 
         get unemployed() {
@@ -2085,7 +2128,7 @@
 
         get employed() {
             let employed = 0;
-            let jobList = this.managedJobPriorityList();
+            let jobList = this.managedPriorityList();
 
             for (let i = 0; i < jobList.length; i++) {
                 employed += jobList[i].current;
@@ -2102,7 +2145,7 @@
 
         get breakpointCount() {
             // We're getting the count of how many breakpoints we have so just use the normal list and get the first one
-            return this.jobPriorityList[0].breakpointMaxs.length;
+            return this.priorityList[0].breakpointMaxs.length;
         }
 
         /**
@@ -2114,7 +2157,7 @@
             }
 
             let total = 0;
-            let jobList = this.managedJobPriorityList();
+            let jobList = this.managedPriorityList();
 
             for (let i = 0; i < jobList.length; i++) {
                 total += Math.max(0, jobList[i].breakpointEmployees(breakpoint));
@@ -2225,6 +2268,87 @@
                     }
                 }
             }
+        }
+    }
+
+    class BuildingManager {
+        constructor() {
+            /** @type {Action[]} */
+            this.priorityList = [];
+            this._lastLoopCounter = 0;
+            /** @type {Action[]} */
+            this._managedPriorityList = null;
+            /** @type {Action[]} */
+            this._statePriorityList = [];
+            /** @type {Action[]} */
+            this._managedStatePriorityList = null;
+        }
+
+        clearPriorityList() {
+            this.priorityList = [];
+            this._managedPriorityList = null;
+            this._statePriorityList = [];
+            this._managedStatePriorityList = null;
+        }
+
+        /**
+         * @param {Action} building
+         */
+        addBuildingToPriorityList(building) {
+            building.priority = this.priorityList.length;
+            this.priorityList.push(building);
+
+            if (building.hasConsumption()) {
+                this._statePriorityList.push(building);
+            }
+        }
+
+        sortByPriority() {
+            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
+            if (this._managedPriorityList !== null) this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this._statePriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            if (this._managedStatePriorityList !== null) this._managedStatePriorityList.sort(function (a, b) { return a.priority - b.priority } );
+        }
+
+        managedPriorityList() {
+            if (this._lastLoopCounter != state.loopCounter) {
+                this._managedPriorityList = null;
+            }
+
+            if (this._managedPriorityList === null) {
+                this._managedPriorityList = [];
+
+                for (let i = 0; i < this.priorityList.length; i++) {
+                    const building = this.priorityList[i];
+    
+                    if (building.isUnlocked() && building.autoBuildEnabled) {
+                        this._managedPriorityList.push(building);
+                    }
+                }
+            }
+
+            return this._managedPriorityList;
+        }
+
+        managedStatePriorityList() {
+            if (this._lastLoopCounter != state.loopCounter) {
+                this._managedStatePriorityList = null;
+            }
+
+            if (this._managedStatePriorityList === null) {
+                this._managedStatePriorityList = [];
+
+                for (let i = 0; i < this._statePriorityList.length; i++) {
+                    const building = this._statePriorityList[i];
+
+                    // If the building doesn't yet have state then it doesn't need to be managed (either not unlocked or tech for state not unlocked)
+                    if (building.hasState() && building.autoStateEnabled) {
+                        this._managedStatePriorityList.push(building);
+                    }
+                }
+            }
+
+            return this._managedStatePriorityList;
         }
     }
 
@@ -2467,11 +2591,13 @@
 
     class Race {
         /**
+         * @param {String} id
          * @param {String} name
          * @param {boolean} isEvolutionConditional
          * @param {string} achievementText
          */
-        constructor(name, isEvolutionConditional, achievementText) {
+        constructor(id, name, isEvolutionConditional, achievementText) {
+            this.id = id;
             this.name = name;
             this.isEvolutionConditional = isEvolutionConditional;
             this.achievementText = achievementText;
@@ -2526,8 +2652,8 @@
         windowManager: new ModalWindowManager(),
         battleManager: new BattleManager(),
         jobManager: new JobManager(),
+        buildingManager: new BuildingManager(),
         marketManager: new MarketManager(),
-        //buildingManager: new BuildingManager(),
         
         lastGenomeSequenceValue: 0,
         lastCratesOwned: -1,
@@ -2616,94 +2742,94 @@
         },
 
         evolutions: {
-            Rna: new Action("evo", "rna", false),
-            Dna: new Action("evo", "dna", false),
-            Membrane: new Action("evo", "membrane", true),
-            Organelles: new Action("evo", "organelles", true),
-            Nucleus: new Action("evo", "nucleus", true),
-            EukaryoticCell: new Action("evo", "eukaryotic_cell", true),
-            Mitochondria: new Action("evo", "mitochondria", true),
+            Rna: new Action("RNA", "evo", "rna", false),
+            Dna: new Action("DNA", "evo", "dna", false),
+            Membrane: new Action("Membrane", "evo", "membrane", true),
+            Organelles: new Action("Organelles", "evo", "organelles", true),
+            Nucleus: new Action("Nucleus", "evo", "nucleus", true),
+            EukaryoticCell: new Action("Eukaryotic Cell", "evo", "eukaryotic_cell", true),
+            Mitochondria: new Action("Mitochondria", "evo", "mitochondria", true),
 
-            Antid: new Action("evo", "antid", false),
+            Antid: new Action("Antid", "evo", "antid", false),
 
-            Sentience: new Action("evo", "sentience", false),
-            Arthropods: new Action("evo", "athropods", false),
-            BilateralSymmetry: new Action("evo", "bilateral_symmetry", false),
-            Multicellular: new Action("evo", "multicellular", false),
-            Phagocytosis: new Action("evo", "phagocytosis", false),
-            SexualReproduction: new Action("evo", "sexual_reproduction", false),
+            Sentience: new Action("", "evo", "sentience", false),
+            Arthropods: new Action("", "evo", "athropods", false),
+            BilateralSymmetry: new Action("", "evo", "bilateral_symmetry", false),
+            Multicellular: new Action("", "evo", "multicellular", false),
+            Phagocytosis: new Action("", "evo", "phagocytosis", false),
+            SexualReproduction: new Action("", "evo", "sexual_reproduction", false),
 
-           // SexualReproduction: new Action("evo", "sexual_reproduction", false),
+           // SexualReproduction: new Action("", "evo", "sexual_reproduction", false),
 
-               // Phagocytosis: new Action("evo", "phagocytosis", false),
-                   // Multicellular: new Action("evo", "multicellular", false),
-                       // BilateralSymmetry: new Action("evo", "bilateral_symmetry", false),
-                           // Arthropods: new Action("evo", "athropods", false),
-                              //  Sentience: new Action("evo", "sentience", false),
-                                Bunker: new Action("evo", "bunker", false),
-                                Mantis: new Action("evo", "mantis", false),
-                                Scorpid: new Action("evo", "scorpid", false),
-                               // Antid: new Action("evo", "antid", false),
+               // Phagocytosis: new Action("", "evo", "phagocytosis", false),
+                   // Multicellular: new Action("", "evo", "multicellular", false),
+                       // BilateralSymmetry: new Action("", "evo", "bilateral_symmetry", false),
+                           // Arthropods: new Action("", "evo", "athropods", false),
+                              //  Sentience: new Action("", "evo", "sentience", false),
+                                Bunker: new Action("", "evo", "bunker", false),
+                                Mantis: new Action("", "evo", "mantis", false),
+                                Scorpid: new Action("", "evo", "scorpid", false),
+                               // Antid: new Action("", "evo", "antid", false),
 
-                            Mammals: new Action("evo", "mammals", false),
-                                Humanoid: new Action("evo", "humanoid", false),
-                                    Human: new Action("evo", "human", false),
-                                    Orc: new Action("evo", "orc", false),
-                                    Elven: new Action("evo", "elven", false),
-                                Gigantism: new Action("evo", "gigantism", false),
-                                    Troll: new Action("evo", "troll", false),
-                                    Ogre: new Action("evo", "orge", false),
-                                    Cyclops: new Action("evo", "cyclops", false),
-                                Dwarfism: new Action("evo", "dwarfism", false),
-                                    Kobold: new Action("evo", "kobold", false),
-                                    Goblin: new Action("evo", "goblin", false),
-                                    Gnome: new Action("evo", "gnome", false),
-                                Animalism: new Action("evo", "animalism", false),
-                                    Cath: new Action("evo", "cath", false),
-                                    Wolven: new Action("evo", "wolven", false),
-                                    Centaur: new Action("evo", "centaur", false),
-                                Demonic: new Action("evo", "demonic", false), // hellscape only
-                                    Balorg: new Action("evo", "balorg", false),
-                                    Imp: new Action("evo", "imp", false),
+                            Mammals: new Action("", "evo", "mammals", false),
+                                Humanoid: new Action("", "evo", "humanoid", false),
+                                    Human: new Action("", "evo", "human", false),
+                                    Orc: new Action("", "evo", "orc", false),
+                                    Elven: new Action("", "evo", "elven", false),
+                                Gigantism: new Action("", "evo", "gigantism", false),
+                                    Troll: new Action("", "evo", "troll", false),
+                                    Ogre: new Action("", "evo", "orge", false),
+                                    Cyclops: new Action("", "evo", "cyclops", false),
+                                Dwarfism: new Action("", "evo", "dwarfism", false),
+                                    Kobold: new Action("", "evo", "kobold", false),
+                                    Goblin: new Action("", "evo", "goblin", false),
+                                    Gnome: new Action("", "evo", "gnome", false),
+                                Animalism: new Action("", "evo", "animalism", false),
+                                    Cath: new Action("", "evo", "cath", false),
+                                    Wolven: new Action("", "evo", "wolven", false),
+                                    Centaur: new Action("", "evo", "centaur", false),
+                                Demonic: new Action("", "evo", "demonic", false), // hellscape only
+                                    Balorg: new Action("", "evo", "balorg", false),
+                                    Imp: new Action("", "evo", "imp", false),
 
-                            Eggshell: new Action("evo", "eggshell", false),
-                                Endothermic: new Action("evo", "endothermic", false),
-                                    Arraak: new Action("evo", "arraak", false),
-                                    Pterodacti: new Action("evo", "pterodacti", false),
-                                    Dracnid: new Action("evo", "dracnid", false),
+                            Eggshell: new Action("", "evo", "eggshell", false),
+                                Endothermic: new Action("", "evo", "endothermic", false),
+                                    Arraak: new Action("", "evo", "arraak", false),
+                                    Pterodacti: new Action("", "evo", "pterodacti", false),
+                                    Dracnid: new Action("", "evo", "dracnid", false),
 
-                                Ectothermic: new Action("evo", "ectothermic", false),
-                                    Tortoisan: new Action("evo", "tortoisan", false),
-                                    Gecko: new Action("evo", "gecko", false),
-                                    Slitheryn: new Action("evo", "slitheryn", false),
+                                Ectothermic: new Action("", "evo", "ectothermic", false),
+                                    Tortoisan: new Action("", "evo", "tortoisan", false),
+                                    Gecko: new Action("", "evo", "gecko", false),
+                                    Slitheryn: new Action("", "evo", "slitheryn", false),
 
-                            Aquatic: new Action("evo", "aquatic", false), // ocean only
-                                Sharkin: new Action("evo", "sharkin", false),
-                                Octigoran: new Action("evo", "octigoran", false),
-
-
-
-                Chloroplasts: new Action("evo", "chloroplasts", false),
-                    //Multicellular: new Action("evo", "multicellular", false),
-                        Poikilohydric: new Action("evo", "poikilohydric", false),
-                            Bryophyte: new Action("evo", "bryophyte", false),
-                                Entish: new Action("evo", "entish", false),
-                                Cacti: new Action("evo", "cacti", false),
+                            Aquatic: new Action("", "evo", "aquatic", false), // ocean only
+                                Sharkin: new Action("", "evo", "sharkin", false),
+                                Octigoran: new Action("", "evo", "octigoran", false),
 
 
-                Chitin: new Action("evo", "chitin", false),
-                    //Multicellular: new Action("evo", "multicellular", false),
-                        Spores: new Action("evo", "spores", false),
-                            //Bryophyte: new Action("evo", "bryophyte", false),
-                                Sporgar: new Action("evo", "sporgar", false),
-                                Shroomi: new Action("evo", "shroomi", false),
+
+                Chloroplasts: new Action("", "evo", "chloroplasts", false),
+                    //Multicellular: new Action("", "evo", "multicellular", false),
+                        Poikilohydric: new Action("", "evo", "poikilohydric", false),
+                            Bryophyte: new Action("", "evo", "bryophyte", false),
+                                Entish: new Action("", "evo", "entish", false),
+                                Cacti: new Action("", "evo", "cacti", false),
 
 
-            //Bunker: new Action("evo", "bunker", false),
-            Plasmid: new Action("evo", "plasmid", false),
-            Trade: new Action("evo", "trade", false),
-            Craft: new Action("evo", "craft", false),
-            Crispr: new Action("evo", "crispr", false),
+                Chitin: new Action("", "evo", "chitin", false),
+                    //Multicellular: new Action("", "evo", "multicellular", false),
+                        Spores: new Action("", "evo", "spores", false),
+                            //Bryophyte: new Action("", "evo", "bryophyte", false),
+                                Sporgar: new Action("", "evo", "sporgar", false),
+                                Shroomi: new Action("", "evo", "shroomi", false),
+
+
+            //Bunker: new Action("", "evo", "bunker", false),
+            Plasmid: new Action("Plasmid", "evo", "plasmid", false),
+            Trade: new Action("Trade", "evo", "trade", false),
+            Craft: new Action("Craft", "evo", "craft", false),
+            Crispr: new Action("Crispr", "evo", "crispr", false),
 
         },
 
@@ -2719,164 +2845,156 @@
         /** @type {Race} */
         evolutionFallback: null,
         races: {
-            Antid: new Race("Antid", false, "Ophiocordyceps Unilateralis"),
-            Mantis: new Race("Mantis", false, "Praying Unanswered"),
-            Scorpid: new Race("Scorpid", false, "Pulmonoscorpius"),
-            Human: new Race("Human", false, "Homo Adeadus"),
-            Orc: new Race("Orc", false, "Outlander"),
-            Elven: new Race("Elven", false, "The few, the proud, the dead"),
-            Troll: new Race("Troll", false, "Bad Juju"),
-            Ogre: new Race("Ogre", false, "Too stupid to live"),
-            Cyclops: new Race("Cyclops", false, "Blind Ambition"),
-            Kobold: new Race("Kobold", false, "Took their candle"),
-            Goblin: new Race("Goblin", false, "Greed before Need"),
-            Gnome: new Race("Gnome", false, "Unathletic"),
-            Cath: new Race("Cath", false, "Saber Tooth Tiger"),
-            Wolven: new Race("Wolven", false, "Dire Wolf"),
-            Centaur: new Race("Centaur", false, "Ferghana"),
-            Balorg: new Race("Balorg", true, "Self immolation"),
-            Imp: new Race("Imp", true, "Deal with the devil"),
-            Arraak: new Race("Arraak", false, "Way of the Dodo"),
-            Pterodacti: new Race("Pterodacti", false, "Chicxulub"),
-            Dracnid: new Race("Dracnid", false, "Desolate Smaug"),
-            Tortoisan: new Race("Tortoisan", false, "Circle of Life"),
-            Gecko: new Race("Gecko", false, "No Savings"),
-            Slitheryn: new Race("Slitheryn", false, "Final Shedding"),
-            Sharkin: new Race("Sharkin", true, "Megalodon"),
-            Octigoran: new Race("Octigoran", true, "Calamari"),
-            Entish: new Race("Entish", false, "Saruman's Revenge"),
-            Cacti: new Race("Cacti", false, "Desert Deserted"),
-            Sporgar: new Race("Sporgar", false, "Fungicide"),
-            Shroomi: new Race("Shroomi", false, "Bad Trip"),
+            Antid: new Race("antid", "Antid", false, "Ophiocordyceps Unilateralis"),
+            Mantis: new Race("mantis", "Mantis", false, "Praying Unanswered"),
+            Scorpid: new Race("scorpid", "Scorpid", false, "Pulmonoscorpius"),
+            Human: new Race("human", "Human", false, "Homo Adeadus"),
+            Orc: new Race("orc", "Orc", false, "Outlander"),
+            Elven: new Race("elven", "Elven", false, "The few, the proud, the dead"),
+            Troll: new Race("troll", "Troll", false, "Bad Juju"),
+            Ogre: new Race("orge", "Ogre", false, "Too stupid to live"),
+            Cyclops: new Race("cyclops", "Cyclops", false, "Blind Ambition"),
+            Kobold: new Race("kobold", "Kobold", false, "Took their candle"),
+            Goblin: new Race("goblin", "Goblin", false, "Greed before Need"),
+            Gnome: new Race("gnome", "Gnome", false, "Unathletic"),
+            Cath: new Race("cath", "Cath", false, "Saber Tooth Tiger"),
+            Wolven: new Race("wolven", "Wolven", false, "Dire Wolf"),
+            Centaur: new Race("centaur", "Centaur", false, "Ferghana"),
+            Balorg: new Race("balorg", "Balorg", true, "Self immolation"),
+            Imp: new Race("imp", "Imp", true, "Deal with the devil"),
+            Arraak: new Race("arraak", "Arraak", false, "Way of the Dodo"),
+            Pterodacti: new Race("pterodacti", "Pterodacti", false, "Chicxulub"),
+            Dracnid: new Race("dracnid", "Dracnid", false, "Desolate Smaug"),
+            Tortoisan: new Race("tortoisan", "Tortoisan", false, "Circle of Life"),
+            Gecko: new Race("gecko", "Gecko", false, "No Savings"),
+            Slitheryn: new Race("slitheryn", "Slitheryn", false, "Final Shedding"),
+            Sharkin: new Race("sharkin", "Sharkin", true, "Megalodon"),
+            Octigoran: new Race("octigoran", "Octigoran", true, "Calamari"),
+            Entish: new Race("entish", "Ent", false, "Saruman's Revenge"),
+            Cacti: new Race("cacti", "Cacti", false, "Desert Deserted"),
+            Sporgar: new Race("sporgar", "Sporgar", false, "Fungicide"),
+            Shroomi: new Race("shroomi", "Shroomi", false, "Bad Trip"),
         },
-
-        /** @type {Action[]} */
-        allBuildingList: [],
         
-        /** @type {Action[]} */
-        cityBuildingList: [],
         cityBuildings: {
-            Food: new Action("city", "food", false),
-            Lumber: new Action("city", "lumber", false),
-            Stone: new Action("city", "stone", false),
+            Food: new Action("Food", "city", "food", false),
+            Lumber: new Action("Lumber", "city", "lumber", false),
+            Stone: new Action("Stone", "city", "stone", false),
 
-            Slaughter: new Action("city", "slaughter", false),
+            Slaughter: new Action("Slaughter", "city", "slaughter", false),
 
-            University: new Action("city", "university", true),
-            Wardenclyffe: new Action("city", "wardenclyffe", true),
-            Mine: new Action("city", "mine", true),
-            CoalMine: new Action("city", "coal_mine", true),
+            University: new Action("University", "city", "university", true),
+            Wardenclyffe: new Action("Wardenclyffe", "city", "wardenclyffe", true),
+            Mine: new Action("Mine", "city", "mine", true),
+            CoalMine: new Action("Coal Mine", "city", "coal_mine", true),
             Smelter: new Smelter(),
-            CoalPower: new Action("city", "coal_power", true),
-            Temple: new Action("city", "temple", true),
-            OilWell: new Action("city", "oil_well", true),
-            BioLab: new Action("city", "biolab", true),
-            StorageYard: new Action("city", "storage_yard", true),
-            Warehouse: new Action("city", "warehouse", true),
-            OilPower: new Action("city", "oil_power", true),
-            Bank: new Action("city", "bank", true),
-            Barracks: new Action("city", "garrison", true),
-            Hospital: new Action("city", "hospital", true),
-            BootCamp: new Action("city", "boot_camp", true),
-            House: new Action("city", "house", true),
-            Cottage: new Action("city", "cottage", true),
-            Apartment: new Action("city", "apartment", true),
-            Farm: new Action("city", "farm", true),
-            SoulWell: new Action("city", "soul_well", true),
-            Mill: new Action("city", "mill", true),
-            Windmill: new Action("city", "windmill", true),
-            Silo: new Action("city", "silo", true),
-            Shed: new Action("city", "shed", true),
-            LumberYard: new Action("city", "lumber_yard", true),
-            RockQuarry: new Action("city", "rock_quarry", true),
-            CementPlant: new Action("city", "cement_plant", true),
-            Foundry: new Action("city", "foundry", true),
+            CoalPower: new Action("Coal Powerplant", "city", "coal_power", true),
+            Temple: new Action("Temple", "city", "temple", true),
+            OilWell: new Action("Oil Derrick", "city", "oil_well", true),
+            BioLab: new Action("Bioscience Lab", "city", "biolab", true),
+            StorageYard: new Action("Freight Yard", "city", "storage_yard", true),
+            Warehouse: new Action("Container Port", "city", "warehouse", true),
+            OilPower: new Action("Oil Powerplant", "city", "oil_power", true),
+            Bank: new Action("Bank", "city", "bank", true),
+            Barracks: new Action("Barracks", "city", "garrison", true),
+            Hospital: new Action("Hospital", "city", "hospital", true),
+            BootCamp: new Action("Boot Camp", "city", "boot_camp", true),
+            House: new Action("Cabin", "city", "house", true),
+            Cottage: new Action("Cottage", "city", "cottage", true),
+            Apartment: new Action("Apartment", "city", "apartment", true),
+            Farm: new Action("Farm", "city", "farm", true),
+            SoulWell: new Action("Soul Well", "city", "soul_well", true),
+            Mill: new Action("Mill", "city", "mill", true),
+            Windmill: new Action("Windmill", "city", "windmill", true),
+            Silo: new Action("Grain Silo", "city", "silo", true),
+            Shed: new Action("Shed", "city", "shed", true),
+            LumberYard: new Action("Lumber Yard", "city", "lumber_yard", true),
+            RockQuarry: new Action("Rock Quarry", "city", "rock_quarry", true),
+            CementPlant: new Action("Cement Factory", "city", "cement_plant", true),
+            Foundry: new Action("Foundry", "city", "foundry", true),
             Factory: new Factory(), // Special building with options
-            OilDepot: new Action("city", "oil_depot", true),
-            Trade: new Action("city", "trade", true),
-            Amphitheatre: new Action("city", "amphitheatre", true),
-            Library: new Action("city", "library", true),
-            Sawmill: new Action("city", "sawmill", true),
-            FissionPower: new Action("city", "fission_power", true),
-            Lodge: new Action("city", "lodge", true),
-            Smokehouse: new Action("city", "smokehouse", true),
-            Casino: new Action("city", "casino", true),
-            TouristCenter: new Action("city", "tourist_center", true),
-            MassDriver: new Action("city", "mass_driver", true),
-            Wharf: new Action("city", "wharf", true),
-            MetalRefinery: new Action("city", "metal_refinery", true),
+            OilDepot: new Action("Fuel Depot", "city", "oil_depot", true),
+            Trade: new Action(" Post", "city", "trade", true),
+            Amphitheatre: new Action("Amphitheatre", "city", "amphitheatre", true),
+            Library: new Action("Library", "city", "library", true),
+            Sawmill: new Action("Sawmill", "city", "sawmill", true),
+            FissionPower: new Action("Fission Reactor", "city", "fission_power", true),
+            Lodge: new Action("Lodge", "city", "lodge", true),
+            Smokehouse: new Action("Smokehouse", "city", "smokehouse", true),
+            Casino: new Action("Casino", "city", "casino", true),
+            TouristCenter: new Action("Tourist Center", "city", "tourist_center", true),
+            MassDriver: new Action("Mass Driver", "city", "mass_driver", true),
+            Wharf: new Action("Wharf", "city", "wharf", true),
+            MetalRefinery: new Action("Metal Refinery", "city", "metal_refinery", true),
         },
         
-        /** @type {Action[]} */
-        spaceBuildingList: [],
         spaceBuildings: {
             // Space
-            SpaceTestLaunch: new Action("space", "test_launch", true),
-            SpaceSatellite: new Action("space", "satellite", true),
-            SpaceGps: new Action("space", "gps", true),
-            SpacePropellantDepot: new Action("space", "propellant_depot", true),
-            SpaceNavBeacon: new Action("space", "nav_beacon", true),
+            SpaceTestLaunch: new Action("Test Launch", "space", "test_launch", true),
+            SpaceSatellite: new Action("Space Satellite", "space", "satellite", true),
+            SpaceGps: new Action("Space Gps", "space", "gps", true),
+            SpacePropellantDepot: new Action("Space Propellant Depot", "space", "propellant_depot", true),
+            SpaceNavBeacon: new Action("Space Navigation Beacon", "space", "nav_beacon", true),
             
             // Moon
-            MoonMission: new Action("space", "moon_mission", true),
-            MoonBase: new Action("space", "moon_base", true),
-            MoonIridiumMine: new Action("space", "iridium_mine", true),
-            MoonHeliumMine: new Action("space", "helium_mine", true),
-            MoonObservatory: new Action("space", "observatory", true),
+            MoonMission: new Action("Moon Mission", "space", "moon_mission", true),
+            MoonBase: new Action("Moon Base", "space", "moon_base", true),
+            MoonIridiumMine: new Action("Moon Iridium Mine", "space", "iridium_mine", true),
+            MoonHeliumMine: new Action("Moon Helium-3 Mine", "space", "helium_mine", true),
+            MoonObservatory: new Action("Moon Observatory", "space", "observatory", true),
             
             // Red
-            RedMission: new Action("space", "red_mission", true),
-            RedSpaceport: new Action("space", "spaceport", true),
-            RedTower: new Action("space", "red_tower", true),
-            RedLivingQuarters: new Action("space", "living_quarters", true),
-            RedGarage: new Action("space", "garage", true),
-            RedMine: new Action("space", "red_mine", true),
-            RedFabrication: new Action("space", "fabrication", true),
-            RedFactory: new Action("space", "red_factory", true),
-            RedBiodome: new Action("space", "biodome", true),
-            RedExoticLab: new Action("space", "exotic_lab", true),
-            RedSpaceBarracks: new Action("space", "space_barracks", true),
-            Ziggurat: new Action("space", "ziggurat", true),
+            RedMission: new Action("Red Mission", "space", "red_mission", true),
+            RedSpaceport: new Action("Red Spaceport", "space", "spaceport", true),
+            RedTower: new Action("Red Space Control", "space", "red_tower", true),
+            RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", true),
+            RedGarage: new Action("Red Garage", "space", "garage", true),
+            RedMine: new Action("Red Mine", "space", "red_mine", true),
+            RedFabrication: new Action("Red Fabrication", "space", "fabrication", true),
+            RedFactory: new Action("Red Factory", "space", "red_factory", true),
+            RedBiodome: new Action("Red Biodome", "space", "biodome", true),
+            RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", true),
+            RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", true),
+            Ziggurat: new Action("Ziggurat", "space", "ziggurat", true),
             
             // Hell
-            HellMission: new Action("space", "hell_mission", true),
-            HellGeothermal: new Action("space", "geothermal", true),
-            HellSwarmPlant: new Action("space", "swarm_plant", true),
+            HellMission: new Action("Hell Mission", "space", "hell_mission", true),
+            HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", true),
+            HellSwarmPlant: new Action("Hell Swarm Plant", "space", "swarm_plant", true),
             
             // Sun
-            SunMission: new Action("space", "sun_mission", true),
-            SunSwarmControl: new Action("space", "swarm_control", true),
-            SunSwarmSatellite: new Action("space", "swarm_satellite", true),
+            SunMission: new Action("Sun Mission", "space", "sun_mission", true),
+            SunSwarmControl: new Action("Sun Control Station", "space", "swarm_control", true),
+            SunSwarmSatellite: new Action("Sun Swarm Satellite", "space", "swarm_satellite", true),
             
             // Gas
-            GasMission: new Action("space", "gas_mission", true),
-            GasMining: new Action("space", "gas_mining", true),
-            GasStorage: new Action("space", "gas_storage", true),
+            GasMission: new Action("Gas Mission", "space", "gas_mission", true),
+            GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", true),
+            GasStorage: new Action("Gas Godzilla Fuel Depot", "space", "gas_storage", true),
             GasSpaceDock: new SpaceDock(), // Special building with options
+            GasSpaceDockProbe: new Action("Gas Space Probe", "spcdock", "probes", true),
+            GasSpaceDockShipSegment: new Action("Gas Bioseeder Ship Segment", "spcdock", "seeder", true),
             
             // Gas moon
-            GasMoonMission: new Action("space", "gas_moon_mission", true),
-            GasMoonOutpost: new Action("space", "outpost", true),
-            GasMoonDrone: new Action("space", "drone", true),
-            GasMoonOilExtractor: new Action("space", "oil_extractor", true),
+            GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", true),
+            GasMoonOutpost: new Action("Gas Moon Mining Outpost", "space", "outpost", true),
+            GasMoonDrone: new Action("Gas Moon Mining Drone", "space", "drone", true),
+            GasMoonOilExtractor: new Action("Gas Moon Oil Extractor", "space", "oil_extractor", true),
             
             // Belt
-            BeltMission: new Action("space", "belt_mission", true),
-            BeltSpaceStation: new Action("space", "space_station", true),
-            BeltEleriumShip: new Action("space", "elerium_ship", true),
-            BeltIridiumShip: new Action("space", "iridium_ship", true),
-            BeltIronShip: new Action("space", "iron_ship", true),
+            BeltMission: new Action("Belt Mission", "space", "belt_mission", true),
+            BeltSpaceStation: new Action("Belt Space Station", "space", "space_station", true),
+            BeltEleriumShip: new Action("Belt Elerium Mining Ship", "space", "elerium_ship", true),
+            BeltIridiumShip: new Action("Belt Iridium Mining Ship", "space", "iridium_ship", true),
+            BeltIronShip: new Action("Belt Iron Mining Ship", "space", "iron_ship", true),
             
             // Dwarf
-            DwarfMission: new Action("space", "dwarf_mission", true),
-            DwarfEleriumContainer: new Action("space", "elerium_contain", true),
-            DwarfEleriumReactor: new Action("space", "e_reactor", true),
-            DwarfWorldCollider: new Action("space", "world_collider", true),
-            DwarfWorldController: new Action("space", "world_controller", true),
+            DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", true),
+            DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", true),
+            DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", true),
+            DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", true),
+            DwarfWorldController: new Action("Dwarf WSC Control", "space", "world_controller", true),
         },
-
-        /** @type {Action[]} */
-        consumptionPriorityList: [],
 
         //global: null,
     };
@@ -2950,24 +3068,6 @@
         state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Coal, 20, 5));
         state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Neutronium, 0.125, 0.5));
 
-        state.jobManager.addJobToPriorityList(state.jobs.Farmer);
-        state.jobManager.addJobToPriorityList(state.jobs.Lumberjack);
-        state.jobManager.addJobToPriorityList(state.jobs.QuarryWorker);
-        state.jobManager.addJobToPriorityList(state.jobs.Plywood);
-        state.jobManager.addJobToPriorityList(state.jobs.Brick);
-        state.jobManager.addJobToPriorityList(state.jobs.WroughtIron);
-        state.jobManager.addJobToPriorityList(state.jobs.SheetMetal);
-        state.jobManager.addJobToPriorityList(state.jobs.Mythril);
-        state.jobManager.addJobToPriorityList(state.jobs.Entertainer);
-        state.jobManager.addJobToPriorityList(state.jobs.Scientist);
-        state.jobManager.addJobToPriorityList(state.jobs.Professor);
-        state.jobManager.addJobToPriorityList(state.jobs.CementWorker);
-        state.jobManager.addJobToPriorityList(state.jobs.Miner);
-        state.jobManager.addJobToPriorityList(state.jobs.CoalMiner);
-        state.jobManager.addJobToPriorityList(state.jobs.Banker);
-        state.jobManager.addJobToPriorityList(state.jobs.Colonist);
-        state.jobManager.addJobToPriorityList(state.jobs.SpaceMiner);
-
         state.jobs.Plywood.resource = state.resources.Plywood;
         state.jobManager.addCraftingJob(state.jobs.Plywood);
         state.jobs.Brick.resource = state.resources.Brick;
@@ -2982,277 +3082,183 @@
         resetJobState();
         
         // Construct city builds list
-        state.cityBuildingList.push(state.cityBuildings.University);
+        state.spaceBuildings.GasSpaceDock.Probes = state.spaceBuildings.GasSpaceDockProbe;
+        state.spaceBuildings.GasSpaceDock.Ship = state.spaceBuildings.GasSpaceDockShipSegment;
+
         state.cityBuildings.University.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.University.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Wardenclyffe);
         state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.Copper);
         state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.SheetMetal);
         state.cityBuildings.Wardenclyffe.addPowerConsumption(2);
-        state.cityBuildingList.push(state.cityBuildings.Mine);
         state.cityBuildings.Mine.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Mine.addPowerConsumption(1);
-        state.cityBuildingList.push(state.cityBuildings.CoalMine);
         state.cityBuildings.CoalMine.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.CoalMine.addRequiredResource(state.resources.WroughtIron);
         state.cityBuildings.CoalMine.addPowerConsumption(1);
-        state.cityBuildingList.push(state.cityBuildings.Smelter);
         state.cityBuildings.Smelter.addRequiredResource(state.resources.Iron);
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, state.resources.Coal, 0.25, 1.25);
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, state.resources.Iron, 2, 6);
-        state.cityBuildingList.push(state.cityBuildings.CoalPower);
         state.cityBuildings.CoalPower.addRequiredResource(state.resources.Copper);
         state.cityBuildings.CoalPower.addRequiredResource(state.resources.Cement);
         state.cityBuildings.CoalPower.addRequiredResource(state.resources.Steel);
         state.cityBuildings.CoalPower.addPowerConsumption(-5);
         state.cityBuildings.CoalPower.addResourceConsumption(state.resources.Coal, 0.35);
-        state.cityBuildingList.push(state.cityBuildings.Temple);
         state.cityBuildings.Temple.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Temple.addRequiredResource(state.resources.Furs);
         state.cityBuildings.Temple.addRequiredResource(state.resources.Cement);
-        state.cityBuildingList.push(state.cityBuildings.OilWell);
         state.cityBuildings.OilWell.addRequiredResource(state.resources.Cement);
         state.cityBuildings.OilWell.addRequiredResource(state.resources.Steel);
-        state.cityBuildingList.push(state.cityBuildings.BioLab);
         state.cityBuildings.BioLab.addRequiredResource(state.resources.Copper);
         state.cityBuildings.BioLab.addRequiredResource(state.resources.Alloy);
         state.cityBuildings.BioLab.addPowerConsumption(2);
-        state.cityBuildingList.push(state.cityBuildings.StorageYard);
         state.cityBuildings.StorageYard.addRequiredResource(state.resources.Brick);
         state.cityBuildings.StorageYard.addRequiredResource(state.resources.WroughtIron);
-        state.cityBuildingList.push(state.cityBuildings.Warehouse);
         state.cityBuildings.Warehouse.addRequiredResource(state.resources.Iron);
         state.cityBuildings.Warehouse.addRequiredResource(state.resources.Cement);
-        state.cityBuildingList.push(state.cityBuildings.OilPower);
         state.cityBuildings.OilPower.addRequiredResource(state.resources.Copper);
         state.cityBuildings.OilPower.addRequiredResource(state.resources.Cement);
         state.cityBuildings.OilPower.addRequiredResource(state.resources.Aluminium);
         state.cityBuildings.OilPower.addPowerConsumption(-6);
         state.cityBuildings.OilPower.addResourceConsumption(state.resources.Oil, 0.65);
-        state.cityBuildingList.push(state.cityBuildings.Bank);
         state.cityBuildings.Bank.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Bank.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Barracks);
         state.cityBuildings.Barracks.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Hospital);
         state.cityBuildings.Hospital.addRequiredResource(state.resources.Furs);
         state.cityBuildings.Hospital.addRequiredResource(state.resources.Aluminium);
-        state.cityBuildingList.push(state.cityBuildings.BootCamp);
         state.cityBuildings.BootCamp.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.BootCamp.addRequiredResource(state.resources.Aluminium);
         state.cityBuildings.BootCamp.addRequiredResource(state.resources.Brick);
-        state.cityBuildingList.push(state.cityBuildings.House);
         state.cityBuildings.House.addRequiredResource(state.resources.Lumber);
-        state.cityBuildingList.push(state.cityBuildings.Cottage);
         state.cityBuildings.Cottage.addRequiredResource(state.resources.Plywood);
         state.cityBuildings.Cottage.addRequiredResource(state.resources.Brick);
         state.cityBuildings.Cottage.addRequiredResource(state.resources.WroughtIron);
-        state.cityBuildingList.push(state.cityBuildings.Apartment);
         state.cityBuildings.Apartment.addRequiredResource(state.resources.Furs);
         state.cityBuildings.Apartment.addRequiredResource(state.resources.Copper);
         state.cityBuildings.Apartment.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Apartment.addRequiredResource(state.resources.Steel);
         state.cityBuildings.Apartment.addPowerConsumption(1);
-        state.cityBuildingList.push(state.cityBuildings.Farm);
         state.cityBuildings.Farm.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Farm.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.SoulWell);
         state.cityBuildings.SoulWell.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.SoulWell.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Mill);
         state.cityBuildings.Mill.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Mill.addRequiredResource(state.resources.Iron);
         state.cityBuildings.Mill.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Mill.addPowerConsumption(-1);
-        state.cityBuildingList.push(state.cityBuildings.Windmill);
         state.cityBuildings.Windmill.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Windmill.addRequiredResource(state.resources.Iron);
         state.cityBuildings.Windmill.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Windmill.addPowerConsumption(-1);
-        state.cityBuildingList.push(state.cityBuildings.Silo);
         state.cityBuildings.Silo.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Silo.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Shed); // Is this one special? Will have to think about how to do this one
         state.cityBuildings.Shed.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Shed.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.LumberYard);
         state.cityBuildings.LumberYard.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.LumberYard.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.RockQuarry);
         state.cityBuildings.RockQuarry.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.RockQuarry.addRequiredResource(state.resources.Stone);
         state.cityBuildings.RockQuarry.addPowerConsumption(1);
-        state.cityBuildingList.push(state.cityBuildings.CementPlant);
         state.cityBuildings.CementPlant.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.CementPlant.addRequiredResource(state.resources.Stone);
         state.cityBuildings.CementPlant.addPowerConsumption(2);
-        state.cityBuildingList.push(state.cityBuildings.Foundry);
         state.cityBuildings.Foundry.addRequiredResource(state.resources.Copper);
         state.cityBuildings.Foundry.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Factory);
         state.cityBuildings.Factory.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Factory.addRequiredResource(state.resources.Steel);
         state.cityBuildings.Factory.addRequiredResource(state.resources.Titanium);
         state.cityBuildings.Factory.addPowerConsumption(3);
-        state.cityBuildingList.push(state.cityBuildings.OilDepot);
         state.cityBuildings.OilDepot.addRequiredResource(state.resources.Cement);
         state.cityBuildings.OilDepot.addRequiredResource(state.resources.SheetMetal);
-        state.cityBuildingList.push(state.cityBuildings.Trade);
         state.cityBuildings.Trade.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Trade.addRequiredResource(state.resources.Stone);
         state.cityBuildings.Trade.addRequiredResource(state.resources.Furs);
-        state.cityBuildingList.push(state.cityBuildings.Amphitheatre);
         state.cityBuildings.Amphitheatre.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Amphitheatre.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Library);
         state.cityBuildings.Library.addRequiredResource(state.resources.Furs);
         state.cityBuildings.Library.addRequiredResource(state.resources.Plywood);
         state.cityBuildings.Library.addRequiredResource(state.resources.Brick);
-        state.cityBuildingList.push(state.cityBuildings.Sawmill);
         state.cityBuildings.Sawmill.addRequiredResource(state.resources.Iron);
         state.cityBuildings.Sawmill.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Sawmill.addPowerConsumption(1);
-        state.cityBuildingList.push(state.cityBuildings.FissionPower);
         state.cityBuildings.FissionPower.addRequiredResource(state.resources.Copper);
         state.cityBuildings.FissionPower.addRequiredResource(state.resources.Cement);
         state.cityBuildings.FissionPower.addRequiredResource(state.resources.Titanium);
         state.cityBuildings.FissionPower.addPowerConsumption(-14); // Goes up to 18 after breeder reactor tech researched. This is set in UpdateState().
         state.cityBuildings.FissionPower.addResourceConsumption(state.resources.Uranium, 0.1);
-        state.cityBuildingList.push(state.cityBuildings.Lodge); // Cath only
         state.cityBuildings.Lodge.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Lodge.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Smokehouse); // Cath only
         state.cityBuildings.Smokehouse.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Smokehouse.addRequiredResource(state.resources.Stone);
-        state.cityBuildingList.push(state.cityBuildings.Casino);
         state.cityBuildings.Casino.addRequiredResource(state.resources.Furs);
         state.cityBuildings.Casino.addRequiredResource(state.resources.Plywood);
         state.cityBuildings.Casino.addRequiredResource(state.resources.Brick);
-        state.cityBuildingList.push(state.cityBuildings.TouristCenter);
+        state.cityBuildings.Casino.addPowerConsumption(5);
         state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Stone);
         state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Furs);
         state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Plywood);
         state.cityBuildings.TouristCenter.addResourceConsumption(state.resources.Food, 50);
-        state.cityBuildingList.push(state.cityBuildings.MassDriver);
         state.cityBuildings.MassDriver.addRequiredResource(state.resources.Copper);
         state.cityBuildings.MassDriver.addRequiredResource(state.resources.Iron);
         state.cityBuildings.MassDriver.addRequiredResource(state.resources.Iridium);
         state.cityBuildings.MassDriver.addPowerConsumption(5);
-        state.cityBuildingList.push(state.cityBuildings.Wharf);
         state.cityBuildings.Wharf.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Wharf.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Wharf.addRequiredResource(state.resources.Oil);
-        state.cityBuildingList.push(state.cityBuildings.MetalRefinery);
         state.cityBuildings.MetalRefinery.addRequiredResource(state.resources.Steel);
 
         // Construct space buildsings list
         // TODO: Space! resource requirements
-        state.spaceBuildingList.push(state.spaceBuildings.SpaceTestLaunch);
-        state.spaceBuildingList.push(state.spaceBuildings.SpaceSatellite);
-        state.spaceBuildingList.push(state.spaceBuildings.SpaceGps);
-        state.spaceBuildingList.push(state.spaceBuildings.SpacePropellantDepot);
-        state.spaceBuildingList.push(state.spaceBuildings.SpaceNavBeacon);
         state.spaceBuildings.SpaceNavBeacon.addPowerConsumption(2);
         state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(state.resources.MoonSupport, -1);
-
-        state.spaceBuildingList.push(state.spaceBuildings.MoonMission);
-        state.spaceBuildingList.push(state.spaceBuildings.MoonBase); // this building resets ui when clicked
         state.spaceBuildings.MoonBase.addPowerConsumption(4);
         state.spaceBuildings.MoonBase.addResourceConsumption(state.resources.MoonSupport, -2);
         state.spaceBuildings.MoonBase.addResourceConsumption(state.resources.Oil, 2);
-        state.spaceBuildingList.push(state.spaceBuildings.MoonIridiumMine);
         state.spaceBuildings.MoonIridiumMine.addResourceConsumption(state.resources.MoonSupport, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.MoonHeliumMine);
         state.spaceBuildings.MoonHeliumMine.addResourceConsumption(state.resources.MoonSupport, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.MoonObservatory);
         state.spaceBuildings.MoonObservatory.addResourceConsumption(state.resources.MoonSupport, 1);
-
-        state.spaceBuildingList.push(state.spaceBuildings.RedMission);
-        state.spaceBuildingList.push(state.spaceBuildings.RedSpaceport); // this building resets ui when clicked
         state.spaceBuildings.RedSpaceport.addPowerConsumption(5);
         state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.RedSupport, -3);
         state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.Helium_3, 1.25);
         state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.Food, 25);
-        state.spaceBuildingList.push(state.spaceBuildings.RedTower);
         state.spaceBuildings.RedTower.addPowerConsumption(2);
         state.spaceBuildings.RedTower.addResourceConsumption(state.resources.RedSupport, -1);
-        state.spaceBuildingList.push(state.spaceBuildings.RedLivingQuarters);
         state.spaceBuildings.RedLivingQuarters.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.RedGarage);
-        state.spaceBuildingList.push(state.spaceBuildings.RedMine);
         state.spaceBuildings.RedMine.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.RedFabrication);
         state.spaceBuildings.RedFabrication.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.RedFactory);
         state.spaceBuildings.RedFactory.addPowerConsumption(3);
         state.spaceBuildings.RedFactory.addResourceConsumption(state.resources.Helium_3, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.RedBiodome);
         state.spaceBuildings.RedBiodome.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.RedExoticLab); // this building resets ui when clicked
         state.spaceBuildings.RedExoticLab.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.RedSpaceBarracks);
         state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(state.resources.Oil, 2);
         state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(state.resources.Food, 10);
-        state.spaceBuildingList.push(state.spaceBuildings.Ziggurat);
-
-        state.spaceBuildingList.push(state.spaceBuildings.HellMission);
-        state.spaceBuildingList.push(state.spaceBuildings.HellGeothermal);
         state.spaceBuildings.HellGeothermal.addPowerConsumption(-8);
         state.spaceBuildings.HellGeothermal.addResourceConsumption(state.resources.Helium_3, 0.5);
-        state.spaceBuildingList.push(state.spaceBuildings.HellSwarmPlant);
-
-        state.spaceBuildingList.push(state.spaceBuildings.SunMission);
-        state.spaceBuildingList.push(state.spaceBuildings.SunSwarmControl);
         state.spaceBuildings.SunSwarmControl.addResourceConsumption(state.resources.SunSupport, -4);
-        state.spaceBuildingList.push(state.spaceBuildings.SunSwarmSatellite);
         state.spaceBuildings.SunSwarmSatellite.addPowerConsumption(-1);
         state.spaceBuildings.SunSwarmSatellite.addResourceConsumption(state.resources.SunSupport, 1);
-
-        state.spaceBuildingList.push(state.spaceBuildings.GasMission);
-        state.spaceBuildingList.push(state.spaceBuildings.GasMining);
         state.spaceBuildings.GasMining.addPowerConsumption(2);
-        state.spaceBuildingList.push(state.spaceBuildings.GasStorage);
-        state.spaceBuildingList.push(state.spaceBuildings.GasSpaceDock);
-
-        state.spaceBuildingList.push(state.spaceBuildings.GasMoonMission);
-        state.spaceBuildingList.push(state.spaceBuildings.GasMoonOutpost);
         state.spaceBuildings.GasMoonOutpost.addPowerConsumption(3);
         state.spaceBuildings.GasMoonOutpost.addResourceConsumption(state.resources.Oil, 2);
-        state.spaceBuildingList.push(state.spaceBuildings.GasMoonDrone);
-        state.spaceBuildingList.push(state.spaceBuildings.GasMoonOilExtractor);
         state.spaceBuildings.GasMoonOilExtractor.addPowerConsumption(1);
-
-        state.spaceBuildingList.push(state.spaceBuildings.BeltMission);
-        state.spaceBuildingList.push(state.spaceBuildings.BeltSpaceStation); // this building resets ui when clicked
         state.spaceBuildings.BeltSpaceStation.addPowerConsumption(3);
         state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.BeltSupport, -3);
         state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.Food, 10);
         state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.Helium_3, 2.5);
-        state.spaceBuildingList.push(state.spaceBuildings.BeltEleriumShip);
         state.spaceBuildings.BeltEleriumShip.addResourceConsumption(state.resources.BeltSupport, 2);
-        state.spaceBuildingList.push(state.spaceBuildings.BeltIridiumShip);
         state.spaceBuildings.BeltIridiumShip.addResourceConsumption(state.resources.BeltSupport, 1);
-        state.spaceBuildingList.push(state.spaceBuildings.BeltIronShip);
         state.spaceBuildings.BeltIronShip.addResourceConsumption(state.resources.BeltSupport, 1);
-
-        state.spaceBuildingList.push(state.spaceBuildings.DwarfMission);
-        state.spaceBuildingList.push(state.spaceBuildings.DwarfEleriumContainer);
         state.spaceBuildings.DwarfEleriumContainer.addPowerConsumption(6);
-        state.spaceBuildingList.push(state.spaceBuildings.DwarfEleriumReactor);
         state.spaceBuildings.DwarfEleriumReactor.addPowerConsumption(-25);
         state.spaceBuildings.DwarfEleriumReactor.addResourceConsumption(state.resources.Elerium, 0.05);
-        state.spaceBuildingList.push(state.spaceBuildings.DwarfWorldCollider);
-        state.spaceBuildingList.push(state.spaceBuildings.DwarfWorldController);
         state.spaceBuildings.DwarfWorldController.addPowerConsumption(20);
-        
-        // Construct all buildings list
-        state.allBuildingList = state.cityBuildingList.concat(state.spaceBuildingList);
+
+        resetBuildingState();
 
         // Populate each buildings required basic resources
         // Populate each resources building list
-        for (let i = 0; i < state.allBuildingList.length; i++) {
-            let building = state.allBuildingList[i];
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            let building = state.buildingManager.priorityList[i];
             
             for (let j = 0; j < building.requiredResourcesToAction.length; j++) {
                 let resource = building.requiredResourcesToAction[j];
@@ -3280,65 +3286,6 @@
                 building.requiredBasicResourcesToAction[l].usedInBuildings.push(building);
             }
         }
-
-        // This list is the priority order that we want to power our buildings in
-        state.consumptionPriorityList.push(state.cityBuildings.Windmill);
-        state.consumptionPriorityList.push(state.cityBuildings.Mill);
-        state.consumptionPriorityList.push(state.cityBuildings.Apartment);
-        state.consumptionPriorityList.push(state.cityBuildings.Wardenclyffe);
-        state.consumptionPriorityList.push(state.cityBuildings.BioLab);
-        state.consumptionPriorityList.push(state.cityBuildings.Mine);
-        state.consumptionPriorityList.push(state.cityBuildings.CementPlant);
-        
-        if (!isLowPlasmidCount()) {
-            state.consumptionPriorityList.push(state.cityBuildings.Sawmill);
-            state.consumptionPriorityList.push(state.cityBuildings.RockQuarry);
-            state.consumptionPriorityList.push(state.cityBuildings.CoalMine);
-        } else {
-            state.consumptionPriorityList.push(state.cityBuildings.CoalMine);
-            state.consumptionPriorityList.push(state.cityBuildings.Sawmill);
-            state.consumptionPriorityList.push(state.cityBuildings.RockQuarry);
-        }
-
-        state.consumptionPriorityList.push(state.cityBuildings.Factory);
-
-        state.consumptionPriorityList.push(state.spaceBuildings.GasMoonOutpost);
-        state.consumptionPriorityList.push(state.spaceBuildings.HellGeothermal); // produces power
-
-        state.consumptionPriorityList.push(state.spaceBuildings.BeltSpaceStation);
-        state.consumptionPriorityList.push(state.spaceBuildings.BeltEleriumShip);
-        state.consumptionPriorityList.push(state.spaceBuildings.DwarfEleriumReactor); // produces power
-        state.consumptionPriorityList.push(state.spaceBuildings.BeltIridiumShip);
-        state.consumptionPriorityList.push(state.spaceBuildings.BeltIronShip);
-
-        state.consumptionPriorityList.push(state.spaceBuildings.SpaceNavBeacon);
-
-        state.consumptionPriorityList.push(state.spaceBuildings.MoonBase);
-        state.consumptionPriorityList.push(state.spaceBuildings.MoonIridiumMine);
-        state.consumptionPriorityList.push(state.spaceBuildings.MoonHeliumMine);
-
-        state.consumptionPriorityList.push(state.spaceBuildings.GasMining);
-
-        state.consumptionPriorityList.push(state.spaceBuildings.RedSpaceport);
-        state.consumptionPriorityList.push(state.spaceBuildings.RedTower);
-        state.consumptionPriorityList.push(state.spaceBuildings.RedLivingQuarters);
-        state.consumptionPriorityList.push(state.spaceBuildings.RedFabrication);
-        state.consumptionPriorityList.push(state.spaceBuildings.RedMine);
-        state.consumptionPriorityList.push(state.spaceBuildings.RedBiodome);
-        state.consumptionPriorityList.push(state.spaceBuildings.RedExoticLab);
-        state.consumptionPriorityList.push(state.spaceBuildings.Ziggurat);
-
-        // Don't need to add Sun as they can't be turned on / off
-
-        state.consumptionPriorityList.push(state.spaceBuildings.GasMoonOilExtractor);
-
-        state.consumptionPriorityList.push(state.spaceBuildings.DwarfEleriumContainer);
-        state.consumptionPriorityList.push(state.spaceBuildings.DwarfWorldController);
-        state.consumptionPriorityList.push(state.spaceBuildings.RedSpaceBarracks);
-        state.consumptionPriorityList.push(state.spaceBuildings.RedFactory);
-        state.consumptionPriorityList.push(state.spaceBuildings.MoonObservatory);
-        state.consumptionPriorityList.push(state.cityBuildings.TouristCenter);
-        state.consumptionPriorityList.push(state.cityBuildings.MassDriver);
 
         state.evolutionChallengeList.push(state.evolutions.Plasmid);
         state.evolutionChallengeList.push(state.evolutions.Trade);
@@ -3456,44 +3403,156 @@
     }
 
     function resetJobState() {
+        state.jobManager.clearPriorityList();
+
+        state.jobManager.addJobToPriorityList(state.jobs.Farmer);
+        state.jobManager.addJobToPriorityList(state.jobs.Lumberjack);
+        state.jobManager.addJobToPriorityList(state.jobs.QuarryWorker);
+        state.jobManager.addJobToPriorityList(state.jobs.Plywood);
+        state.jobManager.addJobToPriorityList(state.jobs.Brick);
+        state.jobManager.addJobToPriorityList(state.jobs.WroughtIron);
+        state.jobManager.addJobToPriorityList(state.jobs.SheetMetal);
+        state.jobManager.addJobToPriorityList(state.jobs.Mythril);
+        state.jobManager.addJobToPriorityList(state.jobs.Entertainer);
+        state.jobManager.addJobToPriorityList(state.jobs.Scientist);
+        state.jobManager.addJobToPriorityList(state.jobs.Professor);
+        state.jobManager.addJobToPriorityList(state.jobs.CementWorker);
+        state.jobManager.addJobToPriorityList(state.jobs.Miner);
+        state.jobManager.addJobToPriorityList(state.jobs.CoalMiner);
+        state.jobManager.addJobToPriorityList(state.jobs.Banker);
+        state.jobManager.addJobToPriorityList(state.jobs.Colonist);
+        state.jobManager.addJobToPriorityList(state.jobs.SpaceMiner);
+
         state.jobs.Farmer.breakpointMaxs = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
-        state.jobs.Farmer.priority = 0;
         state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Lumberjacks and quarry workers are special - remaining worker divided between them
-        state.jobs.Lumberjack.priority = 1;
         state.jobs.QuarryWorker.breakpointMaxs = [5, 10, 10]; // Lumberjacks and quarry workers are special - remaining worker divided between them
-        state.jobs.QuarryWorker.priority = 2;
 
         state.jobs.SheetMetal.breakpointMaxs = [2, 4, -1];
-        state.jobs.SheetMetal.priority = 3;
         state.jobs.Plywood.breakpointMaxs = [2, 4, -1];
-        state.jobs.Plywood.priority = 4;
         state.jobs.Brick.breakpointMaxs = [2, 4, -1];
-        state.jobs.Brick.priority = 5;
         state.jobs.WroughtIron.breakpointMaxs = [2, 4, -1];
-        state.jobs.WroughtIron.priority = 6;
         state.jobs.Mythril.breakpointMaxs = [2, 4, -1];
-        state.jobs.Mythril.priority = 7;
 
         state.jobs.Entertainer.breakpointMaxs = [5, 10, -1];
-        state.jobs.Entertainer.priority = 8;
         state.jobs.Scientist.breakpointMaxs = [3, 6, -1];
-        state.jobs.Scientist.priority = 9;
         state.jobs.Professor.breakpointMaxs = [3, 6, -1];
-        state.jobs.Professor.priority = 10;
         state.jobs.CementWorker.breakpointMaxs = [4, 8, -1]; // Cement works are based on cap and stone rate of change
-        state.jobs.CementWorker.priority = 11;
         state.jobs.Miner.breakpointMaxs = [3, 5, -1];
-        state.jobs.Miner.priority = 12;
         state.jobs.CoalMiner.breakpointMaxs = [2, 4, -1];
-        state.jobs.CoalMiner.priority = 13;
         state.jobs.Banker.breakpointMaxs = [3, 5, -1];
-        state.jobs.Banker.priority = 14;
         state.jobs.Colonist.breakpointMaxs = [0, 0, -1];
-        state.jobs.Colonist.priority = 15;
         state.jobs.SpaceMiner.breakpointMaxs = [0, 0, -1];
-        state.jobs.SpaceMiner.priority = 16;
+    }
 
-        state.jobManager.sortJobPriority();
+    function resetBuildingState() {
+        state.buildingManager.clearPriorityList();
+
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Windmill);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Mill);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmControl);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmSatellite);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CoalPower);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.OilPower);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.FissionPower);
+
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Apartment);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wardenclyffe);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.BioLab);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Mine);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CementPlant);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CoalMine);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Factory);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOutpost);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellGeothermal); // produces power
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltSpaceStation); // this building resets ui when clicked
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltEleriumShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumReactor);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIridiumShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIronShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceNavBeacon);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonBase); // this building resets ui when clicked
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonIridiumMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonHeliumMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMining);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceport); // this building resets ui when clicked
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedTower);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedLivingQuarters);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFabrication);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedBiodome);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedExoticLab); // this building resets ui when clicked
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOilExtractor);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumContainer);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldController);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceBarracks);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFactory);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
+
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Sawmill);
+
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.University);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Smelter);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Temple);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.OilWell);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.StorageYard);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Warehouse);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Bank);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Barracks);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Hospital);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.BootCamp);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.House);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Cottage);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Farm);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SoulWell); // Evil only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Silo);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shed); // Is this one special? Will have to think about how to do this one
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.LumberYard);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Foundry);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.OilDepot);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Trade);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Amphitheatre);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Library);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Lodge); // Cath only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Smokehouse); // Cath only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wharf);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MetalRefinery);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceGps);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpacePropellantDepot);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedGarage);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Ziggurat);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSwarmPlant);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasStorage);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDock);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDockProbe);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDockShipSegment);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonDrone);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldCollider);
+
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            const building = state.buildingManager.priorityList[i];
+            
+            if (building.id === "probes") {
+                building._autoMax = 4;
+            } else {
+                building._autoMax = -1;
+            }
+        }
     }
 
     initialiseState();
@@ -3527,18 +3586,42 @@
         }
         
         // Retrieve settings for buying buildings
-        for (let i = 0; i < state.allBuildingList.length; i++) {
-            let settingKey = 'bat' + state.allBuildingList[i].id;
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            const building = state.buildingManager.priorityList[i];
+
+            let settingKey = 'bat' + building.id;
             if (settings.hasOwnProperty(settingKey)) {
-                state.allBuildingList[i].autoBuildEnabled = settings[settingKey];
+                building.autoBuildEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = defaultAllOptionsEnabled;
+                settings[settingKey] = building.autoBuildEnabled;
+            }
+
+            settingKey = 'bld_p_' + building.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                building.priority = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = building.priority;
+            }
+
+            settingKey = 'bld_s_' + building.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                building.autoStateEnabled = settings[settingKey];
+            } else {
+                settings[settingKey] = building.autoStateEnabled;
+            }
+
+            settingKey = 'bld_m_' + building.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                building.autoMax = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = building._autoMax;
             }
         }
+        state.buildingManager.sortByPriority();
 
         // Retrieve settings for assigning jobs
-        for (let i = 0; i < state.jobManager.jobPriorityList.length; i++) {
-            const job = state.jobManager.jobPriorityList[i];
+        for (let i = 0; i < state.jobManager.priorityList.length; i++) {
+            const job = state.jobManager.priorityList[i];
 
             let settingKey = 'job_' + job.id;
             if (settings.hasOwnProperty(settingKey)) {
@@ -3575,7 +3658,7 @@
                 settings[settingKey] = job.getBreakpoint(3);
             }
         }
-        state.jobManager.sortJobPriority();
+        state.jobManager.sortByPriority();
 
         if (!settings.hasOwnProperty('userEvolutionTargetName')) {
             settings.userEvolutionTargetName = "auto";
@@ -3592,19 +3675,42 @@
         if (!settings.hasOwnProperty("tradeRouteMinimumMoneyPerSecond")) {
             settings.tradeRouteMinimumMoneyPerSecond = 200;
         }
+
+        if (!settings.hasOwnProperty("buildingEnabledAll")) {
+            settings.buildingEnabledAll = false;
+        }
+        if (!settings.hasOwnProperty("buildingStateAll")) {
+            settings.buildingStateAll = false;
+        }
+        if (!settings.hasOwnProperty("evolutionSettingsCollapsed")) {
+            settings.evolutionSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("researchSettingsCollapsed")) {
+            settings.researchSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("jobSettingsCollapsed")) {
+            settings.jobSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("buildingSettingsCollapsed")) {
+            settings.buildingSettingsCollapsed = true;
+        }
     }
 
     updateStateFromSettings();
 
     function updateSettingsFromState() {
-        for (let i = 0; i < state.allBuildingList.length; i++) {
-            settings['bat' + state.allBuildingList[i].id] = state.allBuildingList[i].autoBuildEnabled;
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            const building = state.buildingManager.priorityList[i];
+            settings['bat' + building.id] = building.autoBuildEnabled;
+            settings['bld_p_' + building.id] = building.priority;
+            settings['bld_s_' + building.id] = building.autoStateEnabled;
+            settings['bld_m_' + building.id] = building._autoMax;
         }
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             settings['craft' + state.craftableResourceList[i].id] = state.craftableResourceList[i].autoCraftEnabled;
         }
-        for (let i = 0; i < state.jobManager.jobPriorityList.length; i++) {
-            const job = state.jobManager.jobPriorityList[i];
+        for (let i = 0; i < state.jobManager.priorityList.length; i++) {
+            const job = state.jobManager.priorityList[i];
             settings['job_' + job.id] = job.autoJobEnabled;
             settings['job_p_' + job.id] = job.priority;
             settings['job_b1_' + job.id] = job.getBreakpoint(1);
@@ -3702,6 +3808,25 @@
         }
         if (!settings.hasOwnProperty("tradeRouteMinimumMoneyPerSecond")) {
             settings.tradeRouteMinimumMoneyPerSecond = 200;
+        }
+
+        if (!settings.hasOwnProperty("buildingEnabledAll")) {
+            settings.buildingEnabledAll = false;
+        }
+        if (!settings.hasOwnProperty("buildingStateAll")) {
+            settings.buildingStateAll = false;
+        }
+        if (!settings.hasOwnProperty("evolutionSettingsCollapsed")) {
+            settings.evolutionSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("researchSettingsCollapsed")) {
+            settings.researchSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("jobSettingsCollapsed")) {
+            settings.jobSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("buildingSettingsCollapsed")) {
+            settings.buildingSettingsCollapsed = true;
         }
 
         localStorage.setItem('settings', JSON.stringify(settings));
@@ -3973,7 +4098,7 @@
         }
 
         state.jobManager.calculateCraftingMaxs();
-        let jobList = state.jobManager.managedJobPriorityList();
+        let jobList = state.jobManager.managedPriorityList();
 
         // No jobs unlocked yet
         if (jobList.length === 0) {
@@ -4028,13 +4153,13 @@
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
                 if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking")
-                        && state.resources.Money.currentQuantity === state.resources.Money.maxQuantity) {
+                        && state.resources.Money.storageRatio > 0.98) {
                     jobsToAssign = 0;
                 }
 
                 // Races with the Intelligent trait get bonus production based on the number of professors and scientists
                 // Only unassign them when knowledge is max if the race is not intelligent
-                if (!isRaceTraitIntelligent(getRaceName())) {
+                if (!isRaceTraitIntelligent(getRaceId())) {
                     // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
                     if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination")
                             && state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
@@ -4475,7 +4600,9 @@
     //#region Auto Seeder Ship
 
     function autoSeeder() {
-        if (!state.spaceBuildings.GasSpaceDock.isUnlocked() || state.spaceBuildings.GasSpaceDock.count < 1) {
+        let spaceDock = state.spaceBuildings.GasSpaceDock;
+
+        if (!spaceDock.isUnlocked() || spaceDock.count < 1) {
             return;
         }
 
@@ -4485,7 +4612,8 @@
         }
 
         // We want at least 4 probes and a completed ship
-        if (state.spaceBuildings.GasSpaceDock.lastProbeCount < 4 || state.spaceBuildings.GasSpaceDock.lastShipSegmentCount < 100) {
+        let requiredProbes = spaceDock.Probes.autoMax === Number.MAX_SAFE_INTEGER ? 4 : spaceDock.Probes.autoMax;
+        if (spaceDock.lastProbeCount < requiredProbes || spaceDock.lastShipSegmentCount < 100) {
             return;
         }
 
@@ -4498,12 +4626,12 @@
         // Let's do this!
         if (!state.windowManager.isOpen()) {
             state.goal = "LaunchingSeeder";
-            state.spaceBuildings.GasSpaceDock.openOptions();
+            spaceDock.openOptions();
             return;
         }
 
         console.log("Soft resetting game with BioSeeder ship");
-        state.spaceBuildings.GasSpaceDock.tryLaunchShip();
+        spaceDock.tryLaunchShip();
     }
 
     //#endregion Auto Seeder Ship
@@ -4524,15 +4652,18 @@
     //#region Auto Assemble Gene
 
     function autoAssembleGene() {
-        let button = document.querySelector('#arpaSequence .novo');
+        let buttons = document.querySelectorAll('#arpaSequence .button');
 
-        if (button === null) {
+        if (buttons === null) {
             return;
         }
 
-        if (state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
-            // @ts-ignore
-            button.click();
+        for (let i = 0; i < buttons.length; i++) {
+            const button = buttons[i];
+            if (button.textContent === "Assemble Gene" && state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
+                // @ts-ignore
+                button.click();
+            }
         }
     }
 
@@ -4622,7 +4753,7 @@
      * @param {number} requiredProduction
      */
     function buildIfEnoughProduction(building, requiredResource, requiredProduction) {
-        if (building.autoBuildEnabled && requiredResource.rateOfChange > requiredProduction) {
+        if (building.autoBuildEnabled && building.count < building.autoMax && requiredResource.rateOfChange > requiredProduction) {
             building.tryBuild();
             return;
         }
@@ -4661,13 +4792,15 @@
      */
     function buildIfCountLessThan(building, count) {
         // If we have less than what we want then try to buy it
-        if (building.count < count) {
+        if (building.count < count && building.count < building.autoMax) {
             building.tryBuild();
         }
     }
 
     function autoBuildSpaceDockChildren() {
-        if (!state.spaceBuildings.GasSpaceDock.isUnlocked() || state.spaceBuildings.GasSpaceDock.count < 1 || state.goal === "LaunchingSeeder") {
+        let spaceDock = state.spaceBuildings.GasSpaceDock;
+
+        if (!spaceDock.isUnlocked() || spaceDock.count < 1 || state.goal === "LaunchingSeeder") {
             return;
         }
 
@@ -4676,8 +4809,8 @@
             return;
         }
 
-        // We don't want more than 4 probes or more than 100 ship segments
-        if (state.spaceBuildings.GasSpaceDock.lastProbeCount >= 4 && state.spaceBuildings.GasSpaceDock.lastShipSegmentCount >= 100) {
+        // If we're not launching and we've built all we want then don't even check
+        if (spaceDock.lastProbeCount >= spaceDock.Probes.autoMax && spaceDock.lastShipSegmentCount >= spaceDock.Ship.autoMax) {
             return;
         }
 
@@ -4688,7 +4821,7 @@
         }
 
         // This one involves opening options so don't do it too often
-        if (!state.spaceBuildings.GasSpaceDock.isOptionsOpen() && state.loopCounter % 500 !== 0 && state.spaceBuildings.GasSpaceDock.isOptionsUpdated()) {
+        if (!spaceDock.isOptionsOpen() && state.loopCounter % 500 !== 0 && spaceDock.isOptionsUpdated()) {
             return;
         }
 
@@ -4696,21 +4829,20 @@
         // Open the modal in the first loop
         // Try to build and close the modal in the second loop
         if (!state.windowManager.isOpen()) {
-            state.spaceBuildings.GasSpaceDock.openOptions();
+            spaceDock.openOptions();
             return;
         }
 
         // We've opened the options window so lets update where we are currently
-        state.spaceBuildings.GasSpaceDock.updateOptions();
+        spaceDock.updateOptions();
 
-        // We want to build 4 probes max
-        if (state.spaceBuildings.GasSpaceDock.lastProbeCount < 4) {
-            state.spaceBuildings.GasSpaceDock.tryBuildProbe();
+        if (spaceDock.lastProbeCount < spaceDock.Probes.autoMax) {
+            spaceDock.tryBuildProbe();
         }
 
         // We want to build 100 ship segments max
-        if (state.spaceBuildings.GasSpaceDock.lastShipSegmentCount < 100) {
-            state.spaceBuildings.GasSpaceDock.tryBuildShipSegment();
+        if (spaceDock.lastShipSegmentCount < spaceDock.Ship.autoMax) {
+            spaceDock.tryBuildShipSegment();
         }
 
         state.windowManager.closeModalWindow();
@@ -4718,13 +4850,21 @@
     
     function autoBuild() {
         autoGatherResources();
+
+        let buildingList = state.buildingManager.managedPriorityList();
+
+        // No buildings unlocked yet
+        if (buildingList.length === 0) {
+            return;
+        }
         
         let targetBuilding = null;
+        let building = null;
 
         // Special for very beginning of game - If we've unlocked cement plants but don't have any yet then buy at least 2
-        if (state.cityBuildings.CementPlant.autoBuildEnabled && state.cityBuildings.CementPlant.isUnlocked()
-                && state.cityBuildings.CementPlant.count < 2 && !isLowPlasmidCount()) {
-            state.cityBuildings.CementPlant.tryBuild();
+        building = state.cityBuildings.CementPlant;
+        if (building.autoBuildEnabled && building.isUnlocked() && building.count < 2 && building.autoMax >= 2 && !isLowPlasmidCount()) {
+            building.tryBuild();
             return;
         }
 
@@ -4732,42 +4872,46 @@
         // crafting to catch up again (or less than 10 cottages, or less than 5 coal mines)
         if (state.cityBuildings.Amphitheatre.count > 7  && state.cityBuildings.Amphitheatre.count < 11 && state.jobManager.canManualCraft()) {
             log("Checking for early game target building");
-            if (state.cityBuildings.Library.autoBuildEnabled && state.cityBuildings.Library.isUnlocked()) {
-                state.cityBuildings.Library.tryBuild();
-                if (state.cityBuildings.Library.count < 10) {
+            building = state.cityBuildings.Library;
+            if (building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 10) {
+                building.tryBuild();
+                if (building.count < 10) {
                     log("Target building: library");
-                    targetBuilding = state.cityBuildings.Library;
+                    targetBuilding = building;
                 }
             }
 
-            if (targetBuilding === null && state.cityBuildings.Cottage.autoBuildEnabled && state.cityBuildings.Cottage.isUnlocked() && state.cityBuildings.Smelter.count > 5) {
-                state.cityBuildings.Cottage.tryBuild();
-                if (state.cityBuildings.Cottage.count < 10) {
+            building = state.cityBuildings.Cottage;
+            if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 10 && state.cityBuildings.Smelter.count > 5) {
+                building.tryBuild();
+                if (building.count < 10) {
                     log("Target building: cottage");
-                    targetBuilding = state.cityBuildings.Cottage;
+                    targetBuilding = building;
                }
             }
             
-            if (targetBuilding === null && state.cityBuildings.CoalMine.autoBuildEnabled && state.cityBuildings.CoalMine.isUnlocked() && state.cityBuildings.Smelter.count > 5) {
-                state.cityBuildings.CoalMine.tryBuild();
-                if (state.cityBuildings.CoalMine.count < 5) {
+            building = state.cityBuildings.CoalMine;
+            if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 5 && state.cityBuildings.Smelter.count > 5) {
+                building.tryBuild();
+                if (building.count < 5) {
                     log("Target building: coal mine");
-                    targetBuilding = state.cityBuildings.CoalMine;
+                    targetBuilding = building;
                }
             }
 
-            if (targetBuilding === null && state.cityBuildings.StorageYard.autoBuildEnabled && state.cityBuildings.StorageYard.isUnlocked() && state.cityBuildings.Smelter.count > 5) {
-                state.cityBuildings.StorageYard.tryBuild();
-                if (state.cityBuildings.StorageYard.count < 5) {
+            building = state.cityBuildings.StorageYard;
+            if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 5 && state.cityBuildings.Smelter.count > 5) {
+                building.tryBuild();
+                if (building.count < 5) {
                     log("Target building: freight yard");
-                    targetBuilding = state.cityBuildings.StorageYard;
+                    targetBuilding = building;
                }
             }
         }
 
         // Loop through the auto build list and try to buy them
-        for(let i = 0; i < state.allBuildingList.length; i++) {
-            let building = state.allBuildingList[i];
+        for(let i = 0; i < buildingList.length; i++) {
+            let building = buildingList[i];
 
             if (!building.autoBuildEnabled) {
                 continue;
@@ -4784,7 +4928,7 @@
             }
 
             // Only build the following buildings if we have enough production to cover what they use
-            if (building === state.cityBuildings.Smelter) {
+            if (building === state.cityBuildings.Smelter && getRaceId() !== state.races.Entish.id) {
                 buildIfEnoughProduction(building, state.resources.Lumber, 12);
                 continue;
             }
@@ -4817,14 +4961,20 @@
             }
 
             if (building === state.spaceBuildings.GasSpaceDock) {
-                building.tryBuild();
+                if (building.autoBuildEnabled) {
+                    building.tryBuild();
+                }
+
                 autoBuildSpaceDockChildren();
                 continue;
             }
             
-            if (building.tryBuild()) {
-                if (building._tabPrefix === "space") {
-                    removePoppers();
+            // Build building if less than our max
+            if (building.count < building.autoMax) {
+                if (building.tryBuild()) {
+                    if (building._tabPrefix === "space") {
+                        removePoppers();
+                    }
                 }
             }
         }
@@ -4898,7 +5048,11 @@
                     // @ts-ignore
                     items[i].children[0].click();
                     removePoppers();
-                    return;
+
+                    // TODO: There's a bug with tech-dazzle at the moment. Take the IF statement out when fixed.
+                    if (itemId !== "tech-dazzle") {
+                        return;
+                    }
                 }
             }
         }
@@ -4976,17 +5130,24 @@
         if (availablePowerNode === null) {
             return;
         }
+
+        let buildingList = state.buildingManager.managedStatePriorityList();
+
+        // No buildings unlocked yet
+        if (buildingList.length === 0) {
+            return;
+        }
         
         // Calculate the available power / resource rates of change that we have to work with
         let availablePower = parseInt(availablePowerNode.textContent);
         let spaceFuelMultiplier = 0.95 ** state.cityBuildings.MassDriver.stateOnCount;
 
-        for (let i = 0; i < state.consumptionPriorityList.length; i++) {
-            let building = state.consumptionPriorityList[i];
+        for (let i = 0; i < buildingList.length; i++) {
+            let building = buildingList[i];
 
             // Some buildings have state that turn on later... ignore them if they don't have state yet!
             // Also, don't manage mills if we don't have many plasmids or are doing the no plasmid challenge
-            if (!building.hasState() || (building === state.cityBuildings.Mill && isLowPlasmidCount())) {
+            if (building === state.cityBuildings.Mill && isLowPlasmidCount()) {
                 continue;
             }
 
@@ -5009,13 +5170,12 @@
         //if (!autoBuildingPriorityLoggedOnce) console.log("available power: " + availablePower);
 
         // Start assigning buildings from the top of our priority list to the bottom
-        for (let i = 0; i < state.consumptionPriorityList.length; i++) {
-            let building = state.consumptionPriorityList[i];
+        for (let i = 0; i < buildingList.length; i++) {
+            let building = buildingList[i];
             let requiredStateOn = 0;
 
-            // Some buildings have state that turn on later... ignore them if they don't have state yet!
-            // Also, don't manage mills if we don't have many plasmids or are doing the no plasmid challenge
-            if (!building.hasState() || (building === state.cityBuildings.Mill && isLowPlasmidCount())) {
+            // Don't manage mills if we don't have many plasmids or are doing the no plasmid challenge
+            if (building === state.cityBuildings.Mill && isLowPlasmidCount()) {
                 continue;
             }
 
@@ -5213,7 +5373,7 @@
             const resource = resources[i];
             requiredTradeRoutes.push(0);
 
-            while (tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.99 && resource.calculatedRateOfChange > 7) {
+            while (tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.98 && resource.calculatedRateOfChange > 7) {
                 tradeRoutesUsed++;
                 requiredTradeRoutes[i]--;
                 resource.calculatedRateOfChange -= resource.tradeRouteQuantity;
@@ -5245,7 +5405,7 @@
                 //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " testing...")
 
                 // The resources is not currenlty unlocked or we've done all we can or we already have max storage so don't trade for more of it
-                if (resourceToTrade.index === -1 || resourceToTrade.completed || resourceToTrade.resource.storageRatio > 0.99) {
+                if (resourceToTrade.index === -1 || resourceToTrade.completed || resourceToTrade.resource.storageRatio > 0.98) {
                     //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 1 - " + resourceToTrade.index)
                     resourceToTrade.completed = true;
                     continue;
@@ -5259,6 +5419,7 @@
                     currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
                     tradeRoutesUsed++;
                     requiredTradeRoutes[resourceToTrade.index]++;
+                    //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " adding trade route - " + resourceToTrade.index)
                     continue;
                 }
 
@@ -5295,7 +5456,7 @@
                             if (currentMoneyPerSecond - reducedMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > settings.tradeRouteMinimumMoneyPerSecond) {
                                 currentMoneyPerSecond -= reducedMoneyPerSecond;
                                 currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
-                                //console.log(state.loopCounter + " " + resourceToTrade.resource.id + "current money per second: " + currentMoneyPerSecond);
+                                //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " current money per second: " + currentMoneyPerSecond);
                                 requiredTradeRoutes[resourceToTrade.index]++;
                                 requiredTradeRoutes[i] = currentRequired;
                                 addedTradeRoute = true;
@@ -5583,10 +5744,49 @@
     addScriptStyle();
 
     function addScriptStyle() {
-        let styles = '#script_jobBody .scriptlastcolumn:after { float: right; content: "\\21c5"; }';
-        styles += '#script_jobBody .ui-sortable-helper { display: table; }'
-        styles += '#script_jobBody .draggable { cursor: move; cursor: grab; }';
-        styles += '#script_jobBody tr:active, tr.ui-sortable-helper { cursor: grabbing !important; }';
+        let styles = '.scriptlastcolumn:after { float: right; content: "\\21c5"; }';
+        styles += '.ui-sortable-helper { display: table; }'
+        styles += '.scriptdraggable { cursor: move; cursor: grab; }';
+        styles += 'tr:active, tr.ui-sortable-helper { cursor: grabbing !important; }';
+
+        styles += `
+        .scriptcollapsible {
+            background-color: #444;
+            color: white;
+            cursor: pointer;
+            padding: 18px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 15px;
+          }
+          
+          .scriptcontentactive, .scriptcollapsible:hover {
+            background-color: #333;
+          }
+          
+          .scriptcollapsible:after {
+            content: '\\002B';
+            color: white;
+            font-weight: bold;
+            float: right;
+            margin-left: 5px;
+          }
+          
+          .scriptcontentactive:after {
+            content: "\\2212";
+          }
+          
+          .scriptcontent {
+            padding: 0 18px;
+            display: none;
+            //max-height: 0;
+            overflow: hidden;
+            //transition: max-height 0.2s ease-out;
+            //background-color: #f1f1f1;
+          }
+        `
 
         // Create style document
         var css = document.createElement('style');
@@ -5630,6 +5830,24 @@
         buildEvolutionSettings();
         buildResearchSettings();
         buildJobSettings();
+        buildBuildingSettings();
+
+        let collapsibles = document.getElementsByClassName("scriptcollapsible");
+        for (let i = 0; i < collapsibles.length; i++) {
+            collapsibles[i].addEventListener("click", function() {
+                this.classList.toggle("scriptcontentactive");
+                var content = this.nextElementSibling;
+                if (content.style.display === "block") {
+                    settings[collapsibles[i].id] = true; 
+                    content.style.display = "none";
+                } else {
+                    settings[collapsibles[i].id] = false;
+                    content.style.display = "block";
+                }
+
+                updateSettingsFromState();
+            });
+        }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -5638,13 +5856,23 @@
         let scriptContentNode = $("#script_settings");
 
         let evolutionNode = '<div id="script_evolutionSettings">' +
-                                '<h3 class="text-center has-text-success">Evolution Settings</h3>' +
+                                '<h3 id="evolutionSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Evolution Settings</h3>' +
+                                '<div class="scriptcontent">' +
                                 '<div style="margin-top: 10px;"><button id="script_resetEvolution" class="button">Reset Evolution Settings</button></div>' +
-                                '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_evolutionBody"></div>'
+                                '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_evolutionBody"></div>' +
+                                '</div>';
                             '</div>';
 
         scriptContentNode.append(evolutionNode);
         buildEvolutionSection();
+
+        if (!settings.evolutionSettingsCollapsed) {
+            let element = document.getElementById("evolutionSettingsCollapsed");
+            element.classList.toggle("scriptcontentactive");
+            let content = element.nextElementSibling;
+            //@ts-ignore
+            content.style.display = "block";
+        }
 
         $("#script_resetEvolution").on("click", function() {
             resetEvolutionSettings();
@@ -5691,14 +5919,24 @@
     function buildResearchSettings() {
         let scriptContentNode = $("#script_settings");
 
-        let evolutionNode = '<div id="script_researchSettings">' +
-                                '<h3 class="text-center has-text-success">Research Settings</h3>' +
+        let evolutionNode = '<div style="margin-top: 10px;" id="script_researchSettings">' +
+                                '<h3 id="researchSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Research Settings</h3>' +
+                                '<div class="scriptcontent">' +
                                 '<div style="margin-top: 10px;"><button id="script_resetResearch" class="button">Reset Research Settings</button></div>' +
-                                '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_researchBody"></div>'
+                                '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_researchBody"></div>' +
+                                '</div>' +
                             '</div>';
 
         scriptContentNode.append(evolutionNode);
         buildResearchSection();
+
+        if (!settings.researchSettingsCollapsed) {
+            let element = document.getElementById("researchSettingsCollapsed");
+            element.classList.toggle("scriptcontentactive");
+            let content = element.nextElementSibling;
+            //@ts-ignore
+            content.style.display = "block";
+        }
 
         $("#script_resetResearch").on("click", function() {
             resetResearchSettings();
@@ -5799,13 +6037,27 @@
     function buildJobSettings() {
         let scriptContentNode = $("#script_settings");
 
-        let jobNode = '<div id="script_jobSettings"><h3 class="text-center has-text-success">Job Settings</h3>' +
-        '<div style="margin-top: 10px;"><button id="script_resetJobs" class="button">Reset Job Settings</button></div>' +
-        '<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Jobs</th><th class="has-text-warning" style="width:25%">1st Pass Max</th><th class="has-text-warning" style="width:25%">2nd Pass Max</th><th class="has-text-warning" style="width:25%">Final Max</th></tr>' +
-        '<tbody id="script_jobBody"></tbody></table></div>';
+        let jobNode =
+            `<div style="margin-top: 10px;" id="script_jobSettings">
+                <h3 id="jobSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Job Settings</h3>
+                <div class="scriptcontent">
+                    <div style="margin-top: 10px;"><button id="script_resetJobs" class="button">Reset Job Settings</button></div>
+                    <table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Job</th><th class="has-text-warning" style="width:25%">1st Pass Max</th><th class="has-text-warning" style="width:25%">2nd Pass Max</th><th class="has-text-warning" style="width:25%">Final Max</th></tr>
+                        <tbody id="script_jobBody" class="scriptcontenttbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
 
         scriptContentNode.append(jobNode);
         buildJobTableBody();
+
+        if (!settings.jobSettingsCollapsed) {
+            let element = document.getElementById("jobSettingsCollapsed");
+            element.classList.toggle("scriptcontentactive");
+            let content = element.nextElementSibling;
+            //@ts-ignore
+            content.style.display = "block";
+        }
 
         $("#script_resetJobs").on("click", function() {
             resetJobState();
@@ -5822,24 +6074,19 @@
 
         let newTableBodyText = "";
 
-        for (let i = 0; i < state.jobManager.jobPriorityList.length; i++) {
-            const job = state.jobManager.jobPriorityList[i];
-            let classAttribute = job !== state.jobs.Farmer ? ' class="draggable"' : ' class="unsortable"';
+        for (let i = 0; i < state.jobManager.priorityList.length; i++) {
+            const job = state.jobManager.priorityList[i];
+            let classAttribute = job !== state.jobs.Farmer ? ' class="scriptdraggable"' : ' class="unsortable"';
             newTableBodyText += '<tr value="' + job.id + '"' + classAttribute + '><td id="script_' + job.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
-        for (let i = 0; i < state.jobManager.jobPriorityList.length; i++) {
-            const job = state.jobManager.jobPriorityList[i];
+        for (let i = 0; i < state.jobManager.priorityList.length; i++) {
+            const job = state.jobManager.priorityList[i];
             let jobElement = $('#script_' + job.id + 'Toggle');
 
             var toggle = buildJobSettingsToggle(job);
             jobElement.append(toggle);
-
-            if (job.autoJobEnabled) {
-                toggle.click();
-                toggle.children('input').attr('value', true);
-            }
 
             jobElement = jobElement.next();
             jobElement.append(buildJobSettingsInput(job, 1));
@@ -5861,10 +6108,10 @@
 
                 for (let i = 0; i < jobIds.length; i++) {
                     // Job has been dragged... Update all job priorities
-                    state.jobManager.jobPriorityList[findArrayIndex(state.jobManager.jobPriorityList, "id", jobIds[i])].priority = i + 1; // farmers is always 0
+                    state.jobManager.priorityList[findArrayIndex(state.jobManager.priorityList, "id", jobIds[i])].priority = i + 1; // farmers is always 0
                 }
 
-                state.jobManager.sortJobPriority();
+                state.jobManager.sortByPriority();
                 updateSettingsFromState();
             },
         } );
@@ -5876,15 +6123,14 @@
      * @param {Job} job
      */
     function buildJobSettingsToggle(job) {
+        let checked = job.autoJobEnabled ? " checked" : "";
         let classAttribute = !job.isCraftsman() ? ' class="has-text-info"' : ' class="has-text-danger"';
         let marginTop = job !== state.jobs.Farmer ? ' margin-top: 4px;' : "";
-        let toggle = $('<label tabindex="0" class="switch ea-job-toggle" style="position:absolute;' + marginTop + ' margin-left: 10px;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span><span' + classAttribute + ' style="margin-left: 20px;">' + job.name + '</span></label>');
+        let toggle = $('<label tabindex="0" class="switch" style="position:absolute;' + marginTop + ' margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span' + classAttribute + ' style="margin-left: 20px;">' + job.name + '</span></label>');
 
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
-            let state = !(input.getAttribute('value') === "true");
-            input.setAttribute('value', state);
-            job.autoJobEnabled = state;
+            job.autoJobEnabled = input.checked;
             updateSettingsFromState();
             //console.log(job.name + " changed state to " + state);
         });
@@ -5920,27 +6166,245 @@
         return jobBreakpointTextbox;
     }
 
+    function buildBuildingSettings() {
+        let scriptContentNode = $("#script_settings");
+
+        let jobNode =
+            `<div style="margin-top: 10px;" id="script_buildingSettings">
+                <h3 id="buildingSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Building Settings</h3>
+                <div class="scriptcontent">
+                    <div style="margin-top: 10px;"><button id="script_resetBuildings" class="button">Reset Building Settings</button></div>
+                    <table style="width:100%"><tr><th class="has-text-warning" style="width:40%">Building</th><th class="has-text-warning" style="width:20%">Auto Build</th><th class="has-text-warning" style="width:20%">Max Build</th><th class="has-text-warning" style="width:20%">Manage State</th></tr>
+                        <tbody id="script_buildingBody" class="scriptcontenttbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+
+        scriptContentNode.append(jobNode);
+        buildBuildingTableBody();
+
+        if (!settings.buildingSettingsCollapsed) {
+            let element = document.getElementById("buildingSettingsCollapsed");
+            element.classList.toggle("scriptcontentactive");
+            let content = element.nextElementSibling;
+            //@ts-ignore
+            content.style.display = "block";
+        }
+
+        $("#script_resetBuildings").on("click", function() {
+            resetBuildingState();
+            updateSettingsFromState();
+            buildBuildingTableBody();
+        });
+    }
+
+    function buildBuildingTableBody() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let tableBodyNode = $('#script_buildingBody');
+        tableBodyNode.empty().off("*");
+
+        let newTableBodyText = "";
+
+        // Add in a first row for switching "All"
+        newTableBodyText += '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:40%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            const building = state.buildingManager.priorityList[i];
+            let classAttribute = ' class="scriptdraggable"';
+            newTableBodyText += '<tr value="' + building.id + '"' + classAttribute + '><td id="script_' + building.id + 'Toggle" style="width:40%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build special "All Buildings" top row
+        let buildingElement = $('#script_bldallToggle');
+        let toggle = $('<span class="has-text-warning" style="margin-left: 20px;">All Buildings</span>');
+        buildingElement.append(toggle);
+
+        // enabled column
+        buildingElement = buildingElement.next();
+        toggle = buildAllBuildingEnabledSettingsToggle(state.buildingManager.priorityList);
+        buildingElement.append(toggle);
+
+        // max column
+        buildingElement = buildingElement.next();
+        buildingElement.append($('<span></span>'));
+
+        // state column
+        buildingElement = buildingElement.next();
+        toggle = buildAllBuildingStateSettingsToggle(state.buildingManager.priorityList);
+        buildingElement.append(toggle);
+
+        // Build all other buildings settings rows
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            const building = state.buildingManager.priorityList[i];
+            let buildingElement = $('#script_' + building.id + 'Toggle');
+
+            let classAttribute = building._tabPrefix === "city" ? ' class="has-text-info"' : ' class="has-text-danger"';
+            let toggle = $('<span' + classAttribute + ' style="margin-left: 20px;">' + building.name + '</span>');
+            buildingElement.append(toggle);
+
+            buildingElement = buildingElement.next();
+            toggle = buildBuildingEnabledSettingsToggle(building);
+            buildingElement.append(toggle);
+
+            buildingElement = buildingElement.next();
+            buildingElement.append(buildBuildingMaxSettingsInput(building));
+
+            buildingElement = buildingElement.next();
+            toggle = buildBuildingStateSettingsToggle(building);
+            buildingElement.append(toggle);
+        }
+
+        $('#script_buildingBody').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let buildingIds = $('#script_buildingBody').sortable('toArray', {attribute: 'value'});
+
+                for (let i = 0; i < buildingIds.length; i++) {
+                    // Building has been dragged... Update all building priorities
+                    if (buildingIds[i] !== "All") {
+                        state.buildingManager.priorityList[findArrayIndex(state.buildingManager.priorityList, "id", buildingIds[i])].priority = i - 1;
+                    }
+                }
+
+                state.buildingManager.sortByPriority();
+                updateSettingsFromState();
+            },
+        } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
     /**
      * @param {Action} building
      */
-    function createBuildingSettingsToggle(building) {
-        let buildingElement = $('#' + building.id + '_scriptToggle');
-        let toggle = $('<label tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span></label><span style="position:absolute; margin-left: 50px;">' + building.id + '</span>');
-        buildingElement.append(toggle);
+    function buildBuildingEnabledSettingsToggle(building) {
+        let checked = building.autoBuildEnabled ? " checked" : "";
+        let toggle = $('<label id=script_bat2_' + building.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
 
-        if (building.autoBuildEnabled) {
-            toggle.click();
-            toggle.children('input').attr('value', true);
-        }
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
-            let state = !(input.getAttribute('value') === "true");
-            input.setAttribute('value', state);
+            let state = input.checked;
             building.autoBuildEnabled = state;
+            //$('#script_bat1_' + building.id + ' input').checked = state; // Update the on-building toggle
+            // @ts-ignore
+            document.querySelector('#script_bat1_' + building.id + ' input').checked = state;
             updateSettingsFromState();
+            //console.log(building.name + " changed enabled to " + state);
         });
 
         return toggle;
+    }
+
+    /**
+     * @param {Action[]} buildings
+     */
+    function buildAllBuildingEnabledSettingsToggle(buildings) {
+        let checked = settings.buildingEnabledAll ? " checked" : "";
+        let toggle = $('<label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+
+            settings.buildingEnabledAll = state;
+
+            for (let i = 0; i < buildings.length; i++) {
+                buildings[i].autoBuildEnabled = state;
+            }
+
+            let toggles = document.querySelectorAll('[id^="script_bat"] input');
+
+            for (let i = 0; i < toggles.length; i++) {
+                // @ts-ignore
+                toggles[i].checked = state;
+            }
+
+            updateSettingsFromState();
+            //console.log(building.name + " changed enabled to " + state);
+        });
+
+        return toggle;
+    }
+    
+    /**
+     * @param {Action} building
+     */
+    function buildBuildingStateSettingsToggle(building) {
+        let toggle = null;
+        let checked = building.autoStateEnabled ? " checked" : "";
+
+        if (building.hasConsumption()) {
+            toggle = $('<label id=script_bld_s_' + building.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="scriptlastcolumn"></span>');
+        } else {
+            toggle = $('<span class="scriptlastcolumn"></span>');
+        }
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            building.autoStateEnabled = input.checked;
+            updateSettingsFromState();
+            //console.log(building.name + " changed state to " + state);
+        });
+
+        return toggle;
+    }
+
+    /**
+     * @param {Action[]} buildings
+     */
+    function buildAllBuildingStateSettingsToggle(buildings) {
+        let checked = settings.buildingStateAll ? " checked" : "";
+        let toggle = $('<label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+
+            settings.buildingStateAll = state;
+            
+            for (let i = 0; i < buildings.length; i++) {
+                buildings[i].autoStateEnabled = state;
+            }
+
+            let toggles = document.querySelectorAll('[id^="script_bld_s_"] input');
+
+            for (let i = 0; i < toggles.length; i++) {
+                // @ts-ignore
+                toggles[i].checked = state;
+            }
+
+            updateSettingsFromState();
+            //console.log(building.name + " changed state to " + state);
+        });
+
+        return toggle;
+    }
+
+    /**
+     * @param {Action} building
+     */
+    function buildBuildingMaxSettingsInput(building) {
+        let buildingMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        buildingMaxTextBox.val(settings["bld_m_" + building.id]);
+    
+        buildingMaxTextBox.on('change', function() {
+            let val = buildingMaxTextBox.val();
+            let max = getRealNumber(val);
+            if (!isNaN(max)) {
+                //console.log('Setting building max for building ' + building.name + ' to be ' + max);
+                building.autoMax = max;
+                updateSettingsFromState();
+            }
+        });
+
+        return buildingMaxTextBox;
     }
 
     function createSettingToggle(name, enabledCallBack, disabledCallBack) {
@@ -6159,23 +6623,22 @@
         $('.ea-craft-toggle').remove();
     }
 
-
     /**
      * @param {Action} building
      */
     function createBuildingToggle(building) {
+        let checked = building.autoBuildEnabled ? " checked" : "";
         let buildingElement = $('#' + building._tabPrefix + '-' + building.id);
-        let toggle = $('<label tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox" value=false> <span class="check" style="height:5px; max-width:15px"></span></label>');
+        let toggle = $('<label id=script_bat1_' + building.id + ' tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span></label>');
         buildingElement.append(toggle);
-        if (building.autoBuildEnabled) {
-            toggle.click();
-            toggle.children('input').attr('value', true);
-        }
+
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
-            let state = !(input.getAttribute('value') === "true");
-            input.setAttribute('value', state);
+            let state = input.checked;
             building.autoBuildEnabled = state;
+            //$('#script_bat2_' + building.id + ' input').checked = state; // Update the settings-building toggle
+            // @ts-ignore
+            document.querySelector('#script_bat2_' + building.id + ' input').checked = state;
             updateSettingsFromState();
         });
     }
@@ -6183,8 +6646,8 @@
     function createBuildingToggles() {
         removeBuildingToggles();
         
-        for (let i = 0; i < state.allBuildingList.length; i++) {
-            createBuildingToggle(state.allBuildingList[i]);
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            createBuildingToggle(state.buildingManager.priorityList[i]);
         }
     }
     
@@ -6308,10 +6771,10 @@
     }
 
     /**
-     * @param {string} race
+     * @param {string} raceId
      */
-    function isRaceTraitIntelligent(race) {
-        return race === "Cyclops";
+    function isRaceTraitIntelligent(raceId) {
+        return raceId === state.races.Cyclops.id;
     }
 
     /**
@@ -6321,22 +6784,22 @@
     function wouldBreakMoneyFloor(buyValue) {
         return state.resources.Money.currentQuantity - buyValue < settings.minimumMoney;
     }
-    
+
     /**
      * @return {string}
      */
-    function getRaceName() {
+    function getRaceId() {
         let raceNameNode = document.querySelector('#race .column > span');
         if (raceNameNode === null) {
             return "";
         }
         
-        return raceNameNode.textContent;
+        return raceNameNode.textContent.toLowerCase();
     }
 
     function isHunterRace() {
-        let raceName = getRaceName();
-        return raceName === state.races.Cath.name || raceName === state.races.Balorg.name || raceName === state.races.Imp.name;
+        let raceId = getRaceId();
+        return raceId === state.races.Cath.id || raceId === state.races.Balorg.id || raceId === state.races.Imp.id;
     }
 
     function removePoppers() {
@@ -6364,13 +6827,13 @@
 
     var modifierKeyPressed = false;
     $(document).keydown(function(e){
-        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey || e.keyCode === 68;
     });
     $(document).keyup(function(e){
-        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey || e.keyCode === 68;
     });
     window.onmousemove = function(e){
-        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey || e.keyCode === 68;
     }
 
     /**
