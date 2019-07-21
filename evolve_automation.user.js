@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.5
+// @version      0.9.6
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4117,16 +4117,20 @@
             if (!state.jobs.Lumberjack.isUnlocked() && !state.jobs.QuarryWorker.isUnlocked()) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs.push(availableEmployees);
+                //console.log("Pushing all farmers")
             } else if (state.resources.Food.storageRatio < 0.2 && state.resources.Food.rateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to add one per loop until positive
                 requiredJobs.push(Math.min(state.jobs.Farmer.current + 1, availableEmployees));
+                //console.log("Adding one farmer")
             } else if (state.resources.Food.storageRatio > 0.8 && state.resources.Food.rateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
+                //console.log("Removing one farmer")
                 farmerRemoved = true;
             } else {
                 // We're good; leave farmers as they are
                 requiredJobs.push(state.jobs.Farmer.current);
+                //console.log("Leaving current farmers")
             }
 
             jobAdjustments.push(requiredJobs[0] - state.jobs.Farmer.current);
@@ -4874,8 +4878,8 @@
             log("Checking for early game target building");
             building = state.cityBuildings.Library;
             if (building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 10) {
-                building.tryBuild();
                 if (building.count < 10) {
+                    building.tryBuild();
                     log("Target building: library");
                     targetBuilding = building;
                 }
@@ -4883,8 +4887,8 @@
 
             building = state.cityBuildings.Cottage;
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 10 && state.cityBuildings.Smelter.count > 5) {
-                building.tryBuild();
                 if (building.count < 10) {
+                    building.tryBuild();
                     log("Target building: cottage");
                     targetBuilding = building;
                }
@@ -4892,8 +4896,8 @@
             
             building = state.cityBuildings.CoalMine;
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 5 && state.cityBuildings.Smelter.count > 5) {
-                building.tryBuild();
                 if (building.count < 5) {
+                    building.tryBuild();
                     log("Target building: coal mine");
                     targetBuilding = building;
                }
@@ -4901,8 +4905,8 @@
 
             building = state.cityBuildings.StorageYard;
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 5 && state.cityBuildings.Smelter.count > 5) {
-                building.tryBuild();
                 if (building.count < 5) {
+                    building.tryBuild();
                     log("Target building: freight yard");
                     targetBuilding = building;
                }
@@ -5048,11 +5052,7 @@
                     // @ts-ignore
                     items[i].children[0].click();
                     removePoppers();
-
-                    // TODO: There's a bug with tech-dazzle at the moment. Take the IF statement out when fixed.
-                    if (itemId !== "tech-dazzle") {
-                        return;
-                    }
+                    return;
                 }
             }
         }
