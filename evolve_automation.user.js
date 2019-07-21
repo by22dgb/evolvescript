@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.6
+// @version      0.9.7
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -16,33 +16,33 @@
 // Just navigate to that link with one of the monkeys installed and it will load the script.
 // You can update to latest through the relevent UI for each extension.
 //
-// * autoEvolution - Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids. See user overrides below
-//         to target another specific race or use autoAchievements to target races that you don't have extinction achievements for yet.
+// * autoEvolution - Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids.
+//          See autoAchievements to target races that you don't have extinction achievements for yet. Settings available in Settings tab.
 //  ** autoAchievements - Works through all evolution paths until all race's extinction achievements have been completed (also works with autoChallenge for starred achievements)
 //  ** autoChallenge - Chooses ALL challenge options during evolution
 // * autoFight - Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attach type when offensive
-//         rating is greater than the rating cutoff for that attack type.
+//          rating is greater than the rating cutoff for that attack type.
 // * autoCraft - Craft when a specified crafting ratio is met. This changes throughout the game (lower in the beginning and rising as the game progresses)
 // * autoBuild - Builds city and space building when it can an production allows (eg. Won't build a Fission Reactor if you don't have enough uranium production).
-//         Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker. eg. If you don't have enough libraries / 
-//         cottages / coal mines then it will stop building anything that uses the same materials for a while to allow you to craft the resources to build them.
-//         Will only build the buildings that the user enables.
+//          Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker. eg. If you don't have enough libraries / 
+//          cottages / coal mines then it will stop building anything that uses the same materials for a while to allow you to craft the resources to build them.
+//          Will only build the buildings that the user enables. Settings available in Settings tab.
 // * autoMarket - Allows for automatic buying and selling of resources once specific ratios are met. Not currently user configurable.
-// * autoResearch - Performs research when minimum requirements are met. User can override theology and unification in user overrides section.
+// * autoResearch - Performs research when minimum requirements are met. Settings available in Settings tab.
 // * autoARPA - Builds ARPA projects if user enables them to be built
 // * autoJobs - Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on
-//         lumber / stone then fill up capped jobs first.  Not currently user configurable.
+//          lumber / stone then fill up capped jobs first. Settings available in Settings tab.
 //  ** autoCraftsmen - Enable this when performing challenge runs and autoJobs will also manage craftsmen
-// * autoPower - Manages power based on a priority order of buildings. Starts with city based building then space based. Not currently user configurable.
+// * autoPower - Manages power based on a priority order of buildings. Starts with city based building then space based. Settings available in Settings tab.
 // * autoTradeSpecialResources - Boths sets up trading routes for special resources (titanium, alloy, polymer, iridium, helium_3) and also assigns
-//         crates to allow storage of those resources. Only assigns a enough crates to reach MAD unless enabling autoSpace.
+//          crates to allow storage of those resources. Only assigns a enough crates to reach MAD unless enabling autoSpace.
 // * autoSmelter - Manages smelter output at different stages at the game. Not currently user configurable.
 // * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
-//         Not currently user configurable.
+//          Not currently user configurable.
 // * autoMAD - Once population is over 180 (low plasmids) / 245 (high plasmids) and MAD is unlocked will stop sending out troops and will perform MAD
 // * autoSpace - If population is over 250 then it will start funding the launch facility regardless of arpa settings
 // * autoSeeder - Will send out the seeder ship once at least 4 (or user entered max) probes are constructed. Currently tries to find a forest world, then grassland, then the others.
-//         Not currently user configurable.
+//          Not currently user configurable.
 // * autoAssembleGene - Automatically assembles genes only when your knowledge is at max
 // 
 
@@ -2914,7 +2914,7 @@
             Foundry: new Action("Foundry", "city", "foundry", true),
             Factory: new Factory(), // Special building with options
             OilDepot: new Action("Fuel Depot", "city", "oil_depot", true),
-            Trade: new Action(" Post", "city", "trade", true),
+            Trade: new Action("Trade Post", "city", "trade", true),
             Amphitheatre: new Action("Amphitheatre", "city", "amphitheatre", true),
             Library: new Action("Library", "city", "library", true),
             Sawmill: new Action("Sawmill", "city", "sawmill", true),
@@ -3779,9 +3779,6 @@
         if (!settings.hasOwnProperty('autoAssembleGene')) {
             settings.autoAssembleGene = false;
         }
-        if (!settings.hasOwnProperty('autoLogging')) {
-            settings.autoLogging = false;
-        }
         if (!settings.hasOwnProperty('minimumMoney')) {
             settings.minimumMoney = 0;
         }
@@ -4117,20 +4114,20 @@
             if (!state.jobs.Lumberjack.isUnlocked() && !state.jobs.QuarryWorker.isUnlocked()) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs.push(availableEmployees);
-                //console.log("Pushing all farmers")
+                log("autoJobs", "Pushing all farmers")
             } else if (state.resources.Food.storageRatio < 0.2 && state.resources.Food.rateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to add one per loop until positive
                 requiredJobs.push(Math.min(state.jobs.Farmer.current + 1, availableEmployees));
-                //console.log("Adding one farmer")
+                log("autoJobs", "Adding one farmer")
             } else if (state.resources.Food.storageRatio > 0.8 && state.resources.Food.rateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
-                //console.log("Removing one farmer")
+                log("autoJobs", "Removing one farmer")
                 farmerRemoved = true;
             } else {
                 // We're good; leave farmers as they are
                 requiredJobs.push(state.jobs.Farmer.current);
-                //console.log("Leaving current farmers")
+                log("autoJobs", "Leaving current farmers")
             }
 
             jobAdjustments.push(requiredJobs[0] - state.jobs.Farmer.current);
@@ -4152,7 +4149,7 @@
                     availableEmployees += requiredJobs[j];
                 }
 
-                //console.log("job " + job.id + " job.breakpointEmployees(i) " + job.breakpointEmployees(i) + " availableEmployees " + availableEmployees);
+                log("autoJobs", "job " + job.id + " job.breakpointEmployees(i) " + job.breakpointEmployees(i) + " availableEmployees " + availableEmployees);
                 let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
@@ -4163,23 +4160,22 @@
 
                 // Races with the Intelligent trait get bonus production based on the number of professors and scientists
                 // Only unassign them when knowledge is max if the race is not intelligent
-                if (!isRaceTraitIntelligent(getRaceId())) {
+                // Once we've research shotgun sequencing we get boost and soon autoassemble genes so stop unassigning
+                if (!isRaceTraitIntelligent(getRaceId()) && !isResearchUnlocked("shotgun_sequencing")) {
                     // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
-                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination")
-                            && state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
+                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && state.resources.Knowledge.storageRatio > 0.98) {
                         jobsToAssign = 0;
                     }
 
                     // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our money knowledge cap
-                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal")
-                            && state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
+                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && state.resources.Knowledge.storageRatio > 0.98) {
                         jobsToAssign = 0;
                     }
                 }
 
                 if (job === state.jobs.CementWorker) {
                     let currentCementWorkers = job.current;
-                    //console.log("jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", state.resources.Stone.rateOfChange " + state.resources.Stone.rateOfChange);
+                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", state.resources.Stone.rateOfChange " + state.resources.Stone.rateOfChange);
 
                     if (jobsToAssign < currentCementWorkers) {
                         // great, remove workers as we want less than we have
@@ -4205,7 +4201,7 @@
                 
                 availableEmployees -= jobsToAssign;
 
-                //console.log("job " + job.id +  " has jobsToAssign: " + jobsToAssign + ", availableEmployees " + availableEmployees);
+                log("autoJobs", "job " + job.id +  " has jobsToAssign: " + jobsToAssign + ", availableEmployees " + availableEmployees);
             }
 
             // No more workers available
@@ -4253,7 +4249,7 @@
             }
         }
 
-        if (settings.autoCraftsmen) {
+        if (settings.autoCraftsmen && state.jobs.SheetMetal.isManaged() && settings['craft' + state.jobs.SheetMetal.resource.id]) {
             if (state.cityBuildings.Wardenclyffe.count < 18) {
                 let sheetMetalIndex = jobList.indexOf(state.jobs.SheetMetal);
 
@@ -4263,7 +4259,7 @@
                     let wroughtIronIndex = jobList.indexOf(state.jobs.WroughtIron);
                     let additionalSheetMetalJobs = 0;
                     
-                    if (plywoodIndex !== -1) {
+                    if (plywoodIndex !== -1 && state.jobs.Plywood.isManaged()) {
                         // add plywood jobs above 1 to sheet metal
                         let plywoodJobs = requiredJobs[plywoodIndex];
 
@@ -4274,7 +4270,7 @@
                         }
                     }
 
-                    if (brickIndex !== -1) {
+                    if (brickIndex !== -1 && state.jobs.Brick.isManaged()) {
                         // add brick jobs above 1 to sheet metal
                         let brickJobs = requiredJobs[brickIndex];
 
@@ -4285,7 +4281,7 @@
                         }
                     }
 
-                    if (wroughtIronIndex !== -1) {
+                    if (wroughtIronIndex !== -1 && state.jobs.WroughtIron.isManaged()) {
                         // add wroughtIron jobs above 1 to sheet metal
                         let wroughtIronJobs = requiredJobs[wroughtIronIndex];
 
@@ -4304,10 +4300,10 @@
 
         // For some reason we only have farmers available... User turned off all other job management? PEBKAC!
         // Assign all remaining jobs to be farmers (as long as we didn't remove one... otherwise there will be one remaining. Don't use that one)
-        if (!farmerRemoved && state.jobs.Farmer.isManaged() && availableEmployees > 0) {
-            requiredJobs[0] += availableEmployees;
-            jobAdjustments[0] += availableEmployees;
-        }
+        // if (!farmerRemoved && state.jobs.Farmer.isManaged() && availableEmployees > 0) {
+        //     requiredJobs[0] += availableEmployees;
+        //     jobAdjustments[0] += availableEmployees;
+        // }
 
         for (let i = 0; i < jobAdjustments.length; i++) {
             let adjustment = jobAdjustments[i];
@@ -4875,12 +4871,12 @@
         // A bit of trickery early game to get our craftables up. Once we reach 8 amphitheatre's and have < 10 libraries then wait for
         // crafting to catch up again (or less than 10 cottages, or less than 5 coal mines)
         if (state.cityBuildings.Amphitheatre.count > 7  && state.cityBuildings.Amphitheatre.count < 11 && state.jobManager.canManualCraft()) {
-            log("Checking for early game target building");
+            log("autoBuild", "Checking for early game target building");
             building = state.cityBuildings.Library;
             if (building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 10) {
                 if (building.count < 10) {
                     building.tryBuild();
-                    log("Target building: library");
+                    log("autoBuild", "Target building: library");
                     targetBuilding = building;
                 }
             }
@@ -4889,7 +4885,7 @@
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 10 && state.cityBuildings.Smelter.count > 5) {
                 if (building.count < 10) {
                     building.tryBuild();
-                    log("Target building: cottage");
+                    log("autoBuild", "Target building: cottage");
                     targetBuilding = building;
                }
             }
@@ -4898,7 +4894,7 @@
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 5 && state.cityBuildings.Smelter.count > 5) {
                 if (building.count < 5) {
                     building.tryBuild();
-                    log("Target building: coal mine");
+                    log("autoBuild", "Target building: coal mine");
                     targetBuilding = building;
                }
             }
@@ -4907,7 +4903,7 @@
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 5 && state.cityBuildings.Smelter.count > 5) {
                 if (building.count < 5) {
                     building.tryBuild();
-                    log("Target building: freight yard");
+                    log("autoBuild", "Target building: freight yard");
                     targetBuilding = building;
                }
             }
@@ -4924,10 +4920,10 @@
             // We specifically want to build a target building. Don't build anything else that uses the same resources
             if (targetBuilding !== null) {
                 if (targetBuilding.requiredBasicResourcesToAction.some(r => building.requiredBasicResourcesToAction.includes(r))) {
-                    log(building.id + " DOES conflict with target building " + targetBuilding.id);
+                    log("autoBuild", building.id + " DOES conflict with target building " + targetBuilding.id);
                     continue;
                 } else {
-                    log(building.id + " DOES NOT conflict with target building " + targetBuilding.id);
+                    log("autoBuild", building.id + " DOES NOT conflict with target building " + targetBuilding.id);
                 }
             }
 
@@ -5325,6 +5321,14 @@
                 if (assignCrates(state.resources.Alloy, 100)) { return }
                 if (assignCrates(state.resources.Polymer, 100)) { return }
                 if (assignCrates(state.resources.Iridium, 100)) { return }
+            } else if (state.resources.Population.currentQuantity > 200) {
+                if (assignCrates(state.resources.Steel, 100)) { return }
+                if (assignCrates(state.resources.Aluminium, 25)) { return }
+                if (assignCrates(state.resources.Titanium, 50)) { return }
+                if (assignCrates(state.resources.Alloy, 50)) { return }
+                if (assignCrates(state.resources.Polymer, 50)) { return }
+                if (assignCrates(state.resources.Iridium, 50)) { return }
+                if (assignCrates(state.resources.Copper, 110)) { return }
             }
         }
     }
@@ -5516,9 +5520,9 @@
      */
     function assignCrates(resource, nbrCrates) {
         // Can't assign crate if the resource doesn't exist or doesn't have options
-        log("resource: " + resource.id);
+        log("assignCrates", "resource: " + resource.id);
         if (!resource.isUnlocked() || !resource.hasOptions()) {
-            log("resource: " + resource.id + ", not unlocked");
+            log("assignCrates", "resource: " + resource.id + ", not unlocked");
             return false;
         }
 
@@ -5532,27 +5536,27 @@
 
         // We already have more crates assigned to this resource than what is being requested
         if (resource.isAssignedCratesUpdated && resource.assignedCrates >= nbrCrates) {
-            log("resource: " + resource.id + ", enough crates 1, assigned: " + resource.assignedCrates);
+            log("assignCrates", "resource: " + resource.id + ", enough crates 1, assigned: " + resource.assignedCrates);
             return false;
         }
         
         // There can only be one modal active at a time. If there is another modal active then don't continue
         if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== resource.id) {
-            log("resource: " + resource.id + ", other modal active: " + state.windowManager.currentModalWindowTitle);
+            log("assignCrates", "resource: " + resource.id + ", other modal active: " + state.windowManager.currentModalWindowTitle);
             return false;
         }
 
         // If the resources lastConstructStorageAttemptLoopCounter is not 0 then we are attempting to construct a crate (or not enough room to construct a crate).
         // Did we succeed? If so then reset the lastConstructStorageAttemptLoopCounter. Otherwise wait some number of loops and try again.
         if (resource.lastConstructStorageAttemptLoopCounter !== 0 && state.resources.Crates.currentQuantity !== state.lastCratesOwned) {
-            log("resource: " + resource.id + " successfully constructed a crate, current crates: " + state.resources.Crates.currentQuantity);
+            log("assignCrates", "resource: " + resource.id + " successfully constructed a crate, current crates: " + state.resources.Crates.currentQuantity);
 
             // Successfully constructed a crate so leave the modal window open and continue
             resource.lastConstructStorageAttemptLoopCounter = 0;
         } else if (resource.lastConstructStorageAttemptLoopCounter !== 0
             && state.loopCounter > resource.lastConstructStorageAttemptLoopCounter && state.loopCounter < resource.lastConstructStorageAttemptLoopCounter + 120) {
-                log("resource: " + resource.id + " EITHER we didn't successfully construct a crate, current crates : " + state.resources.Crates.currentQuantity + ", last crates: " + state.lastCratesOwned);
-                log("resource: " + resource.id + ", OR awaiting loop, last loop: " + resource.lastConstructStorageAttemptLoopCounter + ", current loop: " + state.loopCounter);
+                log("assignCrates", "resource: " + resource.id + " EITHER we didn't successfully construct a crate, current crates : " + state.resources.Crates.currentQuantity + ", last crates: " + state.lastCratesOwned);
+                log("assignCrates", "resource: " + resource.id + ", OR awaiting loop, last loop: " + resource.lastConstructStorageAttemptLoopCounter + ", current loop: " + state.loopCounter);
 
                 // Ok, we failed to construct a crate. Close the modal window if it is open and we'll try again in some number of loops
                 state.windowManager.closeModalWindow();
@@ -5564,7 +5568,7 @@
 
         // Open the modal this loop then continue processing next loop to give the modal time to open
         if (!state.windowManager.isOpen()) {
-            log("resource: " + resource.id + " opening options");
+            log("assignCrates", "resource: " + resource.id + " opening options");
             state.windowManager.openModalWindow();
             resource.openOptions();
             return true;
@@ -5572,7 +5576,7 @@
 
         // Update our assigned crates and containers again
         resource.updateOptions();
-        log("resource: " + resource.id + ", updated crates assigned: " + resource.assignedCrates);
+        log("assignCrates", "resource: " + resource.id + ", updated crates assigned: " + resource.assignedCrates);
         
         let adjustedLastCratesOwned = state.lastCratesOwned;
         let adjustedCurrentCratesOwned = state.resources.Crates.currentQuantity;
@@ -5584,11 +5588,11 @@
             cratesToAssign = 0;
         } else {
             // We've successfully got something to assign
-            log("resource: " + resource.id + ", cratesToAssign: " + cratesToAssign);
+            log("assignCrates", "resource: " + resource.id + ", cratesToAssign: " + cratesToAssign);
             resource.lastConstructStorageAttemptLoopCounter = 0;
         }
 
-        log("resource: " + resource.id + ", adjustedLastCratesOwned: " + adjustedLastCratesOwned + ", adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
+        log("assignCrates", "resource: " + resource.id + ", adjustedLastCratesOwned: " + adjustedLastCratesOwned + ", adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
 
         for (let i = 0; i < cratesToAssign; i++) {
             resource.tryAssignCrate();
@@ -5604,7 +5608,7 @@
         // so there is nothing to do. Close the modal window. Return true to give the modal window
         // time to close
         if (resource.assignedCrates >= nbrCrates) {
-            log("resource: " + resource.id + ", enough crates 3, assigned: " + resource.assignedCrates);
+            log("assignCrates", "resource: " + resource.id + ", enough crates 3, assigned: " + resource.assignedCrates);
             state.windowManager.closeModalWindow();
             return true;
         }
@@ -5620,13 +5624,16 @@
         // If we have space for more crates then try and construct another crate
         // We'll have to wait until the next loop to see if we succeeded
         if (adjustedCurrentCratesOwned < adjustedMaxCrates) {
-            log("resource: " + resource.id + " trying to construct a crate, adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
+            log("assignCrates", "resource: " + resource.id + " trying to construct a crate, adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
 
             // This is the last loop that we tried to construct a crate
-            resource.tryConstructCrate();
+            let stillRequiredCrates = nbrCrates - resource.assignedCrates
+            for (let i = 0; i < stillRequiredCrates; i++) {
+                resource.tryConstructCrate();
+            }
             return true;
         } else {
-            log("resource: " + resource.id + " don't have enough room for crates, adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
+            log("assignCrates", "resource: " + resource.id + " don't have enough room for crates, adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
 
             // We didn't try constructing a crate but not having enough room for crates is basically the same thing so set our last loop counter
             // This is the last loop that we tried to construct a crate
@@ -5744,48 +5751,54 @@
     addScriptStyle();
 
     function addScriptStyle() {
-        let styles = '.scriptlastcolumn:after { float: right; content: "\\21c5"; }';
-        styles += '.ui-sortable-helper { display: table; }'
-        styles += '.scriptdraggable { cursor: move; cursor: grab; }';
-        styles += 'tr:active, tr.ui-sortable-helper { cursor: grabbing !important; }';
+        let styles = `
+            .scriptlastcolumn:after { float: right; content: "\\21c5"; }
+            .ui-sortable-helper { display: table; }
+            .scriptdraggable { cursor: move; cursor: grab; }
+            tr:active, tr.ui-sortable-helper { cursor: grabbing !important; }
 
-        styles += `
-        .scriptcollapsible {
-            background-color: #444;
-            color: white;
-            cursor: pointer;
-            padding: 18px;
-            width: 100%;
-            border: none;
-            text-align: left;
-            outline: none;
-            font-size: 15px;
-          }
-          
-          .scriptcontentactive, .scriptcollapsible:hover {
-            background-color: #333;
-          }
-          
-          .scriptcollapsible:after {
-            content: '\\002B';
-            color: white;
-            font-weight: bold;
-            float: right;
-            margin-left: 5px;
-          }
-          
-          .scriptcontentactive:after {
-            content: "\\2212";
-          }
-          
-          .scriptcontent {
-            padding: 0 18px;
-            display: none;
-            //max-height: 0;
-            overflow: hidden;
-            //transition: max-height 0.2s ease-out;
-            //background-color: #f1f1f1;
-          }
+            .scriptcollapsible {
+                background-color: #444;
+                color: white;
+                cursor: pointer;
+                padding: 18px;
+                width: 100%;
+                border: none;
+                text-align: left;
+                outline: none;
+                font-size: 15px;
+            }
+            
+            .scriptcontentactive, .scriptcollapsible:hover {
+                background-color: #333;
+            }
+            
+            .scriptcollapsible:after {
+                content: '\\002B';
+                color: white;
+                font-weight: bold;
+                float: right;
+                margin-left: 5px;
+            }
+            
+            .scriptcontentactive:after {
+                content: "\\2212";
+            }
+            
+            .scriptcontent {
+                padding: 0 18px;
+                display: none;
+                //max-height: 0;
+                overflow: hidden;
+                //transition: max-height 0.2s ease-out;
+                //background-color: #f1f1f1;
+            }
+
+            .scriptsearchsettings {
+                width: 100%;
+                margin-top: 20px;
+                margin-bottom: 10px;
+            }
         `
 
         // Create style document
@@ -5843,6 +5856,7 @@
                 } else {
                     settings[collapsibles[i].id] = false;
                     content.style.display = "block";
+                    content.style.height = content.offsetHeight + "px";
                 }
 
                 updateSettingsFromState();
@@ -6057,6 +6071,8 @@
             let content = element.nextElementSibling;
             //@ts-ignore
             content.style.display = "block";
+            //@ts-ignore
+            content.style.height = content.offsetHeight + "px";
         }
 
         $("#script_resetJobs").on("click", function() {
@@ -6169,11 +6185,13 @@
     function buildBuildingSettings() {
         let scriptContentNode = $("#script_settings");
 
+        // Textbox "input is-small" classes? Makes the placeholder text look weird
         let jobNode =
             `<div style="margin-top: 10px;" id="script_buildingSettings">
                 <h3 id="buildingSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Building Settings</h3>
                 <div class="scriptcontent">
                     <div style="margin-top: 10px;"><button id="script_resetBuildings" class="button">Reset Building Settings</button></div>
+                    <div><input id="script_buildingSearch" class="scriptsearchsettings" type="text" placeholder="Search for buildings.."></div>
                     <table style="width:100%"><tr><th class="has-text-warning" style="width:40%">Building</th><th class="has-text-warning" style="width:20%">Auto Build</th><th class="has-text-warning" style="width:20%">Max Build</th><th class="has-text-warning" style="width:20%">Manage State</th></tr>
                         <tbody id="script_buildingBody" class="scriptcontenttbody"></tbody>
                     </table>
@@ -6189,12 +6207,35 @@
             let content = element.nextElementSibling;
             //@ts-ignore
             content.style.display = "block";
+            //@ts-ignore
+            content.style.height = content.offsetHeight + "px";
         }
 
         $("#script_resetBuildings").on("click", function() {
             resetBuildingState();
             updateSettingsFromState();
             buildBuildingTableBody();
+        });
+
+        $("#script_buildingSearch").on("keyup", function() {
+            // Declare variables
+            let input = document.getElementById("script_buildingSearch");
+            //@ts-ignore
+            let filter = input.value.toUpperCase();
+            let table = document.getElementById("script_buildingBody");
+            let trs = table.getElementsByTagName("tr");
+
+            // Loop through all table rows, and hide those who don't match the search query
+            for (let i = 0; i < trs.length; i++) {
+                let td = trs[i].getElementsByTagName("td")[0];
+                if (td) {
+                    if (td.textContent.toUpperCase().indexOf(filter) > -1) {
+                        trs[i].style.display = "";
+                    } else {
+                        trs[i].style.display = "none";
+                    }
+                }
+            }
         });
     }
 
@@ -6521,9 +6562,22 @@
         if ($('#autoAssembleGene').length === 0) {
             createSettingToggle('autoAssembleGene');
         }
-//        if ($('#autoLogging').length === 0) {
-//            createSettingToggle('autoLogging');
-//        }
+        if (showLogging && $('#autoLogging').length === 0) {
+           createSettingToggle('autoLogging');
+
+           let settingsDiv = $('<div id="ea-logging"></div>');
+           let logTypeTxt = $('<div>Logging Type:</div>')
+           let logTypeInput = $('<input type="text" class="input is-small" style="width:32%"/>');
+           logTypeInput.val(loggingType);
+           let setBtn = $('<a class="button is-dark is-small" id="set-loggingType"><span>set</span></a>');
+           settingsDiv.append(logTypeTxt).append(logTypeInput).append(setBtn);
+           $('#autoScriptContainer').append(settingsDiv);
+
+           setBtn.on('mouseup', function() {
+               let val = logTypeInput.val();
+               loggingType = val;
+           });
+        }
         if ($('#bulk-sell').length === 0 && isMarketUnlocked()) {
             let bulkSell = $('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
             $('#autoScriptContainer').append(bulkSell);
@@ -6804,7 +6858,7 @@
     }
 
     function removePoppers() {
-        let poppers = document.querySelectorAll('[id^="pops"]'); // popspace_ and // popspc
+        let poppers = document.querySelectorAll('[id^="pop"]'); // popspace_ and // popspc
 
         for (let i = 0; i < poppers.length; i++) {
             poppers[i].remove();
@@ -6837,11 +6891,15 @@
         modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey || e.keyCode === 68;
     }
 
+    var showLogging = false;
+    var loggingType = "";
+
     /**
+     * @param {string} type
      * @param {string} text
      */
-    function log(text) {
-        if (settings.autoLogging) {
+    function log(type, text) {
+        if (settings.autoLogging && type === loggingType) {
             console.log(text);
         }
     }
