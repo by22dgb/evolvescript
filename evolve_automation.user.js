@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.7
+// @version      0.9.8
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -40,7 +40,7 @@
 // * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
 //          Not currently user configurable.
 // * autoMAD - Once population is over 180 (low plasmids) / 245 (high plasmids) and MAD is unlocked will stop sending out troops and will perform MAD
-// * autoSpace - If population is over 250 then it will start funding the launch facility regardless of arpa settings
+// * autoSpace - If population is over 200 then it will start funding the launch facility regardless of arpa settings
 // * autoSeeder - Will send out the seeder ship once at least 4 (or user entered max) probes are constructed. Currently tries to find a forest world, then grassland, then the others.
 //          Not currently user configurable.
 // * autoAssembleGene - Automatically assembles genes only when your knowledge is at max
@@ -2352,6 +2352,134 @@
         }
     }
 
+    class Project {
+        /**
+         * @param {string} name
+         * @param {string} id
+         * @param {number} moneyFloor
+         */
+        constructor(name, id, moneyFloor) {
+            this.name = name;
+            this.id = id;
+            this.moneyFloor = 0;
+            this.priority = 0;
+
+            this._autoBuildEnabled = false;
+            this._autoMax = -1;
+        }
+
+        isUnlocked() {
+            return document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x1') !== null;
+        }
+
+        get autoBuildEnabled() {
+            return this._autoBuildEnabled;
+        }
+
+        /**
+         * @param {boolean} value
+         */
+        set autoBuildEnabled(value) {
+            this._autoBuildEnabled = value;
+        }
+
+        get autoMax() {
+            return this._autoMax < 0 ? Number.MAX_SAFE_INTEGER : this._autoMax;
+        }
+
+        set autoMax(value) {
+            if (value < 0) value = -1;
+            this._autoMax = value;
+        }
+
+        get level() {
+            let rankNode = document.querySelector('#arpa' + this.id + ' .rank');
+            if (rankNode === null) {
+                return 0;
+            }
+
+            let match = rankNode.textContent.match(/\d+/);
+
+            if (match.length > 0) {
+                return getRealNumber(match[0]);
+            }
+
+            return 0;
+        }
+
+        get progress() {
+            return getRealNumber(document.querySelector('#arpa' + this.id + ' progress').getAttribute("value"))
+        }
+
+        /**
+         * @param {number} percent
+         * @param {boolean} checkBuildEnabled
+         */
+        tryBuild(percent, checkBuildEnabled) {
+            if (checkBuildEnabled && !this.autoBuildEnabled) {
+                return false;
+            }
+
+            let btn = document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x' + percent);
+            if (btn === null || wouldBreakMoneyFloor(this.moneyFloor)) {
+                return false;
+            }
+
+            // @ts-ignore
+            btn.click();
+            return true;
+        }
+    }
+
+    class ProjectManager {
+        constructor() {
+            /** @type {Project[]} */
+            this.priorityList = [];
+            this._lastLoopCounter = 0;
+            /** @type {Project[]} */
+            this._managedPriorityList = null;
+        }
+
+        clearPriorityList() {
+            this.priorityList = [];
+            this._managedPriorityList = null;
+        }
+
+        /**
+         * @param {Project} project
+         */
+        addProjectToPriorityList(project) {
+            project.priority = this.priorityList.length;
+            this.priorityList.push(project);
+        }
+
+        sortByPriority() {
+            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
+            if (this._managedPriorityList !== null) this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+        }
+
+        managedPriorityList() {
+            if (this._lastLoopCounter != state.loopCounter) {
+                this._managedPriorityList = null;
+            }
+
+            if (this._managedPriorityList === null) {
+                this._managedPriorityList = [];
+
+                for (let i = 0; i < this.priorityList.length; i++) {
+                    const project = this.priorityList[i];
+
+                    //console.log(project.id + " unlocked= " + project.isUnlocked() + " autoBuildEnabled= " + project.autoBuildEnabled + " autoSpace= " + settings.autoSpace)
+                    if (project.isUnlocked() && project.autoBuildEnabled) {
+                        this._managedPriorityList.push(project);
+                    }
+                }
+            }
+
+            return this._managedPriorityList;
+        }
+    }
+
     class MarketManager {
         constructor() {
             /** @type {Resource[]} */
@@ -2653,6 +2781,7 @@
         battleManager: new BattleManager(),
         jobManager: new JobManager(),
         buildingManager: new BuildingManager(),
+        projectManager: new ProjectManager(),
         marketManager: new MarketManager(),
         
         lastGenomeSequenceValue: 0,
@@ -2926,6 +3055,7 @@
             MassDriver: new Action("Mass Driver", "city", "mass_driver", true),
             Wharf: new Action("Wharf", "city", "wharf", true),
             MetalRefinery: new Action("Metal Refinery", "city", "metal_refinery", true),
+            SlavePen: new Action("Slave Pen", "city", "slave_pen", true),
         },
         
         spaceBuildings: {
@@ -2994,6 +3124,13 @@
             DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", true),
             DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", true),
             DwarfWorldController: new Action("Dwarf WSC Control", "space", "world_controller", true),
+        },
+
+        projects: {
+            SuperCollider: new Project("Supercollider", "lhc", 26500),
+            StockExchange: new Project("Stock Exchange", "stock_exchange", 30000),
+            Monument: new Project("Monument", "monument", 0),
+            LaunchFacility: new Project("Launch Facility", "launch_facility", 0),
         },
 
         //global: null,
@@ -3206,6 +3343,9 @@
         state.cityBuildings.Wharf.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Wharf.addRequiredResource(state.resources.Oil);
         state.cityBuildings.MetalRefinery.addRequiredResource(state.resources.Steel);
+        state.cityBuildings.SlavePen.addRequiredResource(state.resources.Lumber);
+        state.cityBuildings.SlavePen.addRequiredResource(state.resources.Stone);
+        state.cityBuildings.SlavePen.addRequiredResource(state.resources.Copper);
 
         // Construct space buildsings list
         // TODO: Space! resource requirements
@@ -3389,6 +3529,8 @@
         state.raceAchievementList.push(state.races.Dracnid);
         state.raceAchievementList.push(state.races.Slitheryn);
 
+        resetProjectState();
+
         state.battleManager.campaigns = userOverrideCampaigns;
     }
 
@@ -3522,6 +3664,7 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Smokehouse); // Cath only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wharf);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MetalRefinery);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlavePen);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
@@ -3552,6 +3695,18 @@
             } else {
                 building._autoMax = -1;
             }
+        }
+    }
+
+    function resetProjectState() {
+        state.projectManager.clearPriorityList();
+        state.projectManager.addProjectToPriorityList(state.projects.SuperCollider);
+        state.projectManager.addProjectToPriorityList(state.projects.StockExchange);
+        state.projectManager.addProjectToPriorityList(state.projects.Monument);
+        state.projectManager.addProjectToPriorityList(state.projects.LaunchFacility);
+
+        for (let i = 0; i < state.projectManager.priorityList.length; i++) {
+            state.projectManager.priorityList[i]._autoMax = -1;
         }
     }
 
@@ -3660,6 +3815,40 @@
         }
         state.jobManager.sortByPriority();
 
+        if (!settings.hasOwnProperty('arpa')) {
+            settings.arpa = {
+                //lhc: false,
+                //stock_exchange: false,
+                //monument: false,
+                //launch_facility: false,
+            };
+        }
+        for (let i = 0; i < state.projectManager.priorityList.length; i++) {
+            const project = state.projectManager.priorityList[i];
+
+            let settingKey = project.id;
+            if (settings.arpa.hasOwnProperty(settingKey)) {
+                project.autoBuildEnabled = settings.arpa[settingKey];
+            } else {
+                settings.arpa[settingKey] = project.autoBuildEnabled;
+            }
+
+            settingKey = 'arpa_p_' + project.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                project.priority = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = project.priority;
+            }
+
+            settingKey = 'arpa_m_' + project.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                project.autoMax = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = project._autoMax;
+            }
+        }
+        state.projectManager.sortByPriority();
+
         if (!settings.hasOwnProperty('userEvolutionTargetName')) {
             settings.userEvolutionTargetName = "auto";
         }
@@ -3694,6 +3883,9 @@
         if (!settings.hasOwnProperty("buildingSettingsCollapsed")) {
             settings.buildingSettingsCollapsed = true;
         }
+        if (!settings.hasOwnProperty("projectSettingsCollapsed")) {
+            settings.projectSettingsCollapsed = true;
+        }
     }
 
     updateStateFromSettings();
@@ -3722,6 +3914,22 @@
             settings['buy' + resource.id] = resource.autoBuyEnabled;
             settings['sell' + resource.id] = resource.autoSellEnabled;
         }
+
+        if (!settings.hasOwnProperty('arpa')) {
+            settings.arpa = {
+                //lhc: false,
+                //stock_exchange: false,
+                //monument: false,
+                //launch_facility: false,
+            };
+        }
+        for (let i = 0; i < state.projectManager.priorityList.length; i++) {
+            const project = state.projectManager.priorityList[i];
+            settings.arpa[project.id] = project.autoBuildEnabled;
+            settings['arpa_p_' + project.id] = project.priority;
+            settings['arpa_m_' + project.id] = project._autoMax;
+        }
+
         if (!settings.hasOwnProperty('autoEvolution')) {
             settings.autoEvolution = defaultAllOptionsEnabled;
         }
@@ -3782,14 +3990,6 @@
         if (!settings.hasOwnProperty('minimumMoney')) {
             settings.minimumMoney = 0;
         }
-        if (!settings.hasOwnProperty('arpa')) {
-            settings.arpa = {
-                lhc: false,
-                stock_exchange: false,
-                monument: false,
-                launch_facility: false,
-            };
-        }
 
         if (!settings.hasOwnProperty('userEvolutionTargetName')) {
             settings.userEvolutionTargetName = "auto";
@@ -3824,6 +4024,9 @@
         }
         if (!settings.hasOwnProperty("buildingSettingsCollapsed")) {
             settings.buildingSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("projectSettingsCollapsed")) {
+            settings.projectSettingsCollapsed = true;
         }
 
         localStorage.setItem('settings', JSON.stringify(settings));
@@ -4635,19 +4838,6 @@
     }
 
     //#endregion Auto Seeder Ship
-    
-    //#region Auto Space
-
-    function autoSpace() {
-        // Let's wait until we have a good enough population count
-        if (state.resources.Population.currentQuantity < 250) {
-            return;
-        }
-        
-        settings.arpa.launch_facility = true;
-    }
-
-    //#endregion Auto Space
 
     //#region Auto Assemble Gene
 
@@ -5059,58 +5249,43 @@
     //#region Auto ARPA
 
     function autoArpa() {
-        if (settings.arpa.lhc) {
-            let btn = document.querySelector("#arpalhc > div.buy > button.button.x1");
-            if (btn !== null && !wouldBreakMoneyFloor(26500)) {
-                // @ts-ignore
-                btn.click();
-            }
-        }
-        if (settings.arpa.stock_exchange) {
-            let btn = document.querySelector("#arpastock_exchange > div.buy > button.button.x1");
-            if (btn !== null && ! wouldBreakMoneyFloor(30000)) {
-                // @ts-ignore
-                btn.click();
-            }
-        }
-        if (settings.arpa.monument) {
-            let btn = document.querySelector("#arpamonument > div.buy > button.button.x1");
-            if (btn !== null) {
-                // @ts-ignore
-                btn.click();
-            }
-        }
-        if (settings.arpa.launch_facility) {
-            let btn = document.querySelector("#arpalaunch_facility > div.buy > button.button.x1");
-            if (btn !== null) {
-                if (getRealNumber(document.querySelector('#arpalaunch_facility progress').getAttribute("value")) === 99) {
-                    let evObj = document.createEvent("Events");
-                    evObj.initEvent("mouseover", true, false);
-                    btn.dispatchEvent(evObj);
-                }
+        let projectList = state.projectManager.managedPriorityList();
 
-                // @ts-ignore
-                btn.click();
+        // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build when population over 200
+        if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && state.resources.Population.currentQuantity > 200) {
+            state.projects.LaunchFacility.tryBuild(1, false);
+        }
 
-                let popper = document.querySelector('popArpalaunch_facility');
-                if (popper !== null) {
-                    popper.remove();
-                }
+        // No projects unlocked yet
+        if (projectList.length === 0) {
+            return;
+        }
+
+        for (let i = 0; i < projectList.length; i++) {
+            const project = projectList[i];
+
+            //console.log(project.id + " level=" + project.level + " autoMax=" + project.autoMax + " autoSpace= " + settings.autoSpace)
+            // Only level up to user defined max
+            if (project.level >= project.autoMax) {
+                continue;
             }
+
+            project.tryBuild(1, true);
         }
         
+        // Genetic update starts sequence genome as active
         // Always sequence genome if possible
-        let sequenceBtn = document.querySelector("#arpaSequence .button");
-        if (sequenceBtn !== null) {
-            let sequenceValue = document.querySelector("#arpaSequence .progress")["value"];
+        // let sequenceBtn = document.querySelector("#arpaSequence .button");
+        // if (sequenceBtn !== null) {
+        //     let sequenceValue = document.querySelector("#arpaSequence .progress")["value"];
             
-            if (sequenceValue === state.lastGenomeSequenceValue) {
-                // @ts-ignore
-                sequenceBtn.click();
-            }
+        //     if (sequenceValue === state.lastGenomeSequenceValue) {
+        //         // @ts-ignore
+        //         sequenceBtn.click();
+        //     }
             
-            state.lastGenomeSequenceValue = sequenceValue;
-        }
+        //     state.lastGenomeSequenceValue = sequenceValue;
+        // }
     }
 
     //#endregion Auto ARPA
@@ -5724,9 +5899,6 @@
             if (settings.autoMAD) {
                 autoMAD();
             }
-            if (settings.autoSpace) {
-                autoSpace();
-            }
             if (settings.autoSeeder) {
                 autoSeeder();
             }
@@ -5844,15 +6016,22 @@
         buildResearchSettings();
         buildJobSettings();
         buildBuildingSettings();
+        buildProjectSettings();
 
         let collapsibles = document.getElementsByClassName("scriptcollapsible");
         for (let i = 0; i < collapsibles.length; i++) {
             collapsibles[i].addEventListener("click", function() {
                 this.classList.toggle("scriptcontentactive");
-                var content = this.nextElementSibling;
+                let content = this.nextElementSibling;
                 if (content.style.display === "block") {
                     settings[collapsibles[i].id] = true; 
                     content.style.display = "none";
+
+                    let search = content.getElementsByClassName("scriptsearchsettings");
+                    if (search.length > 0) {
+                        search[0].value = "";
+                        filterBuildingSettingsTable();
+                    }
                 } else {
                     settings[collapsibles[i].id] = false;
                     content.style.display = "block";
@@ -6071,8 +6250,6 @@
             let content = element.nextElementSibling;
             //@ts-ignore
             content.style.display = "block";
-            //@ts-ignore
-            content.style.height = content.offsetHeight + "px";
         }
 
         $("#script_resetJobs").on("click", function() {
@@ -6186,7 +6363,7 @@
         let scriptContentNode = $("#script_settings");
 
         // Textbox "input is-small" classes? Makes the placeholder text look weird
-        let jobNode =
+        let buildingNode =
             `<div style="margin-top: 10px;" id="script_buildingSettings">
                 <h3 id="buildingSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Building Settings</h3>
                 <div class="scriptcontent">
@@ -6198,7 +6375,7 @@
                 </div>
             </div>`;
 
-        scriptContentNode.append(jobNode);
+        scriptContentNode.append(buildingNode);
         buildBuildingTableBody();
 
         if (!settings.buildingSettingsCollapsed) {
@@ -6207,8 +6384,6 @@
             let content = element.nextElementSibling;
             //@ts-ignore
             content.style.display = "block";
-            //@ts-ignore
-            content.style.height = content.offsetHeight + "px";
         }
 
         $("#script_resetBuildings").on("click", function() {
@@ -6217,26 +6392,28 @@
             buildBuildingTableBody();
         });
 
-        $("#script_buildingSearch").on("keyup", function() {
-            // Declare variables
-            let input = document.getElementById("script_buildingSearch");
-            //@ts-ignore
-            let filter = input.value.toUpperCase();
-            let table = document.getElementById("script_buildingBody");
-            let trs = table.getElementsByTagName("tr");
+        $("#script_buildingSearch").on("keyup", filterBuildingSettingsTable);
+    }
 
-            // Loop through all table rows, and hide those who don't match the search query
-            for (let i = 0; i < trs.length; i++) {
-                let td = trs[i].getElementsByTagName("td")[0];
-                if (td) {
-                    if (td.textContent.toUpperCase().indexOf(filter) > -1) {
-                        trs[i].style.display = "";
-                    } else {
-                        trs[i].style.display = "none";
-                    }
+    function filterBuildingSettingsTable() {
+        // Declare variables
+        let input = document.getElementById("script_buildingSearch");
+        //@ts-ignore
+        let filter = input.value.toUpperCase();
+        let table = document.getElementById("script_buildingBody");
+        let trs = table.getElementsByTagName("tr");
+
+        // Loop through all table rows, and hide those who don't match the search query
+        for (let i = 0; i < trs.length; i++) {
+            let td = trs[i].getElementsByTagName("td")[0];
+            if (td) {
+                if (td.textContent.toUpperCase().indexOf(filter) > -1) {
+                    trs[i].style.display = "";
+                } else {
+                    trs[i].style.display = "none";
                 }
             }
-        });
+        }
     }
 
     function buildBuildingTableBody() {
@@ -6448,6 +6625,135 @@
         return buildingMaxTextBox;
     }
 
+    function buildProjectSettings() {
+        let scriptContentNode = $("#script_settings");
+
+        let projectNode =
+            `<div style="margin-top: 10px;" id="script_projectSettings">
+                <h3 id="projectSettingsCollapsed" class="scriptcollapsible text-center has-text-success">A.R.P.A. Settings</h3>
+                <div class="scriptcontent">
+                    <div style="margin-top: 10px;"><button id="script_resetProjects" class="button">Reset A.R.P.A Settings</button></div>
+                    <table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:50%"></th></tr>
+                        <tbody id="script_projectBody" class="scriptcontenttbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+
+        scriptContentNode.append(projectNode);
+        buildProjectTableBody();
+
+        if (!settings.projectSettingsCollapsed) {
+            let element = document.getElementById("projectSettingsCollapsed");
+            element.classList.toggle("scriptcontentactive");
+            let content = element.nextElementSibling;
+            //@ts-ignore
+            content.style.display = "block";
+        }
+
+        $("#script_resetProjects").on("click", function() {
+            resetProjectState();
+            updateSettingsFromState();
+            buildProjectTableBody();
+        });
+    }
+
+    function buildProjectTableBody() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let tableBodyNode = $('#script_projectBody');
+        tableBodyNode.empty().off("*");
+
+        let newTableBodyText = "";
+
+        // Add in a first row for switching "All"
+        newTableBodyText += '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:25%"></td><td style="width:25%"></td><td style="width:50%"></td></tr>';
+
+        for (let i = 0; i < state.projectManager.priorityList.length; i++) {
+            const project = state.projectManager.priorityList[i];
+            let classAttribute = ' class="scriptdraggable"';
+            newTableBodyText += '<tr value="' + project.id + '"' + classAttribute + '><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:50%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other projects settings rows
+        for (let i = 0; i < state.projectManager.priorityList.length; i++) {
+            const project = state.projectManager.priorityList[i];
+            let projectElement = $('#script_' + project.id + 'Toggle');
+
+            let toggle = buildProjectSettingsToggle(project);
+            projectElement.append(toggle);
+
+            projectElement = projectElement.next();
+            projectElement.append(buildProjectMaxSettingsInput(project));
+        }
+
+        $('#script_projectBody').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let projectIds = $('#script_projectBody').sortable('toArray', {attribute: 'value'});
+
+                for (let i = 0; i < projectIds.length; i++) {
+                    // Project has been dragged... Update all project priorities
+                    state.projectManager.priorityList[findArrayIndex(state.projectManager.priorityList, "id", projectIds[i])].priority = i;
+                }
+
+                state.projectManager.sortByPriority();
+                updateSettingsFromState();
+            },
+        } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    /**
+     * @param {Project} project
+     */
+    function buildProjectSettingsToggle(project) {
+        let checked = project.autoBuildEnabled ? " checked" : "";
+        let toggle = $('<label id=script_arpa2_' + project.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 4px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span class="has-text-info" style="margin-left: 20px;">' + project.name + '</span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            project.autoBuildEnabled = state;
+            // @ts-ignore
+            document.querySelector('#script_arpa1_' + project.id + ' input').checked = state;
+            updateSettingsFromState();
+            //console.log(project.name + " changed enabled to " + state);
+        });
+
+        return toggle;
+    }
+
+    /**
+     * @param {Project} project
+     */
+    function buildProjectMaxSettingsInput(project) {
+        if (project === state.projects.LaunchFacility) {
+            return $('<span style="width:25%"/>');
+        }
+
+        let projectMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        projectMaxTextBox.val(settings["arpa_m_" + project.id]);
+    
+        projectMaxTextBox.on('change', function() {
+            let val = projectMaxTextBox.val();
+            let max = getRealNumber(val);
+            if (!isNaN(max)) {
+                //console.log('Setting max for project ' + project.name + ' to be ' + max);
+                project.autoMax = max;
+                updateSettingsFromState();
+            }
+        });
+
+        return projectMaxTextBox;
+    }
+
     function createSettingToggle(name, enabledCallBack, disabledCallBack) {
         let elm = $('#autoScriptContainer');
         let toggle = $('<label tabindex="0" class="switch" id="'+name+'" style=""><input type="checkbox" value=false> <span class="check"></span><span>'+name+'</span></label></br>');
@@ -6519,7 +6825,7 @@
         } else if (settings.autoBuild && $('.ea-building-toggle').length === 0) {
             createBuildingToggles();
         }
-        if ($('#autoMarket').length === 0 && isMarketUnlocked()) {
+        if ($('#autoMarket').length === 0) {
             createSettingToggle('autoMarket', createMarketToggles, removeMarketToggles);
         } else if (settings.autoMarket > 0 && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
             createMarketToggles()
@@ -6611,33 +6917,31 @@
     }
 
     /**
-     * @param {string} name
+     * @param {Project} project
      */
-    function createArpaToggle(name) {
-        let arpaDiv = $('#arpa' + name + ' .head');
-        let toggle = $('<label tabindex="0" class="switch ea-arpa-toggle" style="position:relative; max-width:75px;margin-top: -36px;left:45%;float:left;"><input type="checkbox" value=false> <span class="check" style="height:5px;"></span></label>');
+    function createArpaToggle(project) {
+        let checked = project.autoBuildEnabled ? " checked" : "";
+        let arpaDiv = $('#arpa' + project.id + ' .head');
+        let toggle = $('<label id=script_arpa1_' + project.id + ' tabindex="0" class="switch ea-arpa-toggle" style="position:relative; max-width:75px;margin-top: -36px;left:45%;float:left;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px;"></span></label>');
         arpaDiv.append(toggle);
-        if (settings.arpa[name]) {
-            toggle.click();
-            toggle.children('input').attr('value', true);
-        }
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
-            let state = !(input.getAttribute('value') === "true");
-            input.setAttribute('value', state);
-            settings.arpa[name] = state;
+            let state = input.checked;
+            project.autoBuildEnabled = state;
+            // @ts-ignore
+            document.querySelector('#script_arpa2_' + project.id + ' input').checked = state;
             updateSettingsFromState();
         });
     }
 
     function createArpaToggles() {
         removeArpaToggles();
-        createArpaToggle('lhc');
-        createArpaToggle('stock_exchange');
-        createArpaToggle('monument');
+        createArpaToggle(state.projects.SuperCollider);
+        createArpaToggle(state.projects.StockExchange);
+        createArpaToggle(state.projects.Monument);
         
-        if (document.querySelector('#arpalaunch_facility') !== null) {
-            createArpaToggle('launch_facility');
+        if (state.projects.LaunchFacility.isUnlocked()) {
+            createArpaToggle(state.projects.LaunchFacility);
         }
     }
 
