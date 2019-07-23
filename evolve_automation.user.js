@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.8
+// @version      0.9.9
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5552,7 +5552,12 @@
             const resource = resources[i];
             requiredTradeRoutes.push(0);
 
-            while (tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.98 && resource.calculatedRateOfChange > 7) {
+            let minimumRateOfChange = 7;
+            if (resource === state.resources.Stone) {
+                minimumRateOfChange = 15;
+            }
+
+            while (tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.98 && resource.calculatedRateOfChange > minimumRateOfChange) {
                 tradeRoutesUsed++;
                 requiredTradeRoutes[i]--;
                 resource.calculatedRateOfChange -= resource.tradeRouteQuantity;
@@ -7186,13 +7191,13 @@
 
     var modifierKeyPressed = false;
     $(document).keydown(function(e){
-        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey || e.keyCode === 68;
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
     });
     $(document).keyup(function(e){
-        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey || e.keyCode === 68;
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
     });
     window.onmousemove = function(e){
-        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey || e.keyCode === 68;
+        modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
     }
 
     var showLogging = false;
@@ -7209,6 +7214,25 @@
     }
 
     //#endregion Utility Functions
+
+    window.onblur = function() {
+        let keyboardEvent = document.createEvent("KeyboardEvent");
+        var initMethod = typeof keyboardEvent.initKeyboardEvent !== 'undefined' ? "initKeyboardEvent" : "initKeyEvent";
+
+        keyboardEvent[initMethod](
+          "keyup", // event type: keydown, keyup, keypress
+          true,      // bubbles
+          true,      // cancelable
+          window,    // view: should be window
+          false,     // ctrlKey
+          false,     // altKey
+          false,     // shiftKey
+          false,     // metaKey
+          0,        // keyCode: unsigned long - the virtual key code, else 0
+          0          // charCode: unsigned long - the Unicode character associated with the depressed key, else 0
+        );
+        document.dispatchEvent(keyboardEvent);
+    }
 
 // @ts-ignore
 })($);
