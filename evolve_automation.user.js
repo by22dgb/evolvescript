@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.9
+// @version      0.9.10
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2491,6 +2491,11 @@
             return marketTest !== null && marketTest.style.display !== "none";
         }
 
+        /** @param {Resource} resource */
+        isBuySellUnlocked(resource) {
+            return document.querySelector("#market-" + resource.id + " .order") !== null;
+        }
+
         /**
          * @param {Resource} resource
          */
@@ -2544,7 +2549,7 @@
          */
         setMultiplier(multiplier) {
             if (!this.isUnlocked()) {
-                return -1;
+                return false;
             }
 
             let multiplierNode = document.querySelector("#market-qty input[value='" + multiplier + "']");
@@ -2563,7 +2568,7 @@
          */
         isResourceUnlocked(resource) {
             if (!this.isUnlocked()) {
-                return -1;
+                return false;
             }
 
             let node = document.getElementById("market-" + resource.id);
@@ -4887,7 +4892,7 @@
             let resource = state.marketManager.resources[i];
             let currentResourceQuantity = resource.currentQuantity;
 
-            if (!resource.isUnlocked() || !resource.isTradable()) {
+            if (!resource.isUnlocked() || !resource.isTradable() || !state.marketManager.isBuySellUnlocked(resource)) {
                 continue;
             }
             
@@ -5050,13 +5055,6 @@
         
         let targetBuilding = null;
         let building = null;
-
-        // Special for very beginning of game - If we've unlocked cement plants but don't have any yet then buy at least 2
-        building = state.cityBuildings.CementPlant;
-        if (building.autoBuildEnabled && building.isUnlocked() && building.count < 2 && building.autoMax >= 2 && !isLowPlasmidCount()) {
-            building.tryBuild();
-            return;
-        }
 
         // A bit of trickery early game to get our craftables up. Once we reach 8 amphitheatre's and have < 10 libraries then wait for
         // crafting to catch up again (or less than 10 cottages, or less than 5 coal mines)
