@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.10
+// @version      0.9.11
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -43,7 +43,7 @@
 // * autoSpace - If population is over 200 then it will start funding the launch facility regardless of arpa settings
 // * autoSeeder - Will send out the seeder ship once at least 4 (or user entered max) probes are constructed. Currently tries to find a forest world, then grassland, then the others.
 //          Not currently user configurable.
-// * autoAssembleGene - Automatically assembles genes only when your knowledge is at max
+// * autoAssembleGene - Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.
 // 
 
 //@ts-check
@@ -4315,7 +4315,6 @@
         let jobAdjustments = [];
         let lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
         let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
-        let farmerRemoved = false;
 
         // First figure out how many farmers are required
         if (state.jobs.Farmer.isManaged()) {
@@ -4331,7 +4330,6 @@
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
                 log("autoJobs", "Removing one farmer")
-                farmerRemoved = true;
             } else {
                 // We're good; leave farmers as they are
                 requiredJobs.push(state.jobs.Farmer.current);
@@ -4361,8 +4359,7 @@
                 let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
-                if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking")
-                        && state.resources.Money.storageRatio > 0.98) {
+                if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && state.resources.Money.storageRatio > 0.98) {
                     jobsToAssign = 0;
                 }
 
@@ -4505,13 +4502,6 @@
                 }
             }
         }
-
-        // For some reason we only have farmers available... User turned off all other job management? PEBKAC!
-        // Assign all remaining jobs to be farmers (as long as we didn't remove one... otherwise there will be one remaining. Don't use that one)
-        // if (!farmerRemoved && state.jobs.Farmer.isManaged() && availableEmployees > 0) {
-        //     requiredJobs[0] += availableEmployees;
-        //     jobAdjustments[0] += availableEmployees;
-        // }
 
         for (let i = 0; i < jobAdjustments.length; i++) {
             let adjustment = jobAdjustments[i];
@@ -4847,6 +4837,10 @@
     //#region Auto Assemble Gene
 
     function autoAssembleGene() {
+        if (isResearchUnlocked("dna_sequencer")) {
+            return;
+        }
+
         let buttons = document.querySelectorAll('#arpaSequence .button');
 
         if (buttons === null) {
@@ -4874,7 +4868,7 @@
         let currentMoney = state.resources.Money.currentQuantity;
         let tradeQuantity = 1000;
 
-        // Maybe a no trade challenge?
+        // Market has not been unlocked in game yet (tech not researched)
         if (!state.marketManager.isUnlocked()) {
             return;
         }
@@ -4892,7 +4886,7 @@
             let resource = state.marketManager.resources[i];
             let currentResourceQuantity = resource.currentQuantity;
 
-            if (!resource.isUnlocked() || !resource.isTradable() || !state.marketManager.isBuySellUnlocked(resource)) {
+            if (!resource.isTradable() || !resource.isUnlocked() || !state.marketManager.isBuySellUnlocked(resource)) {
                 continue;
             }
             
@@ -5186,47 +5180,47 @@
                 } else {
                     if (itemId === settings.userResearchTheology_1) {
                         // use the user's override choice
-                        console.log("Picking user's choice of theology 1: " + itemId);
+                        log("autoResearch", "Picking user's choice of theology 1: " + itemId);
                         click = true;
                     }
 
                     if (settings.userResearchTheology_1 === "auto") {
                         if (!settings.autoSpace && itemId === "tech-anthropology") {
                             // If we're not going to space then research anthropology
-                            console.log("Picking: " + itemId);
+                            log("autoResearch", "Picking: " + itemId);
                             click = true;
                         }
                         if (settings.autoSpace && itemId === "tech-fanaticism") {
                             // If we're going to space then research fanatacism
-                            console.log("Picking: " + itemId);
+                            log("autoResearch", "Picking: " + itemId);
                             click = true;
                         }
                     }
 
                     if (itemId === settings.userResearchTheology_2) {
                         // use the user's override choice
-                        console.log("Picking user's choice of theology 2: " + itemId);
+                        log("autoResearch", "Picking user's choice of theology 2: " + itemId);
                         click = true;
                     }
 
                     if (settings.userResearchTheology_2 === "auto") {
                         if (itemId === "tech-deify") {
                             // Just pick deify for now
-                            console.log("Picking: " + itemId);
+                            log("autoResearch", "Picking: " + itemId);
                             click = true;
                         }
                     }
 
                     if (itemId === settings.userResearchUnification) {
                         // use the user's override choice
-                        console.log("Picking user's choice of unification: " + itemId);
+                        log("autoResearch", "Picking user's choice of unification: " + itemId);
                         click = true;
                     }
 
                     if (settings.userResearchUnification === "auto") {
                         // Don't reject world unity. We want the +25% resource bonus
                         if (itemId === "tech-wc_money" || itemId === "tech-wc_morale"|| itemId === "tech-wc_conquest") {
-                            console.log("Picking: " + itemId);
+                            log("autoResearch", "Picking: " + itemId);
                             click = true;
                         }
                     }
@@ -5235,7 +5229,13 @@
                 if (click) {
                     // @ts-ignore
                     items[i].children[0].click();
-                    removePoppers();
+
+                    // The unification techs are special as they are always "clickable" even if they can't be afforded.
+                    // We don't want to continually remove the poppers if the script is clicking one every second that
+                    // it can't afford
+                    if (itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest") {
+                        removePoppers();
+                    }
                     return;
                 }
             }
@@ -5881,7 +5881,7 @@
             if (settings.autoResearch) {
                 autoResearch();
             }
-            if (settings.autoMarket && isMarketUnlocked()) {
+            if (settings.autoMarket) {
                 autoMarket();
             }
             if (settings.autoJobs) {
@@ -7162,6 +7162,11 @@
     function isHunterRace() {
         let raceId = getRaceId();
         return raceId === state.races.Cath.id || raceId === state.races.Balorg.id || raceId === state.races.Imp.id;
+    }
+
+    function isEvilRace() {
+        let raceId = getRaceId();
+        return raceId === state.races.Balorg.id || raceId === state.races.Imp.id;
     }
 
     function removePoppers() {
