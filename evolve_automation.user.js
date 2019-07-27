@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.11
+// @version      0.9.12
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2099,11 +2099,12 @@
 
             if (this._managedPriorityList === null) {
                 this._managedPriorityList = [];
+                let evilRace = isEvilRace();
 
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const job = this.priorityList[i];
     
-                    if (job.isManaged()) {
+                    if (job.isManaged() && (!evilRace || job !== state.jobs.Lumberjack)) {
                         if (!job.isCraftsman() || (job.isCraftsman() && settings.autoCraftsmen)) {
                             this._managedPriorityList.push(job);
                         }
@@ -3676,6 +3677,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceGps);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpacePropellantDepot);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedGarage);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Ziggurat);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellMission);
@@ -4297,11 +4299,6 @@
     //#region Auto Jobs
 
     function autoJobs() {
-        // Cath / Balorg / Imp race doesn't have farmers, unemployed are their farmers
-        if (isHunterRace() && state.jobs.Farmer.id === "farmer") {
-            state.jobs.Farmer.updateId("Hunter", "free");
-        }
-
         state.jobManager.calculateCraftingMaxs();
         let jobList = state.jobManager.managedPriorityList();
 
@@ -4310,11 +4307,41 @@
             return;
         }
 
+        let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
+        let lumberjackIndex = -1;
+        
+        if (!isEvilRace()) {
+            lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
+        } else {
+            lumberjackIndex = jobList.indexOf(state.jobs.Farmer);
+
+            if (state.jobs.Lumberjack.id === "lumberjack") {
+                state.jobs.Lumberjack.updateId("Hunter", "free");
+            }
+        }
+
+        let breakpoint0Max = 0;
+        let breakpoint1Max = 0;
+
+        // Cath / Balorg / Imp race doesn't have farmers, unemployed are their farmers
+        if (isHunterRace()) {
+            if (state.jobs.Farmer.id === "farmer") {
+                state.jobs.Farmer.updateId("Hunter", "free");
+            }
+
+            for (let i = 0; i < jobList.length; i++) {
+                const job = jobList[i];
+                breakpoint0Max += job.breakpointEmployees(0);
+                breakpoint1Max += job.breakpointEmployees(1);
+            }
+
+            log("autoJobs", "Max breakpoint 0: " + breakpoint0Max)
+            log("autoJobs", "Max breakpoint 1: " + breakpoint1Max)
+        }
+
         let availableEmployees = state.jobManager.totalEmployees;
         let requiredJobs = [];
         let jobAdjustments = [];
-        let lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
-        let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
 
         // First figure out how many farmers are required
         if (state.jobs.Farmer.isManaged()) {
@@ -4330,10 +4357,25 @@
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
                 log("autoJobs", "Removing one farmer")
+            } else if (isHunterRace() && state.resources.Food.storageRatio > 0.3 && state.resources.Food.rateOfChange > state.resources.Population.currentQuantity / 10) {
+                // Carnivore race. Put We've got some food so put them to work!
+                requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
+                log("autoJobs", "Removing one farmer - Carnivore")
             } else {
                 // We're good; leave farmers as they are
                 requiredJobs.push(state.jobs.Farmer.current);
                 log("autoJobs", "Leaving current farmers")
+            }
+
+            log("autoJobs", "currentQuantity " + state.resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0))
+            if (isEvilRace()) {
+                if (state.resources.Population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1)) {
+                    log("autoJobs", "Setting required hunters to breakpoint 1")
+                    requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(1);
+                } else if (requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(0)) {
+                    log("autoJobs", "Setting required hunters to breakpoint 0")
+                    requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(0);
+                }
             }
 
             jobAdjustments.push(requiredJobs[0] - state.jobs.Farmer.current);
@@ -4372,7 +4414,7 @@
                         jobsToAssign = 0;
                     }
 
-                    // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our money knowledge cap
+                    // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our knowledge cap
                     if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && state.resources.Knowledge.storageRatio > 0.98) {
                         jobsToAssign = 0;
                     }
@@ -4428,29 +4470,46 @@
                 jobAdjustments[lumberjackIndex] += availableEmployees;
                 availableEmployees = 0
             } else {
-                let lumberjacks = 0;
-                availableEmployees += requiredJobs[lumberjackIndex];
-                requiredJobs[lumberjackIndex] = 0;
-                jobAdjustments[lumberjackIndex] = 0 - state.jobs.Lumberjack.current;
-                availableEmployees += requiredJobs[quarryWorkerIndex];
-                requiredJobs[quarryWorkerIndex] = 0;
-                jobAdjustments[quarryWorkerIndex] = 0 - state.jobs.QuarryWorker.current;
+                if (!isEvilRace()) {
+                    let lumberjacks = 0;
+                    availableEmployees += requiredJobs[lumberjackIndex];
+                    requiredJobs[lumberjackIndex] = 0;
+                    jobAdjustments[lumberjackIndex] = 0 - state.jobs.Lumberjack.current;
+                    availableEmployees += requiredJobs[quarryWorkerIndex];
+                    requiredJobs[quarryWorkerIndex] = 0;
+                    jobAdjustments[quarryWorkerIndex] = 0 - state.jobs.QuarryWorker.current;
 
-                // If we've got over 100 population then keep lumberjacks 5 more than quarry workers (due to sawmills providing bonus)
-                if (state.resources.Population.currentQuantity >= 100) {
-                    lumberjacks = Math.min(availableEmployees, 4);
+                    // If we've got over 100 population then keep lumberjacks 5 more than quarry workers (due to sawmills providing bonus)
+                    if (state.resources.Population.currentQuantity >= 100) {
+                        lumberjacks = Math.min(availableEmployees, 4);
+                        requiredJobs[lumberjackIndex] += lumberjacks;
+                        jobAdjustments[lumberjackIndex] += lumberjacks;
+                        availableEmployees -= lumberjacks;
+                    }
+
+                    // Split the remainder between lumberjacks and quarry workers
+                    lumberjacks = Math.ceil(availableEmployees / 2);
                     requiredJobs[lumberjackIndex] += lumberjacks;
                     jobAdjustments[lumberjackIndex] += lumberjacks;
                     availableEmployees -= lumberjacks;
-                }
+                    requiredJobs[quarryWorkerIndex] += availableEmployees;
+                    jobAdjustments[quarryWorkerIndex] += availableEmployees;
+                } else {
+                    // Evil races are a little bit different. Their "umemployed" workers act as both farmers and lumberjacks
+                    // We need to keep a minimum number on farming. Distribute all available workers first to quarry workers
+                    // until they are equal to lumberjacks and then equally for the rest.
+                    while (availableEmployees >= 1) {
+                        if (requiredJobs[lumberjackIndex] <= requiredJobs[quarryWorkerIndex]) {
+                            requiredJobs[lumberjackIndex]++;
+                            jobAdjustments[lumberjackIndex]++;
+                        } else {
+                            requiredJobs[quarryWorkerIndex]++;
+                            jobAdjustments[quarryWorkerIndex]++;
+                        }
 
-                // Split the remainder between lumberjacks and quarry workers
-                lumberjacks = Math.ceil(availableEmployees / 2);
-                requiredJobs[lumberjackIndex] += lumberjacks;
-                jobAdjustments[lumberjackIndex] += lumberjacks;
-                availableEmployees -= lumberjacks;
-                requiredJobs[quarryWorkerIndex] += availableEmployees;
-                jobAdjustments[quarryWorkerIndex] += availableEmployees;
+                        availableEmployees--;
+                    }
+                }
             }
         }
 
