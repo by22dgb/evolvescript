@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.12
+// @version      0.9.13
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -56,21 +56,6 @@
     }
 
     var defaultAllOptionsEnabled = false;
-
-    // --------------------
-    // User overrides
-    // --------------------
-    //
-    // Please see the Settings tab in game for more script settings. Target evolution, research, jobs and more!
-    //
-    // When your offensive rating is greater than the rating below it will target that attack type. If it doesn't meet any of the ratings then it will target the lowest.
-    var userOverrideCampaigns = [
-        { name: "Ambush", rating: 10 },
-        { name: "Raid", rating: 50 },
-        { name: "Pillage", rating: 100 },
-        { name: "Assault", rating: 200 },
-        { name: "Siege", rating: 500 }
-    ];
 
     // --------------------
 
@@ -1869,23 +1854,49 @@
         }
     }
 
-    const AttackTypes = {
-        Ambush: 0,
-        Raid: 1,
-        Pillage: 2,
-        Assault: 3,
-        Siege: 4,
+    class Campaign {
+        /**
+         * @param {string} name
+         * @param {string} id
+         * @param {number} rating
+         */
+        constructor(name, id, rating) {
+            this.name = name;
+            this.id = id;
+            this.rating = rating;
+        }
     }
 
-    class BattleManager {
+    class WarManager {
         constructor() {
-            this.campaigns = [
-                { name: "Ambush", rating: 10 },
-                { name: "Raid", rating: 50 },
-                { name: "Pillage", rating: 100 },
-                { name: "Assault", rating: 200 },
-                { name: "Siege", rating: 500 }
-            ];
+            /** @type {Campaign[]} */
+            this.campaignList = [];
+        }
+
+        clearCampaignList() {
+            this.campaignList = [];
+        }
+
+        /**
+         * @param {string} name
+         * @param {number} rating
+         */
+        addToCampaignList(name, rating) {
+            this.campaignList.push(new Campaign(name, name, rating));
+        }
+
+        /**
+         * @param {string} campaignId
+         * @param {number} campaignMinimumRating
+         */
+        updateCampaign(campaignId, campaignMinimumRating) {
+            let index = findArrayIndex(this.campaignList, "id", campaignId);
+
+            if (index === -1) {
+                return;
+            }
+
+            this.campaignList[index].rating = campaignMinimumRating;
         }
 
         isUnlocked() {
@@ -2017,14 +2028,14 @@
          */
         switchToBestAttackType() {
             let offense = this.currentOffensiveRating;
-            let currentAttackTypeIndex = findArrayIndex(this.campaigns, "name", this.attackType);
+            let currentAttackTypeIndex = findArrayIndex(this.campaignList, "name", this.attackType);
 
-            if (this.campaigns.length === 0 || currentAttackTypeIndex === -1) {
+            if (this.campaignList.length === 0 || currentAttackTypeIndex === -1) {
                 return false;
             }
 
-            for (let i = this.campaigns.length - 1; i >= 0; i--) {
-                let campaign = this.campaigns[i];
+            for (let i = this.campaignList.length - 1; i >= 0; i--) {
+                let campaign = this.campaignList[i];
                 
                 if (offense >= campaign.rating && currentAttackTypeIndex < i) {
                     this.increaseCampaignDifficulty();
@@ -2784,7 +2795,7 @@
         loopCounter: 1,
 
         windowManager: new ModalWindowManager(),
-        battleManager: new BattleManager(),
+        warManager: new WarManager(),
         jobManager: new JobManager(),
         buildingManager: new BuildingManager(),
         projectManager: new ProjectManager(),
@@ -3536,8 +3547,17 @@
         state.raceAchievementList.push(state.races.Slitheryn);
 
         resetProjectState();
+        resetWarState();
+    }
 
-        state.battleManager.campaigns = userOverrideCampaigns;
+    function resetWarState() {
+        state.warManager.clearCampaignList();
+
+        state.warManager.addToCampaignList("Ambush", 10);
+        state.warManager.addToCampaignList("Raid", 50);
+        state.warManager.addToCampaignList("Pillage", 100);
+        state.warManager.addToCampaignList("Assault", 200);
+        state.warManager.addToCampaignList("Siege", 500);
     }
 
     function resetEvolutionSettings() {
@@ -3720,6 +3740,18 @@
     initialiseState();
     
     function updateStateFromSettings() {
+        // Retrieve settings for battle
+        for (let i = 0; i < state.warManager.campaignList.length; i++) {
+            let campaign = state.warManager.campaignList[i];
+
+            let settingKey = 'btl_' + campaign.name;
+            if (settings.hasOwnProperty(settingKey)) {
+                campaign.rating = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = campaign.rating;
+            }
+        }
+
         // Retrieve settings for buying and selling tradable resources
         for (let i = 0; i < state.marketManager.resources.length; i++) {
             let resource = state.marketManager.resources[i];
@@ -3884,6 +3916,9 @@
         if (!settings.hasOwnProperty("researchSettingsCollapsed")) {
             settings.researchSettingsCollapsed = true;
         }
+        if (!settings.hasOwnProperty("warSettingsCollapsed")) {
+            settings.warSettingsCollapsed = true;
+        }
         if (!settings.hasOwnProperty("jobSettingsCollapsed")) {
             settings.jobSettingsCollapsed = true;
         }
@@ -3898,6 +3933,11 @@
     updateStateFromSettings();
 
     function updateSettingsFromState() {
+        for (let i = 0; i < state.warManager.campaignList.length; i++) {
+            let campaign = state.warManager.campaignList[i];
+            settings['btl_' + campaign.name] = campaign.rating;
+        }
+
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
             settings['bat' + building.id] = building.autoBuildEnabled;
@@ -4025,6 +4065,9 @@
         }
         if (!settings.hasOwnProperty("researchSettingsCollapsed")) {
             settings.researchSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("warSettingsCollapsed")) {
+            settings.warSettingsCollapsed = true;
         }
         if (!settings.hasOwnProperty("jobSettingsCollapsed")) {
             settings.jobSettingsCollapsed = true;
@@ -4266,31 +4309,31 @@
     //#region Auto Battle
 
     function autoBattle() {
-        if (!state.battleManager.isUnlocked()) {
+        if (!state.warManager.isUnlocked()) {
             return;
         }
 
         // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
         if (state.goal === "PreparingMAD") {
-            state.battleManager.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
+            state.warManager.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
             return;
         }
         
         // Don't launch an attack until we are happy with our battalion size (returns true if we've added a battalion)
-        if (state.battleManager.currentSoldiers > state.battleManager.currentBattalion) {
-            if (state.battleManager.addBattalion()) {
+        if (state.warManager.currentSoldiers > state.warManager.currentBattalion) {
+            if (state.warManager.addBattalion()) {
                 return;
             }
         }
         
         // If we're switching attack types this loop then don't launch an attack. Wait for the UI to catch up (returns true when we are at the right attack type)
-        if (!state.battleManager.switchToBestAttackType()) {
+        if (!state.warManager.switchToBestAttackType()) {
             return;
         }
 
         // If we have solders, they're not wounded and they're ready to go, then charge!
-        if (state.battleManager.maxSoldiers !== 0 && state.battleManager.woundedSoldiers === 0 && state.battleManager.currentSoldiers === state.battleManager.maxSoldiers) {
-            state.battleManager.launchCampaign();
+        if (state.warManager.maxSoldiers !== 0 && state.warManager.woundedSoldiers === 0 && state.warManager.currentSoldiers === state.warManager.maxSoldiers) {
+            state.warManager.launchCampaign();
         }
     }
 
@@ -4843,7 +4886,7 @@
             return; // Give the UI time to update
         }
         
-        if (state.battleManager.currentSoldiers === state.battleManager.maxSoldiers && state.battleManager.woundedSoldiers === 0) {
+        if (state.warManager.currentSoldiers === state.warManager.maxSoldiers && state.warManager.woundedSoldiers === 0) {
             // Push... the button
             console.log("Soft resetting game with MAD");
             state.goal = "GameOverMan";
@@ -6076,6 +6119,7 @@
 
         buildEvolutionSettings();
         buildResearchSettings();
+        buildWarSettings();
         buildJobSettings();
         buildBuildingSettings();
         buildProjectSettings();
@@ -6287,6 +6331,87 @@
         });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function buildWarSettings() {
+        let scriptContentNode = $("#script_settings");
+
+        let warNode =
+            `<div style="margin-top: 10px;" id="script_warSettings">
+                <h3 id="warSettingsCollapsed" class="scriptcollapsible text-center has-text-success">War Settings</h3>
+                <div class="scriptcontent">
+                    <div style="margin-top: 10px;"><button id="script_resetWars" class="button">Reset War Settings</button></div>
+                    <table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Campaign</th><th class="has-text-warning" style="width:25%">Minimum Attack Rating</th><th class="has-text-warning" style="width:50%"></th></tr>
+                        <tbody id="script_warBody" class="scriptcontenttbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+
+        scriptContentNode.append(warNode);
+        buildWarTableBody();
+
+        if (!settings.warSettingsCollapsed) {
+            let element = document.getElementById("warSettingsCollapsed");
+            element.classList.toggle("scriptcontentactive");
+            let content = element.nextElementSibling;
+            //@ts-ignore
+            content.style.display = "block";
+        }
+
+        $("#script_resetWars").on("click", function() {
+            resetWarState();
+            updateSettingsFromState();
+            buildWarTableBody();
+        });
+    }
+
+    function buildWarTableBody() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let tableBodyNode = $('#script_warBody');
+        tableBodyNode.empty().off("*");
+
+        let newTableBodyText = "";
+
+        for (let i = 0; i < state.warManager.campaignList.length; i++) {
+            const campaign = state.warManager.campaignList[i];
+            newTableBodyText += '<tr value="' + campaign.id + '"><td id="script_' + campaign.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:50%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build campaign settings rows
+        for (let i = 0; i < state.warManager.campaignList.length; i++) {
+            const campaign = state.warManager.campaignList[i];
+            let warElement = $('#script_' + campaign.id + 'Toggle');
+
+            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + campaign.name + '</span>');
+            warElement.append(toggle);
+
+            warElement = warElement.next();
+            warElement.append(buildCampaignRatingSettingsInput(campaign));
+        }
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    /**
+     * @param {Campaign} campaign
+     */
+    function buildCampaignRatingSettingsInput(campaign) {
+        let campaignMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        campaignMaxTextBox.val(settings["btl_" + campaign.id]);
+    
+        campaignMaxTextBox.on('change', function() {
+            let val = campaignMaxTextBox.val();
+            let rating = getRealNumber(val);
+            if (!isNaN(rating)) {
+                //console.log('Setting max for war ' + war.name + ' to be ' + max);
+                campaign.rating = rating;
+                updateSettingsFromState();
+            }
+        });
+
+        return campaignMaxTextBox;
     }
 
     function buildJobSettings() {
@@ -6694,7 +6819,7 @@
             `<div style="margin-top: 10px;" id="script_projectSettings">
                 <h3 id="projectSettingsCollapsed" class="scriptcollapsible text-center has-text-success">A.R.P.A. Settings</h3>
                 <div class="scriptcontent">
-                    <div style="margin-top: 10px;"><button id="script_resetProjects" class="button">Reset A.R.P.A Settings</button></div>
+                    <div style="margin-top: 10px;"><button id="script_resetProjects" class="button">Reset A.R.P.A. Settings</button></div>
                     <table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:50%"></th></tr>
                         <tbody id="script_projectBody" class="scriptcontenttbody"></tbody>
                     </table>
@@ -6726,9 +6851,6 @@
         tableBodyNode.empty().off("*");
 
         let newTableBodyText = "";
-
-        // Add in a first row for switching "All"
-        newTableBodyText += '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:25%"></td><td style="width:25%"></td><td style="width:50%"></td></tr>';
 
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
