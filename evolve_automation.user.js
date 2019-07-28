@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.13
+// @version      0.9.14
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -27,15 +27,16 @@
 //          Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker. eg. If you don't have enough libraries / 
 //          cottages / coal mines then it will stop building anything that uses the same materials for a while to allow you to craft the resources to build them.
 //          Will only build the buildings that the user enables. Settings available in Settings tab.
-// * autoMarket - Allows for automatic buying and selling of resources once specific ratios are met. Not currently user configurable.
+// * autoMarket - Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum
+//          specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes. Each resource can be configured
+//          in the Market settings in the settings tab.
+// * autoStorage - Assigns crates to allow storage of resources. Only assigns enough crates to reach MAD unless enabling autoSpace. Not currently user configurable.
 // * autoResearch - Performs research when minimum requirements are met. Settings available in Settings tab.
 // * autoARPA - Builds ARPA projects if user enables them to be built
 // * autoJobs - Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on
 //          lumber / stone then fill up capped jobs first. Settings available in Settings tab.
 //  ** autoCraftsmen - Enable this when performing challenge runs and autoJobs will also manage craftsmen
 // * autoPower - Manages power based on a priority order of buildings. Starts with city based building then space based. Settings available in Settings tab.
-// * autoTradeSpecialResources - Boths sets up trading routes for special resources (titanium, alloy, polymer, iridium, helium_3) and also assigns
-//          crates to allow storage of those resources. Only assigns a enough crates to reach MAD unless enabling autoSpace.
 // * autoSmelter - Manages smelter output at different stages at the game. Not currently user configurable.
 // * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
 //          Not currently user configurable.
@@ -74,6 +75,8 @@
             this._tabPrefix = tabPrefix;
             this._concatenator = concatenator;
             this._id = id;
+            this._originalName = name;
+            this._originalId = id;
             this._elementId = this._tabPrefix + this._concatenator + this.id;
             this._isCraftsman = isCraftsman;
 
@@ -109,6 +112,16 @@
 
         isCraftsman() {
             return this._isCraftsman;
+        }
+
+        getHtmlName() {
+            let nameNode = document.querySelector("#" + this._elementId + " h3");
+
+            if (nameNode === null) {
+                return "";
+            }
+
+            return nameNode.textContent;
         }
 
         get current() {
@@ -433,7 +446,7 @@
 
         get autoMax() {
             // There are a couple of special buildings that are "clickable" but really aren't clickable. Lets check them here
-            if (this.id === "star_dock") {
+            if (this.id === "star_dock" || this.id === "world_controller") {
                 // Only clickable once but then hangs around in a "clickable" state even though you can't get more than one...
                 return this._autoMax === 0 ? 0 : 1;
             } else if (this.id === "seeder") {
@@ -674,17 +687,17 @@
 
     class Resource {
         /**
+         * @param {string} name
          * @param {string} prefix
          * @param {string} id
          * @param {boolean} isTradable
          * @param {number} tradeRouteQuantity
-         * @param {number} buyRatio
-         * @param {number} sellRatio
          * @param {boolean} isCraftable
          * @param {number} craftRatio
          */
-        constructor(prefix, id, isTradable, tradeRouteQuantity, buyRatio, sellRatio, isCraftable, craftRatio) {
+        constructor(name, prefix, id, isTradable, tradeRouteQuantity, isCraftable, craftRatio) {
             this._prefix = prefix;
+            this.name = name;
             this._id = id;
             this._isPopulation = (id === "Population"); // We can't store the full elementId because we don't know the name of the population node until later
             this.autoCraftEnabled = defaultAllOptionsEnabled;
@@ -695,10 +708,15 @@
             this.currentTradeRouteSellPrice = 0;
             this.currentTradeRoutes = 0;
 
+            this.priority = 0;
             this.autoBuyEnabled = false;
             this.autoSellEnabled = false;
-            this.buyRatio = buyRatio;
-            this.sellRatio = sellRatio;
+            this.autoBuyRatio = -1;
+            this.autoSellRatio = -1;
+            this.autoTradeBuyEnabled = false;
+            this.autoTradeBuyRoutes = 0;
+            this.autoTradeSellEnabled = true;
+            this.autoTradeSellMinPerSecond = 0;
 
             this.isAssignedCratesUpdated = false;
             this.assignedCrates = 0;
@@ -735,6 +753,27 @@
         isUnlocked() {
             let containerNode = document.getElementById(this._prefix + this.id);
             return containerNode !== null && containerNode.style.display !== "none";
+        }
+
+        /**
+         * @param {boolean} buy
+         * @param {number} buyRatio
+         * @param {boolean} sell
+         * @param {number} sellRatio
+         * @param {boolean} tradeBuy
+         * @param {number} tradeBuyRoutes
+         * @param {boolean} tradeSell
+         * @param {number} tradeSellMinPerSecond
+         */
+        updateState(buy, buyRatio, sell, sellRatio, tradeBuy, tradeBuyRoutes, tradeSell, tradeSellMinPerSecond) {
+            this.autoBuyEnabled = buy;
+            this.autoBuyRatio = buyRatio;
+            this.autoSellEnabled = sell;
+            this.autoSellRatio = sellRatio;
+            this.autoTradeBuyEnabled = tradeBuy;
+            this.autoTradeBuyRoutes = tradeBuyRoutes;
+            this.autoTradeSellEnabled = tradeSell;
+            this.autoTradeSellMinPerSecond = tradeSellMinPerSecond;
         }
 
         hasOptions() {
@@ -1027,7 +1066,7 @@
     class Power extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("", "powerMeter", false, -1, -1, -1, false, -1);
+            super("Power", "", "powerMeter", false, -1, false, -1);
         }
 
         //#region Standard resource
@@ -1119,10 +1158,11 @@
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         
         /**
+         * @param {string} name
          * @param {string} id
          */
-        constructor(id) {
-            super("", id, false, -1, -1, -1, false, -1);
+        constructor(name, id) {
+            super(name, "", id, false, -1, false, -1);
         }
 
         //#region Standard resource
@@ -1215,7 +1255,7 @@
     class LuxuryGoods extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("", "LuxuryGoods", false, -1, -1, -1, false, -1);
+            super("Luxury Goods", "", "LuxuryGoods", false, -1, false, -1);
         }
 
         //#region Standard resource
@@ -2109,6 +2149,7 @@
             }
 
             if (this._managedPriorityList === null) {
+                this._lastLoopCounter = state.loopCounter;
                 this._managedPriorityList = [];
                 let evilRace = isEvilRace();
 
@@ -2116,7 +2157,8 @@
                     const job = this.priorityList[i];
     
                     if (job.isManaged() && (!evilRace || job !== state.jobs.Lumberjack)) {
-                        if (!job.isCraftsman() || (job.isCraftsman() && settings.autoCraftsmen)) {
+                        // Only add craftsmen if we can't manually craft and user has enabled the autocraftsman setting
+                        if (!job.isCraftsman() || (job.isCraftsman() && settings.autoCraftsmen && !this.canManualCraft())) {
                             this._managedPriorityList.push(job);
                         }
                     }
@@ -2251,7 +2293,7 @@
                     job.max = job.current;
                     max -= job.current;
                 } else {
-                    let setting = parseInt(settings['job_b3_' + job.id]);
+                    let setting = parseInt(settings['job_b3_' + job._originalId]);
                     if (setting != -1) {
                         // The user has set a specific max for this job so we'll honour it
                         job.max = setting;
@@ -2287,7 +2329,8 @@
         constructor() {
             /** @type {Action[]} */
             this.priorityList = [];
-            this._lastLoopCounter = 0;
+            this._lastBuildLoopCounter = 0;
+            this._lastStateLoopCounter = 0;
             /** @type {Action[]} */
             this._managedPriorityList = null;
             /** @type {Action[]} */
@@ -2323,11 +2366,12 @@
         }
 
         managedPriorityList() {
-            if (this._lastLoopCounter != state.loopCounter) {
+            if (this._lastBuildLoopCounter != state.loopCounter) {
                 this._managedPriorityList = null;
             }
 
             if (this._managedPriorityList === null) {
+                this._lastBuildLoopCounter = state.loopCounter;
                 this._managedPriorityList = [];
 
                 for (let i = 0; i < this.priorityList.length; i++) {
@@ -2343,11 +2387,12 @@
         }
 
         managedStatePriorityList() {
-            if (this._lastLoopCounter != state.loopCounter) {
+            if (this._lastStateLoopCounter != state.loopCounter) {
                 this._managedStatePriorityList = null;
             }
 
             if (this._managedStatePriorityList === null) {
+                this._lastStateLoopCounter = state.loopCounter;
                 this._managedStatePriorityList = [];
 
                 for (let i = 0; i < this._statePriorityList.length; i++) {
@@ -2476,6 +2521,7 @@
             }
 
             if (this._managedPriorityList === null) {
+                this._lastLoopCounter = state.loopCounter;
                 this._managedPriorityList = [];
 
                 for (let i = 0; i < this.priorityList.length; i++) {
@@ -2495,7 +2541,11 @@
     class MarketManager {
         constructor() {
             /** @type {Resource[]} */
-            this.resources = [];
+            this.priorityList = [];
+            this._lastLoopCounter = 0;
+
+            /** @type {Resource[]} */
+            this._sortedTradeRouteSellList = null;
         }
 
         isUnlocked() {
@@ -2503,36 +2553,55 @@
             return marketTest !== null && marketTest.style.display !== "none";
         }
 
-        /** @param {Resource} resource */
-        isBuySellUnlocked(resource) {
-            return document.querySelector("#market-" + resource.id + " .order") !== null;
+        clearPriorityList() {
+            this.priorityList = [];
+            this._sortedTradeRouteSellList = null;
         }
 
         /**
          * @param {Resource} resource
          */
-        addTradableResource(resource) {
+        addResourceToPriorityList(resource) {
             if (resource.isTradable()) {
-                this.resources.push(resource);
+                resource.priority = this.priorityList.length;
+                this.priorityList.push(resource);
             }
         }
 
+        sortByPriority() {
+            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
+            if (this._sortedTradeRouteSellList !== null) this._sortedTradeRouteSellList.sort(function (a, b) { return a.priority - b.priority } );
+        }
+
+        /** @param {Resource} resource */
+        isBuySellUnlocked(resource) {
+            return document.querySelector("#market-" + resource.id + " .order") !== null;
+        }
+
         getSortedTradeRouteSellList() {
-            let sortedList = [];
-
-            for (let i = 0; i < this.resources.length; i++) {
-                const resource = this.resources[i];
-
-                if (this.isResourceUnlocked(resource)) {
-                    resource.currentTradeRouteBuyPrice = this.getTradeRouteBuyPrice(resource);
-                    resource.currentTradeRouteSellPrice = this.getTradeRouteSellPrice(resource);
-                    resource.currentTradeRoutes = this.getTradeRoutes(resource);
-                    sortedList.push(resource);
-                }
+            if (this._lastLoopCounter != state.loopCounter) {
+                this._sortedTradeRouteSellList = null;
             }
 
-            sortedList.sort(function (a, b) { return b.currentTradeRouteSellPrice - a.currentTradeRouteSellPrice } );
-            return sortedList;
+            if (this._sortedTradeRouteSellList === null) {
+                this._lastLoopCounter = state.loopCounter;
+                this._sortedTradeRouteSellList = [];
+
+                for (let i = 0; i < this.priorityList.length; i++) {
+                    const resource = this.priorityList[i];
+
+                    if (this.isResourceUnlocked(resource) && (resource.autoTradeBuyEnabled || resource.autoTradeSellEnabled)) {
+                        resource.currentTradeRouteBuyPrice = this.getTradeRouteBuyPrice(resource);
+                        resource.currentTradeRouteSellPrice = this.getTradeRouteSellPrice(resource);
+                        resource.currentTradeRoutes = this.getTradeRoutes(resource);
+                        this._sortedTradeRouteSellList.push(resource);
+                    }
+                }
+
+                this._sortedTradeRouteSellList.sort(function (a, b) { return b.currentTradeRouteSellPrice - a.currentTradeRouteSellPrice } );
+            }
+
+            return this._sortedTradeRouteSellList;
         }
 
         /**
@@ -2814,52 +2883,52 @@
         craftableResourceList: [],
         resources: {
             // Base resources
-            Money: new Resource("res", "Money", false, -1, -1, -1, false, -1),
-            Population: new Resource("res", "Population", false, -1, -1, -1, false, -1), // The population node is special and its id will change to the race name
-            Knowledge: new Resource("res", "Knowledge", false, -1, -1, -1, false, -1),
-            Crates: new Resource("res", "Crates", false, -1, -1, -1, false, -1),
-            Containers: new Resource("res", "Containers", false, -1, -1, -1, false, -1),
-            Plasmids: new Resource("res", "Plasmid", false, -1, -1, -1, false, -1),
-            Genes: new Resource("res", "Genes", false, -1, -1, -1, false, -1),
+            Money: new Resource("Money", "res", "Money", false, -1, false, -1),
+            Population: new Resource("Population", "res", "Population", false, -1, false, -1), // The population node is special and its id will change to the race name
+            Knowledge: new Resource("Knowledge", "res", "Knowledge", false, -1, false, -1),
+            Crates: new Resource("Crates", "res", "Crates", false, -1, false, -1),
+            Containers: new Resource("Containers", "res", "Containers", false, -1, false, -1),
+            Plasmids: new Resource("Plasmid", "res", "Plasmid", false, -1, false, -1),
+            Genes: new Resource("Genes", "res", "Genes", false, -1, false, -1),
 
             // Special not-really-resources-but-we'll-treat-them-like-resources resources
             Power: new Power(),
             LuxuryGoods: new LuxuryGoods(),
-            MoonSupport: new Support("srspc_moon"),
-            RedSupport: new Support("srspc_red"),
-            SunSupport: new Support("srspc_sun"),
-            BeltSupport: new Support("srspc_belt"),
+            MoonSupport: new Support("Moon Support", "srspc_moon"),
+            RedSupport: new Support("Red Support", "srspc_red"),
+            SunSupport: new Support("Sun Support", "srspc_sun"),
+            BeltSupport: new Support("Belt Support", "srspc_belt"),
 
             // Basic resources (can trade for these)
-            Food: new Resource("res", "Food", true, 2, 0.5, 0.9, false, -1),
-            Lumber: new Resource("res", "Lumber", true, 2, 0.5, 0.9, false, -1),
-            Stone: new Resource("res", "Stone", true, 2, 0.5, 0.9, false, -1),
-            Furs: new Resource("res", "Furs", true, 1, 0.5, 0.9, false, -1),
-            Copper: new Resource("res", "Copper", true, 1, 0.5, 0.9, false, -1),
-            Iron: new Resource("res", "Iron", true, 1, 0.5, 0.9, false, -1),
-            Aluminium: new Resource("res", "Aluminium", true, 1, 0.5, 0.9, false, -1),
-            Cement: new Resource("res", "Cement", true, 1, 0.3, 0.9, false, -1),
-            Coal: new Resource("res", "Coal", true, 1, 0.5, 0.9, false, -1),
-            Oil: new Resource("res", "Oil", true, 0.5, 0.5, 0.9, false, -1),
-            Uranium: new Resource("res", "Uranium", true, 0.25, 0.5, 0.9, false, -1),
-            Steel: new Resource("res", "Steel", true, 0.5, 0.5, 0.9, false, -1),
-            Titanium: new Resource("res", "Titanium", true, 0.25, 0.8, 0.9, false, -1),
-            Alloy: new Resource("res", "Alloy", true, 0.2, 0.8, 0.9, false, -1),
-            Polymer: new Resource("res", "Polymer", true, 0.2, 0.8, 0.9, false, -1),
-            Iridium: new Resource("res", "Iridium", true, 0.1, 0.8, 0.9, false, -1),
-            Helium_3: new Resource("res", "Helium_3", true, 0.1, 0.8, 0.9, false, -1),
+            Food: new Resource("Food", "res", "Food", true, 2, false, -1),
+            Lumber: new Resource("Lumber", "res", "Lumber", true, 2,false, -1),
+            Stone: new Resource("Stone", "res", "Stone", true, 2, false, -1),
+            Furs: new Resource("Furs", "res", "Furs", true, 1, false, -1),
+            Copper: new Resource("Copper", "res", "Copper", true, 1, false, -1),
+            Iron: new Resource("Iron", "res", "Iron", true, 1, false, -1),
+            Aluminium: new Resource("Aluminium", "res", "Aluminium", true, 1, false, -1),
+            Cement: new Resource("Cement", "res", "Cement", true, 1, false, -1),
+            Coal: new Resource("Coal", "res", "Coal", true, 1, false, -1),
+            Oil: new Resource("Oil", "res", "Oil", true, 0.5, false, -1),
+            Uranium: new Resource("Uranium", "res", "Uranium", true, 0.25, false, -1),
+            Steel: new Resource("Steel", "res", "Steel", true, 0.5, false, -1),
+            Titanium: new Resource("Titanium", "res", "Titanium", true, 0.25, false, -1),
+            Alloy: new Resource("Alloy", "res", "Alloy", true, 0.2, false, -1),
+            Polymer: new Resource("Polymer", "res", "Polymer", true, 0.2, false, -1),
+            Iridium: new Resource("Iridium", "res", "Iridium", true, 0.1, false, -1),
+            Helium_3: new Resource("Helium-3", "res", "Helium_3", true, 0.1, false, -1),
 
             // Advanced resources (can't trade for these)
-            Elerium: new Resource("res", "Elerium", false, 0.1, -1, -1, false, -1),
-            Neutronium: new Resource("res", "Neutronium", false, 0.1, -1, -1, false, -1),
-            NanoTube: new Resource("res", "Nano_Tube", false, 0.1, -1, -1, false, -1),
+            Elerium: new Resource("Elerium", "res", "Elerium", false, 0.1, false, -1),
+            Neutronium: new Resource("Neutronium", "res", "Neutronium", false, 0.1, false, -1),
+            NanoTube: new Resource("Nano Tube", "res", "Nano_Tube", false, 0.1, false, -1),
             
             // Craftable resources
-            Plywood: new Resource("res", "Plywood", false, -1, -1, -1, true, 0.5),
-            Brick: new Resource("res", "Brick", false, -1, -1, -1, true, 0.5),
-            WroughtIron: new Resource("res", "Wrought_Iron", false, -1, -1, -1, true, 0.5),
-            SheetMetal: new Resource("res", "Sheet_Metal", false, -1, -1, -1, true, 0.5),
-            Mythril: new Resource("res", "Mythril", false, -1, -1, -1, true, 0.5),
+            Plywood: new Resource("Plywood", "res", "Plywood", false, -1, true, 0.5),
+            Brick: new Resource("Brick", "res", "Brick", false, -1, true, 0.5),
+            WroughtIron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, -1, true, 0.5),
+            SheetMetal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, -1, true, 0.5),
+            Mythril: new Resource("Mythril", "res", "Mythril", false, -1, true, 0.5),
         },
 
         jobs: {
@@ -2896,26 +2965,16 @@
             EukaryoticCell: new Action("Eukaryotic Cell", "evo", "eukaryotic_cell", true),
             Mitochondria: new Action("Mitochondria", "evo", "mitochondria", true),
 
-            Antid: new Action("Antid", "evo", "antid", false),
-
-            Sentience: new Action("", "evo", "sentience", false),
-            Arthropods: new Action("", "evo", "athropods", false),
-            BilateralSymmetry: new Action("", "evo", "bilateral_symmetry", false),
-            Multicellular: new Action("", "evo", "multicellular", false),
-            Phagocytosis: new Action("", "evo", "phagocytosis", false),
             SexualReproduction: new Action("", "evo", "sexual_reproduction", false),
-
-           // SexualReproduction: new Action("", "evo", "sexual_reproduction", false),
-
-               // Phagocytosis: new Action("", "evo", "phagocytosis", false),
-                   // Multicellular: new Action("", "evo", "multicellular", false),
-                       // BilateralSymmetry: new Action("", "evo", "bilateral_symmetry", false),
-                           // Arthropods: new Action("", "evo", "athropods", false),
-                              //  Sentience: new Action("", "evo", "sentience", false),
+                Phagocytosis: new Action("", "evo", "phagocytosis", false),
+                    Multicellular: new Action("", "evo", "multicellular", false),
+                        BilateralSymmetry: new Action("", "evo", "bilateral_symmetry", false),
+                            Arthropods: new Action("", "evo", "athropods", false),
+                                Sentience: new Action("", "evo", "sentience", false),
                                 Bunker: new Action("", "evo", "bunker", false),
                                 Mantis: new Action("", "evo", "mantis", false),
                                 Scorpid: new Action("", "evo", "scorpid", false),
-                               // Antid: new Action("", "evo", "antid", false),
+                                Antid: new Action("Antid", "evo", "antid", false),
 
                             Mammals: new Action("", "evo", "mammals", false),
                                 Humanoid: new Action("", "evo", "humanoid", false),
@@ -3117,7 +3176,7 @@
             // Gas
             GasMission: new Action("Gas Mission", "space", "gas_mission", true),
             GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", true),
-            GasStorage: new Action("Gas Godzilla Fuel Depot", "space", "gas_storage", true),
+            GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", true),
             GasSpaceDock: new SpaceDock(), // Special building with options
             GasSpaceDockProbe: new Action("Gas Space Probe", "spcdock", "probes", true),
             GasSpaceDockShipSegment: new Action("Gas Bioseeder Ship Segment", "spcdock", "seeder", true),
@@ -3161,24 +3220,7 @@
         //     state.global = moduleObject.global;
         // });
 
-        // Construct tradable resource list
-        state.marketManager.addTradableResource(state.resources.Alloy);
-        state.marketManager.addTradableResource(state.resources.Polymer);
-        state.marketManager.addTradableResource(state.resources.Iridium);
-        state.marketManager.addTradableResource(state.resources.Uranium);
-        state.marketManager.addTradableResource(state.resources.Steel);
-        state.marketManager.addTradableResource(state.resources.Helium_3);
-        state.marketManager.addTradableResource(state.resources.Titanium);
-        state.marketManager.addTradableResource(state.resources.Copper);
-        state.marketManager.addTradableResource(state.resources.Aluminium);
-        state.marketManager.addTradableResource(state.resources.Iron);
-        state.marketManager.addTradableResource(state.resources.Stone);
-        state.marketManager.addTradableResource(state.resources.Lumber);
-        state.marketManager.addTradableResource(state.resources.Food);
-        state.marketManager.addTradableResource(state.resources.Oil);
-        state.marketManager.addTradableResource(state.resources.Coal);
-        state.marketManager.addTradableResource(state.resources.Cement);
-        state.marketManager.addTradableResource(state.resources.Furs);
+        resetMarketState();
 
         // Construct craftable resource list
         state.craftableResourceList.push(state.resources.Plywood);
@@ -3194,7 +3236,7 @@
         state.resources.Mythril.requiredResourcesToAction.push(state.resources.Alloy);
 
         // Construct all resource list
-        state.allResourceList = state.marketManager.resources.concat(state.craftableResourceList);
+        state.allResourceList = state.marketManager.priorityList.concat(state.craftableResourceList);
         state.allResourceList.push(state.resources.Money);
         state.allResourceList.push(state.resources.Population);
         state.allResourceList.push(state.resources.Knowledge);
@@ -3570,6 +3612,50 @@
         settings.userResearchUnification = "auto";
     }
 
+    function resetMarketState() {
+        state.marketManager.clearPriorityList();
+
+        state.marketManager.addResourceToPriorityList(state.resources.Helium_3);
+        state.marketManager.addResourceToPriorityList(state.resources.Iridium);
+        state.marketManager.addResourceToPriorityList(state.resources.Polymer);
+        state.marketManager.addResourceToPriorityList(state.resources.Alloy);
+        state.marketManager.addResourceToPriorityList(state.resources.Titanium);
+        state.marketManager.addResourceToPriorityList(state.resources.Steel);
+        state.marketManager.addResourceToPriorityList(state.resources.Uranium);
+        state.marketManager.addResourceToPriorityList(state.resources.Oil);
+        state.marketManager.addResourceToPriorityList(state.resources.Coal);
+        state.marketManager.addResourceToPriorityList(state.resources.Cement);
+        state.marketManager.addResourceToPriorityList(state.resources.Aluminium);
+        state.marketManager.addResourceToPriorityList(state.resources.Iron);
+        state.marketManager.addResourceToPriorityList(state.resources.Copper);
+        state.marketManager.addResourceToPriorityList(state.resources.Furs);
+        state.marketManager.addResourceToPriorityList(state.resources.Stone);
+        state.marketManager.addResourceToPriorityList(state.resources.Lumber);
+        state.marketManager.addResourceToPriorityList(state.resources.Food);
+
+        state.resources.Food.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Lumber.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Stone.updateState(false, 0.5, false, 0.9, false, 0, true, 15);
+        state.resources.Furs.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Copper.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Iron.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Aluminium.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Cement.updateState(false, 0.3, false, 0.9, false, 0, true, 10);
+        state.resources.Coal.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Oil.updateState(false, 0.5, false, 0.9, true, 5, false, 10);
+        state.resources.Uranium.updateState(false, 0.5, false, 0.9, true, 2, false, 10);
+        state.resources.Steel.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Titanium.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Alloy.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Polymer.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Iridium.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Helium_3.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
+    }
+
+    function resetMarketSettings() {
+        settings.tradeRouteMinimumMoneyPerSecond = 200
+    }
+
     function resetJobState() {
         state.jobManager.clearPriorityList();
 
@@ -3746,28 +3832,53 @@
 
             let settingKey = 'btl_' + campaign.name;
             if (settings.hasOwnProperty(settingKey)) {
-                campaign.rating = parseInt(settings[settingKey]);
+                campaign.rating = parseFloat(settings[settingKey]);
             } else {
                 settings[settingKey] = campaign.rating;
             }
         }
 
         // Retrieve settings for buying and selling tradable resources
-        for (let i = 0; i < state.marketManager.resources.length; i++) {
-            let resource = state.marketManager.resources[i];
-            let sellSettingKey = 'sell' + resource.id;
-            if (settings.hasOwnProperty(sellSettingKey)) {
-                resource.autoSellEnabled = settings[sellSettingKey];
-            } else {
-                settings[sellSettingKey] = false;
-            }
-            let buySettingKey = 'buy' + resource.id;
-            if (settings.hasOwnProperty(buySettingKey)) {
-                resource.autoBuyEnabled = settings[buySettingKey];
-            } else {
-                settings[buySettingKey] = false;
-            }
+        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
+            let resource = state.marketManager.priorityList[i];
+
+            let settingKey = 'res_buy_p_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.priority = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource.priority; }
+
+            settingKey = 'buy' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoBuyEnabled = settings[settingKey]; }
+            else { settings[settingKey] = resource.autoBuyEnabled; }
+
+            settingKey = 'res_buy_r_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoBuyRatio = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = resource.autoBuyRatio; }
+
+            settingKey = 'sell' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoSellEnabled = settings[settingKey]; }
+            else { settings[settingKey] = resource.autoSellEnabled; }
+            
+            settingKey = 'res_sell_r_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoSellRatio = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = resource.autoSellRatio; }
+
+            settingKey = 'res_trade_buy_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoTradeBuyEnabled = settings[settingKey]; }
+            else { settings[settingKey] = resource.autoTradeBuyEnabled; }
+
+            settingKey = 'res_trade_buy_mtr_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoTradeBuyRoutes = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource.autoTradeBuyRoutes; }
+
+            settingKey = 'res_trade_sell_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoTradeSellEnabled = settings[settingKey]; }
+            else { settings[settingKey] = resource.autoTradeSellEnabled; }
+
+            settingKey = 'res_trade_sell_mps_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoTradeSellMinPerSecond = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = resource.autoTradeSellMinPerSecond; }
         }
+        state.marketManager.sortByPriority();
 
         // Retrieve settings for crafting resources
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -3817,35 +3928,35 @@
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
             const job = state.jobManager.priorityList[i];
 
-            let settingKey = 'job_' + job.id;
+            let settingKey = 'job_' + job._originalId;
             if (settings.hasOwnProperty(settingKey)) {
                 job.autoJobEnabled = settings[settingKey];
             } else {
                 settings[settingKey] = true; // Don't use defaultAllOptionsEnabled. By default assign all new jobs.
             }
 
-            settingKey = 'job_p_' + job.id;
+            settingKey = 'job_p_' + job._originalId;
             if (settings.hasOwnProperty(settingKey)) {
                 job.priority = parseInt(settings[settingKey]);
             } else {
                 settings[settingKey] = job.priority;
             }
 
-            settingKey = 'job_b1_' + job.id;
+            settingKey = 'job_b1_' + job._originalId;
             if (settings.hasOwnProperty(settingKey)) {
                 job.setBreakpoint(1, settings[settingKey]);
             } else {
                 settings[settingKey] = job.getBreakpoint(1);
             }
 
-            settingKey = 'job_b2_' + job.id;
+            settingKey = 'job_b2_' + job._originalId;
             if (settings.hasOwnProperty(settingKey)) {
                 job.setBreakpoint(2, settings[settingKey]);
             } else {
                 settings[settingKey] = job.getBreakpoint(2);
             }
 
-            settingKey = 'job_b3_' + job.id;
+            settingKey = 'job_b3_' + job._originalId;
             if (settings.hasOwnProperty(settingKey)) {
                 job.setBreakpoint(3, settings[settingKey]);
             } else {
@@ -3916,6 +4027,9 @@
         if (!settings.hasOwnProperty("researchSettingsCollapsed")) {
             settings.researchSettingsCollapsed = true;
         }
+        if (!settings.hasOwnProperty("marketSettingsCollapsed")) {
+            settings.marketSettingsCollapsed = true;
+        }
         if (!settings.hasOwnProperty("warSettingsCollapsed")) {
             settings.warSettingsCollapsed = true;
         }
@@ -3950,16 +4064,23 @@
         }
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
             const job = state.jobManager.priorityList[i];
-            settings['job_' + job.id] = job.autoJobEnabled;
-            settings['job_p_' + job.id] = job.priority;
-            settings['job_b1_' + job.id] = job.getBreakpoint(1);
-            settings['job_b2_' + job.id] = job.getBreakpoint(2);
-            settings['job_b3_' + job.id] = job.getBreakpoint(3);
+            settings['job_' + job._originalId] = job.autoJobEnabled;
+            settings['job_p_' + job._originalId] = job.priority;
+            settings['job_b1_' + job._originalId] = job.getBreakpoint(1);
+            settings['job_b2_' + job._originalId] = job.getBreakpoint(2);
+            settings['job_b3_' + job._originalId] = job.getBreakpoint(3);
         }
-        for (let i = 0; i < state.marketManager.resources.length; i++) {
-            let resource = state.marketManager.resources[i];
+        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
+            let resource = state.marketManager.priorityList[i];
+            settings['res_buy_p_' + resource.id] = resource.priority;
             settings['buy' + resource.id] = resource.autoBuyEnabled;
+            settings['res_buy_r_' + resource.id] = resource.autoBuyRatio;
             settings['sell' + resource.id] = resource.autoSellEnabled;
+            settings['res_sell_r_' + resource.id] = resource.autoSellRatio;
+            settings['res_trade_buy_' + resource.id] = resource.autoTradeBuyEnabled;
+            settings['res_trade_buy_mtr_' + resource.id] = resource.autoTradeBuyRoutes;
+            settings['res_trade_sell_' + resource.id] = resource.autoTradeSellEnabled;
+            settings['res_trade_sell_mps_' + resource.id] = resource.autoTradeSellMinPerSecond;
         }
 
         if (!settings.hasOwnProperty('arpa')) {
@@ -4013,8 +4134,13 @@
         if (!settings.hasOwnProperty('autoPower')) {
             settings.autoPower = defaultAllOptionsEnabled;
         }
-        if (!settings.hasOwnProperty('autoTradeSpecialResources')) {
-            settings.autoTradeSpecialResources = defaultAllOptionsEnabled;
+        // Move autoTradeSpecialResources to autoStorage and the delete the setting as it has been moved to autoMarket
+        if (settings.hasOwnProperty('autoTradeSpecialResources')) {
+            settings.autoStorage = settings.autoTradeSpecialResources;
+            delete settings.autoTradeSpecialResources;
+        }
+        if (!settings.hasOwnProperty('autoStorage')) {
+            settings.autoStorage = defaultAllOptionsEnabled;
         }
         if (!settings.hasOwnProperty('autoSmelter')) {
             settings.autoSmelter = defaultAllOptionsEnabled;
@@ -4068,6 +4194,9 @@
         }
         if (!settings.hasOwnProperty("warSettingsCollapsed")) {
             settings.warSettingsCollapsed = true;
+        }
+        if (!settings.hasOwnProperty("marketSettingsCollapsed")) {
+            settings.marketSettingsCollapsed = true;
         }
         if (!settings.hasOwnProperty("jobSettingsCollapsed")) {
             settings.jobSettingsCollapsed = true;
@@ -4251,6 +4380,10 @@
 
                 let tryCraft = true;
 
+                // if (craftable === state.resources.Mythril && state.resources.Iridium.currentQuantity < 7500) {
+                //     tryCraft = false;
+                // }
+
                 //console.log("resource: " + craftable.id + ", length: " + craftable.requiredResources.length);
                 for (let i = 0; i < craftable.requiredResourcesToAction.length; i++) {
                     //console.log("resource: " + craftable.id + " required resource: " + craftable.requiredResources[i].id);
@@ -4357,10 +4490,6 @@
             lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
         } else {
             lumberjackIndex = jobList.indexOf(state.jobs.Farmer);
-
-            if (state.jobs.Lumberjack.id === "lumberjack") {
-                state.jobs.Lumberjack.updateId("Hunter", "free");
-            }
         }
 
         let breakpoint0Max = 0;
@@ -4368,10 +4497,6 @@
 
         // Cath / Balorg / Imp race doesn't have farmers, unemployed are their farmers
         if (isHunterRace()) {
-            if (state.jobs.Farmer.id === "farmer") {
-                state.jobs.Farmer.updateId("Hunter", "free");
-            }
-
             for (let i = 0; i < jobList.length; i++) {
                 const job = jobList[i];
                 breakpoint0Max += job.breakpointEmployees(0);
@@ -4440,7 +4565,7 @@
                     availableEmployees += requiredJobs[j];
                 }
 
-                log("autoJobs", "job " + job.id + " job.breakpointEmployees(i) " + job.breakpointEmployees(i) + " availableEmployees " + availableEmployees);
+                log("autoJobs", "job " + job._originalId + " job.breakpointEmployees(i) " + job.breakpointEmployees(i) + " availableEmployees " + availableEmployees);
                 let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
@@ -4491,7 +4616,7 @@
                 
                 availableEmployees -= jobsToAssign;
 
-                log("autoJobs", "job " + job.id +  " has jobsToAssign: " + jobsToAssign + ", availableEmployees " + availableEmployees);
+                log("autoJobs", "job " + job._originalId +  " has jobsToAssign: " + jobsToAssign + ", availableEmployees " + availableEmployees);
             }
 
             // No more workers available
@@ -4608,7 +4733,11 @@
         for (let i = 0; i < jobAdjustments.length; i++) {
             let adjustment = jobAdjustments[i];
             if (adjustment < 0) {
-                jobList[i].removeWorkers(-1 * adjustment);
+                // I have no clue how this is undefined... but it can be when the script first starts and playing a carnivore / evil race
+                // May have fixed it by moving the evil race / hunter race checks to update state in the automate function
+                if (jobList[i] !== undefined) {
+                    jobList[i].removeWorkers(-1 * adjustment);
+                }
                 //console.log("Adjusting job " + jobList[i].id + " down by " + adjustment);
             }
         }
@@ -4616,7 +4745,9 @@
         for (let i = 0; i < jobAdjustments.length; i++) {
             let adjustment = jobAdjustments[i];
             if (adjustment > 0) {
-                jobList[i].addWorkers(adjustment);
+                if (jobList[i] !== undefined) {
+                    jobList[i].addWorkers(adjustment);
+                }
                 //console.log("Adjusting job " + jobList[i].id + " up by " + adjustment);
             }
         }
@@ -4967,6 +5098,8 @@
      * @param {boolean} [ignoreSellRatio]
      */
     function autoMarket(bulkSell, ignoreSellRatio) {
+        adjustTradeRoutes();
+
         let currentMoney = state.resources.Money.currentQuantity;
         let tradeQuantity = 1000;
 
@@ -4984,15 +5117,15 @@
             return;
         }
         
-        for (let i = 0; i < state.marketManager.resources.length; i++) {
-            let resource = state.marketManager.resources[i];
+        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
+            let resource = state.marketManager.priorityList[i];
             let currentResourceQuantity = resource.currentQuantity;
 
             if (!resource.isTradable() || !resource.isUnlocked() || !state.marketManager.isBuySellUnlocked(resource)) {
                 continue;
             }
             
-            if (resource.autoSellEnabled === true && (ignoreSellRatio ? true : resource.storageRatio > resource.sellRatio)) {
+            if (resource.autoSellEnabled === true && (ignoreSellRatio ? true : resource.storageRatio > resource.autoSellRatio)) {
                 let sellBtn = $('#market-' + resource.id + ' .order')[1];
                 let value = sellBtn.textContent.substr(1);
                 let sellValue = getRealNumber(value);
@@ -5014,7 +5147,7 @@
                 continue;
             }
 
-            if (resource.autoBuyEnabled === true && resource.storageRatio < resource.buyRatio) {
+            if (resource.autoBuyEnabled === true && resource.storageRatio < resource.autoBuyRatio) {
                 let buyBtn = $('#market-' + resource.id + ' .order')[0];
                 let value = buyBtn.textContent.substr(1);
                 let buyValue = getRealNumber(value);
@@ -5612,20 +5745,21 @@
      * @param {any[] | { resource: any; requiredTradeRoutes: any; completed: boolean; index: number; }[]} requiredTradeRouteResources
      * @param {Resource[]} marketResources
      * @param {Resource} resource
-     * @param {number} nbrRequiredTradeRoutes
      */
-    function addResourceToTrade(requiredTradeRouteResources, marketResources, resource, nbrRequiredTradeRoutes) {
+    function addResourceToTrade(requiredTradeRouteResources, marketResources, resource) {
+        if (!resource.autoTradeBuyEnabled || resource.autoTradeBuyRoutes <= 0) {
+            return;
+        }
+
         requiredTradeRouteResources.push( {
             resource: resource,
-            requiredTradeRoutes: nbrRequiredTradeRoutes,
+            requiredTradeRoutes: resource.autoTradeBuyRoutes,
             completed: false,
             index: findArrayIndex(marketResources, "id", resource.id),
         } );
     }
     
-    function autoTradeSpecialResources() {
-        autoStorage();
-
+    function adjustTradeRoutes() {
         let m = state.marketManager;
         let resources = m.getSortedTradeRouteSellList();
         let maxTradeRoutes = m.getMaxTradeRoutes();
@@ -5633,6 +5767,7 @@
         let currentMoneyPerSecond = state.resources.Money.rateOfChange;
         let requiredTradeRoutes = [];
         let adjustmentTradeRoutes = [];
+        let resourcesToTrade = [];
 
         // Calculate the resources and money that we would have if we weren't trading anything on the market
         for (let i = 0; i < resources.length; i++) {
@@ -5652,12 +5787,7 @@
             const resource = resources[i];
             requiredTradeRoutes.push(0);
 
-            let minimumRateOfChange = 7;
-            if (resource === state.resources.Stone) {
-                minimumRateOfChange = 15;
-            }
-
-            while (tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.98 && resource.calculatedRateOfChange > minimumRateOfChange) {
+            while (resource.autoTradeSellEnabled && tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.98 && resource.calculatedRateOfChange > resource.autoTradeSellMinPerSecond) {
                 tradeRoutesUsed++;
                 requiredTradeRoutes[i]--;
                 resource.calculatedRateOfChange -= resource.tradeRouteQuantity;
@@ -5665,20 +5795,9 @@
             }
 
             //console.log(resource.id + " tradeRoutesUsed " + tradeRoutesUsed + ", maxTradeRoutes " + maxTradeRoutes + ", storageRatio " + resource.storageRatio + ", calculatedRateOfChange " + resource.calculatedRateOfChange)
-        }
-
-        let resourcesToTrade = [];
-
-        if (!settings.autoSpace) {
-            addResourceToTrade(resourcesToTrade, resources, state.resources.Titanium, 5);
-            addResourceToTrade(resourcesToTrade, resources, state.resources.Alloy, 20);
-            addResourceToTrade(resourcesToTrade, resources, state.resources.Polymer, 5);
-        } else if (settings.autoSpace) {
-            addResourceToTrade(resourcesToTrade, resources, state.resources.Titanium, 20);
-            addResourceToTrade(resourcesToTrade, resources, state.resources.Alloy, 20);
-            addResourceToTrade(resourcesToTrade, resources, state.resources.Polymer, 20);
-            addResourceToTrade(resourcesToTrade, resources, state.resources.Iridium, 20);
-            addResourceToTrade(resourcesToTrade, resources, state.resources.Helium_3, 20);
+            if (resource.autoTradeBuyEnabled && resource.autoTradeBuyRoutes > 0) {
+                addResourceToTrade(resourcesToTrade, resources, resource);
+            }
         }
 
         //console.log("current money per second: " + currentMoneyPerSecond);
@@ -5948,6 +6067,18 @@
         } else {
             state.cityBuildings.FissionPower.consumption.power = -18;
         }
+
+        if (isEvilRace()) {
+            if (state.jobs.Lumberjack.id === "lumberjack") {
+                state.jobs.Lumberjack.updateId("Hunter", "free");
+            }
+        }
+
+        if (isHunterRace()) {
+            if (state.jobs.Farmer.id === "farmer") {
+                state.jobs.Farmer.updateId("Hunter", "free");
+            }
+        }
     }
 
     function automate() {
@@ -5986,14 +6117,14 @@
             if (settings.autoMarket) {
                 autoMarket();
             }
+            if (settings.autoStorage) {
+                autoStorage();
+            }
             if (settings.autoJobs) {
                 autoJobs();
             }
             if (settings.autoPower) {
                 autoBuildingPriority();
-            }
-            if (settings.autoTradeSpecialResources) {
-                autoTradeSpecialResources();
             }
             if (settings.autoFactory) {
                 autoFactory();
@@ -6120,6 +6251,7 @@
         buildEvolutionSettings();
         buildResearchSettings();
         buildWarSettings();
+        buildMarketSettings();
         buildJobSettings();
         buildBuildingSettings();
         buildProjectSettings();
@@ -6186,7 +6318,7 @@
         let evolutionNode = $('#script_evolutionBody');
         evolutionNode.empty().off("*");
 
-        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 300px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div>');
+        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div>');
         evolutionNode.append(targetEvolutionNode);
 
         let selectNode = $('#script_userEvolutionTargetName');
@@ -6251,7 +6383,7 @@
         researchNode.empty().off("*");
 
         // Theology 1
-        let theology1Node = $('<div style="margin-top: 5px; width: 300px"><label for="script_userResearchTheology_1">Target Theology 1:</label><select id="script_userResearchTheology_1" style="width: 150px; float: right;"></select></div>');
+        let theology1Node = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchTheology_1">Target Theology 1:</label><select id="script_userResearchTheology_1" style="width: 150px; float: right;"></select></div>');
         researchNode.append(theology1Node);
 
         let selectNode = $('#script_userResearchTheology_1');
@@ -6275,7 +6407,7 @@
         });
 
         // Theology 2
-        let theology2Node = $('<div style="margin-top: 5px; width: 300px"><label for="script_userResearchTheology_2">Target Theology 2:</label><select id="script_userResearchTheology_2" style="width: 150px; float: right;"></select></div>');
+        let theology2Node = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchTheology_2">Target Theology 2:</label><select id="script_userResearchTheology_2" style="width: 150px; float: right;"></select></div>');
         researchNode.append(theology2Node);
 
         selectNode = $('#script_userResearchTheology_2');
@@ -6299,7 +6431,7 @@
         });
 
         // Unification
-        let unificationNode = $('<div style="margin-top: 5px; width: 300px"><label for="script_userResearchUnification">Target Unification:</label><select id="script_userResearchUnification" style="width: 150px; float: right;"></select></div>');
+        let unificationNode = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchUnification">Target Unification:</label><select id="script_userResearchUnification" style="width: 150px; float: right;"></select></div>');
         researchNode.append(unificationNode);
 
         selectNode = $('#script_userResearchUnification');
@@ -6414,6 +6546,226 @@
         return campaignMaxTextBox;
     }
 
+    function buildMarketSettings() {
+        let scriptContentNode = $("#script_settings");
+
+        // Textbox "input is-small" classes? Makes the placeholder text look weird
+        let marketNode =
+            `<div style="margin-top: 10px;" id="script_marketSettings">
+                <h3 id="marketSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Market Settings</h3>
+                <div class="scriptcontent">
+                    <div style="margin-top: 10px;"><button id="script_resetMarkets" class="button">Reset Market Settings</button></div>
+                    <div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreBody">
+                        <div style="margin-top: 5px; width: 400px"><label for="script_market_minmoneypersecond">Trade minimum money /s</label><input id="script_market_minmoneypersecond" type="text" class="input is-small" style="width: 150px; float: right;"></input></div>
+                    </div>
+                    <table style="width:100%"><tr><th class="has-text-warning" style="width:15%">Resource</th><th class="has-text-warning" style="width:10%">Buy</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Sell</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">In</th><th class="has-text-warning" style="width:10%">Routes</th><th class="has-text-warning" style="width:10%">Out</th><th class="has-text-warning" style="width:10%">Min p/s</th><th style="width:5%"></th></tr>
+                        <tbody id="script_marketBody" class="scriptcontenttbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+        scriptContentNode.append(marketNode);
+
+        let textBox = $('#script_market_minmoneypersecond');
+        textBox.val(settings.tradeRouteMinimumMoneyPerSecond);
+    
+        textBox.on('change', function() {
+            let val = textBox.val();
+            let parsedValue = getRealNumber(val);
+            if (!isNaN(parsedValue)) {
+                //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
+                settings.tradeRouteMinimumMoneyPerSecond = parsedValue;
+                updateSettingsFromState();
+            }
+        });
+
+        
+        buildMarketTableBody();
+
+        if (!settings.marketSettingsCollapsed) {
+            let element = document.getElementById("marketSettingsCollapsed");
+            element.classList.toggle("scriptcontentactive");
+            let content = element.nextElementSibling;
+            //@ts-ignore
+            content.style.display = "block";
+        }
+
+        $("#script_resetMarkets").on("click", function() {
+            resetMarketState();
+            resetMarketSettings();
+            updateSettingsFromState();
+            updateMarketPreBody();
+            buildMarketTableBody();
+        });
+    }
+
+    function updateMarketPreBody() {
+        $('#script_market_minmoneypersecond').val(settings.tradeRouteMinimumMoneyPerSecond);
+        // let textBox = $('#script_market_minmoneypersecond');
+        // textBox.val(settings.tradeRouteMinimumMoneyPerSecond);
+    }
+
+    function buildMarketTableBody() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let tableBodyNode = $('#script_marketBody');
+        tableBodyNode.empty().off("*");
+
+        let newTableBodyText = "";
+
+        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
+            const resource = state.marketManager.priorityList[i];
+            let classAttribute = ' class="scriptdraggable"';
+            newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_market_' + resource.id + 'Toggle" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other markets settings rows
+        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
+            const resource = state.marketManager.priorityList[i];
+            let marketElement = $('#script_market_' + resource.id + 'Toggle');
+
+            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + resource.name + '</span>');
+            marketElement.append(toggle);
+
+            marketElement = marketElement.next();
+            marketElement.append(buildMarketSettingsToggle(resource, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildMarketSettingsInput(resource, "res_buy_r_" + resource.id, "autoBuyRatio"));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildMarketSettingsToggle(resource, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildMarketSettingsInput(resource, "res_sell_r_" + resource.id, "autoSellRatio"));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildMarketSettingsToggle(resource, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildMarketSettingsInput(resource, "res_trade_buy_mtr_" + resource.id, "autoTradeBuyRoutes"));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildMarketSettingsToggle(resource, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildMarketSettingsInput(resource, "res_trade_sell_mps_" + resource.id, "autoTradeSellMinPerSecond"));
+
+            marketElement = marketElement.next();
+            marketElement.append($('<span class="scriptlastcolumn"></span>'));
+
+            // marketElement = marketElement.next();
+            // toggle = buildMarketStateSettingsToggle(resource);
+            // marketElement.append(toggle);
+        }
+
+        $('#script_marketBody').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let marketIds = $('#script_marketBody').sortable('toArray', {attribute: 'value'});
+
+                for (let i = 0; i < marketIds.length; i++) {
+                    // Market has been dragged... Update all market priorities
+                    state.marketManager.priorityList[findArrayIndex(state.marketManager.priorityList, "id", marketIds[i])].priority = i;
+                }
+
+                state.marketManager.sortByPriority();
+                updateSettingsFromState();
+            },
+        } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    /**
+     * @param {Resource} resource
+     */
+    function buildMarketSettingsToggle(resource, property, toggleId, syncToggleId, oppositeProperty, oppositeToggleId, oppositeSyncToggleId) {
+        let checked = resource[property] ? " checked" : "";
+        let toggle = $('<label id="' + toggleId + '" tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            resource[property] = state;
+
+            let otherCheckbox =  document.querySelector('#' + syncToggleId + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
+            }
+
+            if (resource[property] && resource[oppositeProperty]) {
+                resource[oppositeProperty] = false;
+
+                let oppositeCheckbox1 =  document.querySelector('#' + oppositeToggleId + ' input');
+                if (oppositeCheckbox1 !== null) {
+                    // @ts-ignore
+                    oppositeCheckbox1.checked = false;
+                }
+
+                let oppositeCheckbox2 =  document.querySelector('#' + oppositeSyncToggleId + ' input');
+                if (oppositeCheckbox2 !== null) {
+                    // @ts-ignore
+                    oppositeCheckbox2.checked = false;
+                }
+            }
+
+            updateSettingsFromState();
+            //console.log(resource.name + " changed enabled to " + state);
+        });
+
+        return toggle;
+    }
+
+    /**
+     * @param {Resource} resource
+     */
+    function buildMarketSettingsInput(resource, settingKey, property) {
+        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
+        textBox.val(settings[settingKey]);
+    
+        textBox.on('change', function() {
+            let val = textBox.val();
+            let parsedValue = getRealNumber(val);
+            if (!isNaN(parsedValue)) {
+                //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
+                resource[property] = parsedValue;
+                updateSettingsFromState();
+            }
+        });
+
+        return textBox;
+    }
+    
+    // /**
+    //  * @param {Resource} resource
+    //  */
+    // function buildMarketStateSettingsToggle(resource) {
+    //     let toggle = null;
+    //     let checked = resource.autoStateEnabled ? " checked" : "";
+
+    //     if (resource.hasConsumption()) {
+    //         toggle = $('<label id=script_bld_s_' + resource.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="scriptlastcolumn"></span>');
+    //     } else {
+    //         toggle = $('<span class="scriptlastcolumn"></span>');
+    //     }
+
+    //     toggle.on('change', function(e) {
+    //         let input = e.currentTarget.children[0];
+    //         resource.autoStateEnabled = input.checked;
+    //         updateSettingsFromState();
+    //         //console.log(resource.name + " changed state to " + state);
+    //     });
+
+    //     return toggle;
+    // }
+
     function buildJobSettings() {
         let scriptContentNode = $("#script_settings");
 
@@ -6457,13 +6809,13 @@
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
             const job = state.jobManager.priorityList[i];
             let classAttribute = job !== state.jobs.Farmer ? ' class="scriptdraggable"' : ' class="unsortable"';
-            newTableBodyText += '<tr value="' + job.id + '"' + classAttribute + '><td id="script_' + job.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
+            newTableBodyText += '<tr value="' + job._originalId + '"' + classAttribute + '><td id="script_' + job._originalId + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
             const job = state.jobManager.priorityList[i];
-            let jobElement = $('#script_' + job.id + 'Toggle');
+            let jobElement = $('#script_' + job._originalId + 'Toggle');
 
             var toggle = buildJobSettingsToggle(job);
             jobElement.append(toggle);
@@ -6488,7 +6840,7 @@
 
                 for (let i = 0; i < jobIds.length; i++) {
                     // Job has been dragged... Update all job priorities
-                    state.jobManager.priorityList[findArrayIndex(state.jobManager.priorityList, "id", jobIds[i])].priority = i + 1; // farmers is always 0
+                    state.jobManager.priorityList[findArrayIndex(state.jobManager.priorityList, "_originalId", jobIds[i])].priority = i + 1; // farmers is always 0
                 }
 
                 state.jobManager.sortByPriority();
@@ -6506,13 +6858,13 @@
         let checked = job.autoJobEnabled ? " checked" : "";
         let classAttribute = !job.isCraftsman() ? ' class="has-text-info"' : ' class="has-text-danger"';
         let marginTop = job !== state.jobs.Farmer ? ' margin-top: 4px;' : "";
-        let toggle = $('<label tabindex="0" class="switch" style="position:absolute;' + marginTop + ' margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span' + classAttribute + ' style="margin-left: 20px;">' + job.name + '</span></label>');
+        let toggle = $('<label tabindex="0" class="switch" style="position:absolute;' + marginTop + ' margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span' + classAttribute + ' style="margin-left: 20px;">' + job._originalName + '</span></label>');
 
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             job.autoJobEnabled = input.checked;
             updateSettingsFromState();
-            //console.log(job.name + " changed state to " + state);
+            //console.log(job._originalName + " changed state to " + state);
         });
 
         return toggle;
@@ -6531,13 +6883,13 @@
         }
 
         let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="width:25%"/>' + lastSpan);
-        jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job.id]);
+        jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job._originalId]);
     
         jobBreakpointTextbox.on('change', function() {
             let val = jobBreakpointTextbox.val();
             let employees = getRealNumber(val);
             if (!isNaN(employees)) {
-                //console.log('Setting job breakpoint ' + breakpoint + ' for job ' + job.name + ' to be ' + employees);
+                //console.log('Setting job breakpoint ' + breakpoint + ' for job ' + job._originalName + ' to be ' + employees);
                 job.setBreakpoint(breakpoint, employees);
                 updateSettingsFromState();
             }
@@ -6698,8 +7050,11 @@
             let state = input.checked;
             building.autoBuildEnabled = state;
             //$('#script_bat1_' + building.id + ' input').checked = state; // Update the on-building toggle
-            // @ts-ignore
-            document.querySelector('#script_bat1_' + building.id + ' input').checked = state;
+            let otherCheckbox =  document.querySelector('#script_bat1_' + building.id + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
+            }
             updateSettingsFromState();
             //console.log(building.name + " changed enabled to " + state);
         });
@@ -7014,6 +7369,9 @@
         } else if (settings.autoMarket > 0 && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
             createMarketToggles()
         }
+        if ($('#autoStorage').length === 0) {
+            createSettingToggle('autoStorage');
+        }
         if ($('#autoResearch').length === 0) {
             createSettingToggle('autoResearch');
         }
@@ -7030,9 +7388,6 @@
         }
         if ($('#autoPower').length === 0) {
             createSettingToggle('autoPower');
-        }
-        if ($('#autoTradeSpecialResources').length === 0) {
-            createSettingToggle('autoTradeSpecialResources');
         }
         if ($('#autoSmelter').length === 0) {
             createSettingToggle('autoSmelter');
@@ -7179,8 +7534,11 @@
             let state = input.checked;
             building.autoBuildEnabled = state;
             //$('#script_bat2_' + building.id + ' input').checked = state; // Update the settings-building toggle
-            // @ts-ignore
-            document.querySelector('#script_bat2_' + building.id + ' input').checked = state;
+            let otherCheckbox = document.querySelector('#script_bat2_' + building.id + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
+            }
             updateSettingsFromState();
         });
     }
@@ -7201,53 +7559,115 @@
      * @param {Resource} resource
      */
     function createMarketToggle(resource) {
+        let autoBuyChecked = resource.autoBuyEnabled ? " checked" : "";
+        let autoSellChecked = resource.autoSellEnabled ? " checked" : "";
+        let autoTradeBuyChecked = resource.autoTradeBuyEnabled ? " checked" : "";
         let marketRow = $('#market-' + resource.id);
-        let toggleBuy = $('<label tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox" value=false> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">auto buy (&lt' + resource.buyRatio + ')</span><span class="state"></span></label>');
-        let toggleSell = $('<label tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox" value=false> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">auto sell (&gt' + resource.sellRatio + ')</span><span class="state"></span></label>');
+        let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
+        let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">sell</span><span class="state"></span></label>');
+        let toggleTrade = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade in</span><span class="state"></span></label>');
         marketRow.append(toggleBuy);
         marketRow.append(toggleSell);
-        if (resource.autoBuyEnabled) {
-            toggleBuy.click();
-            toggleBuy.children('input').attr('value', true);
-        }
-        if (resource.autoSellEnabled) {
-            toggleSell.click();
-            toggleSell.children('input').attr('value', true);
-        }
+        marketRow.append(toggleTrade);
+
         toggleBuy.on('change', function(e) {
-            console.log(e);
+            //console.log(e);
             let input = e.currentTarget.children[0];
-            let state = !(input.getAttribute('value') === "true");
-            input.setAttribute('value', state);
+            let state = input.checked;
             resource.autoBuyEnabled = state;
-            let otherState = toggleSell.children('input').attr('value') === 'true';
-            if (state && otherState) {
-                toggleSell.click();
-                toggleSell.trigger('mouseup');
+            let otherCheckbox = document.querySelector('#script_buy2_' + resource.id + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
             }
+
+            if (resource.autoBuyEnabled && resource.autoSellEnabled) {
+                resource.autoSellEnabled = false;
+
+                let sellCheckBox1 = document.querySelector('#script_sell1_' + resource.id + ' input');
+                if (sellCheckBox1 !== null) {
+                    // @ts-ignore
+                    sellCheckBox1.checked = false;
+                }
+
+                let sellCheckBox2 = document.querySelector('#script_sell2_' + resource.id + ' input');
+                if (sellCheckBox2 !== null) {
+                    // @ts-ignore
+                    sellCheckBox2.checked = false;
+                }
+            }
+
             updateSettingsFromState();
-            console.log(state);
+            //console.log(state);
         });
+
         toggleSell.on('change', function(e) {
-            console.log(e);
+            //console.log(e);
             let input = e.currentTarget.children[0];
-            let state = !(input.getAttribute('value') === "true");
-            input.setAttribute('value', state);
+            let state = input.checked;
             resource.autoSellEnabled = state;
-            let otherState = toggleBuy.children('input').attr('value') === 'true';
-            if (state && otherState) {
-                toggleBuy.click();
-                toggleBuy.trigger('mouseup');
+            let otherCheckbox = document.querySelector('#script_sell2_' + resource.id + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
             }
+
+            if (resource.autoSellEnabled && resource.autoBuyEnabled) {
+                resource.autoBuyEnabled = false;
+
+                let buyCheckBox1 = document.querySelector('#script_buy1_' + resource.id + ' input');
+                if (buyCheckBox1 !== null) {
+                    // @ts-ignore
+                    buyCheckBox1.checked = false;
+                }
+
+                let buyCheckBox2 = document.querySelector('#script_buy2_' + resource.id + ' input');
+                if (buyCheckBox2 !== null) {
+                    // @ts-ignore
+                    buyCheckBox2.checked = false;
+                }
+            }
+
             updateSettingsFromState();
-            console.log(state);
+            //console.log(state);
+        });
+
+        toggleTrade.on('change', function(e) {
+            //console.log(e);
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            resource.autoTradeBuyEnabled = state;
+            let otherCheckbox = document.querySelector('#script_tbuy2_' + resource.id + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
+            }
+
+            if (resource.autoTradeBuyEnabled && resource.autoTradeSellEnabled) {
+                resource.autoTradeSellEnabled = false;
+
+                let buyCheckBox1 = document.querySelector('#script_tsell1_' + resource.id + ' input');
+                if (buyCheckBox1 !== null) {
+                    // @ts-ignore
+                    buyCheckBox1.checked = false;
+                }
+
+                let buyCheckBox2 = document.querySelector('#script_tsell2_' + resource.id + ' input');
+                if (buyCheckBox2 !== null) {
+                    // @ts-ignore
+                    buyCheckBox2.checked = false;
+                }
+            }
+
+            updateSettingsFromState();
+            //console.log(state);
         });
     }
 
     function createMarketToggles() {
         removeMarketToggles();
-        for (let i = 0; i < state.marketManager.resources.length; i++) {
-            createMarketToggle(state.marketManager.resources[i]);
+        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
+            createMarketToggle(state.marketManager.priorityList[i]);
         }
     }
 
@@ -7341,8 +7761,9 @@
     }
 
     function isHunterRace() {
+        // There are several hunter races but you can also gain the trait through fanaticism or deify
         let raceId = getRaceId();
-        return raceId === state.races.Cath.id || raceId === state.races.Balorg.id || raceId === state.races.Imp.id;
+        return raceId === state.races.Cath.id || raceId === state.races.Balorg.id || raceId === state.races.Imp.id || state.jobManager._unemployed.getHtmlName() === "Hunter";
     }
 
     function isEvilRace() {
@@ -7385,7 +7806,7 @@
     }
 
     var showLogging = false;
-    var loggingType = "";
+    var loggingType = "autoJobs";
 
     /**
      * @param {string} type
