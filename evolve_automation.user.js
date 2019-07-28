@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.14
+// @version      0.9.15
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -6201,7 +6201,7 @@
                 //transition: max-height 0.2s ease-out;
                 //background-color: #f1f1f1;
             }
-
+            
             .scriptsearchsettings {
                 width: 100%;
                 margin-top: 20px;
@@ -7757,6 +7757,11 @@
         }
 
         let index = findArrayIndex(state.raceAchievementList, "name", raceNameNode.textContent);
+
+        if (index === -1) {
+            return "";
+        }
+
         return state.raceAchievementList[index].id;
     }
 
