@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.15
+// @version      0.9.16
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -107,7 +107,8 @@
         }
 
         isManaged() {
-            return this.isUnlocked() && settings['job_' + this.id];
+            // Hunter races use "free" workers as their farmers. There aren't any settings associated with "free" workers so don't check whether they are enabled
+            return this.isUnlocked() && (this.id === "free" || settings['job_' + this.id]);
         }
 
         isCraftsman() {
@@ -492,7 +493,7 @@
             if (containerNode.classList.contains("cnam")) { return false; }
 
             // There are a couple of special buildings that are "clickable" but really aren't clickable. Lets check them here
-            if (this.id === "star_dock") {
+            if (this.id === "star_dock" || this.id === "world_controller") {
                 // Only clickable once but then hangs around in a "clickable" state even though you can't get more than one...
                 return this.count === 0;
             } else if (this.id === "seeder") {
@@ -7825,6 +7826,7 @@
 
     //#endregion Utility Functions
 
+    // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
     window.onblur = function() {
         let keyboardEvent = document.createEvent("KeyboardEvent");
         var initMethod = typeof keyboardEvent.initKeyboardEvent !== 'undefined' ? "initKeyboardEvent" : "initKeyEvent";
