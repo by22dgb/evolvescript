@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.16
+// @version      0.9.17
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -40,8 +40,8 @@
 // * autoSmelter - Manages smelter output at different stages at the game. Not currently user configurable.
 // * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
 //          Not currently user configurable.
-// * autoMAD - Once population is over 180 (low plasmids) / 245 (high plasmids) and MAD is unlocked will stop sending out troops and will perform MAD
-// * autoSpace - If population is over 200 then it will start funding the launch facility regardless of arpa settings
+// * autoMAD - Once MAD is unlocked will stop sending out troops and will perform MAD
+// * autoSpace - Once MAD is unlocked it will start funding the launch facility regardless of arpa settings
 // * autoSeeder - Will send out the seeder ship once at least 4 (or user entered max) probes are constructed. Currently tries to find a forest world, then grassland, then the others.
 //          Not currently user configurable.
 // * autoAssembleGene - Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.
@@ -437,6 +437,7 @@
 
             /** @type {Resource[]} */
             this.requiredBasicResourcesToAction = [];
+
         }
 
         //#region Standard actions
@@ -691,12 +692,13 @@
          * @param {string} name
          * @param {string} prefix
          * @param {string} id
+         * @param {boolean} hasStorage
          * @param {boolean} isTradable
          * @param {number} tradeRouteQuantity
          * @param {boolean} isCraftable
          * @param {number} craftRatio
          */
-        constructor(name, prefix, id, isTradable, tradeRouteQuantity, isCraftable, craftRatio) {
+        constructor(name, prefix, id, hasStorage, isTradable, tradeRouteQuantity, isCraftable, craftRatio) {
             this._prefix = prefix;
             this.name = name;
             this._id = id;
@@ -709,7 +711,7 @@
             this.currentTradeRouteSellPrice = 0;
             this.currentTradeRoutes = 0;
 
-            this.priority = 0;
+            this.marketPriority = 0;
             this.autoBuyEnabled = false;
             this.autoSellEnabled = false;
             this.autoBuyRatio = -1;
@@ -724,6 +726,13 @@
             this.isAssignedContainersUpdated = false;
             this.assignedContainers = 0;
             this.lastConstructStorageAttemptLoopCounter = 0;
+
+            this.hasStorage = hasStorage;
+            this.storagePriority = 0;
+            this.autoStorageEnabled = true;
+            this.autoStorageWeighting = 0;
+            this.autoCratesMax = -1;
+            this.autoContainersMax = -1;
 
             this._isCraftable = isCraftable;
             this.craftRatio = craftRatio;
@@ -766,7 +775,7 @@
          * @param {boolean} tradeSell
          * @param {number} tradeSellMinPerSecond
          */
-        updateState(buy, buyRatio, sell, sellRatio, tradeBuy, tradeBuyRoutes, tradeSell, tradeSellMinPerSecond) {
+        updateMarketState(buy, buyRatio, sell, sellRatio, tradeBuy, tradeBuyRoutes, tradeSell, tradeSellMinPerSecond) {
             this.autoBuyEnabled = buy;
             this.autoBuyRatio = buyRatio;
             this.autoSellEnabled = sell;
@@ -775,6 +784,19 @@
             this.autoTradeBuyRoutes = tradeBuyRoutes;
             this.autoTradeSellEnabled = tradeSell;
             this.autoTradeSellMinPerSecond = tradeSellMinPerSecond;
+        }
+
+        /**
+         * @param {boolean} enabled
+         * @param {number} weighting
+         * @param {number} maxCrates
+         * @param {number} maxContainers
+         */
+        updateStorageState(enabled, weighting, maxCrates, maxContainers) {
+            this.autoStorageEnabled = enabled;
+            this.autoStorageWeighting = weighting;
+            this.autoCratesMax = maxCrates;
+            this.autoContainersMax = maxContainers;
         }
 
         hasOptions() {
@@ -1067,7 +1089,7 @@
     class Power extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("Power", "", "powerMeter", false, -1, false, -1);
+            super("Power", "", "powerMeter", false, false, -1, false, -1);
         }
 
         //#region Standard resource
@@ -1163,7 +1185,7 @@
          * @param {string} id
          */
         constructor(name, id) {
-            super(name, "", id, false, -1, false, -1);
+            super(name, "", id, false, false, -1, false, -1);
         }
 
         //#region Standard resource
@@ -1256,7 +1278,7 @@
     class LuxuryGoods extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("Luxury Goods", "", "LuxuryGoods", false, -1, false, -1);
+            super("Luxury Goods", "", "LuxuryGoods", false, false, -1, false, -1);
         }
 
         //#region Standard resource
@@ -2289,6 +2311,9 @@
                 if (!settings['craft' + job.resource.id]) {
                     // The job isn't unlocked or the user has said to not craft the resource associated with this job
                     job.max = 0;
+                } else if (job === state.jobs.Mythril && state.resources.Mythril.currentQuantity > 1000 && (state.resources.Mythril.currentQuantity > 10000 || state.resources.Iridium.currentQuantity < 6000)) {
+                    // Don't make Mythril if we have too much mythril or too little iridium
+                    job.max = 0;
                 } else if (!job.isManaged()) {
                     // The user has said to not manage this job
                     job.max = job.current;
@@ -2564,14 +2589,14 @@
          */
         addResourceToPriorityList(resource) {
             if (resource.isTradable()) {
-                resource.priority = this.priorityList.length;
+                resource.marketPriority = this.priorityList.length;
                 this.priorityList.push(resource);
             }
         }
 
         sortByPriority() {
-            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
-            if (this._sortedTradeRouteSellList !== null) this._sortedTradeRouteSellList.sort(function (a, b) { return a.priority - b.priority } );
+            this.priorityList.sort(function (a, b) { return a.marketPriority - b.marketPriority } );
+            if (this._sortedTradeRouteSellList !== null) this._sortedTradeRouteSellList.sort(function (a, b) { return a.marketPriority - b.marketPriority } );
         }
 
         /** @param {Resource} resource */
@@ -2804,17 +2829,49 @@
         }
     }
 
+    class StorageManager {
+        constructor() {
+            /** @type {Resource[]} */
+            this.priorityList = [];
+            this._lastLoopCounter = 0;
+        }
+
+        isUnlocked() {
+            isResearchUnlocked("containerization");
+        }
+
+        clearPriorityList() {
+            this.priorityList = [];
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        addResourceToPriorityList(resource) {
+            if (resource.hasStorage) {
+                resource.storagePriority = this.priorityList.length;
+                this.priorityList.push(resource);
+            }
+        }
+
+        sortByPriority() {
+            this.priorityList.sort(function (a, b) { return a.storagePriority - b.storagePriority } );
+        }
+    }
+
     class Race {
         /**
          * @param {String} id
          * @param {String} name
          * @param {boolean} isEvolutionConditional
+         * @param {string} evolutionConditionText
          * @param {string} achievementText
          */
-        constructor(id, name, isEvolutionConditional, achievementText) {
+        constructor(id, name, isEvolutionConditional, evolutionConditionText, achievementText) {
             this.id = id;
             this.name = name;
             this.isEvolutionConditional = isEvolutionConditional;
+            this.evolutionConditionText = evolutionConditionText;
             this.achievementText = achievementText;
 
             /** @type {Action[]} */
@@ -2870,6 +2927,7 @@
         buildingManager: new BuildingManager(),
         projectManager: new ProjectManager(),
         marketManager: new MarketManager(),
+        storageManager: new StorageManager(),
         
         lastGenomeSequenceValue: 0,
         lastCratesOwned: -1,
@@ -2884,13 +2942,13 @@
         craftableResourceList: [],
         resources: {
             // Base resources
-            Money: new Resource("Money", "res", "Money", false, -1, false, -1),
-            Population: new Resource("Population", "res", "Population", false, -1, false, -1), // The population node is special and its id will change to the race name
-            Knowledge: new Resource("Knowledge", "res", "Knowledge", false, -1, false, -1),
-            Crates: new Resource("Crates", "res", "Crates", false, -1, false, -1),
-            Containers: new Resource("Containers", "res", "Containers", false, -1, false, -1),
-            Plasmids: new Resource("Plasmid", "res", "Plasmid", false, -1, false, -1),
-            Genes: new Resource("Genes", "res", "Genes", false, -1, false, -1),
+            Money: new Resource("Money", "res", "Money", false, false, -1, false, -1),
+            Population: new Resource("Population", "res", "Population", false, false, -1, false, -1), // The population node is special and its id will change to the race name
+            Knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1),
+            Crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1),
+            Containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1),
+            Plasmids: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1),
+            Genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1),
 
             // Special not-really-resources-but-we'll-treat-them-like-resources resources
             Power: new Power(),
@@ -2901,35 +2959,35 @@
             BeltSupport: new Support("Belt Support", "srspc_belt"),
 
             // Basic resources (can trade for these)
-            Food: new Resource("Food", "res", "Food", true, 2, false, -1),
-            Lumber: new Resource("Lumber", "res", "Lumber", true, 2,false, -1),
-            Stone: new Resource("Stone", "res", "Stone", true, 2, false, -1),
-            Furs: new Resource("Furs", "res", "Furs", true, 1, false, -1),
-            Copper: new Resource("Copper", "res", "Copper", true, 1, false, -1),
-            Iron: new Resource("Iron", "res", "Iron", true, 1, false, -1),
-            Aluminium: new Resource("Aluminium", "res", "Aluminium", true, 1, false, -1),
-            Cement: new Resource("Cement", "res", "Cement", true, 1, false, -1),
-            Coal: new Resource("Coal", "res", "Coal", true, 1, false, -1),
-            Oil: new Resource("Oil", "res", "Oil", true, 0.5, false, -1),
-            Uranium: new Resource("Uranium", "res", "Uranium", true, 0.25, false, -1),
-            Steel: new Resource("Steel", "res", "Steel", true, 0.5, false, -1),
-            Titanium: new Resource("Titanium", "res", "Titanium", true, 0.25, false, -1),
-            Alloy: new Resource("Alloy", "res", "Alloy", true, 0.2, false, -1),
-            Polymer: new Resource("Polymer", "res", "Polymer", true, 0.2, false, -1),
-            Iridium: new Resource("Iridium", "res", "Iridium", true, 0.1, false, -1),
-            Helium_3: new Resource("Helium-3", "res", "Helium_3", true, 0.1, false, -1),
+            Food: new Resource("Food", "res", "Food", true, true, 2, false, -1),
+            Lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1),
+            Stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1),
+            Furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1),
+            Copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1),
+            Iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1),
+            Aluminium: new Resource("Aluminium", "res", "Aluminium", true, true, 1, false, -1),
+            Cement: new Resource("Cement", "res", "Cement", true, true, 1, false, -1),
+            Coal: new Resource("Coal", "res", "Coal", true, true, 1, false, -1),
+            Oil: new Resource("Oil", "res", "Oil", false, true, 0.5, false, -1),
+            Uranium: new Resource("Uranium", "res", "Uranium", false, true, 0.25, false, -1),
+            Steel: new Resource("Steel", "res", "Steel", true, true, 0.5, false, -1),
+            Titanium: new Resource("Titanium", "res", "Titanium", true, true, 0.25, false, -1),
+            Alloy: new Resource("Alloy", "res", "Alloy", true, true, 0.2, false, -1),
+            Polymer: new Resource("Polymer", "res", "Polymer", true, true, 0.2, false, -1),
+            Iridium: new Resource("Iridium", "res", "Iridium", true, true, 0.1, false, -1),
+            Helium_3: new Resource("Helium-3", "res", "Helium_3", false, true, 0.1, false, -1),
 
             // Advanced resources (can't trade for these)
-            Elerium: new Resource("Elerium", "res", "Elerium", false, 0.1, false, -1),
-            Neutronium: new Resource("Neutronium", "res", "Neutronium", false, 0.1, false, -1),
-            NanoTube: new Resource("Nano Tube", "res", "Nano_Tube", false, 0.1, false, -1),
+            Elerium: new Resource("Elerium", "res", "Elerium", false, false, 0.1, false, -1),
+            Neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.1, false, -1),
+            NanoTube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1),
             
             // Craftable resources
-            Plywood: new Resource("Plywood", "res", "Plywood", false, -1, true, 0.5),
-            Brick: new Resource("Brick", "res", "Brick", false, -1, true, 0.5),
-            WroughtIron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, -1, true, 0.5),
-            SheetMetal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, -1, true, 0.5),
-            Mythril: new Resource("Mythril", "res", "Mythril", false, -1, true, 0.5),
+            Plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5),
+            Brick: new Resource("Brick", "res", "Brick", false, false, -1, true, 0.5),
+            WroughtIron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5),
+            SheetMetal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5),
+            Mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5),
         },
 
         jobs: {
@@ -2982,6 +3040,7 @@
                                     Human: new Action("", "evo", "human", false),
                                     Orc: new Action("", "evo", "orc", false),
                                     Elven: new Action("", "evo", "elven", false),
+                                    Valdi: new Action("", "evo", "junker", false), // junker challenge
                                 Gigantism: new Action("", "evo", "gigantism", false),
                                     Troll: new Action("", "evo", "troll", false),
                                     Ogre: new Action("", "evo", "orge", false),
@@ -3051,35 +3110,36 @@
         /** @type {Race} */
         evolutionFallback: null,
         races: {
-            Antid: new Race("antid", "Antid", false, "Ophiocordyceps Unilateralis"),
-            Mantis: new Race("mantis", "Mantis", false, "Praying Unanswered"),
-            Scorpid: new Race("scorpid", "Scorpid", false, "Pulmonoscorpius"),
-            Human: new Race("human", "Human", false, "Homo Adeadus"),
-            Orc: new Race("orc", "Orc", false, "Outlander"),
-            Elven: new Race("elven", "Elf", false, "The few, the proud, the dead"),
-            Troll: new Race("troll", "Troll", false, "Bad Juju"),
-            Ogre: new Race("orge", "Ogre", false, "Too stupid to live"),
-            Cyclops: new Race("cyclops", "Cyclops", false, "Blind Ambition"),
-            Kobold: new Race("kobold", "Kobold", false, "Took their candle"),
-            Goblin: new Race("goblin", "Goblin", false, "Greed before Need"),
-            Gnome: new Race("gnome", "Gnome", false, "Unathletic"),
-            Cath: new Race("cath", "Cath", false, "Saber Tooth Tiger"),
-            Wolven: new Race("wolven", "Wolven", false, "Dire Wolf"),
-            Centaur: new Race("centaur", "Centaur", false, "Ferghana"),
-            Balorg: new Race("balorg", "Balorg", true, "Self immolation"),
-            Imp: new Race("imp", "Imp", true, "Deal with the devil"),
-            Arraak: new Race("arraak", "Arraak", false, "Way of the Dodo"),
-            Pterodacti: new Race("pterodacti", "Pterodacti", false, "Chicxulub"),
-            Dracnid: new Race("dracnid", "Dracnid", false, "Desolate Smaug"),
-            Tortoisan: new Race("tortoisan", "Tortoisan", false, "Circle of Life"),
-            Gecko: new Race("gecko", "Gecko", false, "No Savings"),
-            Slitheryn: new Race("slitheryn", "Slitheryn", false, "Final Shedding"),
-            Sharkin: new Race("sharkin", "Sharkin", true, "Megalodon"),
-            Octigoran: new Race("octigoran", "Octigoran", true, "Calamari"),
-            Entish: new Race("entish", "Ent", false, "Saruman's Revenge"),
-            Cacti: new Race("cacti", "Cacti", false, "Desert Deserted"),
-            Sporgar: new Race("sporgar", "Sporgar", false, "Fungicide"),
-            Shroomi: new Race("shroomi", "Shroomi", false, "Bad Trip"),
+            Antid: new Race("antid", "Antid", false, "", "Ophiocordyceps Unilateralis"),
+            Mantis: new Race("mantis", "Mantis", false, "", "Praying Unanswered"),
+            Scorpid: new Race("scorpid", "Scorpid", false, "", "Pulmonoscorpius"),
+            Human: new Race("human", "Human", false, "", "Homo Adeadus"),
+            Orc: new Race("orc", "Orc", false, "", "Outlander"),
+            Elven: new Race("elven", "Elf", false, "", "The few, the proud, the dead"),
+            Troll: new Race("troll", "Troll", false, "", "Bad Juju"),
+            Ogre: new Race("orge", "Ogre", false, "", "Too stupid to live"),
+            Cyclops: new Race("cyclops", "Cyclops", false, "", "Blind Ambition"),
+            Kobold: new Race("kobold", "Kobold", false, "", "Took their candle"),
+            Goblin: new Race("goblin", "Goblin", false, "", "Greed before Need"),
+            Gnome: new Race("gnome", "Gnome", false, "", "Unathletic"),
+            Cath: new Race("cath", "Cath", false, "", "Saber Tooth Tiger"),
+            Wolven: new Race("wolven", "Wolven", false, "", "Dire Wolf"),
+            Centaur: new Race("centaur", "Centaur", false, "", "Ferghana"),
+            Balorg: new Race("balorg", "Balorg", true, "Hellscape planet", "Self immolation"),
+            Imp: new Race("imp", "Imp", true, "Hellscape planet", "Deal with the devil"),
+            Arraak: new Race("arraak", "Arraak", false, "", "Way of the Dodo"),
+            Pterodacti: new Race("pterodacti", "Pterodacti", false, "", "Chicxulub"),
+            Dracnid: new Race("dracnid", "Dracnid", false, "", "Desolate Smaug"),
+            Tortoisan: new Race("tortoisan", "Tortoisan", false, "", "Circle of Life"),
+            Gecko: new Race("gecko", "Gecko", false, "", "No Savings"),
+            Slitheryn: new Race("slitheryn", "Slitheryn", false, "", "Final Shedding"),
+            Sharkin: new Race("sharkin", "Sharkin", true, "Oceanic planet", "Megalodon"),
+            Octigoran: new Race("octigoran", "Octigoran", true, "Oceanic planet", "Calamari"),
+            Entish: new Race("entish", "Ent", false, "", "Saruman's Revenge"),
+            Cacti: new Race("cacti", "Cacti", false, "", "Desert Deserted"),
+            Sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
+            Shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
+            Valdi: new Race("junker", "Valdi", true, "Challenge genes unlocked", "Euthanasia"),
         },
         
         cityBuildings: {
@@ -3214,14 +3274,8 @@
     };
 
     function initialiseState() {
-        // let moduleSpecifier = './vars.js';
-      
-        // import(moduleSpecifier).then((moduleObject) => {
-        //     //dynamicImportGlobal(module.global);
-        //     state.global = moduleObject.global;
-        // });
-
         resetMarketState();
+        resetStorageState();
 
         // Construct craftable resource list
         state.craftableResourceList.push(state.resources.Plywood);
@@ -3263,7 +3317,7 @@
         state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Oil, 0.45, 2));
         state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Lumber, 36, 50));
         state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Coal, 20, 5));
-        state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Neutronium, 0.125, 0.5));
+        state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Neutronium, 0.125, 0.2));
 
         state.jobs.Plywood.resource = state.resources.Plywood;
         state.jobManager.addCraftingJob(state.jobs.Plywood);
@@ -3500,7 +3554,7 @@
         let aquatic = [e.Sentience, e.Aquatic].concat(bilateralSymmetry);
         state.races.Sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
         state.races.Octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
-        // state.raceGroupAchievementList.push([ state.races.Sharkin, state.races.Octigoran ]);
+        state.raceGroupAchievementList.push([ state.races.Sharkin, state.races.Octigoran ]);
 
         let arthropods = [e.Sentience, e.Arthropods].concat(bilateralSymmetry);
         state.races.Antid.evolutionTree = [e.Antid].concat(arthropods);
@@ -3512,7 +3566,8 @@
         state.races.Human.evolutionTree = [e.Human].concat(humanoid);
         state.races.Orc.evolutionTree = [e.Orc].concat(humanoid);
         state.races.Elven.evolutionTree = [e.Elven].concat(humanoid);
-        state.raceGroupAchievementList.push([ state.races.Human, state.races.Orc, state.races.Elven ]);
+        state.races.Valdi.evolutionTree = [e.Valdi, e.Bunker].concat(humanoid); // requires bunker gene
+        state.raceGroupAchievementList.push([ state.races.Human, state.races.Orc, state.races.Elven, state.races.Valdi ]);
 
         let gigantism = [e.Sentience, e.Gigantism, e.Mammals].concat(bilateralSymmetry);
         state.races.Troll.evolutionTree = [e.Troll].concat(gigantism);
@@ -3535,7 +3590,7 @@
         let demonic = [e.Sentience, e.Demonic, e.Mammals].concat(bilateralSymmetry);
         state.races.Balorg.evolutionTree = [e.Balorg].concat(demonic);
         state.races.Imp.evolutionTree = [e.Imp].concat(demonic);
-        // state.raceGroupAchievementList.push([ state.races.Balorg, state.races.Imp ]);
+        state.raceGroupAchievementList.push([ state.races.Balorg, state.races.Imp ]);
 
         let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
         state.races.Arraak.evolutionTree = [e.Arraak].concat(endothermic);
@@ -3559,10 +3614,6 @@
         state.races.Shroomi.evolutionTree = [e.Shroomi].concat(chitin);
         state.raceGroupAchievementList.push([ state.races.Sporgar, state.races.Shroomi ]);
 
-        state.raceAchievementList.push(state.races.Sharkin);
-        state.raceAchievementList.push(state.races.Octigoran);
-        state.raceAchievementList.push(state.races.Balorg);
-        state.raceAchievementList.push(state.races.Imp);
         state.raceAchievementList.push(state.races.Antid);
         state.raceAchievementList.push(state.races.Human);
         state.raceAchievementList.push(state.races.Troll);
@@ -3588,6 +3639,11 @@
         state.raceAchievementList.push(state.races.Centaur);
         state.raceAchievementList.push(state.races.Dracnid);
         state.raceAchievementList.push(state.races.Slitheryn);
+        state.raceAchievementList.push(state.races.Valdi);
+        state.raceAchievementList.push(state.races.Sharkin);
+        state.raceAchievementList.push(state.races.Octigoran);
+        state.raceAchievementList.push(state.races.Balorg);
+        state.raceAchievementList.push(state.races.Imp);
 
         resetProjectState();
         resetWarState();
@@ -3634,27 +3690,65 @@
         state.marketManager.addResourceToPriorityList(state.resources.Lumber);
         state.marketManager.addResourceToPriorityList(state.resources.Food);
 
-        state.resources.Food.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Lumber.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Stone.updateState(false, 0.5, false, 0.9, false, 0, true, 15);
-        state.resources.Furs.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Copper.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Iron.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Aluminium.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Cement.updateState(false, 0.3, false, 0.9, false, 0, true, 10);
-        state.resources.Coal.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Oil.updateState(false, 0.5, false, 0.9, true, 5, false, 10);
-        state.resources.Uranium.updateState(false, 0.5, false, 0.9, true, 2, false, 10);
-        state.resources.Steel.updateState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Titanium.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
-        state.resources.Alloy.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
-        state.resources.Polymer.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
-        state.resources.Iridium.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
-        state.resources.Helium_3.updateState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 15);
+        state.resources.Furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 10);
+        state.resources.Coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Oil.updateMarketState(false, 0.5, false, 0.9, true, 5, false, 10);
+        state.resources.Uranium.updateMarketState(false, 0.5, false, 0.9, true, 2, false, 10);
+        state.resources.Steel.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        state.resources.Titanium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Alloy.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Polymer.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Iridium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        state.resources.Helium_3.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
     }
 
     function resetMarketSettings() {
         settings.tradeRouteMinimumMoneyPerSecond = 200
+    }
+
+    function resetStorageState() {
+        state.storageManager.clearPriorityList();
+
+        state.storageManager.addResourceToPriorityList(state.resources.Iridium);
+        state.storageManager.addResourceToPriorityList(state.resources.Polymer);
+        state.storageManager.addResourceToPriorityList(state.resources.Alloy);
+        state.storageManager.addResourceToPriorityList(state.resources.Titanium);
+        state.storageManager.addResourceToPriorityList(state.resources.Steel);
+        state.storageManager.addResourceToPriorityList(state.resources.Coal);
+        state.storageManager.addResourceToPriorityList(state.resources.Cement);
+        state.storageManager.addResourceToPriorityList(state.resources.Aluminium);
+        state.storageManager.addResourceToPriorityList(state.resources.Iron);
+        state.storageManager.addResourceToPriorityList(state.resources.Copper);
+        state.storageManager.addResourceToPriorityList(state.resources.Furs);
+        state.storageManager.addResourceToPriorityList(state.resources.Stone);
+        state.storageManager.addResourceToPriorityList(state.resources.Lumber);
+        state.storageManager.addResourceToPriorityList(state.resources.Food);
+
+        state.resources.Food.updateStorageState(true, 0, -1, -1);
+        state.resources.Lumber.updateStorageState(true, 0, -1, -1);
+        state.resources.Stone.updateStorageState(true, 0, -1, -1);
+        state.resources.Furs.updateStorageState(true, 0, -1, -1);
+        state.resources.Copper.updateStorageState(true, 0, -1, -1);
+        state.resources.Iron.updateStorageState(true, 0, -1, -1);
+        state.resources.Aluminium.updateStorageState(true, 1.5, -1, -1);
+        state.resources.Cement.updateStorageState(true, 0, -1, -1);
+        state.resources.Coal.updateStorageState(true, 0, -1, -1);
+        state.resources.Steel.updateStorageState(true, 2, -1, -1);
+        state.resources.Titanium.updateStorageState(true, 1, -1, -1);
+        state.resources.Alloy.updateStorageState(true, 1, -1, -1);
+        state.resources.Polymer.updateStorageState(true, 1, -1, -1);
+        state.resources.Iridium.updateStorageState(true, 1, -1, -1);
+    }
+
+    function resetStorageSettings() {
+        settings.storageLimitPreMad = true;
     }
 
     function resetJobState() {
@@ -3825,6 +3919,9 @@
     }
 
     initialiseState();
+
+    var settingsSections = ["evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
+                            "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed"];
     
     function updateStateFromSettings() {
         // Retrieve settings for battle
@@ -3839,13 +3936,17 @@
             }
         }
 
-        // Retrieve settings for buying and selling tradable resources
+        // Retrieve settings for resources
+        if (!settings.hasOwnProperty("storageLimitPreMad")) {
+            settings.storageLimitPreMad = true;
+        }
+
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             let resource = state.marketManager.priorityList[i];
 
             let settingKey = 'res_buy_p_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.priority = parseInt(settings[settingKey]); }
-            else { settings[settingKey] = resource.priority; }
+            if (settings.hasOwnProperty(settingKey)) { resource.marketPriority = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource.marketPriority; }
 
             settingKey = 'buy' + resource.id;
             if (settings.hasOwnProperty(settingKey)) { resource.autoBuyEnabled = settings[settingKey]; }
@@ -3878,8 +3979,29 @@
             settingKey = 'res_trade_sell_mps_' + resource.id;
             if (settings.hasOwnProperty(settingKey)) { resource.autoTradeSellMinPerSecond = parseFloat(settings[settingKey]); }
             else { settings[settingKey] = resource.autoTradeSellMinPerSecond; }
+
+            settingKey = 'res_storage' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoStorageEnabled = settings[settingKey]; }
+            else { settings[settingKey] = resource.autoStorageEnabled; }
+
+            settingKey = 'res_storage_w_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoStorageWeighting = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = resource.autoStorageWeighting; }
+
+            settingKey = 'res_storage_p_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.storagePriority = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = resource.storagePriority; }
+
+            settingKey = 'res_crates_m_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoCratesMax = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource.autoCratesMax; }
+
+            settingKey = 'res_containers_m_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoContainersMax = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource.autoContainersMax; }
         }
         state.marketManager.sortByPriority();
+        state.storageManager.sortByPriority();
 
         // Retrieve settings for crafting resources
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -4022,26 +4144,12 @@
         if (!settings.hasOwnProperty("buildingStateAll")) {
             settings.buildingStateAll = false;
         }
-        if (!settings.hasOwnProperty("evolutionSettingsCollapsed")) {
-            settings.evolutionSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("researchSettingsCollapsed")) {
-            settings.researchSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("marketSettingsCollapsed")) {
-            settings.marketSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("warSettingsCollapsed")) {
-            settings.warSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("jobSettingsCollapsed")) {
-            settings.jobSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("buildingSettingsCollapsed")) {
-            settings.buildingSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("projectSettingsCollapsed")) {
-            settings.projectSettingsCollapsed = true;
+
+        // Collapse or expand settings sections
+        for (let i = 0; i < settingsSections.length; i++) {
+            if (!settings.hasOwnProperty(settingsSections[i])) {
+                settings[settingsSections[i]] = true;
+            }
         }
     }
 
@@ -4071,9 +4179,13 @@
             settings['job_b2_' + job._originalId] = job.getBreakpoint(2);
             settings['job_b3_' + job._originalId] = job.getBreakpoint(3);
         }
+
+        if (!settings.hasOwnProperty("storageLimitPreMad")) {
+            settings.storageLimitPreMad = true;
+        }
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             let resource = state.marketManager.priorityList[i];
-            settings['res_buy_p_' + resource.id] = resource.priority;
+            settings['res_buy_p_' + resource.id] = resource.marketPriority;
             settings['buy' + resource.id] = resource.autoBuyEnabled;
             settings['res_buy_r_' + resource.id] = resource.autoBuyRatio;
             settings['sell' + resource.id] = resource.autoSellEnabled;
@@ -4082,6 +4194,11 @@
             settings['res_trade_buy_mtr_' + resource.id] = resource.autoTradeBuyRoutes;
             settings['res_trade_sell_' + resource.id] = resource.autoTradeSellEnabled;
             settings['res_trade_sell_mps_' + resource.id] = resource.autoTradeSellMinPerSecond;
+            settings['res_storage' + resource.id] = resource.autoStorageEnabled;
+            settings['res_storage_w_' + resource.id] = resource.autoStorageWeighting;
+            settings['res_storage_p_' + resource.id] = resource.storagePriority;
+            settings['res_crates_m_' + resource.id] = resource.autoCratesMax;
+            settings['res_containers_m_' + resource.id] = resource.autoContainersMax;
         }
 
         if (!settings.hasOwnProperty('arpa')) {
@@ -4187,26 +4304,12 @@
         if (!settings.hasOwnProperty("buildingStateAll")) {
             settings.buildingStateAll = false;
         }
-        if (!settings.hasOwnProperty("evolutionSettingsCollapsed")) {
-            settings.evolutionSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("researchSettingsCollapsed")) {
-            settings.researchSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("warSettingsCollapsed")) {
-            settings.warSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("marketSettingsCollapsed")) {
-            settings.marketSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("jobSettingsCollapsed")) {
-            settings.jobSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("buildingSettingsCollapsed")) {
-            settings.buildingSettingsCollapsed = true;
-        }
-        if (!settings.hasOwnProperty("projectSettingsCollapsed")) {
-            settings.projectSettingsCollapsed = true;
+
+        // Collapse or expand settings sections
+        for (let i = 0; i < settingsSections.length; i++) {
+            if (!settings.hasOwnProperty(settingsSections[i])) {
+                settings[settingsSections[i]] = true;
+            }
         }
 
         localStorage.setItem('settings', JSON.stringify(settings));
@@ -4247,7 +4350,7 @@
 
         // If the user has specified a target evolution then use that
         if (state.evolutionTarget === null && settings.userEvolutionTargetName != "auto") {
-            state.evolutionTarget = state.races[settings.userEvolutionTargetName];
+            state.evolutionTarget = state.raceAchievementList[findArrayIndex(state.raceAchievementList, "name", settings.userEvolutionTargetName)];
             state.evolutionFallback = state.races.Antid;
 
             console.log("Targeting user specified race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
@@ -4268,7 +4371,7 @@
                     
                     for (let j = 0; j < raceGroup.length; j++) {
                         const race = raceGroup[j];
-                        if (!race.isAchievementUnlocked(achievementLevel)) {
+                        if (!race.isAchievementUnlocked(achievementLevel) && !race.isEvolutionConditional) { // Just ignore conditional races for now
                             remainingRace = race;
                             remainingAchievements++;
                         }
@@ -4381,9 +4484,13 @@
 
                 let tryCraft = true;
 
-                // if (craftable === state.resources.Mythril && state.resources.Iridium.currentQuantity < 7500) {
-                //     tryCraft = false;
-                // }
+                if (craftable === state.resources.Mythril) {
+                    if (state.resources.Mythril.currentQuantity < 1000) {
+                        tryCraft = true;
+                    } else if (state.resources.Mythril.currentQuantity > 10000 || state.resources.Iridium.currentQuantity < 6000) {
+                        tryCraft = false;
+                    }
+                }
 
                 //console.log("resource: " + craftable.id + ", length: " + craftable.requiredResources.length);
                 for (let i = 0; i < craftable.requiredResourcesToAction.length; i++) {
@@ -4973,6 +5080,14 @@
                 minimumAllowedProduction = maxForResource;
             }
         }
+
+        if (resource.storageRatio > 0.98) {
+            minimumAllowedProduction = 0;
+        }
+
+        if (resource === state.resources.NanoTube && state.resources.NanoTube.currentQuantity > 250000) {
+            minimumAllowedProduction = 0;
+        }
         
         let differenceInProduction = minimumAllowedProduction - state.cityBuildings.Factory.currentProduction(factoryGoods);
         remainingOperatingFactories.quantity -= minimumAllowedProduction;
@@ -4996,10 +5111,7 @@
             return;
         }
         
-        // Let's wait until we have a good enough population count
-        if (state.goal !== "PreparingMAD" && isLowPlasmidCount() && state.resources.Population.currentQuantity < 180) {
-            return;
-        } else if (state.goal !== "PreparingMAD" && !isLowPlasmidCount() && state.resources.Population.currentQuantity < 245) {
+        if (state.goal !== "PreparingMAD") {
             return;
         }
         
@@ -5035,11 +5147,6 @@
         let spaceDock = state.spaceBuildings.GasSpaceDock;
 
         if (!spaceDock.isUnlocked() || spaceDock.count < 1) {
-            return;
-        }
-
-        // We want to have a good population level before resetting
-        if (state.resources.Population.currentQuantity < 400) {
             return;
         }
 
@@ -5469,7 +5576,7 @@
                     // The unification techs are special as they are always "clickable" even if they can't be afforded.
                     // We don't want to continually remove the poppers if the script is clicking one every second that
                     // it can't afford
-                    if (itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest") {
+                    if (itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest" && itemId !== "tech-wc_reject") {
                         removePoppers();
                     }
                     return;
@@ -5485,8 +5592,8 @@
     function autoArpa() {
         let projectList = state.projectManager.managedPriorityList();
 
-        // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build when population over 200
-        if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && state.resources.Population.currentQuantity > 200) {
+        // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build once MAD has been researched
+        if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && isResearchUnlocked("mad")) {
             state.projects.LaunchFacility.tryBuild(1, false);
         }
 
@@ -5506,27 +5613,11 @@
 
             project.tryBuild(1, true);
         }
-        
-        // Genetic update starts sequence genome as active
-        // Always sequence genome if possible
-        // let sequenceBtn = document.querySelector("#arpaSequence .button");
-        // if (sequenceBtn !== null) {
-        //     let sequenceValue = document.querySelector("#arpaSequence .progress")["value"];
-            
-        //     if (sequenceValue === state.lastGenomeSequenceValue) {
-        //         // @ts-ignore
-        //         sequenceBtn.click();
-        //     }
-            
-        //     state.lastGenomeSequenceValue = sequenceValue;
-        // }
     }
 
     //#endregion Auto ARPA
     
     //#region Auto Power
-
-    //var autoBuildingPriorityLoggedOnce = false;
 
     function autoBuildingPriority() {
         let availablePowerNode = document.querySelector('#powerMeter');
@@ -5550,12 +5641,6 @@
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
 
-            // Some buildings have state that turn on later... ignore them if they don't have state yet!
-            // Also, don't manage mills if we don't have many plasmids or are doing the no plasmid challenge
-            if (building === state.cityBuildings.Mill && isLowPlasmidCount()) {
-                continue;
-            }
-
             availablePower += (building.consumption.power * building.stateOnCount);
 
             for (let j = 0; j < building.consumption.resourceTypes.length; j++) {
@@ -5571,24 +5656,27 @@
             }
         }
 
-        //if (!autoBuildingPriorityLoggedOnce) console.log("starting available power: " + availablePowerNode.textContent);
-        //if (!autoBuildingPriorityLoggedOnce) console.log("available power: " + availablePower);
-
         // Start assigning buildings from the top of our priority list to the bottom
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
             let requiredStateOn = 0;
-
-            // Don't manage mills if we don't have many plasmids or are doing the no plasmid challenge
-            if (building === state.cityBuildings.Mill && isLowPlasmidCount()) {
-                continue;
-            }
 
             for (let j = 0; j < building.count; j++) {
                 if (building.consumption.power > 0) {
                     // Building needs power and we don't have any
                     if ((availablePower <= 0 && building.consumption.power > 0) || (availablePower - building.consumption.power < 0)) {
                         continue;
+                    }
+                }
+
+                if (building === state.spaceBuildings.BeltEleriumShip) {
+                    if (state.resources.Elerium.storageRatio >= 0.99 && state.resources.Elerium.rateOfChange >= 0) {
+                        if (state.spaceBuildings.DwarfEleriumReactor.autoStateEnabled) {
+                            let required = (state.spaceBuildings.DwarfEleriumReactor.count + 1) * 2;
+                            if (requiredStateOn >= required) {
+                                continue;
+                            }
+                        }
                     }
                 }
 
@@ -5611,7 +5699,6 @@
                 // All resources passed the test so take them.
                 if ( resourcesToTake === building.consumption.resourceTypes.length) {
                     availablePower -= building.consumption.power;
-                    //if (!autoBuildingPriorityLoggedOnce) console.log("building " + building.id + " taking power " + building.consumption.power + " leaving " + availablePower);
 
                     for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
                         let resourceType = building.consumption.resourceTypes[k];
@@ -5626,7 +5713,6 @@
             }
 
             let adjustment = requiredStateOn - building.stateOnCount;
-            //if (!autoBuildingPriorityLoggedOnce) console.log("building " + building.id + " adjustment " + adjustment);
 
             // If the warning indicator is on then we don't know how many buildings are over-resourced
             // Just take them all off and sort it out next loop
@@ -5640,8 +5726,6 @@
 
             building.tryAdjustState(adjustment);
         }
-
-        //autoBuildingPriorityLoggedOnce = true;
     }
 
     //#endregion Auto Power
@@ -6042,6 +6126,7 @@
         }
     }
 
+
     //#endregion Auto Trade Specials
     
     //#region Main Loop
@@ -6253,6 +6338,7 @@
         buildResearchSettings();
         buildWarSettings();
         buildMarketSettings();
+        buildStorageSettings();
         buildJobSettings();
         buildBuildingSettings();
         buildProjectSettings();
@@ -6319,7 +6405,7 @@
         let evolutionNode = $('#script_evolutionBody');
         evolutionNode.empty().off("*");
 
-        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div>');
+        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div><div><span id="script_race_warning" class="has-text-danger"></span></div>');
         evolutionNode.append(targetEvolutionNode);
 
         let selectNode = $('#script_userEvolutionTargetName');
@@ -6332,10 +6418,8 @@
             const race = state.raceAchievementList[i];
             let selected = settings.userEvolutionTargetName === race.name ? ' selected="selected"' : "";
 
-            if (!race.isEvolutionConditional) {
-                let raceNode = $('<option value = "' + race.name + '"' + selected + '>' + race.name + '</option>');
-                selectNode.append(raceNode);
-            }
+            let raceNode = $('<option value = "' + race.name + '"' + selected + '>' + race.name + '</option>');
+            selectNode.append(raceNode);
         }
 
         selectNode.on('change', function() {
@@ -6343,6 +6427,13 @@
             settings.userEvolutionTargetName = value;
             updateSettingsFromState();
             //console.log("Chosen evolution target of " + value);
+            
+            let race = state.raceAchievementList[findArrayIndex(state.raceAchievementList, "name", settings.userEvolutionTargetName)];
+            if (race !== null && race !== undefined && race.isEvolutionConditional) {
+                document.getElementById("script_race_warning").textContent = "Warning! Only choose if you meet requirements: " + race.evolutionConditionText;
+            } else {
+                document.getElementById("script_race_warning").textContent = "";
+            }
         });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -6559,7 +6650,7 @@
                     <div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreBody">
                         <div style="margin-top: 5px; width: 400px"><label for="script_market_minmoneypersecond">Trade minimum money /s</label><input id="script_market_minmoneypersecond" type="text" class="input is-small" style="width: 150px; float: right;"></input></div>
                     </div>
-                    <table style="width:100%"><tr><th class="has-text-warning" style="width:15%">Resource</th><th class="has-text-warning" style="width:10%">Buy</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Sell</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">In</th><th class="has-text-warning" style="width:10%">Routes</th><th class="has-text-warning" style="width:10%">Out</th><th class="has-text-warning" style="width:10%">Min p/s</th><th style="width:5%"></th></tr>
+                    <table style="width:100%"><tr><th class="has-text-warning" style="width:15%">Resource</th><th class="has-text-warning" style="width:10%">Buy</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Sell</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Trade For</th><th class="has-text-warning" style="width:10%">Routes</th><th class="has-text-warning" style="width:10%">Trade Away</th><th class="has-text-warning" style="width:10%">Min p/s</th><th style="width:5%"></th></tr>
                         <tbody id="script_marketBody" class="scriptcontenttbody"></tbody>
                     </table>
                 </div>
@@ -6672,7 +6763,7 @@
 
                 for (let i = 0; i < marketIds.length; i++) {
                     // Market has been dragged... Update all market priorities
-                    state.marketManager.priorityList[findArrayIndex(state.marketManager.priorityList, "id", marketIds[i])].priority = i;
+                    state.marketManager.priorityList[findArrayIndex(state.marketManager.priorityList, "id", marketIds[i])].marketPriority = i;
                 }
 
                 state.marketManager.sortByPriority();
@@ -6744,28 +6835,161 @@
         return textBox;
     }
     
-    // /**
-    //  * @param {Resource} resource
-    //  */
-    // function buildMarketStateSettingsToggle(resource) {
-    //     let toggle = null;
-    //     let checked = resource.autoStateEnabled ? " checked" : "";
+    function buildStorageSettings() {
+        let scriptContentNode = $("#script_settings");
 
-    //     if (resource.hasConsumption()) {
-    //         toggle = $('<label id=script_bld_s_' + resource.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="scriptlastcolumn"></span>');
-    //     } else {
-    //         toggle = $('<span class="scriptlastcolumn"></span>');
-    //     }
+        // Textbox "input is-small" classes? Makes the placeholder text look weird
+        let storageNode =
+            `<div style="margin-top: 10px;" id="script_storageSettings">
+                <h3 id="storageSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Storage Settings</h3>
+                <div class="scriptcontent">
+                    <div style="margin-top: 10px;"><button id="script_resetStorages" class="button">Reset Storage Settings</button></div>
+                    <div style="margin-top: 10px; margin-bottom: 10px;" id="script_storagePreBody">
+                        <div><span class="has-text-danger">Storage settings have not yet been implemented! You can change them but they won't take effect until a future version.</span></div>
+                        <div style="margin-top: 5px; width: 400px"><label tabindex="0" class="switch" id="script_storagelimitPreMad"><input type="checkbox" value=false> <span class="check"></span><span>Limit Pre-MAD Storage</span></label></div>
+                    </div>
+                    <table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Max Crates</th><th class="has-text-warning" style="width:20%">Max Containers</th></tr>
+                        <tbody id="script_storageBody" class="scriptcontenttbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+        scriptContentNode.append(storageNode);
 
-    //     toggle.on('change', function(e) {
-    //         let input = e.currentTarget.children[0];
-    //         resource.autoStateEnabled = input.checked;
-    //         updateSettingsFromState();
-    //         //console.log(resource.name + " changed state to " + state);
-    //     });
+        // Above table settings
+        let storageLimitPreMadToggle = $('#script_storagelimitPreMad > input');
+        if (settings.storageLimitPreMad) {
+            storageLimitPreMadToggle.prop('checked', true);
+        }
+    
+        storageLimitPreMadToggle.on('change', function(e) {
+            settings.storageLimitPreMad = e.currentTarget.children[0].checked;
+            updateSettingsFromState();
+        });
+        
+        // Table settings
+        buildStorageTableBody();
 
-    //     return toggle;
-    // }
+        if (!settings.storageSettingsCollapsed) {
+            let element = document.getElementById("storageSettingsCollapsed");
+            element.classList.toggle("scriptcontentactive");
+            let content = element.nextElementSibling;
+            //@ts-ignore
+            content.style.display = "block";
+        }
+
+        $("#script_resetStorages").on("click", function() {
+            resetStorageState();
+            resetStorageSettings();
+            updateSettingsFromState();
+            updateStoragePreBody();
+            buildStorageTableBody();
+        });
+    }
+
+    function updateStoragePreBody() {
+        $('#script_storagelimitPreMad > input').prop('checked', settings.storageLimitPreMad);
+    }
+
+    function buildStorageTableBody() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let tableBodyNode = $('#script_storageBody');
+        tableBodyNode.empty().off("*");
+
+        let newTableBodyText = "";
+
+        for (let i = 0; i < state.storageManager.priorityList.length; i++) {
+            const resource = state.storageManager.priorityList[i];
+            let classAttribute = ' class="scriptdraggable"';
+            newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_storage_' + resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other storages settings rows
+        for (let i = 0; i < state.storageManager.priorityList.length; i++) {
+            const resource = state.storageManager.priorityList[i];
+            let storageElement = $('#script_storage_' + resource.id + 'Toggle');
+
+            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + resource.name + '</span>');
+            storageElement.append(toggle);
+
+            storageElement = storageElement.next();
+            storageElement.append(buildStorageSettingsEnabledToggle(resource));
+
+            storageElement = storageElement.next();
+            storageElement.append(buildStorageSettingsInput(resource, "res_storage_w_" + resource.id, "autoStorageWeighting"));
+
+            storageElement = storageElement.next();
+            storageElement.append(buildStorageSettingsInput(resource, "res_crates_m_" + resource.id, "autoCratesMax"));
+
+            storageElement = storageElement.next();
+            storageElement.append(buildStorageSettingsInput(resource, "res_containers_m_" + resource.id, "autoContainersMax"));
+
+            storageElement.append($('<span class="scriptlastcolumn"></span>'));
+        }
+
+        $('#script_storageBody').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let storageIds = $('#script_storageBody').sortable('toArray', {attribute: 'value'});
+
+                for (let i = 0; i < storageIds.length; i++) {
+                    // Storage has been dragged... Update all storage priorities
+                    state.storageManager.priorityList[findArrayIndex(state.storageManager.priorityList, "id", storageIds[i])].storagePriority = i;
+                }
+
+                state.storageManager.sortByPriority();
+                updateSettingsFromState();
+            },
+        } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    /**
+     * @param {Resource} resource
+     */
+    function buildStorageSettingsEnabledToggle(resource) {
+        let checked = resource.autoStorageEnabled ? " checked" : "";
+        let toggle = $('<label id=script_res_storage_' + resource.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            resource.autoStorageEnabled = state;
+            updateSettingsFromState();
+            //console.log(resource.name + " changed enabled to " + state);
+        });
+
+        return toggle;
+    }
+
+    /**
+     * @param {Resource} resource
+     * @param {string} settingKey
+     * @param {string} property
+     */
+    function buildStorageSettingsInput(resource, settingKey, property) {
+        let textBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        textBox.val(settings[settingKey]);
+    
+        textBox.on('change', function() {
+            let val = textBox.val();
+            let parsedValue = getRealNumber(val);
+            if (!isNaN(parsedValue)) {
+                //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
+                resource[property] = parsedValue;
+                updateSettingsFromState();
+            }
+        });
+
+        return textBox;
+    }
 
     function buildJobSettings() {
         let scriptContentNode = $("#script_settings");
@@ -7566,7 +7790,7 @@
         let marketRow = $('#market-' + resource.id);
         let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
         let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">sell</span><span class="state"></span></label>');
-        let toggleTrade = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade in</span><span class="state"></span></label>');
+        let toggleTrade = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade for</span><span class="state"></span></label>');
         marketRow.append(toggleBuy);
         marketRow.append(toggleSell);
         marketRow.append(toggleTrade);
@@ -7745,6 +7969,10 @@
      * @return {boolean}
      */
     function wouldBreakMoneyFloor(buyValue) {
+        if (buyValue <= 0) {
+            return false;
+        }
+
         return state.resources.Money.currentQuantity - buyValue < settings.minimumMoney;
     }
 
@@ -7812,7 +8040,7 @@
     }
 
     var showLogging = false;
-    var loggingType = "autoJobs";
+    var loggingType = "autoStorage";
 
     /**
      * @param {string} type
