@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.17
+// @version      0.9.18
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5103,15 +5103,11 @@
 
     function autoMAD() {
         // Don't MAD if it isn't unlocked
-        if (document.getElementById("mad").style.display === "none") {
+        if (!isResearchUnlocked("mad") || document.getElementById("mad").style.display === "none") {
             return;
         }
 
         if (!state.resources.Population.isUnlocked()) {
-            return;
-        }
-        
-        if (state.goal !== "PreparingMAD") {
             return;
         }
         
