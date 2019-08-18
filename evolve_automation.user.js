@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      0.9.18
+// @version      1.0.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -15,6 +15,8 @@
 // DIRECT LINK FOR GREASEMONKEY / TAMPERMONKEY: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // Just navigate to that link with one of the monkeys installed and it will load the script.
 // You can update to latest through the relevent UI for each extension.
+//
+// Full release notes at: https://gist.github.com/TMVictor/e2a0634391002888469e79c13c62f60e
 //
 // * autoEvolution - Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids.
 //          See autoAchievements to target races that you don't have extinction achievements for yet. Settings available in Settings tab.
@@ -30,12 +32,13 @@
 // * autoMarket - Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum
 //          specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes. Each resource can be configured
 //          in the Market settings in the settings tab.
-// * autoStorage - Assigns crates to allow storage of resources. Only assigns enough crates to reach MAD unless enabling autoSpace. Not currently user configurable.
+// * autoStorage - Assigns crates to allow storage of resources. Only assigns enough crates to reach MAD unless enabling autoSpace. Settings available in Settings tab.
 // * autoResearch - Performs research when minimum requirements are met. Settings available in Settings tab.
 // * autoARPA - Builds ARPA projects if user enables them to be built
 // * autoJobs - Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on
 //          lumber / stone then fill up capped jobs first. Settings available in Settings tab.
 //  ** autoCraftsmen - Enable this when performing challenge runs and autoJobs will also manage craftsmen
+// * autoTax - Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.
 // * autoPower - Manages power based on a priority order of buildings. Starts with city based building then space based. Settings available in Settings tab.
 // * autoSmelter - Manages smelter output at different stages at the game. Not currently user configurable.
 // * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
@@ -85,6 +88,18 @@
 
             /** @type {number[]} */
             this.breakpointMaxs = [];
+
+            this.setupCache();
+        }
+
+        setupCache() {
+            this.settingJobEnabled = "job_" + this.id;
+
+            this._hashElementId = "#" + this._elementId;
+            this._hashHtmlNameElement = "#" + this._elementId + " h3";
+            this._hashCountElement = "#" + this._elementId + " .count";
+            this._hashAddElement = "#" + this._elementId + " .add";
+            this._hashSubElement = "#" + this._elementId + " .sub";
         }
 
         /**
@@ -95,6 +110,7 @@
             this.name = newName;
             this._id = newId;
             this._elementId = this._tabPrefix + this._concatenator + this.id;
+            this.setupCache();
         }
 
         get id() {
@@ -107,8 +123,21 @@
         }
 
         isManaged() {
+            let isManaged = this.isUnlocked() && (this.id === "free" || settings[this.settingJobEnabled]);
+
             // Hunter races use "free" workers as their farmers. There aren't any settings associated with "free" workers so don't check whether they are enabled
-            return this.isUnlocked() && (this.id === "free" || settings['job_' + this.id]);
+            if (!this.isCraftsman()) {
+                return isManaged;
+            } else {
+                // This is a hack for when we very first unlock crafting... Don't want to say they are managed before the UI updates with the resources
+                if (this.id === state.jobs.Plywood.id) {
+                    isManaged = isManaged && resources.plywood.isUnlocked();
+                } else if (this.id === state.jobs.Brick.id) {
+                    isManaged = isManaged && resources.brick.isUnlocked();
+                }
+
+                return isManaged;
+            }
         }
 
         isCraftsman() {
@@ -116,7 +145,7 @@
         }
 
         getHtmlName() {
-            let nameNode = document.querySelector("#" + this._elementId + " h3");
+            let nameNode = document.querySelector(this._hashHtmlNameElement);
 
             if (nameNode === null) {
                 return "";
@@ -130,16 +159,18 @@
                 return 0;
             }
 
-            let jobNode = document.querySelector("#" + this._elementId + " .count");
+            let jobNode = document.querySelector(this._hashCountElement);
             if (jobNode !== null) {
                 // 2 possibilities:
                 // eg. "13 / 16" the current is 13
                 // eg. "12" the current is 12
-                if (jobNode.textContent.indexOf("/") === -1) {
+                let index = jobNode.textContent.indexOf("/");
+
+                if (index === -1) {
                     return getRealNumber(jobNode.textContent);
                 }
 
-                return getRealNumber(jobNode.textContent.split(" / ")[0]);
+                return getRealNumber(jobNode.textContent.substring(0, index - 1));
             }
 
             return 0;
@@ -150,16 +181,18 @@
                 return 0;
             }
 
-            let jobNode = document.querySelector("#" + this._elementId + " .count");
+            let jobNode = document.querySelector(this._hashCountElement);
             if (jobNode !== null) {
                 // 2 possibilities:
                 // eg. "13 / 16" the current is 13
                 // eg. "12" the current is 12
-                if (jobNode.textContent.indexOf("/") === -1) {
+                let index = jobNode.textContent.indexOf("/");
+
+                if (index === -1) {
                     return Number.MAX_SAFE_INTEGER;
                 }
 
-                return getRealNumber(jobNode.textContent.split(" / ")[1]);
+                return getRealNumber(jobNode.textContent.substring(index + 2));
             }
 
             return 0;
@@ -204,11 +237,11 @@
         }
 
         getAddButton() {
-            return document.querySelector("#" + this._elementId + " .add");
+            return document.querySelector(this._hashAddElement);
         }
 
         getSubButton() {
-            return document.querySelector("#" + this._elementId + " .sub");
+            return document.querySelector(this._hashSubElement);
         }
 
         /**
@@ -327,11 +360,11 @@
         }
 
         getAddButton() {
-            return document.querySelector("#" + this._elementId).parentElement.querySelector(".add")
+            return document.querySelector(this._hashElementId).parentElement.querySelector(".add")
         }
 
         getSubButton() {
-            return document.querySelector("#" + this._elementId).parentElement.querySelector(".sub")
+            return document.querySelector(this._hashElementId).parentElement.querySelector(".sub")
         }
 
         /**
@@ -417,7 +450,7 @@
             this.autoBuildEnabled = defaultAllOptionsEnabled;
             this.autoStateEnabled = true;
 
-            if (this._id === "probes") {
+            if (this._id === "probes") { // Can't use buildings in the constructor as we are still creating them!
                 this._autoMax = 4; // Max of 4 Probes by default
             } else {
                 this._autoMax = -1;
@@ -432,12 +465,19 @@
                 resourceTypes: [],
             };
 
-            /** @type {Resource[]} */
-            this.requiredResourcesToAction = [];
+            /** @type {ResourceRequirement[]} */
+            this.resourceRequirements = [];
 
-            /** @type {Resource[]} */
-            this.requiredBasicResourcesToAction = [];
+            this.setupCache();
+        }
 
+        setupCache() {
+            this._hashElementId = '#' + this._elementId;
+            this._hashButtonElement = this._hashElementId + ' .button';
+            this._hashButtonCountElement = this._hashElementId + ' .button .count';
+            this._hashWarnElement = this._hashElementId + ' .warn';
+            this._hashOnElement = this._hashElementId + ' .on';
+            this._hashOffElement = this._hashElementId + ' .off';
         }
 
         //#region Standard actions
@@ -448,13 +488,13 @@
 
         get autoMax() {
             // There are a couple of special buildings that are "clickable" but really aren't clickable. Lets check them here
-            if (this.id === "star_dock" || this.id === "world_controller") {
+            if (this.id == state.spaceBuildings.GasSpaceDock.id || this === state.spaceBuildings.DwarfWorldController) {
                 // Only clickable once but then hangs around in a "clickable" state even though you can't get more than one...
                 return this._autoMax === 0 ? 0 : 1;
-            } else if (this.id === "seeder") {
+            } else if (this === state.spaceBuildings.GasSpaceDockShipSegment) {
                 // Only clickable 100 times but then hangs around in a "clickable" state even though you can't get more than 100...
                 return this._autoMax >= 0 && this._autoMax <= 100 ? this._autoMax : 100;
-            } else if (this.id === "world_collider") {
+            } else if (this === state.spaceBuildings.DwarfWorldCollider) {
                 // Only clickable 1859 times but then hangs around in a "clickable" state even though you can't get more than 1859...
                 return this._autoMax >= 0 && this._autoMax <= 1859 ? this._autoMax : 1859;
             }
@@ -479,6 +519,40 @@
             return this.consumption.power !== 0 || this.consumption.resourceTypes.length > 0;
         }
 
+        updateResourceRequirements() {
+            let actionNode = document.querySelector(this._hashButtonElement);
+
+            if (actionNode === null || actionNode.attributes.length === 0) {
+                return;
+            }
+
+            // Some building requirements can change but we want to reuse our resource requirements array if possible
+            // (eg. shed requirements change over time)
+            let count = 0;
+            for (let i = 0; i < actionNode.attributes.length; i++) {
+                const attribute = actionNode.attributes[i];
+
+                if (attribute.nodeName.startsWith("data-")) {
+                    if (this.resourceRequirements.length > count) {
+                        this.resourceRequirements[i].resource = resources[attribute.nodeName.substring(5)];
+                        this.resourceRequirements[i].quantity = getRealNumber(attribute.nodeValue);
+                    } else {
+                        this.resourceRequirements.push(new ResourceRequirement(resources[attribute.nodeName.substring(5)], getRealNumber(attribute.nodeValue)));
+                    }
+                    count++;
+                }
+            }
+
+            // Remove any extra elements that we have that are greater than the current number of requirements
+            while (this.resourceRequirements.length > count) {
+                this.resourceRequirements.pop();
+            }
+
+            // let logText = this.id;
+            // this.resourceRequirements.forEach(requirement => logText += " " + requirement.resource.id + " - " + requirement.quantity + ", ");
+            // log("autoStorage", logText);
+        }
+
         // Whether the container is clickable is determined by it's node class
         // - class="action" - the node is available for clicking
         // - class="action cna" - Not clickable right now (eg. you don't have enough resources)
@@ -490,17 +564,17 @@
 
             let containerNode = document.getElementById(this._elementId);
             
-            if (containerNode.classList.contains("cna")) { return false; }
-            if (containerNode.classList.contains("cnam")) { return false; }
+            // cna / cnam - can't afford / don't have enough storage to afford
+            if (containerNode.className.indexOf("cna") !== -1) { return false; }
 
             // There are a couple of special buildings that are "clickable" but really aren't clickable. Lets check them here
-            if (this.id === "star_dock" || this.id === "world_controller") {
+            if (this.id === state.spaceBuildings.GasSpaceDock.id || this === state.spaceBuildings.DwarfWorldController) {
                 // Only clickable once but then hangs around in a "clickable" state even though you can't get more than one...
                 return this.count === 0;
-            } else if (this.id === "seeder") {
+            } else if (this === state.spaceBuildings.GasSpaceDockShipSegment) {
                 // Only clickable 100 times but then hangs around in a "clickable" state even though you can't get more than 100...
                 return this.count < 100;
-            } else if (this.id === "world_collider") {
+            } else if (this === state.spaceBuildings.DwarfWorldCollider) {
                 // Only clickable 1859 times but then hangs around in a "clickable" state even though you can't get more than 1859...
                 return this.count < 1859;
             }
@@ -542,13 +616,6 @@
             this.consumption.resourceTypes.push({ resource: resource, initialRate: rate, rate: rate });
         }
 
-        /**
-         * @param {Resource} resource
-         */
-        addRequiredResource(resource) {
-            this.requiredResourcesToAction.push(resource);
-        }
-
         //#endregion Standard actions
 
         //#region Buildings
@@ -558,8 +625,7 @@
                 return false;
             }
 
-            let containerNode = document.getElementById(this._elementId);
-            return containerNode.querySelector(' .button .count') !== null;
+            return document.querySelector(this._hashButtonCountElement) !== null;
         }
         
         get count() {
@@ -567,8 +633,7 @@
                 return 0;
             }
 
-            let containerNode = document.getElementById(this._elementId);
-            return parseInt(containerNode.querySelector(' .button .count').textContent);
+            return parseInt(document.querySelector(this._hashButtonCountElement).textContent);
         }
         
         hasState() {
@@ -577,8 +642,7 @@
             }
 
             // If there is an "on" state count node then there is state
-            let containerNode = document.getElementById(this._elementId);
-            return containerNode.querySelector(' .on') !== null;
+            return document.querySelector(this._hashOnElement) !== null;
         }
         
         get stateOnCount() {
@@ -586,8 +650,7 @@
                 return 0;
             }
             
-            let containerNode = document.getElementById(this._elementId);
-            return parseInt(containerNode.querySelector(' .on').textContent);
+            return parseInt(document.querySelector(this._hashOnElement).textContent);
         }
         
         get stateOffCount() {
@@ -595,8 +658,7 @@
                 return 0;
             }
             
-            let containerNode = document.getElementById(this._elementId);
-            return parseInt(containerNode.querySelector(' .off').textContent);
+            return parseInt(document.querySelector(this._hashOffElement).textContent);
         }
 
         isStateOnWarning() {
@@ -608,8 +670,7 @@
                 return false;
             }
             
-            let containerNode = document.getElementById(this._elementId);
-            return containerNode.querySelector(' .warn') !== null;
+            return document.querySelector(this._hashWarnElement) !== null;
         }
         
         // Make the click a little more meaningful for a building
@@ -656,9 +717,8 @@
                 return false;
             }
             
-            let containerNode = document.getElementById(this._elementId);
             // @ts-ignore
-            containerNode.querySelector(' .on').click();
+            document.querySelector(this._hashOnElement).click();
         }
         
         trySetStateOff() {
@@ -666,9 +726,8 @@
                 return false;
             }
             
-            let containerNode = document.getElementById(this._elementId);
             // @ts-ignore
-            containerNode.querySelector(' .off').click();
+            containerNode.querySelector(this._hashOffElement).click();
         }
 
         //#endregion Buildings
@@ -687,6 +746,17 @@
         }
     }
 
+    class ResourceRequirement {
+        /**
+         * @param {Resource} resource
+         * @param {number} quantity
+         */
+        constructor(resource, quantity) {
+            this.resource = resource;
+            this.quantity = quantity;
+        }
+    }
+
     class Resource {
         /**
          * @param {string} name
@@ -697,8 +767,9 @@
          * @param {number} tradeRouteQuantity
          * @param {boolean} isCraftable
          * @param {number} craftRatio
+         * @param {boolean} isSupport
          */
-        constructor(name, prefix, id, hasStorage, isTradable, tradeRouteQuantity, isCraftable, craftRatio) {
+        constructor(name, prefix, id, hasStorage, isTradable, tradeRouteQuantity, isCraftable, craftRatio, isSupport) {
             this._prefix = prefix;
             this.name = name;
             this._id = id;
@@ -731,19 +802,18 @@
             this.storagePriority = 0;
             this.autoStorageEnabled = true;
             this.autoStorageWeighting = 0;
-            this.autoCratesMax = -1;
-            this.autoContainersMax = -1;
+            this._autoCratesMax = -1;
+            this._autoContainersMax = -1;
 
             this._isCraftable = isCraftable;
             this.craftRatio = craftRatio;
 
+            this.isSupport = isSupport;
+
             this.calculatedRateOfChange = 0;
 
-            /** @type {Action[]} */
-            this.usedInBuildings = [];
-
-            /** @type {Resource[]} */
-            this.requiredResourcesToAction = [];
+            /** @type {ResourceRequirement[]} */
+            this.resourceRequirements = [];
 
             /** @type {ResourceProductionCost[]} */
             this.productionCost = [];
@@ -763,6 +833,10 @@
         isUnlocked() {
             let containerNode = document.getElementById(this._prefix + this.id);
             return containerNode !== null && containerNode.style.display !== "none";
+        }
+
+        isManagedStorage() {
+            return this.autoStorageEnabled && this.isUnlocked() && this.hasOptions();
         }
 
         /**
@@ -795,8 +869,8 @@
         updateStorageState(enabled, weighting, maxCrates, maxContainers) {
             this.autoStorageEnabled = enabled;
             this.autoStorageWeighting = weighting;
-            this.autoCratesMax = maxCrates;
-            this.autoContainersMax = maxContainers;
+            this._autoCratesMax = maxCrates;
+            this._autoContainersMax = maxContainers;
         }
 
         hasOptions() {
@@ -808,11 +882,11 @@
             return document.getElementById("con" + this.id) !== null;
         }
 
-        isTradable() {
+        get isTradable() {
             return this._isTradable;
         }
 
-        isCraftable() {
+        get isCraftable() {
             return this._isCraftable;
         }
 
@@ -893,12 +967,34 @@
 
         //#region Basic resource
 
+        get autoCratesMax() {
+            return this._autoCratesMax < 0 ? 1000000 : this._autoCratesMax;
+        }
+
+        /**
+         * @param {number} value
+         */
+        set autoCratesMax(value) {
+            this._autoCratesMax = value;
+        }
+
+        get autoContainersMax() {
+            return this._autoContainersMax < 0 ? 1000000 : this._autoContainersMax;
+        }
+
+        /**
+         * @param {number} value
+         */
+        set autoContainersMax(value) {
+            this._autoContainersMax = value;
+        }
+
         isOptionsOpen() {
             if (!this.hasOptions()) {
                 return;
             }
 
-            return (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === this.id);
+            return (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === this.name);
         }
         
         openOptions() {
@@ -911,7 +1007,7 @@
             optionsNode.click();
         }
 
-        updateOptions() {
+        updateCachedOptions() {
             // We can only update options when the options window is open
             if (!this.isOptionsOpen()) {
                 return false;
@@ -1089,7 +1185,7 @@
     class Power extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("Power", "", "powerMeter", false, false, -1, false, -1);
+            super("Power", "", "powerMeter", false, false, -1, false, -1, false);
         }
 
         //#region Standard resource
@@ -1135,7 +1231,7 @@
             return;
         }
 
-        updateOptions() {
+        updateCachedOptions() {
             return false;
         }
 
@@ -1185,7 +1281,7 @@
          * @param {string} id
          */
         constructor(name, id) {
-            super(name, "", id, false, false, -1, false, -1);
+            super(name, "", id, false, false, -1, false, -1, true);
         }
 
         //#region Standard resource
@@ -1233,7 +1329,7 @@
             return;
         }
 
-        updateOptions() {
+        updateCachedOptions() {
             return false;
         }
 
@@ -1278,7 +1374,7 @@
     class LuxuryGoods extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("Luxury Goods", "", "LuxuryGoods", false, false, -1, false, -1);
+            super("Luxury Goods", "", "LuxuryGoods", false, false, -1, false, -1, false);
         }
 
         //#region Standard resource
@@ -1330,7 +1426,7 @@
             return;
         }
 
-        updateOptions() {
+        updateCachedOptions() {
             return false;
         }
 
@@ -1435,18 +1531,22 @@
             return state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === "Smelter";
         }
         
-        openOptions() {
-            if (!this.hasOptions()) {
+        /**
+         * @param {Function} callbackFunction
+         * @param {any} callbackFunctionParameter
+         */
+        openOptions(callbackFunction, callbackFunctionParameter) {
+            if (!this.hasOptions() || state.windowManager.isOpen()) {
                 return;
             }
             
             let optionsNode = document.querySelector("#city-smelter .special");
-            state.windowManager.openModalWindow();
+            state.windowManager.openModalWindowWithCallback("Smelter", callbackFunction, callbackFunctionParameter);
             // @ts-ignore
             optionsNode.click();
         }
 
-        updateOptions() {
+        updateCachedOptions() {
             // We can only update options when the options window is open
             if (!this.isOptionsOpen()) {
                 return false;
@@ -1656,18 +1756,22 @@
             return state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === "Factory";
         }
         
-        openOptions() {
-            if (!this.hasOptions()) {
+        /**
+         * @param {Function} callbackFunction
+         * @param {any} callbackFunctionParameter
+         */
+        openOptions(callbackFunction, callbackFunctionParameter) {
+            if (!this.hasOptions() || state.windowManager.isOpen()) {
                 return;
             }
             
             let optionsNode = document.querySelector("#city-factory .special");
-            state.windowManager.openModalWindow();
+            state.windowManager.openModalWindowWithCallback("Factory", callbackFunction, callbackFunctionParameter);
             // @ts-ignore
             optionsNode.click();
         }
 
-        updateOptions() {
+        updateCachedOptions() {
             // We can only update options when the options window is open
             if (!this.isOptionsOpen()) {
                 return false;
@@ -1871,8 +1975,83 @@
 
     class ModalWindowManager {
         constructor() {
-            this.openThisLoop = false;
             this.openedByScript = false;
+
+            this._callbackWindowTitle = "";
+            this._callbackFunction = null;
+            this._callbackFunctionParameter = null;
+
+            /** @type {{ windowName: string, optionsObject: any }[]} */
+            this._callbacks = [];
+
+            /** @type {Resource[]} */
+            this._resourcesToRefreshOptions = [];
+            /** @type {{ cratesToBuild: number; containersToBuild: number; availableCrates: number, availableContainers: number, adjustments: any[]; }} */
+            this._storageChanges = null;
+            /** @type {Resource} */
+            this._openingResourceWindow = null;
+        }
+
+        /**
+         * @param {string} windowName
+         * @param {{ updateCachedOptions: () => void; }} optionsObject
+         */
+        addGeneralCallback(windowName, optionsObject) {
+            this._callbacks.push({windowName: windowName, optionsObject: optionsObject});
+        }
+
+        /**
+         * @param {string} oldWindowName
+         * @param {string} windowName
+         */
+        updateGeneralCallback(oldWindowName, windowName) {
+            let index = findArrayIndex(this._callbacks, "windowName", oldWindowName);
+
+            if (index !== -1) {
+                console.log("updating " + oldWindowName + " to be " + windowName)
+                this._callbacks[index].windowName = windowName;
+            }
+        }
+
+        /**
+         * @param {Resource[]} resources
+         */
+        updateResourceCachedOptions(resources) {
+            if (this.isOpen()) {
+                return;
+            }
+
+            if (resources.length === 0) {
+                return;
+            }
+
+            this._resourcesToRefreshOptions = resources;
+            this._openingResourceWindow = this._resourcesToRefreshOptions[0];
+            this._openingResourceWindow.openOptions();
+        }
+
+        /**
+         * @param {{ cratesToBuild: number; containersToBuild: number; availableCrates: number, availableContainers: number, adjustments: any[]; }} storageChanges
+         */
+        updateStorage(storageChanges) {
+            if (this.isOpen()) {
+                return;
+            }
+
+            if (storageChanges.cratesToBuild === 0 && storageChanges.containersToBuild === 0 && storageChanges.adjustments.length === 0) {
+                return;
+            }
+
+            this._storageChanges = storageChanges;
+
+            // If we are just building storage then this may not be set...
+            if (this._storageChanges.adjustments.length > 0) {
+                this._openingResourceWindow = this._storageChanges.adjustments[0].resource;
+            } else {
+                this._openingResourceWindow = state.storageManager.managedPriorityList()[0];
+            }
+
+            this._openingResourceWindow.openOptions();
         }
 
         get currentModalWindowTitle() {
@@ -1893,18 +2072,31 @@
         }
 
         openModalWindow() {
-            this.openThisLoop = true;
             this.openedByScript = true;
         }
 
-        isOpen() {
-            // We want to give the modal time to close so if there was a modal open this loop then just say there is a modal open
-            let isModalWindowOpen = document.getElementById("modalBox") !== null;
-            if (isModalWindowOpen) {
-                this.openThisLoop = true;
+        /**
+         * @param {string} callbackWindowTitle
+         * @param {Function} callbackFunction
+         * @param {any} callbackFunctionParameter
+         */
+        openModalWindowWithCallback(callbackWindowTitle, callbackFunction, callbackFunctionParameter) {
+            if (this.isOpen()) {
+                return;
             }
 
-            return isModalWindowOpen || this.openThisLoop;
+            this.openModalWindow();
+            this._callbackWindowTitle = callbackWindowTitle;
+            this._callbackFunction = callbackFunction;
+            this._callbackFunctionParameter = callbackFunctionParameter;
+        }
+
+        isOpenHtml() {
+            return document.getElementById("modalBox") !== null;
+        }
+
+        isOpen() {
+            return this.openedByScript || this._resourcesToRefreshOptions.length > 0 || this._storageChanges !== null || document.getElementById("modalBox") !== null;
         }
 
         closeModalWindow() {
@@ -1912,8 +2104,149 @@
             if (modalCloseBtn !== null) {
                 // @ts-ignore
                 modalCloseBtn.click();
-                this.openedByScript = false;
             }
+
+            this.openedByScript = false;
+        }
+
+        resetWindowManager() {
+            this.openedByScript = false;
+            this._callbackWindowTitle = "";
+            this._callbackFunction = null;
+            this._callbackFunctionParameter = null;
+            this._resourcesToRefreshOptions.length = 0; // clear array
+            this._openingResourceWindow = null;
+        }
+
+        checkCallbacks() {
+            // There is no open modal window
+            if (!this.isOpen()) {
+                return;
+            }
+
+            let windowName = this.currentModalWindowTitle;
+            //console.log("windowname " + windowName);
+
+            if (this._resourcesToRefreshOptions.length > 0 && this._openingResourceWindow === null && windowName === "") {
+                this._openingResourceWindow = this._resourcesToRefreshOptions[0];
+                //console.log("opening modal for " + this._resourcesToRefreshOptions[0].name);
+                this._openingResourceWindow.openOptions();
+                return;
+            }
+
+            if (this._storageChanges !== null && this._openingResourceWindow === null && windowName === "") {
+                this._openingResourceWindow = this._storageChanges.adjustments[0].resource;
+                //console.log("opening modal for " + this._resourcesToRefreshOptions[0].name);
+                this._openingResourceWindow.openOptions();
+                return;
+            }
+
+            // It is open but doesn't have a title?
+            if (windowName === "") {
+                return;
+            }
+
+            if (this._resourcesToRefreshOptions.length > 0 && this._openingResourceWindow !== null) {
+                if (this._openingResourceWindow.name == windowName) {
+                    this._openingResourceWindow.updateCachedOptions();
+                    //console.log("closing modal for " + this._openingResourceWindow.name);
+                    this.closeModalWindow();
+
+                    this._resourcesToRefreshOptions.shift();
+                    this._openingResourceWindow = null;
+                }
+
+                return;
+            }
+
+            if (this._storageChanges !== null && this._openingResourceWindow !== null) {
+                if (this._openingResourceWindow.name == windowName) {
+                    let constructionPerformed = false;
+
+                    if (this._storageChanges.cratesToBuild > 0) {
+                        for (let i = 0; i < this._storageChanges.cratesToBuild; i++) {
+                            this._openingResourceWindow.tryConstructCrate();
+                        }
+                        this._storageChanges.cratesToBuild = 0;
+                        constructionPerformed = true;
+                    }
+
+                    if (this._storageChanges.containersToBuild > 0) {
+                        for (let i = 0; i < this._storageChanges.containersToBuild; i++) {
+                            this._openingResourceWindow.tryConstructContainer();
+                        }
+                        this._storageChanges.containersToBuild = 0;
+                        constructionPerformed = true;
+                    }
+
+                    if (constructionPerformed) {
+                        this.closeModalWindow();
+                        if (this._storageChanges.adjustments.length === 0) this._storageChanges = null;
+                        this._openingResourceWindow = null;
+                        return;
+                    }
+
+                    if (this._storageChanges.adjustments[0].cratesAdjustment > 0) {
+                        for (let i = 0; i < this._storageChanges.adjustments[0].cratesAdjustment; i++) {
+                            this._openingResourceWindow.tryAssignCrate();
+                        }
+                    }
+
+                    if (this._storageChanges.adjustments[0].cratesAdjustment < 0) {
+                        this._storageChanges.adjustments[0].cratesAdjustment *= -1;
+                        for (let i = 0; i < this._storageChanges.adjustments[0].cratesAdjustment; i++) {
+                            this._openingResourceWindow.tryUnassignCrate();
+                        }
+                    }
+
+                    if (this._storageChanges.adjustments[0].containersAdjustment > 0) {
+                        for (let i = 0; i < this._storageChanges.adjustments[0].containersAdjustment; i++) {
+                            this._openingResourceWindow.tryAssignContainer();
+                        }
+                    }
+
+                    if (this._storageChanges.adjustments[0].containersAdjustment < 0) {
+                        this._storageChanges.adjustments[0].containersAdjustment *= -1;
+                        for (let i = 0; i < this._storageChanges.adjustments[0].containersAdjustment; i++) {
+                            this._openingResourceWindow.tryUnassignContainer();
+                        }
+                    }
+                    
+                    //console.log("closing modal for " + this._openingResourceWindow.name);
+                    this.closeModalWindow();
+                    this._storageChanges.adjustments.shift();
+                    if (this._storageChanges.adjustments.length === 0) this._storageChanges = null;
+                    this._openingResourceWindow = null;
+                    return;
+                }
+            }
+
+            //console.log("checking for general callbacks")
+
+            if (!this.openedByScript) {
+                this._callbacks.forEach(callback => {
+                    if (callback.windowName === windowName) {
+                        //console.log("general callback found for " + windowName)
+                        callback.optionsObject.updateCachedOptions();
+                    }
+                });
+            }
+
+            //console.log("checking for specific callbacks - " + this._callbackFunction + " " + this.openedByScript + " " + windowName);
+
+            if (this._callbackFunction !== null && this.openedByScript && windowName === this._callbackWindowTitle) {
+                //console.log("specific callback found for " + this._callbackWindowTitle)
+
+                this._callbackFunction(this._callbackFunctionParameter);
+
+                this._callbackWindowTitle = "";
+                this._callbackFunction = null;
+                this._callbackFunctionParameter = null;
+
+                this.closeModalWindow();
+            }
+
+            //console.log("returning");
         }
     }
 
@@ -2127,7 +2460,7 @@
 
             this._lastLoopCounter = 0;
             /** @type {Job[]} */
-            this._managedPriorityList = null;
+            this._managedPriorityList = [];
         }
 
         isUnlocked() {
@@ -2135,8 +2468,8 @@
         }
 
         clearPriorityList() {
-            this.priorityList = [];
-            this._managedPriorityList = null;
+            this.priorityList.length = 0;
+            this._managedPriorityList.length = 0;
         }
 
         /**
@@ -2157,7 +2490,7 @@
 
         sortByPriority() {
             this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
-            if (this._managedPriorityList !== null) this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
 
             for (let i = 0; i < this.priorityList.length; i++) {
                 this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, this.priorityList[i].breakpointMaxs.length);
@@ -2168,12 +2501,11 @@
 
         managedPriorityList() {
             if (this._lastLoopCounter != state.loopCounter) {
-                this._managedPriorityList = null;
+                this._managedPriorityList.length = 0; // clear array
             }
 
-            if (this._managedPriorityList === null) {
+            if (this._managedPriorityList.length === 0) {
                 this._lastLoopCounter = state.loopCounter;
-                this._managedPriorityList = [];
                 let evilRace = isEvilRace();
 
                 for (let i = 0; i < this.priorityList.length; i++) {
@@ -2249,7 +2581,7 @@
         }
 
         canManualCraft() {
-            return state.jobs.Brick.isUnlocked() && state.resources.Brick.isCraftingUnlocked();
+            return resources.brick.isUnlocked() && resources.brick.isCraftingUnlocked();
         }
 
         get managedCraftsmen() {
@@ -2311,7 +2643,10 @@
                 if (!settings['craft' + job.resource.id]) {
                     // The job isn't unlocked or the user has said to not craft the resource associated with this job
                     job.max = 0;
-                } else if (job === state.jobs.Mythril && state.resources.Mythril.currentQuantity > 1000 && (state.resources.Mythril.currentQuantity > 10000 || state.resources.Iridium.currentQuantity < 6000)) {
+                } else if (job === state.jobs.Brick && state.cityBuildings.CementPlant.count === 0) {
+                    // We've got no cement plants so don't put any craftsmen on making Brick
+                    job.max = 0;
+                } else if (job === state.jobs.Mythril && resources.mythril.currentQuantity > 1000 && (resources.mythril.currentQuantity > 10000 || resources.iridium.currentQuantity < 10000)) {
                     // Don't make Mythril if we have too much mythril or too little iridium
                     job.max = 0;
                 } else if (!job.isManaged()) {
@@ -2358,18 +2693,22 @@
             this._lastBuildLoopCounter = 0;
             this._lastStateLoopCounter = 0;
             /** @type {Action[]} */
-            this._managedPriorityList = null;
+            this._managedPriorityList = [];
             /** @type {Action[]} */
             this._statePriorityList = [];
             /** @type {Action[]} */
-            this._managedStatePriorityList = null;
+            this._managedStatePriorityList = [];
+        }
+
+        updateResourceRequirements() {
+            this.priorityList.forEach(building => building.updateResourceRequirements());
         }
 
         clearPriorityList() {
-            this.priorityList = [];
-            this._managedPriorityList = null;
-            this._statePriorityList = [];
-            this._managedStatePriorityList = null;
+            this.priorityList.length = 0;
+            this._managedPriorityList.length = 0;
+            this._statePriorityList.length = 0;
+            this._managedStatePriorityList.length = 0;
         }
 
         /**
@@ -2386,19 +2725,18 @@
 
         sortByPriority() {
             this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
-            if (this._managedPriorityList !== null) this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
             this._statePriorityList.sort(function (a, b) { return a.priority - b.priority } );
-            if (this._managedStatePriorityList !== null) this._managedStatePriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this._managedStatePriorityList.sort(function (a, b) { return a.priority - b.priority } );
         }
 
         managedPriorityList() {
             if (this._lastBuildLoopCounter != state.loopCounter) {
-                this._managedPriorityList = null;
+                this._managedPriorityList.length = 0; // clear array
             }
 
-            if (this._managedPriorityList === null) {
+            if (this._managedPriorityList.length === 0) {
                 this._lastBuildLoopCounter = state.loopCounter;
-                this._managedPriorityList = [];
 
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const building = this.priorityList[i];
@@ -2414,12 +2752,11 @@
 
         managedStatePriorityList() {
             if (this._lastStateLoopCounter != state.loopCounter) {
-                this._managedStatePriorityList = null;
+                this._managedStatePriorityList.length = 0; // clear array
             }
 
-            if (this._managedStatePriorityList === null) {
+            if (this._managedStatePriorityList.length === 0) {
                 this._lastStateLoopCounter = state.loopCounter;
-                this._managedStatePriorityList = [];
 
                 for (let i = 0; i < this._statePriorityList.length; i++) {
                     const building = this._statePriorityList[i];
@@ -2439,20 +2776,86 @@
         /**
          * @param {string} name
          * @param {string} id
-         * @param {number} moneyFloor
          */
-        constructor(name, id, moneyFloor) {
+        constructor(name, id) {
             this.name = name;
             this.id = id;
-            this.moneyFloor = 0;
             this.priority = 0;
 
             this._autoBuildEnabled = false;
             this._autoMax = -1;
+
+            /** @type {ResourceRequirement[]} */
+            this.resourceRequirements = [];
         }
 
         isUnlocked() {
             return document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x1') !== null;
+        }
+
+        updateResourceRequirements() {
+            let node = document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x1');
+
+            if (node === null) {
+                return;
+            }
+
+            let requirementText = node.getAttribute("aria-label");
+
+            if (requirementText === null) {
+                return;
+            }
+
+            let requirements = requirementText.split(". ");
+            let currentIndex = 0;
+
+            // The number of project resource requirements doesn't change over time. The type of resource might (eg. Monument) but not the number
+            // So, just add them the first time and update them otherwise
+            requirements.forEach(requirement => {
+                // Don't proceed if there isn't a requirement, or if it is "Constract 1%", or if it is "Insufficient Brick"
+                // It must have a ":", eg.
+                // aria-label="Construct 1%. Costs: $ 12.85M. Plywood:  107K. Brick:  85.6K. Insufficient Brick. Wrought Iron:  42.8K."
+                if (requirement.trim().length === 0 || requirement.indexOf(":") === -1) {
+                    return;
+                }
+
+                if (requirement.indexOf("$") !== -1) {
+                    if (currentIndex < this.resourceRequirements.length) {
+                        this.resourceRequirements[currentIndex].resource = resources.money;
+                        this.resourceRequirements[currentIndex].quantity = getRealNumber(requirement.split("$")[1]);
+                        currentIndex++;
+                    } else {
+                        this.resourceRequirements.push(new ResourceRequirement(resources.money, getRealNumber(requirement.split("$")[1])));
+                    }
+                } else {
+                    let requirementArray = requirement.split(":");
+                    let indexAdjustment = requirementArray.length === 2 ? 0 : 1;
+                    let resourceName = requirement.split(":")[indexAdjustment].trim().toLowerCase().replace(" ", "_");
+
+                    if (resourceName === "souls") { resourceName = "food" }
+                    else if (resourceName === "bones") { resourceName = "lumber" }
+                    else if (resourceName === "flesh") { resourceName = "furs" }
+                    else if (resourceName === "boneweave") { resourceName = "plywood" }
+
+                    // To account for: "42.8K." - note the period at the end there.
+                    let quantity = requirement.split(":")[1 + indexAdjustment];
+                    if (quantity.endsWith(".")) {
+                        quantity = quantity.substring(0, quantity.length - 1);
+                    }
+
+                    if (currentIndex < this.resourceRequirements.length) {
+                        this.resourceRequirements[currentIndex].resource = resources[resourceName];
+                        this.resourceRequirements[currentIndex].quantity = getRealNumber(quantity);
+                        currentIndex++;
+                    } else {
+                        this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], getRealNumber(quantity)));
+                    }
+                }
+            });
+
+            // let logText = this.id;
+            // this.resourceRequirements.forEach(requirement => logText += " " + requirement.resource.id + " - " + requirement.quantity + ", ");
+            // log("autoStorage", logText);
         }
 
         get autoBuildEnabled() {
@@ -2495,16 +2898,21 @@
         }
 
         /**
-         * @param {number} percent
          * @param {boolean} checkBuildEnabled
          */
-        tryBuild(percent, checkBuildEnabled) {
+        tryBuild(checkBuildEnabled) {
             if (checkBuildEnabled && !this.autoBuildEnabled) {
                 return false;
             }
 
-            let btn = document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x' + percent);
-            if (btn === null || wouldBreakMoneyFloor(this.moneyFloor)) {
+            let moneyFloor = 0;
+            let moneyRequirement = this.resourceRequirements.find(requirement => requirement.resource === resources.money);
+            if (moneyRequirement !== undefined) {
+                moneyFloor = moneyRequirement.quantity;
+            }
+
+            let btn = document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x1');
+            if (btn === null || wouldBreakMoneyFloor(moneyFloor)) {
                 return false;
             }
 
@@ -2520,12 +2928,16 @@
             this.priorityList = [];
             this._lastLoopCounter = 0;
             /** @type {Project[]} */
-            this._managedPriorityList = null;
+            this._managedPriorityList = [];
+        }
+
+        updateResourceRequirements() {
+            this.priorityList.forEach(project => project.updateResourceRequirements());
         }
 
         clearPriorityList() {
-            this.priorityList = [];
-            this._managedPriorityList = null;
+            this.priorityList.length = 0;
+            this._managedPriorityList.length = 0;
         }
 
         /**
@@ -2538,17 +2950,16 @@
 
         sortByPriority() {
             this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
-            if (this._managedPriorityList !== null) this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
         }
 
         managedPriorityList() {
             if (this._lastLoopCounter != state.loopCounter) {
-                this._managedPriorityList = null;
+                this._managedPriorityList.length = 0; // clear array
             }
 
-            if (this._managedPriorityList === null) {
+            if (this._managedPriorityList.length === 0) {
                 this._lastLoopCounter = state.loopCounter;
-                this._managedPriorityList = [];
 
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const project = this.priorityList[i];
@@ -2571,7 +2982,7 @@
             this._lastLoopCounter = 0;
 
             /** @type {Resource[]} */
-            this._sortedTradeRouteSellList = null;
+            this._sortedTradeRouteSellList = [];
         }
 
         isUnlocked() {
@@ -2580,15 +2991,15 @@
         }
 
         clearPriorityList() {
-            this.priorityList = [];
-            this._sortedTradeRouteSellList = null;
+            this.priorityList.length = 0;
+            this._sortedTradeRouteSellList.length = 0;
         }
 
         /**
          * @param {Resource} resource
          */
         addResourceToPriorityList(resource) {
-            if (resource.isTradable()) {
+            if (resource.isTradable) {
                 resource.marketPriority = this.priorityList.length;
                 this.priorityList.push(resource);
             }
@@ -2596,7 +3007,7 @@
 
         sortByPriority() {
             this.priorityList.sort(function (a, b) { return a.marketPriority - b.marketPriority } );
-            if (this._sortedTradeRouteSellList !== null) this._sortedTradeRouteSellList.sort(function (a, b) { return a.marketPriority - b.marketPriority } );
+            this._sortedTradeRouteSellList.sort(function (a, b) { return a.marketPriority - b.marketPriority } );
         }
 
         /** @param {Resource} resource */
@@ -2606,12 +3017,11 @@
 
         getSortedTradeRouteSellList() {
             if (this._lastLoopCounter != state.loopCounter) {
-                this._sortedTradeRouteSellList = null;
+                this._sortedTradeRouteSellList.length = 0; // clear array
             }
 
-            if (this._sortedTradeRouteSellList === null) {
+            if (this._sortedTradeRouteSellList.length === 0) {
                 this._lastLoopCounter = state.loopCounter;
-                this._sortedTradeRouteSellList = [];
 
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const resource = this.priorityList[i];
@@ -2833,7 +3243,10 @@
         constructor() {
             /** @type {Resource[]} */
             this.priorityList = [];
+
             this._lastLoopCounter = 0;
+            /** @type {Resource[]} */
+            this._managedPriorityList = [];
         }
 
         isUnlocked() {
@@ -2841,7 +3254,8 @@
         }
 
         clearPriorityList() {
-            this.priorityList = [];
+            this.priorityList.length = 0;
+            this._managedPriorityList.length = 0;
         }
 
         /**
@@ -2856,6 +3270,27 @@
 
         sortByPriority() {
             this.priorityList.sort(function (a, b) { return a.storagePriority - b.storagePriority } );
+            this._managedPriorityList.sort(function (a, b) { return a.storagePriority - b.storagePriority } );
+        }
+
+        managedPriorityList() {
+            if (this._lastLoopCounter != state.loopCounter) {
+                this._managedPriorityList.length = 0; // clear array
+            }
+
+            if (this._managedPriorityList.length === 0) {
+                this._lastLoopCounter = state.loopCounter;
+
+                for (let i = 0; i < this.priorityList.length; i++) {
+                    const resource = this.priorityList[i];
+    
+                    if (resource.isManagedStorage()) {
+                        this._managedPriorityList.push(resource);
+                    }
+                }
+            }
+
+            return this._managedPriorityList;
         }
     }
 
@@ -2918,6 +3353,57 @@
 
     //#region State and Initialisation
 
+    var resources = {
+            // Base resources
+            money: new Resource("Money", "res", "Money", false, false, -1, false, -1, false),
+            population: new Resource("Population", "res", "Population", false, false, -1, false, -1, false), // The population node is special and its id will change to the race name
+            knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1, false),
+            crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1, false),
+            containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1, false),
+            plasmid: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1, false),
+            phage: new Resource("Phage", "res", "Phage", false, false, -1, false, -1, false),
+            genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1, false),
+
+            // Special not-really-resources-but-we'll-treat-them-like-resources resources
+            power: new Power(),
+            luxury_goods: new LuxuryGoods(),
+            moon_support: new Support("Moon Support", "srspc_moon"),
+            red_support: new Support("Red Support", "srspc_red"),
+            sun_support: new Support("Sun Support", "srspc_sun"),
+            belt_support: new Support("Belt Support", "srspc_belt"),
+
+            // Basic resources (can trade for these)
+            food: new Resource("Food", "res", "Food", true, true, 2, false, -1, false),
+            lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1, false),
+            stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1, false),
+            furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1, false),
+            copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1, false),
+            iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1, false),
+            aluminium: new Resource("Aluminium", "res", "Aluminium", true, true, 1, false, -1, false),
+            cement: new Resource("Cement", "res", "Cement", true, true, 1, false, -1, false),
+            coal: new Resource("Coal", "res", "Coal", true, true, 1, false, -1, false),
+            oil: new Resource("Oil", "res", "Oil", false, true, 0.5, false, -1, false),
+            uranium: new Resource("Uranium", "res", "Uranium", false, true, 0.25, false, -1, false),
+            steel: new Resource("Steel", "res", "Steel", true, true, 0.5, false, -1, false),
+            titanium: new Resource("Titanium", "res", "Titanium", true, true, 0.25, false, -1, false),
+            alloy: new Resource("Alloy", "res", "Alloy", true, true, 0.2, false, -1, false),
+            polymer: new Resource("Polymer", "res", "Polymer", true, true, 0.2, false, -1, false),
+            iridium: new Resource("Iridium", "res", "Iridium", true, true, 0.1, false, -1, false),
+            helium_3: new Resource("Helium-3", "res", "Helium_3", false, true, 0.1, false, -1, false),
+
+            // Advanced resources (can't trade for these)
+            elerium: new Resource("Elerium", "res", "Elerium", false, false, 0.1, false, -1, false),
+            neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.1, false, -1, false),
+            nano_tube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1, false),
+            
+            // Craftable resources
+            plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5, false),
+            brick: new Resource("Brick", "res", "Brick", false, false, -1, true, 0.5, false),
+            wrought_iron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5, false),
+            sheet_metal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5, false),
+            mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5, false),
+    }
+
     var state = {
         loopCounter: 1,
 
@@ -2928,10 +3414,10 @@
         projectManager: new ProjectManager(),
         marketManager: new MarketManager(),
         storageManager: new StorageManager(),
+
+        minimumMoneyAllowed: 0,
         
-        lastGenomeSequenceValue: 0,
-        lastCratesOwned: -1,
-        lastContainersOwned: -1,
+        lastStorageBuildCheckLoop: 0,
         
         goal: "Standard",
 
@@ -2940,55 +3426,6 @@
 
         /** @type {Resource[]} */
         craftableResourceList: [],
-        resources: {
-            // Base resources
-            Money: new Resource("Money", "res", "Money", false, false, -1, false, -1),
-            Population: new Resource("Population", "res", "Population", false, false, -1, false, -1), // The population node is special and its id will change to the race name
-            Knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1),
-            Crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1),
-            Containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1),
-            Plasmids: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1),
-            Genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1),
-
-            // Special not-really-resources-but-we'll-treat-them-like-resources resources
-            Power: new Power(),
-            LuxuryGoods: new LuxuryGoods(),
-            MoonSupport: new Support("Moon Support", "srspc_moon"),
-            RedSupport: new Support("Red Support", "srspc_red"),
-            SunSupport: new Support("Sun Support", "srspc_sun"),
-            BeltSupport: new Support("Belt Support", "srspc_belt"),
-
-            // Basic resources (can trade for these)
-            Food: new Resource("Food", "res", "Food", true, true, 2, false, -1),
-            Lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1),
-            Stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1),
-            Furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1),
-            Copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1),
-            Iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1),
-            Aluminium: new Resource("Aluminium", "res", "Aluminium", true, true, 1, false, -1),
-            Cement: new Resource("Cement", "res", "Cement", true, true, 1, false, -1),
-            Coal: new Resource("Coal", "res", "Coal", true, true, 1, false, -1),
-            Oil: new Resource("Oil", "res", "Oil", false, true, 0.5, false, -1),
-            Uranium: new Resource("Uranium", "res", "Uranium", false, true, 0.25, false, -1),
-            Steel: new Resource("Steel", "res", "Steel", true, true, 0.5, false, -1),
-            Titanium: new Resource("Titanium", "res", "Titanium", true, true, 0.25, false, -1),
-            Alloy: new Resource("Alloy", "res", "Alloy", true, true, 0.2, false, -1),
-            Polymer: new Resource("Polymer", "res", "Polymer", true, true, 0.2, false, -1),
-            Iridium: new Resource("Iridium", "res", "Iridium", true, true, 0.1, false, -1),
-            Helium_3: new Resource("Helium-3", "res", "Helium_3", false, true, 0.1, false, -1),
-
-            // Advanced resources (can't trade for these)
-            Elerium: new Resource("Elerium", "res", "Elerium", false, false, 0.1, false, -1),
-            Neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.1, false, -1),
-            NanoTube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1),
-            
-            // Craftable resources
-            Plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5),
-            Brick: new Resource("Brick", "res", "Brick", false, false, -1, true, 0.5),
-            WroughtIron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5),
-            SheetMetal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5),
-            Mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5),
-        },
 
         jobs: {
             // Uncapped jobs
@@ -3264,10 +3701,10 @@
         },
 
         projects: {
-            SuperCollider: new Project("Supercollider", "lhc", 26500),
-            StockExchange: new Project("Stock Exchange", "stock_exchange", 30000),
-            Monument: new Project("Monument", "monument", 0),
-            LaunchFacility: new Project("Launch Facility", "launch_facility", 0),
+            SuperCollider: new Project("Supercollider", "lhc"),
+            StockExchange: new Project("Stock Exchange", "stock_exchange"),
+            Monument: new Project("Monument", "monument"),
+            LaunchFacility: new Project("Launch Facility", "launch_facility"),
         },
 
         //global: null,
@@ -3277,57 +3714,69 @@
         resetMarketState();
         resetStorageState();
 
+        // Add general callbacks to the window manager. These will be called if the user opens the window.
+        state.windowManager.addGeneralCallback("Smelter", state.cityBuildings.Smelter);
+        state.windowManager.addGeneralCallback("Factory", state.cityBuildings.Factory);
+
+        state.storageManager.priorityList.forEach(resource =>
+            state.windowManager.addGeneralCallback(resource.name, resource)
+        );
+
         // Construct craftable resource list
-        state.craftableResourceList.push(state.resources.Plywood);
-        state.resources.Plywood.requiredResourcesToAction.push(state.resources.Lumber);
-        state.craftableResourceList.push(state.resources.Brick);
-        state.resources.Brick.requiredResourcesToAction.push(state.resources.Cement);
-        state.craftableResourceList.push(state.resources.WroughtIron);
-        state.resources.WroughtIron.requiredResourcesToAction.push(state.resources.Iron);
-        state.craftableResourceList.push(state.resources.SheetMetal);
-        state.resources.SheetMetal.requiredResourcesToAction.push(state.resources.Aluminium);
-        state.craftableResourceList.push(state.resources.Mythril);
-        state.resources.Mythril.requiredResourcesToAction.push(state.resources.Iridium);
-        state.resources.Mythril.requiredResourcesToAction.push(state.resources.Alloy);
+        state.craftableResourceList.push(resources.plywood);
+        resources.plywood.resourceRequirements.push(new ResourceRequirement(resources.lumber, 100));
+        state.craftableResourceList.push(resources.brick);
+        resources.brick.resourceRequirements.push(new ResourceRequirement(resources.cement, 40));
+        state.craftableResourceList.push(resources.wrought_iron);
+        resources.wrought_iron.resourceRequirements.push(new ResourceRequirement(resources.iron, 80));
+        state.craftableResourceList.push(resources.sheet_metal);
+        resources.sheet_metal.resourceRequirements.push(new ResourceRequirement(resources.aluminium, 120));
+        state.craftableResourceList.push(resources.mythril);
+        resources.mythril.resourceRequirements.push(new ResourceRequirement(resources.iridium, 100));
+        resources.mythril.resourceRequirements.push(new ResourceRequirement(resources.alloy, 250));
+
+        // Lets set our crate / container resource requirements
+        resources.crates.resourceRequirements.push(new ResourceRequirement(resources.plywood, 10));
+        resources.containers.resourceRequirements.push(new ResourceRequirement(resources.steel, 125));
 
         // Construct all resource list
         state.allResourceList = state.marketManager.priorityList.concat(state.craftableResourceList);
-        state.allResourceList.push(state.resources.Money);
-        state.allResourceList.push(state.resources.Population);
-        state.allResourceList.push(state.resources.Knowledge);
-        state.allResourceList.push(state.resources.Crates);
-        state.allResourceList.push(state.resources.Containers);
-        state.allResourceList.push(state.resources.Plasmids);
-        state.allResourceList.push(state.resources.Genes);
-        state.allResourceList.push(state.resources.Power);
-        state.allResourceList.push(state.resources.MoonSupport);
-        state.allResourceList.push(state.resources.RedSupport);
-        state.allResourceList.push(state.resources.SunSupport);
-        state.allResourceList.push(state.resources.BeltSupport);
-        state.allResourceList.push(state.resources.Neutronium);
-        state.allResourceList.push(state.resources.Elerium);
-        state.allResourceList.push(state.resources.NanoTube);
+        state.allResourceList.push(resources.money);
+        state.allResourceList.push(resources.population);
+        state.allResourceList.push(resources.knowledge);
+        state.allResourceList.push(resources.crates);
+        state.allResourceList.push(resources.containers);
+        state.allResourceList.push(resources.plasmid);
+        state.allResourceList.push(resources.genes);
+        state.allResourceList.push(resources.power);
+        state.allResourceList.push(resources.moon_support);
+        state.allResourceList.push(resources.red_support);
+        state.allResourceList.push(resources.sun_support);
+        state.allResourceList.push(resources.belt_support);
+        state.allResourceList.push(resources.neutronium);
+        state.allResourceList.push(resources.elerium);
+        state.allResourceList.push(resources.nano_tube);
 
         // TODO: Depending on tech level. Will have to adjust
         // copper: [0.75,1.12,1.49,1.86],
         // aluminium: [1,1.5,2,2.5],
         // output: [0.075,0.112,0.149,0.186]
-        state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Copper, 1.86, 5)); //1.49
-        state.resources.Alloy.productionCost.push(new ResourceProductionCost(state.resources.Aluminium, 2, 5)); //0.29
-        state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Oil, 0.45, 2));
-        state.resources.Polymer.productionCost.push(new ResourceProductionCost(state.resources.Lumber, 36, 50));
-        state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Coal, 20, 5));
-        state.resources.NanoTube.productionCost.push(new ResourceProductionCost(state.resources.Neutronium, 0.125, 0.2));
+        resources.alloy.productionCost.push(new ResourceProductionCost(resources.copper, 1.86, 5)); //1.49
+        resources.alloy.productionCost.push(new ResourceProductionCost(resources.aluminium, 2, 5)); //0.29
+        resources.polymer.productionCost.push(new ResourceProductionCost(resources.oil, 0.45, 2));
+        resources.polymer.productionCost.push(new ResourceProductionCost(resources.lumber, 36, 50));
+        resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.coal, 20, 5));
+        resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.neutronium, 0.125, 0.2));
 
-        state.jobs.Plywood.resource = state.resources.Plywood;
+        state.jobs.Plywood.resource = resources.plywood;
         state.jobManager.addCraftingJob(state.jobs.Plywood);
-        state.jobs.Brick.resource = state.resources.Brick;
+        state.jobs.Brick.resource = resources.brick;
         state.jobManager.addCraftingJob(state.jobs.Brick);
-        state.jobs.WroughtIron.resource = state.resources.WroughtIron;
+        state.jobs.WroughtIron.resource = resources.wrought_iron;
         state.jobManager.addCraftingJob(state.jobs.WroughtIron);
-        state.jobs.SheetMetal.resource = state.resources.SheetMetal;
+        state.jobs.SheetMetal.resource = resources.sheet_metal;
         state.jobManager.addCraftingJob(state.jobs.SheetMetal);
-        state.jobs.Mythril.resource = state.resources.Mythril;
+        state.jobs.Mythril.resource = resources.mythril;
         state.jobManager.addCraftingJob(state.jobs.Mythril);
 
         resetJobState();
@@ -3336,210 +3785,82 @@
         state.spaceBuildings.GasSpaceDock.Probes = state.spaceBuildings.GasSpaceDockProbe;
         state.spaceBuildings.GasSpaceDock.Ship = state.spaceBuildings.GasSpaceDockShipSegment;
 
-        state.cityBuildings.University.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.University.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.Copper);
-        state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.Wardenclyffe.addRequiredResource(state.resources.SheetMetal);
         state.cityBuildings.Wardenclyffe.addPowerConsumption(2);
-        state.cityBuildings.Mine.addRequiredResource(state.resources.Lumber);
         state.cityBuildings.Mine.addPowerConsumption(1);
-        state.cityBuildings.CoalMine.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.CoalMine.addRequiredResource(state.resources.WroughtIron);
         state.cityBuildings.CoalMine.addPowerConsumption(1);
-        state.cityBuildings.Smelter.addRequiredResource(state.resources.Iron);
-        state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, state.resources.Coal, 0.25, 1.25);
-        state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, state.resources.Iron, 2, 6);
-        state.cityBuildings.CoalPower.addRequiredResource(state.resources.Copper);
-        state.cityBuildings.CoalPower.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.CoalPower.addRequiredResource(state.resources.Steel);
+        state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.coal, 0.25, 1.25);
+        state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.iron, 2, 6);
         state.cityBuildings.CoalPower.addPowerConsumption(-5);
-        state.cityBuildings.CoalPower.addResourceConsumption(state.resources.Coal, 0.35);
-        state.cityBuildings.Temple.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Temple.addRequiredResource(state.resources.Furs);
-        state.cityBuildings.Temple.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.OilWell.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.OilWell.addRequiredResource(state.resources.Steel);
-        state.cityBuildings.BioLab.addRequiredResource(state.resources.Copper);
-        state.cityBuildings.BioLab.addRequiredResource(state.resources.Alloy);
+        state.cityBuildings.CoalPower.addResourceConsumption(resources.coal, 0.35);
         state.cityBuildings.BioLab.addPowerConsumption(2);
-        state.cityBuildings.StorageYard.addRequiredResource(state.resources.Brick);
-        state.cityBuildings.StorageYard.addRequiredResource(state.resources.WroughtIron);
-        state.cityBuildings.Warehouse.addRequiredResource(state.resources.Iron);
-        state.cityBuildings.Warehouse.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.OilPower.addRequiredResource(state.resources.Copper);
-        state.cityBuildings.OilPower.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.OilPower.addRequiredResource(state.resources.Aluminium);
         state.cityBuildings.OilPower.addPowerConsumption(-6);
-        state.cityBuildings.OilPower.addResourceConsumption(state.resources.Oil, 0.65);
-        state.cityBuildings.Bank.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Bank.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Barracks.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Hospital.addRequiredResource(state.resources.Furs);
-        state.cityBuildings.Hospital.addRequiredResource(state.resources.Aluminium);
-        state.cityBuildings.BootCamp.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.BootCamp.addRequiredResource(state.resources.Aluminium);
-        state.cityBuildings.BootCamp.addRequiredResource(state.resources.Brick);
-        state.cityBuildings.House.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Cottage.addRequiredResource(state.resources.Plywood);
-        state.cityBuildings.Cottage.addRequiredResource(state.resources.Brick);
-        state.cityBuildings.Cottage.addRequiredResource(state.resources.WroughtIron);
-        state.cityBuildings.Apartment.addRequiredResource(state.resources.Furs);
-        state.cityBuildings.Apartment.addRequiredResource(state.resources.Copper);
-        state.cityBuildings.Apartment.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.Apartment.addRequiredResource(state.resources.Steel);
+        state.cityBuildings.OilPower.addResourceConsumption(resources.oil, 0.65);
         state.cityBuildings.Apartment.addPowerConsumption(1);
-        state.cityBuildings.Farm.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Farm.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.SoulWell.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.SoulWell.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Mill.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Mill.addRequiredResource(state.resources.Iron);
-        state.cityBuildings.Mill.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Mill.addPowerConsumption(-1);
-        state.cityBuildings.Windmill.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Windmill.addRequiredResource(state.resources.Iron);
-        state.cityBuildings.Windmill.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Windmill.addPowerConsumption(-1);
-        state.cityBuildings.Silo.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Silo.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Shed.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Shed.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.LumberYard.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.LumberYard.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.RockQuarry.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.RockQuarry.addRequiredResource(state.resources.Stone);
         state.cityBuildings.RockQuarry.addPowerConsumption(1);
-        state.cityBuildings.CementPlant.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.CementPlant.addRequiredResource(state.resources.Stone);
         state.cityBuildings.CementPlant.addPowerConsumption(2);
-        state.cityBuildings.Foundry.addRequiredResource(state.resources.Copper);
-        state.cityBuildings.Foundry.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Factory.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.Factory.addRequiredResource(state.resources.Steel);
-        state.cityBuildings.Factory.addRequiredResource(state.resources.Titanium);
         state.cityBuildings.Factory.addPowerConsumption(3);
-        state.cityBuildings.OilDepot.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.OilDepot.addRequiredResource(state.resources.SheetMetal);
-        state.cityBuildings.Trade.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Trade.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Trade.addRequiredResource(state.resources.Furs);
-        state.cityBuildings.Amphitheatre.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Amphitheatre.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Library.addRequiredResource(state.resources.Furs);
-        state.cityBuildings.Library.addRequiredResource(state.resources.Plywood);
-        state.cityBuildings.Library.addRequiredResource(state.resources.Brick);
-        state.cityBuildings.Sawmill.addRequiredResource(state.resources.Iron);
-        state.cityBuildings.Sawmill.addRequiredResource(state.resources.Cement);
         state.cityBuildings.Sawmill.addPowerConsumption(1);
-        state.cityBuildings.FissionPower.addRequiredResource(state.resources.Copper);
-        state.cityBuildings.FissionPower.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.FissionPower.addRequiredResource(state.resources.Titanium);
         state.cityBuildings.FissionPower.addPowerConsumption(-14); // Goes up to 18 after breeder reactor tech researched. This is set in UpdateState().
-        state.cityBuildings.FissionPower.addResourceConsumption(state.resources.Uranium, 0.1);
-        state.cityBuildings.Lodge.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Lodge.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Smokehouse.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Smokehouse.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.Casino.addRequiredResource(state.resources.Furs);
-        state.cityBuildings.Casino.addRequiredResource(state.resources.Plywood);
-        state.cityBuildings.Casino.addRequiredResource(state.resources.Brick);
+        state.cityBuildings.FissionPower.addResourceConsumption(resources.uranium, 0.1);
         state.cityBuildings.Casino.addPowerConsumption(5);
-        state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Furs);
-        state.cityBuildings.TouristCenter.addRequiredResource(state.resources.Plywood);
-        state.cityBuildings.TouristCenter.addResourceConsumption(state.resources.Food, 50);
-        state.cityBuildings.MassDriver.addRequiredResource(state.resources.Copper);
-        state.cityBuildings.MassDriver.addRequiredResource(state.resources.Iron);
-        state.cityBuildings.MassDriver.addRequiredResource(state.resources.Iridium);
+        state.cityBuildings.TouristCenter.addResourceConsumption(resources.food, 50);
         state.cityBuildings.MassDriver.addPowerConsumption(5);
-        state.cityBuildings.Wharf.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.Wharf.addRequiredResource(state.resources.Cement);
-        state.cityBuildings.Wharf.addRequiredResource(state.resources.Oil);
-        state.cityBuildings.MetalRefinery.addRequiredResource(state.resources.Steel);
-        state.cityBuildings.SlavePen.addRequiredResource(state.resources.Lumber);
-        state.cityBuildings.SlavePen.addRequiredResource(state.resources.Stone);
-        state.cityBuildings.SlavePen.addRequiredResource(state.resources.Copper);
 
-        // Construct space buildsings list
-        // TODO: Space! resource requirements
+        // Construct space buildings list
         state.spaceBuildings.SpaceNavBeacon.addPowerConsumption(2);
-        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(state.resources.MoonSupport, -1);
+        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.moon_support, -1);
         state.spaceBuildings.MoonBase.addPowerConsumption(4);
-        state.spaceBuildings.MoonBase.addResourceConsumption(state.resources.MoonSupport, -2);
-        state.spaceBuildings.MoonBase.addResourceConsumption(state.resources.Oil, 2);
-        state.spaceBuildings.MoonIridiumMine.addResourceConsumption(state.resources.MoonSupport, 1);
-        state.spaceBuildings.MoonHeliumMine.addResourceConsumption(state.resources.MoonSupport, 1);
-        state.spaceBuildings.MoonObservatory.addResourceConsumption(state.resources.MoonSupport, 1);
+        state.spaceBuildings.MoonBase.addResourceConsumption(resources.moon_support, -2);
+        state.spaceBuildings.MoonBase.addResourceConsumption(resources.oil, 2);
+        state.spaceBuildings.MoonIridiumMine.addResourceConsumption(resources.moon_support, 1);
+        state.spaceBuildings.MoonHeliumMine.addResourceConsumption(resources.moon_support, 1);
+        state.spaceBuildings.MoonObservatory.addResourceConsumption(resources.moon_support, 1);
         state.spaceBuildings.RedSpaceport.addPowerConsumption(5);
-        state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.RedSupport, -3);
-        state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.Helium_3, 1.25);
-        state.spaceBuildings.RedSpaceport.addResourceConsumption(state.resources.Food, 25);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.red_support, -3);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.helium_3, 1.25);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.food, 25);
         state.spaceBuildings.RedTower.addPowerConsumption(2);
-        state.spaceBuildings.RedTower.addResourceConsumption(state.resources.RedSupport, -1);
-        state.spaceBuildings.RedLivingQuarters.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildings.RedMine.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildings.RedFabrication.addResourceConsumption(state.resources.RedSupport, 1);
+        state.spaceBuildings.RedTower.addResourceConsumption(resources.red_support, -1);
+        state.spaceBuildings.RedLivingQuarters.addResourceConsumption(resources.red_support, 1);
+        state.spaceBuildings.RedMine.addResourceConsumption(resources.red_support, 1);
+        state.spaceBuildings.RedFabrication.addResourceConsumption(resources.red_support, 1);
         state.spaceBuildings.RedFactory.addPowerConsumption(3);
-        state.spaceBuildings.RedFactory.addResourceConsumption(state.resources.Helium_3, 1);
-        state.spaceBuildings.RedBiodome.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildings.RedExoticLab.addResourceConsumption(state.resources.RedSupport, 1);
-        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(state.resources.Oil, 2);
-        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(state.resources.Food, 10);
+        state.spaceBuildings.RedFactory.addResourceConsumption(resources.helium_3, 1);
+        state.spaceBuildings.RedBiodome.addResourceConsumption(resources.red_support, 1);
+        state.spaceBuildings.RedExoticLab.addResourceConsumption(resources.red_support, 1);
+        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.oil, 2);
+        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.food, 10);
         state.spaceBuildings.HellGeothermal.addPowerConsumption(-8);
-        state.spaceBuildings.HellGeothermal.addResourceConsumption(state.resources.Helium_3, 0.5);
-        state.spaceBuildings.SunSwarmControl.addResourceConsumption(state.resources.SunSupport, -4);
+        state.spaceBuildings.HellGeothermal.addResourceConsumption(resources.helium_3, 0.5);
+        state.spaceBuildings.SunSwarmControl.addResourceConsumption(resources.sun_support, -4);
         state.spaceBuildings.SunSwarmSatellite.addPowerConsumption(-1);
-        state.spaceBuildings.SunSwarmSatellite.addResourceConsumption(state.resources.SunSupport, 1);
+        state.spaceBuildings.SunSwarmSatellite.addResourceConsumption(resources.sun_support, 1);
         state.spaceBuildings.GasMining.addPowerConsumption(2);
         state.spaceBuildings.GasMoonOutpost.addPowerConsumption(3);
-        state.spaceBuildings.GasMoonOutpost.addResourceConsumption(state.resources.Oil, 2);
+        state.spaceBuildings.GasMoonOutpost.addResourceConsumption(resources.oil, 2);
         state.spaceBuildings.GasMoonOilExtractor.addPowerConsumption(1);
         state.spaceBuildings.BeltSpaceStation.addPowerConsumption(3);
-        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.BeltSupport, -3);
-        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.Food, 10);
-        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(state.resources.Helium_3, 2.5);
-        state.spaceBuildings.BeltEleriumShip.addResourceConsumption(state.resources.BeltSupport, 2);
-        state.spaceBuildings.BeltIridiumShip.addResourceConsumption(state.resources.BeltSupport, 1);
-        state.spaceBuildings.BeltIronShip.addResourceConsumption(state.resources.BeltSupport, 1);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.belt_support, -3);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.food, 10);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.helium_3, 2.5);
+        state.spaceBuildings.BeltEleriumShip.addResourceConsumption(resources.belt_support, 2);
+        state.spaceBuildings.BeltIridiumShip.addResourceConsumption(resources.belt_support, 1);
+        state.spaceBuildings.BeltIronShip.addResourceConsumption(resources.belt_support, 1);
         state.spaceBuildings.DwarfEleriumContainer.addPowerConsumption(6);
         state.spaceBuildings.DwarfEleriumReactor.addPowerConsumption(-25);
-        state.spaceBuildings.DwarfEleriumReactor.addResourceConsumption(state.resources.Elerium, 0.05);
+        state.spaceBuildings.DwarfEleriumReactor.addResourceConsumption(resources.elerium, 0.05);
         state.spaceBuildings.DwarfWorldController.addPowerConsumption(20);
 
+        // We aren't getting these ones yet...
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.money, 100000));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.steel, 25000));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.neutronium, 240));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.elerium, 10));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.nano_tube, 12000));
+
         resetBuildingState();
-
-        // Populate each buildings required basic resources
-        // Populate each resources building list
-        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
-            let building = state.buildingManager.priorityList[i];
-            
-            for (let j = 0; j < building.requiredResourcesToAction.length; j++) {
-                let resource = building.requiredResourcesToAction[j];
-
-                // If its just a basic resource then add it to the list
-                // But if it is a craftable resource then add the craftable resource's basic components to the list
-                if (!resource.isCraftable()) {
-                    building.requiredBasicResourcesToAction.push(resource);
-                    continue;
-                }
-
-                for (let k = 0; k < resource.requiredResourcesToAction.length; k++) {
-                    building.requiredBasicResourcesToAction.push(resource.requiredResourcesToAction[k]);
-                }
-            }
-
-            // For each resource build a list of buildings that resource is used to construct
-            for (let k = 0; k < building.requiredResourcesToAction.length; k++) {
-                if (building.requiredResourcesToAction[k].isCraftable()) {
-                    building.requiredResourcesToAction[k].usedInBuildings.push(building);
-                }
-            }
-            
-            for (let l = 0; l < building.requiredBasicResourcesToAction.length; l++) {
-                building.requiredBasicResourcesToAction[l].usedInBuildings.push(building);
-            }
-        }
 
         state.evolutionChallengeList.push(state.evolutions.Plasmid);
         state.evolutionChallengeList.push(state.evolutions.Trade);
@@ -3659,6 +3980,11 @@
         state.warManager.addToCampaignList("Siege", 500);
     }
 
+    function resetGeneralSettings() {
+        settings.generalMinimumTaxRate = 20;
+        settings.generalMaximumMorale = 200;
+    }
+
     function resetEvolutionSettings() {
         settings.userEvolutionTargetName = "auto";
     }
@@ -3672,41 +3998,41 @@
     function resetMarketState() {
         state.marketManager.clearPriorityList();
 
-        state.marketManager.addResourceToPriorityList(state.resources.Helium_3);
-        state.marketManager.addResourceToPriorityList(state.resources.Iridium);
-        state.marketManager.addResourceToPriorityList(state.resources.Polymer);
-        state.marketManager.addResourceToPriorityList(state.resources.Alloy);
-        state.marketManager.addResourceToPriorityList(state.resources.Titanium);
-        state.marketManager.addResourceToPriorityList(state.resources.Steel);
-        state.marketManager.addResourceToPriorityList(state.resources.Uranium);
-        state.marketManager.addResourceToPriorityList(state.resources.Oil);
-        state.marketManager.addResourceToPriorityList(state.resources.Coal);
-        state.marketManager.addResourceToPriorityList(state.resources.Cement);
-        state.marketManager.addResourceToPriorityList(state.resources.Aluminium);
-        state.marketManager.addResourceToPriorityList(state.resources.Iron);
-        state.marketManager.addResourceToPriorityList(state.resources.Copper);
-        state.marketManager.addResourceToPriorityList(state.resources.Furs);
-        state.marketManager.addResourceToPriorityList(state.resources.Stone);
-        state.marketManager.addResourceToPriorityList(state.resources.Lumber);
-        state.marketManager.addResourceToPriorityList(state.resources.Food);
+        state.marketManager.addResourceToPriorityList(resources.helium_3);
+        state.marketManager.addResourceToPriorityList(resources.iridium);
+        state.marketManager.addResourceToPriorityList(resources.polymer);
+        state.marketManager.addResourceToPriorityList(resources.alloy);
+        state.marketManager.addResourceToPriorityList(resources.titanium);
+        state.marketManager.addResourceToPriorityList(resources.steel);
+        state.marketManager.addResourceToPriorityList(resources.uranium);
+        state.marketManager.addResourceToPriorityList(resources.oil);
+        state.marketManager.addResourceToPriorityList(resources.coal);
+        state.marketManager.addResourceToPriorityList(resources.cement);
+        state.marketManager.addResourceToPriorityList(resources.aluminium);
+        state.marketManager.addResourceToPriorityList(resources.iron);
+        state.marketManager.addResourceToPriorityList(resources.copper);
+        state.marketManager.addResourceToPriorityList(resources.furs);
+        state.marketManager.addResourceToPriorityList(resources.stone);
+        state.marketManager.addResourceToPriorityList(resources.lumber);
+        state.marketManager.addResourceToPriorityList(resources.food);
 
-        state.resources.Food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 15);
-        state.resources.Furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 10);
-        state.resources.Coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Oil.updateMarketState(false, 0.5, false, 0.9, true, 5, false, 10);
-        state.resources.Uranium.updateMarketState(false, 0.5, false, 0.9, true, 2, false, 10);
-        state.resources.Steel.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        state.resources.Titanium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        state.resources.Alloy.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        state.resources.Polymer.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        state.resources.Iridium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        state.resources.Helium_3.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 15);
+        resources.furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 10);
+        resources.coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.oil.updateMarketState(false, 0.5, false, 0.9, true, 5, false, 10);
+        resources.uranium.updateMarketState(false, 0.5, false, 0.9, true, 2, false, 10);
+        resources.steel.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.titanium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.alloy.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.polymer.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.iridium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.helium_3.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
     }
 
     function resetMarketSettings() {
@@ -3716,35 +4042,35 @@
     function resetStorageState() {
         state.storageManager.clearPriorityList();
 
-        state.storageManager.addResourceToPriorityList(state.resources.Iridium);
-        state.storageManager.addResourceToPriorityList(state.resources.Polymer);
-        state.storageManager.addResourceToPriorityList(state.resources.Alloy);
-        state.storageManager.addResourceToPriorityList(state.resources.Titanium);
-        state.storageManager.addResourceToPriorityList(state.resources.Steel);
-        state.storageManager.addResourceToPriorityList(state.resources.Coal);
-        state.storageManager.addResourceToPriorityList(state.resources.Cement);
-        state.storageManager.addResourceToPriorityList(state.resources.Aluminium);
-        state.storageManager.addResourceToPriorityList(state.resources.Iron);
-        state.storageManager.addResourceToPriorityList(state.resources.Copper);
-        state.storageManager.addResourceToPriorityList(state.resources.Furs);
-        state.storageManager.addResourceToPriorityList(state.resources.Stone);
-        state.storageManager.addResourceToPriorityList(state.resources.Lumber);
-        state.storageManager.addResourceToPriorityList(state.resources.Food);
+        state.storageManager.addResourceToPriorityList(resources.iridium);
+        state.storageManager.addResourceToPriorityList(resources.polymer);
+        state.storageManager.addResourceToPriorityList(resources.alloy);
+        state.storageManager.addResourceToPriorityList(resources.titanium);
+        state.storageManager.addResourceToPriorityList(resources.steel);
+        state.storageManager.addResourceToPriorityList(resources.coal);
+        state.storageManager.addResourceToPriorityList(resources.cement);
+        state.storageManager.addResourceToPriorityList(resources.aluminium);
+        state.storageManager.addResourceToPriorityList(resources.iron);
+        state.storageManager.addResourceToPriorityList(resources.copper);
+        state.storageManager.addResourceToPriorityList(resources.furs);
+        state.storageManager.addResourceToPriorityList(resources.stone);
+        state.storageManager.addResourceToPriorityList(resources.lumber);
+        state.storageManager.addResourceToPriorityList(resources.food);
 
-        state.resources.Food.updateStorageState(true, 0, -1, -1);
-        state.resources.Lumber.updateStorageState(true, 0, -1, -1);
-        state.resources.Stone.updateStorageState(true, 0, -1, -1);
-        state.resources.Furs.updateStorageState(true, 0, -1, -1);
-        state.resources.Copper.updateStorageState(true, 0, -1, -1);
-        state.resources.Iron.updateStorageState(true, 0, -1, -1);
-        state.resources.Aluminium.updateStorageState(true, 1.5, -1, -1);
-        state.resources.Cement.updateStorageState(true, 0, -1, -1);
-        state.resources.Coal.updateStorageState(true, 0, -1, -1);
-        state.resources.Steel.updateStorageState(true, 2, -1, -1);
-        state.resources.Titanium.updateStorageState(true, 1, -1, -1);
-        state.resources.Alloy.updateStorageState(true, 1, -1, -1);
-        state.resources.Polymer.updateStorageState(true, 1, -1, -1);
-        state.resources.Iridium.updateStorageState(true, 1, -1, -1);
+        resources.food.updateStorageState(true, 0, -1, -1);
+        resources.lumber.updateStorageState(true, 1, -1, -1);
+        resources.stone.updateStorageState(true, 1, -1, -1);
+        resources.furs.updateStorageState(true, 1, -1, -1);
+        resources.copper.updateStorageState(true, 1, -1, -1);
+        resources.iron.updateStorageState(true, 1, -1, -1);
+        resources.aluminium.updateStorageState(true, 1, -1, -1);
+        resources.cement.updateStorageState(true, 1, -1, -1);
+        resources.coal.updateStorageState(true, 1, -1, -1);
+        resources.steel.updateStorageState(true, 2, -1, -1);
+        resources.titanium.updateStorageState(true, 1, -1, -1);
+        resources.alloy.updateStorageState(true, 1, -1, -1);
+        resources.polymer.updateStorageState(true, 1, -1, -1);
+        resources.iridium.updateStorageState(true, 1, -1, -1);
     }
 
     function resetStorageSettings() {
@@ -3782,9 +4108,9 @@
         state.jobs.WroughtIron.breakpointMaxs = [2, 4, -1];
         state.jobs.Mythril.breakpointMaxs = [2, 4, -1];
 
-        state.jobs.Entertainer.breakpointMaxs = [5, 10, -1];
         state.jobs.Scientist.breakpointMaxs = [3, 6, -1];
-        state.jobs.Professor.breakpointMaxs = [3, 6, -1];
+        state.jobs.Professor.breakpointMaxs = [6, 10, -1];
+        state.jobs.Entertainer.breakpointMaxs = [2, 5, -1];
         state.jobs.CementWorker.breakpointMaxs = [4, 8, -1]; // Cement works are based on cap and stone rate of change
         state.jobs.Miner.breakpointMaxs = [3, 5, -1];
         state.jobs.CoalMiner.breakpointMaxs = [2, 4, -1];
@@ -3836,11 +4162,11 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumContainer);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldController);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceBarracks);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFactory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
 
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Sawmill);
@@ -3860,7 +4186,7 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Farm);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SoulWell); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Silo);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shed); // Is this one special? Will have to think about how to do this one
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shed);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.LumberYard);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Foundry);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.OilDepot);
@@ -3871,7 +4197,7 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Smokehouse); // Cath only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wharf);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MetalRefinery);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlavePen);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlavePen); // Evil only
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
@@ -3906,6 +4232,12 @@
         }
     }
 
+    function resetProjectSettings() {
+        settings.arpaBuildIfStorageFull = true;
+        settings.arpaBuildIfStorageFullCraftableMin = 50000;
+        settings.arpaBuildIfStorageFullResourceMaxPercent = 5;
+    }
+
     function resetProjectState() {
         state.projectManager.clearPriorityList();
         state.projectManager.addProjectToPriorityList(state.projects.SuperCollider);
@@ -3920,10 +4252,12 @@
 
     initialiseState();
 
-    var settingsSections = ["evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
+    var settingsSections = ["generalSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed"];
     
     function updateStateFromSettings() {
+        updateStandAloneSettings();
+
         // Retrieve settings for battle
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             let campaign = state.warManager.campaignList[i];
@@ -3937,10 +4271,6 @@
         }
 
         // Retrieve settings for resources
-        if (!settings.hasOwnProperty("storageLimitPreMad")) {
-            settings.storageLimitPreMad = true;
-        }
-
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             let resource = state.marketManager.priorityList[i];
 
@@ -3993,12 +4323,12 @@
             else { settings[settingKey] = resource.storagePriority; }
 
             settingKey = 'res_crates_m_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoCratesMax = parseInt(settings[settingKey]); }
-            else { settings[settingKey] = resource.autoCratesMax; }
+            if (settings.hasOwnProperty(settingKey)) { resource._autoCratesMax = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource._autoCratesMax; }
 
             settingKey = 'res_containers_m_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoContainersMax = parseInt(settings[settingKey]); }
-            else { settings[settingKey] = resource.autoContainersMax; }
+            if (settings.hasOwnProperty(settingKey)) { resource._autoContainersMax = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource._autoContainersMax; }
         }
         state.marketManager.sortByPriority();
         state.storageManager.sortByPriority();
@@ -4096,6 +4426,7 @@
                 //launch_facility: false,
             };
         }
+
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
 
@@ -4121,41 +4452,13 @@
             }
         }
         state.projectManager.sortByPriority();
-
-        if (!settings.hasOwnProperty('userEvolutionTargetName')) {
-            settings.userEvolutionTargetName = "auto";
-        }
-        if (!settings.hasOwnProperty('userResearchTheology_1')) {
-            settings.userResearchTheology_1 = "auto";
-        }
-        if (!settings.hasOwnProperty('userResearchTheology_2')) {
-            settings.userResearchTheology_2 = "auto";
-        }
-        if (!settings.hasOwnProperty('userResearchUnification')) {
-            settings.userResearchUnification = "auto";
-        }
-        if (!settings.hasOwnProperty("tradeRouteMinimumMoneyPerSecond")) {
-            settings.tradeRouteMinimumMoneyPerSecond = 200;
-        }
-
-        if (!settings.hasOwnProperty("buildingEnabledAll")) {
-            settings.buildingEnabledAll = false;
-        }
-        if (!settings.hasOwnProperty("buildingStateAll")) {
-            settings.buildingStateAll = false;
-        }
-
-        // Collapse or expand settings sections
-        for (let i = 0; i < settingsSections.length; i++) {
-            if (!settings.hasOwnProperty(settingsSections[i])) {
-                settings[settingsSections[i]] = true;
-            }
-        }
     }
 
     updateStateFromSettings();
 
     function updateSettingsFromState() {
+        updateStandAloneSettings();
+
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             let campaign = state.warManager.campaignList[i];
             settings['btl_' + campaign.name] = campaign.rating;
@@ -4168,9 +4471,11 @@
             settings['bld_s_' + building.id] = building.autoStateEnabled;
             settings['bld_m_' + building.id] = building._autoMax;
         }
+        
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             settings['craft' + state.craftableResourceList[i].id] = state.craftableResourceList[i].autoCraftEnabled;
         }
+
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
             const job = state.jobManager.priorityList[i];
             settings['job_' + job._originalId] = job.autoJobEnabled;
@@ -4180,9 +4485,6 @@
             settings['job_b3_' + job._originalId] = job.getBreakpoint(3);
         }
 
-        if (!settings.hasOwnProperty("storageLimitPreMad")) {
-            settings.storageLimitPreMad = true;
-        }
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             let resource = state.marketManager.priorityList[i];
             settings['res_buy_p_' + resource.id] = resource.marketPriority;
@@ -4197,8 +4499,8 @@
             settings['res_storage' + resource.id] = resource.autoStorageEnabled;
             settings['res_storage_w_' + resource.id] = resource.autoStorageWeighting;
             settings['res_storage_p_' + resource.id] = resource.storagePriority;
-            settings['res_crates_m_' + resource.id] = resource.autoCratesMax;
-            settings['res_containers_m_' + resource.id] = resource.autoContainersMax;
+            settings['res_crates_m_' + resource.id] = resource._autoCratesMax;
+            settings['res_containers_m_' + resource.id] = resource._autoContainersMax;
         }
 
         if (!settings.hasOwnProperty('arpa')) {
@@ -4209,6 +4511,7 @@
                 //launch_facility: false,
             };
         }
+
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
             settings.arpa[project.id] = project.autoBuildEnabled;
@@ -4216,106 +4519,78 @@
             settings['arpa_m_' + project.id] = project._autoMax;
         }
 
-        if (!settings.hasOwnProperty('autoEvolution')) {
-            settings.autoEvolution = defaultAllOptionsEnabled;
+        localStorage.setItem('settings', JSON.stringify(settings));
+    }
+
+    updateSettingsFromState();
+
+    /**
+     * @param {string} settingName
+     * @param {any} defaultValue
+     */
+    function addSetting(settingName, defaultValue) {
+        if (!settings.hasOwnProperty(settingName)) {
+            settings[settingName] = defaultValue;
         }
-        if (!settings.hasOwnProperty('autoAchievements')) {
-            settings.autoAchievements = false;
-        }
-        if (!settings.hasOwnProperty('autoChallenge')) {
-            settings.autoChallenge = false;
-        }
-        if (!settings.hasOwnProperty('autoMarket')) {
-            settings.autoMarket = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoFight')) {
-            settings.autoFight = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoCraft')) {
-            settings.autoCraft = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoARPA')) {
-            settings.autoARPA = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoBuild')) {
-            settings.autoBuild = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoResearch')) {
-            settings.autoResearch = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoJobs')) {
-            settings.autoJobs = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoCraftsmen')) {
-            settings.autoCraftsmen = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoPower')) {
-            settings.autoPower = defaultAllOptionsEnabled;
-        }
+    }
+
+    function updateStandAloneSettings() {
+        settings['scriptName'] = "TMVictor";
+
+        addSetting("storageLimitPreMad", true);
+        addSetting("arpaBuildIfStorageFull", true);
+        addSetting("arpaBuildIfStorageFullCraftableMin", 50000);
+        addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
+
+        addSetting("autoEvolution", defaultAllOptionsEnabled);
+        addSetting("autoAchievements", false);
+        addSetting("autoChallenge", false);
+        addSetting("autoMarket", defaultAllOptionsEnabled);
+        addSetting("autoFight", defaultAllOptionsEnabled);
+        addSetting("autoCraft", defaultAllOptionsEnabled);
+        addSetting("autoARPA", defaultAllOptionsEnabled);
+        addSetting("autoBuild", defaultAllOptionsEnabled);
+        addSetting("autoResearch", defaultAllOptionsEnabled);
+        addSetting("autoJobs", defaultAllOptionsEnabled);
+        addSetting("autoTax", defaultAllOptionsEnabled);
+        addSetting("autoCraftsmen", defaultAllOptionsEnabled);
+        addSetting("autoPower", defaultAllOptionsEnabled);
+
         // Move autoTradeSpecialResources to autoStorage and the delete the setting as it has been moved to autoMarket
         if (settings.hasOwnProperty('autoTradeSpecialResources')) {
             settings.autoStorage = settings.autoTradeSpecialResources;
             delete settings.autoTradeSpecialResources;
         }
-        if (!settings.hasOwnProperty('autoStorage')) {
-            settings.autoStorage = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoSmelter')) {
-            settings.autoSmelter = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoFactory')) {
-            settings.autoFactory = defaultAllOptionsEnabled;
-        }
-        if (!settings.hasOwnProperty('autoMAD')) {
-            settings.autoMAD = false;
-        }
-        if (!settings.hasOwnProperty('autoSpace')) {
-            settings.autoSpace = false; // Space currently equals less plasmids so off by default. Also kind of conflicts with MAD don't you think?
-        }
-        if (!settings.hasOwnProperty('autoSeeder')) {
-            settings.autoSeeder = false;
-        }
-        if (!settings.hasOwnProperty('autoAssembleGene')) {
-            settings.autoAssembleGene = false;
-        }
-        if (!settings.hasOwnProperty('minimumMoney')) {
-            settings.minimumMoney = 0;
-        }
 
-        if (!settings.hasOwnProperty('userEvolutionTargetName')) {
-            settings.userEvolutionTargetName = "auto";
-        }
-        if (!settings.hasOwnProperty('userResearchTheology_1')) {
-            settings.userResearchTheology_1 = "auto";
-        }
-        if (!settings.hasOwnProperty('userResearchTheology_2')) {
-            settings.userResearchTheology_2 = "auto";
-        }
-        if (!settings.hasOwnProperty('userResearchUnification')) {
-            settings.userResearchUnification = "auto";
-        }
-        if (!settings.hasOwnProperty("tradeRouteMinimumMoneyPerSecond")) {
-            settings.tradeRouteMinimumMoneyPerSecond = 200;
-        }
+        addSetting("buildingStateAll", defaultAllOptionsEnabled);
+        addSetting("buildingStateAll", defaultAllOptionsEnabled);
+        addSetting("autoStorage", defaultAllOptionsEnabled);
+        addSetting("autoSmelter", defaultAllOptionsEnabled);
+        addSetting("autoFactory", defaultAllOptionsEnabled);
+        addSetting("autoMAD", false);
+        addSetting("autoSpace", false); // Space currently equals less plasmids so off by default. Also kind of conflicts with MAD don't you think?
+        addSetting("autoSeeder", false);
+        addSetting("autoAssembleGene", false);
 
-        if (!settings.hasOwnProperty("buildingEnabledAll")) {
-            settings.buildingEnabledAll = false;
-        }
-        if (!settings.hasOwnProperty("buildingStateAll")) {
-            settings.buildingStateAll = false;
-        }
+        addSetting("minimumMoney", 0);
+        addSetting("minimumMoneyPercentage", 0);
+        addSetting("tradeRouteMinimumMoneyPerSecond", 300);
+        addSetting("generalMinimumTaxRate", 20);
+        addSetting("generalMaximumMorale", 200);
+
+        addSetting("userEvolutionTargetName", "auto");
+        addSetting("userResearchTheology_1", "auto");
+        addSetting("userResearchTheology_2", "auto");
+        addSetting("userResearchUnification", "auto");
+        
+        addSetting("buildingEnabledAll", false);
+        addSetting("buildingStateAll", false);
 
         // Collapse or expand settings sections
         for (let i = 0; i < settingsSections.length; i++) {
-            if (!settings.hasOwnProperty(settingsSections[i])) {
-                settings[settingsSections[i]] = true;
-            }
+            addSetting(settingsSections[i], true);
         }
-
-        localStorage.setItem('settings', JSON.stringify(settings));
     }
-
-    updateSettingsFromState();
 
     // #endregion State and Initialisation
 
@@ -4469,7 +4744,7 @@
     //#region Auto Crafting
 
     function autoCraft() {
-        if (!state.resources.Population.isUnlocked()) {
+        if (!resources.population.isUnlocked()) {
             return;
         }
         
@@ -4484,18 +4759,18 @@
 
                 let tryCraft = true;
 
-                if (craftable === state.resources.Mythril) {
-                    if (state.resources.Mythril.currentQuantity < 1000) {
+                if (craftable === resources.mythril) {
+                    if (resources.mythril.currentQuantity < 1000) {
                         tryCraft = true;
-                    } else if (state.resources.Mythril.currentQuantity > 10000 || state.resources.Iridium.currentQuantity < 6000) {
+                    } else if (resources.mythril.currentQuantity > 10000 || resources.iridium.currentQuantity < 10000) {
                         tryCraft = false;
                     }
                 }
 
                 //console.log("resource: " + craftable.id + ", length: " + craftable.requiredResources.length);
-                for (let i = 0; i < craftable.requiredResourcesToAction.length; i++) {
+                for (let i = 0; i < craftable.resourceRequirements.length; i++) {
                     //console.log("resource: " + craftable.id + " required resource: " + craftable.requiredResources[i].id);
-                    if (craftable.requiredResourcesToAction[i].storageRatio < craftable.craftRatio) {
+                    if (craftable.resourceRequirements[i].resource.storageRatio < craftable.craftRatio) {
                         tryCraft = false;
                     }
                 }
@@ -4512,7 +4787,7 @@
      */
     function updateCraftRatio(craftable) {
         // We want to get to a healthy number of buildings that require craftable materials so leaving crafting ratio low early
-        if (craftable === state.resources.Plywood) {
+        if (craftable === resources.plywood) {
             craftable.craftRatio = 0.9;
             
             if (state.cityBuildings.Library.count < 20 || state.cityBuildings.Cottage.count < 20) {
@@ -4520,7 +4795,7 @@
             }
         }
         
-        if (craftable === state.resources.Brick) {
+        if (craftable === resources.brick) {
             craftable.craftRatio = 0.9;
             
             if (state.cityBuildings.Library.count < 20 || state.cityBuildings.Cottage.count < 20) {
@@ -4528,7 +4803,7 @@
             }
         }
         
-        if (craftable === state.resources.WroughtIron) {
+        if (craftable === resources.wrought_iron) {
             craftable.craftRatio = 0.9;
             
             if (state.cityBuildings.Cottage.count < 20) {
@@ -4536,7 +4811,7 @@
             }
         }
         
-        if (craftable === state.resources.SheetMetal) {
+        if (craftable === resources.sheet_metal) {
             craftable.craftRatio = 0.9;
             
             if (state.cityBuildings.Wardenclyffe.count < 20) {
@@ -4625,15 +4900,15 @@
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs.push(availableEmployees);
                 log("autoJobs", "Pushing all farmers")
-            } else if (state.resources.Food.storageRatio < 0.2 && state.resources.Food.rateOfChange < 0) {
+            } else if (resources.food.storageRatio < 0.2 && resources.food.rateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to add one per loop until positive
                 requiredJobs.push(Math.min(state.jobs.Farmer.current + 1, availableEmployees));
                 log("autoJobs", "Adding one farmer")
-            } else if (state.resources.Food.storageRatio > 0.8 && state.resources.Food.rateOfChange > 0) {
+            } else if (resources.food.storageRatio > 0.8 && resources.food.rateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
                 log("autoJobs", "Removing one farmer")
-            } else if (isHunterRace() && state.resources.Food.storageRatio > 0.3 && state.resources.Food.rateOfChange > state.resources.Population.currentQuantity / 10) {
+            } else if (isHunterRace() && resources.food.storageRatio > 0.3 && resources.food.rateOfChange > resources.population.currentQuantity / 10) {
                 // Carnivore race. Put We've got some food so put them to work!
                 requiredJobs.push(Math.max(state.jobs.Farmer.current - 1, 0));
                 log("autoJobs", "Removing one farmer - Carnivore")
@@ -4643,9 +4918,9 @@
                 log("autoJobs", "Leaving current farmers")
             }
 
-            log("autoJobs", "currentQuantity " + state.resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0))
+            log("autoJobs", "currentQuantity " + resources.population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0))
             if (isEvilRace()) {
-                if (state.resources.Population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1)) {
+                if (resources.population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
                     requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(1);
                 } else if (requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(0)) {
@@ -4677,7 +4952,7 @@
                 let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
-                if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && state.resources.Money.storageRatio > 0.98) {
+                if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.money.storageRatio > 0.98) {
                     jobsToAssign = 0;
                 }
 
@@ -4686,26 +4961,26 @@
                 // Once we've research shotgun sequencing we get boost and soon autoassemble genes so stop unassigning
                 if (!isRaceTraitIntelligent(getRaceId()) && !isResearchUnlocked("shotgun_sequencing")) {
                     // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
-                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && state.resources.Knowledge.storageRatio > 0.98) {
+                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && resources.knowledge.storageRatio > 0.98) {
                         jobsToAssign = 0;
                     }
 
                     // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our knowledge cap
-                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && state.resources.Knowledge.storageRatio > 0.98) {
+                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && resources.knowledge.storageRatio > 0.98) {
                         jobsToAssign = 0;
                     }
                 }
 
                 if (job === state.jobs.CementWorker) {
                     let currentCementWorkers = job.current;
-                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", state.resources.Stone.rateOfChange " + state.resources.Stone.rateOfChange);
+                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.stone.rateOfChange);
 
                     if (jobsToAssign < currentCementWorkers) {
                         // great, remove workers as we want less than we have
-                    } else if (jobsToAssign >= currentCementWorkers && state.resources.Stone.rateOfChange < 5) {
+                    } else if (jobsToAssign >= currentCementWorkers && resources.stone.rateOfChange < 5) {
                         // If we're making less than 5 stone then lets remove a cement worker even if we want more
                         jobsToAssign = job.current - 1;
-                    } else if (jobsToAssign > job.current && state.resources.Stone.rateOfChange > 8) {
+                    } else if (jobsToAssign > job.current && resources.stone.rateOfChange > 8) {
                         // If we want more cement workers and we're making more than 8 stone then add a cement worker
                         jobsToAssign = job.current + 1;
                     } else {
@@ -4756,7 +5031,7 @@
                     jobAdjustments[quarryWorkerIndex] = 0 - state.jobs.QuarryWorker.current;
 
                     // If we've got over 100 population then keep lumberjacks 5 more than quarry workers (due to sawmills providing bonus)
-                    if (state.resources.Population.currentQuantity >= 100) {
+                    if (resources.population.currentQuantity >= 100) {
                         lumberjacks = Math.min(availableEmployees, 4);
                         requiredJobs[lumberjackIndex] += lumberjacks;
                         jobAdjustments[lumberjackIndex] += lumberjacks;
@@ -4863,6 +5138,45 @@
 
     //#endregion Auto Jobs
     
+    //#region Auto Tax
+
+    function autoTax() {
+        let currentTaxRateNode = document.querySelector("#tax_rates .current");
+        if (currentTaxRateNode === null) return;
+
+        let currentMoraleNode = document.querySelector("#morale");
+        if (currentMoraleNode === null) return;
+
+        let raiseTaxNode = document.querySelector("#tax_rates .add");
+        let lowerTaxNode = document.querySelector("#tax_rates .sub");
+
+        let currentTaxRate = parseInt(currentTaxRateNode.textContent);
+        let currentMorale = parseInt(currentMoraleNode.firstElementChild.textContent);
+
+        let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.count + (state.projects.Monument.level * 2);
+        if (currentTaxRate < 20) {
+            maxMorale += 10 - Math.floor(currentTaxRate / 2);
+        }
+
+        maxMorale = Math.min(maxMorale, settings.generalMaximumMorale);
+
+        if (currentTaxRate < 50 &&
+                ((currentTaxRate < settings.generalMinimumTaxRate && resources.money.storageRatio < 0.98)
+                || (currentMorale >= 115 && currentMorale >= maxMorale))) {
+            // @ts-ignore
+            raiseTaxNode.click();
+        }
+
+        if (currentTaxRate > 0
+                && (currentTaxRate > settings.generalMinimumTaxRate || resources.money.storageRatio >= 0.98)
+                && (currentMorale < maxMorale - 1 || currentMorale < 115)) {
+            // @ts-ignore
+            lowerTaxNode.click();
+        }
+    }
+
+    //#endregion Auto Tax
+
     //#region Auto Smelter
 
     function autoSmelter() {
@@ -4871,103 +5185,97 @@
             return;
         }
 
-        // If the window is open then update our options
-        if (state.cityBuildings.Smelter.isOptionsOpen()) {
-            state.cityBuildings.Smelter.updateOptions();
-        }
-
         // We have a smelter but not the technology to smelt steel so there is nothing to automate
         if (!state.cityBuildings.Smelter.isSmeltingUnlocked(SmelterSmeltingTypes.Steel)) {
             return;
         }
-
-        // User opened the modal - don't interfere with what they're doing
-        if (state.windowManager.isOpen() && !state.windowManager.openedByScript) {
-            return;
-        }
         
-        // If there is already another modal window open then we can't also open the smelters modal window
-        if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== "Smelter") {
+        // If there is already a modal window open then leave it
+        if (state.windowManager.isOpen()) {
             return;
         }
 
-        // Check our cached numbers - if there is nothing to adjust then don't
-        // If we don't have any cached numbers then continue to updating our numbers
+        let smelterOptions = null;
+
         if (state.cityBuildings.Smelter.isUpdated) {
-            let smelterIronCount = state.cityBuildings.Smelter.smeltingCount(SmelterSmeltingTypes.Iron);
-            let smelterSteelCount = state.cityBuildings.Smelter.smeltingCount(SmelterSmeltingTypes.Steel);
+            // We've already got our cached values so just check if there is any need to change our ratios
+            smelterOptions = determineSmelterOptions();
 
-            // The number of buildings hasn't changed so check if we need to adjust. Otherwise continue to updating our numbers
-            if (state.cityBuildings.Smelter.count === smelterIronCount + smelterSteelCount) {
-                let maxAllowedSteel = state.cityBuildings.Smelter.count;
-                let currentAvaiableRateOfChange = [];
-                let steelSmeltingConsumption = state.cityBuildings.Smelter.smeltingConsumption[SmelterSmeltingTypes.Steel];
-
-                // We only care about steel. It isn't worth doing a full generic calculation here
-                // Just assume that smelters will always be fueled so Iron smelting is unlimited
-                // We want to work out the maximum steel smelters that we can have based on our resource consumption
-                for (let i = 0; i < steelSmeltingConsumption.length; i++) {
-                    let productionCost = steelSmeltingConsumption[i];
-                    currentAvaiableRateOfChange.push(productionCost.resource.rateOfChange);
-                }
-
-                for (let i = 0; i < steelSmeltingConsumption.length; i++) {
-                    let productionCost = steelSmeltingConsumption[i];
-                    currentAvaiableRateOfChange[i] += productionCost.quantity * smelterSteelCount;
-                    let maxAllowedForProductionCost = Math.floor((currentAvaiableRateOfChange[i] - productionCost.minRateOfChange) / productionCost.quantity);
-                    maxAllowedSteel = Math.min(maxAllowedSteel, maxAllowedForProductionCost);
-
-                    if (maxAllowedForProductionCost < maxAllowedSteel) {
-                        maxAllowedSteel = maxAllowedForProductionCost;
-                    }
-                }
-
-                if (maxAllowedSteel < 0) { maxAllowedSteel = 0; }
-
-                // Now figure out how many steel smelters we want regardless of resource consumption
-                let desiredSteelCount = state.cityBuildings.Smelter.count;
-
-                if (state.cityBuildings.Cottage.count < 15) {
-                    // half to steel with any remainder going to steel
-                    desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.count / 2);
-                } else if (state.cityBuildings.CoalMine.count < 10) {
-                    // two thirds to steel with any remainder going to steel
-                    desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.count * 2 / 3);
-                } else if (smelterIronCount >= 2) {
-                    desiredSteelCount = state.cityBuildings.Smelter.count - 2;
-                }
-
-                // We'll take the minium of our desired and maximum allowed steel
-                if (desiredSteelCount > maxAllowedSteel) { desiredSteelCount = maxAllowedSteel; }
-                let adjustmentToSteelCount = desiredSteelCount - smelterSteelCount;
-
-                // Only bother adjusting if it is more than 1 off, otherwise don't open the window
-                if (!state.windowManager.isOpen()) {
-                    if (adjustmentToSteelCount >= -1 && adjustmentToSteelCount <= 1) {
-                        return;
-                    }
-                } else {
-                    // Window is open so perform adjustments
-                    if (adjustmentToSteelCount > 0) {
-                        state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Steel, adjustmentToSteelCount);
-                    }
-
-                    if (adjustmentToSteelCount < 0) {
-                        state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Iron, adjustmentToSteelCount * -1);
-                    }
-
-                    state.windowManager.closeModalWindow();
-                    return;
-                }
+            if (smelterOptions.steelAdjustment >= -1 && smelterOptions.steelAdjustment <= 1) {
+                return;
             }
         }
 
-        // We want to adjust the smelters iron / steel production so open the smelter options, update our cached numbers and adjust if required
-        // Open the modal in the first loop
-        // Update our numbers and perform the adjustment and close the modal in the second loop
-        if (!state.windowManager.isOpen() && state.cityBuildings.Smelter.hasOptions()) {
-            state.cityBuildings.Smelter.openOptions();
-            return
+        // Either there is something to adjust or we don't have any cached values. Either way we need to open the window.
+        state.cityBuildings.Smelter.openOptions(smelterCallback, smelterOptions);
+    }
+
+    function determineSmelterOptions() {
+        let smelterIronCount = state.cityBuildings.Smelter.smeltingCount(SmelterSmeltingTypes.Iron);
+        let smelterSteelCount = state.cityBuildings.Smelter.smeltingCount(SmelterSmeltingTypes.Steel);
+
+        // The number of buildings hasn't changed so check if we need to adjust. Otherwise continue to updating our numbers
+        let maxAllowedSteel = state.cityBuildings.Smelter.count;
+        let currentAvaiableRateOfChange = [];
+        let steelSmeltingConsumption = state.cityBuildings.Smelter.smeltingConsumption[SmelterSmeltingTypes.Steel];
+
+        // We only care about steel. It isn't worth doing a full generic calculation here
+        // Just assume that smelters will always be fueled so Iron smelting is unlimited
+        // We want to work out the maximum steel smelters that we can have based on our resource consumption
+        for (let i = 0; i < steelSmeltingConsumption.length; i++) {
+            let productionCost = steelSmeltingConsumption[i];
+            currentAvaiableRateOfChange.push(productionCost.resource.rateOfChange);
+        }
+
+        for (let i = 0; i < steelSmeltingConsumption.length; i++) {
+            let productionCost = steelSmeltingConsumption[i];
+            currentAvaiableRateOfChange[i] += productionCost.quantity * smelterSteelCount;
+            let maxAllowedForProductionCost = Math.floor((currentAvaiableRateOfChange[i] - productionCost.minRateOfChange) / productionCost.quantity);
+            maxAllowedSteel = Math.min(maxAllowedSteel, maxAllowedForProductionCost);
+
+            if (maxAllowedForProductionCost < maxAllowedSteel) {
+                maxAllowedSteel = maxAllowedForProductionCost;
+            }
+        }
+
+        if (maxAllowedSteel < 0) { maxAllowedSteel = 0; }
+
+        // Now figure out how many steel smelters we want regardless of resource consumption
+        let desiredSteelCount = state.cityBuildings.Smelter.count;
+
+        if (state.cityBuildings.Cottage.count < 15) {
+            // half to steel with any remainder going to steel
+            desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.count / 2);
+        } else if (state.cityBuildings.CoalMine.count < 10) {
+            // two thirds to steel with any remainder going to steel
+            desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.count * 2 / 3);
+        } else if (smelterIronCount >= 2) {
+            desiredSteelCount = state.cityBuildings.Smelter.count - 2;
+        }
+
+        // We'll take the minium of our desired and maximum allowed steel
+        if (desiredSteelCount > maxAllowedSteel) { desiredSteelCount = maxAllowedSteel; }
+        let adjustmentToSteelCount = desiredSteelCount - smelterSteelCount;
+
+        return { steelAdjustment: adjustmentToSteelCount };
+    }
+
+    /**
+     * @param {{ steelAdjustment: number; }} smelterOptions
+     */
+    function smelterCallback(smelterOptions) {
+        if (smelterOptions === null || !state.cityBuildings.Smelter.isUpdated) {
+            state.cityBuildings.Smelter.updateCachedOptions();
+            smelterOptions = determineSmelterOptions();
+        }
+
+        // Window is open so perform adjustments if needed
+        if (smelterOptions.steelAdjustment > 0) {
+            state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Steel, smelterOptions.steelAdjustment);
+        }
+
+        if (smelterOptions.steelAdjustment < 0) {
+            state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Iron, smelterOptions.steelAdjustment * -1);
         }
     }
 
@@ -4981,76 +5289,74 @@
             return;
         }
 
-        // If the window is open then update our options
-        if (state.cityBuildings.Factory.isOptionsOpen()) {
-            state.cityBuildings.Factory.updateOptions();
+        // If there is already a modal window open then leave it
+        if (state.windowManager.isOpen()) {
+            return;
         }
 
-        // User opened the modal - don't interfere with what they're doing
-        if (state.windowManager.isOpen() && !state.windowManager.openedByScript) {
-            return;
-        }
-        
-        // Only one modal window can be open at a time
-        // If there is already another modal window open then we can't also open the factories modal window
-        if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== "Factory") {
-            return;
-        }
+        let factoryOptions = null;
 
         if (state.cityBuildings.Factory.isUpdated) {
-            let remainingOperatingFactories = { quantity: state.cityBuildings.Factory.maxOperating, };
-            let productionChanges = [];
-    
-            // Produce as many nano-tubes as is reasonable, then alloy, then polymer and finally luxury goods
-            // Realistically it will only get through to nano tubes and alloy
-            updateProductionChange(productionChanges, remainingOperatingFactories, state.resources.NanoTube, FactoryGoods.NanoTube);
-            updateProductionChange(productionChanges, remainingOperatingFactories, state.resources.Alloy, FactoryGoods.Alloy);
-            updateProductionChange(productionChanges, remainingOperatingFactories, state.resources.Polymer, FactoryGoods.Polymer);
-            updateProductionChange(productionChanges, remainingOperatingFactories, state.resources.LuxuryGoods, FactoryGoods.LuxuryGoods);
-    
-            if (!state.windowManager.isOpen()) {
-                // If there aren't any changes required then don't open the modal window
-                if (productionChanges.length === 0) {
-                    return;
-                }
+            // We've already got our cached values so just check if there is any need to change our ratios
+            factoryOptions = determineFactoryOptions();
 
-                let minChange = 0;
-                let maxChange = 0;
+            if (factoryOptions.productionChanges.length === 0) {
+                return;
+            }
 
-                for (let i = 0; i < productionChanges.length; i++) {
-                    let productionChange = productionChanges[i];
-                    minChange = Math.min(minChange, productionChange.quantity);
-                    maxChange = Math.max(maxChange, productionChange.quantity);
-                }
+            let minChange = 0;
+            let maxChange = 0;
 
-                // Only bother adjusting if it is more than 1 off, otherise don't open the window
-                if (minChange >= -1 && maxChange <= 1) {
-                    return;
-                }
-            } else {
-                // First decrease any production so that we have room to increase others
-                for (let i = 0; i < productionChanges.length; i++) {
-                    let productionChange = productionChanges[i];
-                    if (productionChange.quantity < 0) { state.cityBuildings.Factory.decreaseProduction(productionChange.factoryGoods, productionChange.quantity * -1) }
-                }
-        
-                // Increase any production required (if they are 0 then don't do anything with them)
-                for (let i = 0; i < productionChanges.length; i++) {
-                    let productionChange = productionChanges[i];
-                    if (productionChange.quantity > 0) { state.cityBuildings.Factory.increaseProduction(productionChange.factoryGoods, productionChange.quantity) }
-                }
+            for (let i = 0; i < factoryOptions.productionChanges.length; i++) {
+                let productionChange = factoryOptions.productionChanges[i];
+                minChange = Math.min(minChange, productionChange.quantity);
+                maxChange = Math.max(maxChange, productionChange.quantity);
+            }
 
-                state.windowManager.closeModalWindow();
+            // Only bother adjusting if it is more than 1 off, otherise don't open the window
+            if (minChange >= -1 && maxChange <= 1) {
                 return;
             }
         }
 
-        // We want to adjust the factory production so open the factory options and adjust
-        // Open the modal in the first loop
-        // Perform the adjustment and close the modal in the second loop
-        if (!state.windowManager.isOpen() && state.cityBuildings.Factory.hasOptions()) {
-            state.cityBuildings.Factory.openOptions();
-            return;
+        // Either there is something to adjust or we don't have any cached values. Either way we need to open the window.
+        state.cityBuildings.Factory.openOptions(factoryCallback, factoryOptions);
+    }
+
+    function determineFactoryOptions() {
+        let remainingOperatingFactories = { quantity: state.cityBuildings.Factory.maxOperating, };
+        let productionChanges = [];
+
+        // Produce as many nano-tubes as is reasonable, then alloy, then polymer and finally luxury goods
+        // Realistically it will only get through to nano tubes and alloy
+        updateProductionChange(productionChanges, remainingOperatingFactories, resources.nano_tube, FactoryGoods.NanoTube);
+        updateProductionChange(productionChanges, remainingOperatingFactories, resources.alloy, FactoryGoods.Alloy);
+        updateProductionChange(productionChanges, remainingOperatingFactories, resources.polymer, FactoryGoods.Polymer);
+        updateProductionChange(productionChanges, remainingOperatingFactories, resources.luxury_goods, FactoryGoods.LuxuryGoods);
+
+        return { productionChanges: productionChanges };
+    }
+
+    /**
+     * @param {{ productionChanges: { factoryGoods: number, quantity: number }[] }} factoryOptions
+     */
+    function factoryCallback(factoryOptions) {
+        if (factoryOptions === null || !state.cityBuildings.Factory.isUpdated) {
+            state.cityBuildings.Factory.updateCachedOptions();
+            factoryOptions = determineFactoryOptions();
+        }
+
+        // Window is open so perform adjustments if needed
+        // First decrease any production so that we have room to increase others
+        for (let i = 0; i < factoryOptions.productionChanges.length; i++) {
+            let productionChange = factoryOptions.productionChanges[i];
+            if (productionChange.quantity < 0) { state.cityBuildings.Factory.decreaseProduction(productionChange.factoryGoods, productionChange.quantity * -1) }
+        }
+
+        // Increase any production required (if they are 0 then don't do anything with them)
+        for (let i = 0; i < factoryOptions.productionChanges.length; i++) {
+            let productionChange = factoryOptions.productionChanges[i];
+            if (productionChange.quantity > 0) { state.cityBuildings.Factory.increaseProduction(productionChange.factoryGoods, productionChange.quantity) }
         }
     }
 
@@ -5081,12 +5387,28 @@
             }
         }
 
-        if (resource.storageRatio > 0.98) {
+        if (resource !== resources.nano_tube && resource.storageRatio > 0.98) {
             minimumAllowedProduction = 0;
         }
 
-        if (resource === state.resources.NanoTube && state.resources.NanoTube.currentQuantity > 250000) {
-            minimumAllowedProduction = 0;
+        if (resource === resources.nano_tube) {
+            if (resource.storageRatio === 1) {
+                minimumAllowedProduction = 0;
+            } else if (resources.neutronium.storageRatio < 0.98) {
+                if (state.spaceBuildings.GasSpaceDock.count === 0 && resources.nano_tube.currentQuantity > 250000) {
+                    minimumAllowedProduction = 0;
+                } else if (!isResearchUnlocked("quantum_computing") && resources.nano_tube.currentQuantity > 100000) { // Research costs 100000
+                    minimumAllowedProduction = 0;
+                } else if (state.spaceBuildings.GasSpaceDock.count > 0) {
+                    let requiredNanoTubes = state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.find(resource => resource.resource === resources.nano_tube);
+
+                    if (requiredNanoTubes !== undefined) {
+                        if (resources.nano_tube.currentQuantity > requiredNanoTubes.quantity * 1.1) {
+                            minimumAllowedProduction = 0;
+                        }
+                    }
+                }
+            }
         }
         
         let differenceInProduction = minimumAllowedProduction - state.cityBuildings.Factory.currentProduction(factoryGoods);
@@ -5107,7 +5429,7 @@
             return;
         }
 
-        if (!state.resources.Population.isUnlocked()) {
+        if (!resources.population.isUnlocked()) {
             return;
         }
         
@@ -5126,7 +5448,7 @@
             return; // Give the UI time to update
         }
         
-        if (state.warManager.currentSoldiers === state.warManager.maxSoldiers && state.warManager.woundedSoldiers === 0) {
+        if (state.warManager.currentSoldiers === state.warManager.maxSoldiers) {
             // Push... the button
             console.log("Soft resetting game with MAD");
             state.goal = "GameOverMan";
@@ -5186,7 +5508,7 @@
 
         for (let i = 0; i < buttons.length; i++) {
             const button = buttons[i];
-            if (button.textContent === "Assemble Gene" && state.resources.Knowledge.currentQuantity === state.resources.Knowledge.maxQuantity) {
+            if (button.textContent === "Assemble Gene" && resources.knowledge.currentQuantity === resources.knowledge.maxQuantity) {
                 // @ts-ignore
                 button.click();
             }
@@ -5204,7 +5526,7 @@
     function autoMarket(bulkSell, ignoreSellRatio) {
         adjustTradeRoutes();
 
-        let currentMoney = state.resources.Money.currentQuantity;
+        let currentMoney = resources.money.currentQuantity;
         let tradeQuantity = 1000;
 
         // Market has not been unlocked in game yet (tech not researched)
@@ -5225,7 +5547,7 @@
             let resource = state.marketManager.priorityList[i];
             let currentResourceQuantity = resource.currentQuantity;
 
-            if (!resource.isTradable() || !resource.isUnlocked() || !state.marketManager.isBuySellUnlocked(resource)) {
+            if (!resource.isTradable || !resource.isUnlocked() || !state.marketManager.isBuySellUnlocked(resource)) {
                 continue;
             }
             
@@ -5237,7 +5559,7 @@
 
                 while(true) {
                     // break if not enough resource or not enough money storage
-                    if (currentMoney + sellValue >= state.resources.Money.maxQuantity || currentResourceQuantity - tradeQuantity <= 0 || counter++ > 10) {
+                    if (currentMoney + sellValue >= resources.money.maxQuantity || currentResourceQuantity - tradeQuantity <= 0 || counter++ > 10) {
                         break;
                     }
 
@@ -5259,7 +5581,7 @@
 
                 while(true) {
                     // break if not enough money or not enough resource storage
-                    if (currentMoney - buyValue <= settings.minimumMoney || resource.currentQuantity + tradeQuantity > resource.maxQuantity - 3 * tradeQuantity || counter++ > 2) {
+                    if (currentMoney - buyValue <= state.minimumMoneyAllowed || resource.currentQuantity + tradeQuantity > resource.maxQuantity - 3 * tradeQuantity || counter++ > 2) {
                         break;
                     }
 
@@ -5289,7 +5611,7 @@
     
     function autoGatherResources() {
         // Don't spam click once we've got a bit of population going
-        if (state.resources.Population.currentQuantity > 15) {
+        if (resources.population.currentQuantity > 15) {
             return;
         }
         
@@ -5348,8 +5670,18 @@
             return;
         }
 
+        let canBuildShipSegment = true;
+
+        for (let i = 0; i < state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.length; i++) {
+            const requirement = state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements[i];
+            
+            if (requirement.resource.currentQuantity < requirement.quantity) {
+                canBuildShipSegment = false;
+            }
+        }
+
         // This one involves opening options so don't do it too often
-        if (!spaceDock.isOptionsOpen() && state.loopCounter % 500 !== 0 && spaceDock.isOptionsUpdated()) {
+        if (spaceDock.isOptionsUpdated() && !spaceDock.isOptionsOpen() && !canBuildShipSegment && state.loopCounter % 500 !== 0) {
             return;
         }
 
@@ -5440,7 +5772,7 @@
 
             // We specifically want to build a target building. Don't build anything else that uses the same resources
             if (targetBuilding !== null) {
-                if (targetBuilding.requiredBasicResourcesToAction.some(r => building.requiredBasicResourcesToAction.includes(r))) {
+                if (targetBuilding.resourceRequirements.some(r => building.resourceRequirements.includes(r))) {
                     log("autoBuild", building.id + " DOES conflict with target building " + targetBuilding.id);
                     continue;
                 } else {
@@ -5450,34 +5782,34 @@
 
             // Only build the following buildings if we have enough production to cover what they use
             if (building === state.cityBuildings.Smelter && getRaceId() !== state.races.Entish.id) {
-                buildIfEnoughProduction(building, state.resources.Lumber, 12);
+                buildIfEnoughProduction(building, resources.lumber, 12);
                 continue;
             }
 
             if (building === state.cityBuildings.CoalPower) {
                 // I'd like to check if we are in a "no plasmids" run but not sure how... so check manual crafting instead
                 if (!isLowPlasmidCount()) {
-                    buildIfEnoughProduction(building, state.resources.Coal, 2.35);
+                    buildIfEnoughProduction(building, resources.coal, 2.35);
                 } else {
-                    buildIfEnoughProduction(building, state.resources.Coal, 0.5); // If we don't have plasmids then have to go much lower
+                    buildIfEnoughProduction(building, resources.coal, 0.5); // If we don't have plasmids then have to go much lower
                 }
 
                 continue;
             }
 
-            if (!settings.autoSpace && state.resources.Plasmids.currentQuantity > 2000 && building === state.cityBuildings.OilPower && state.jobManager.canManualCraft()) {
+            if (!settings.autoSpace && resources.plasmid.currentQuantity > 2000 && building === state.cityBuildings.OilPower && state.jobManager.canManualCraft()) {
                 buildIfCountLessThan(building, 5);
                 continue;
             } else if (isLowPlasmidCount() && building === state.cityBuildings.OilPower) {
-                buildIfEnoughProduction(building, state.resources.Oil, 1);
+                buildIfEnoughProduction(building, resources.oil, 1);
                 continue;
             } else if (building === state.cityBuildings.OilPower) {
-                buildIfEnoughProduction(building, state.resources.Oil, 2.65);
+                buildIfEnoughProduction(building, resources.oil, 2.65);
                 continue;
             }
 
             if (building === state.cityBuildings.FissionPower) {
-                buildIfEnoughProduction(building, state.resources.Uranium, 0.5);
+                buildIfEnoughProduction(building, resources.uranium, 0.5);
                 continue;
             }
 
@@ -5488,6 +5820,14 @@
 
                 autoBuildSpaceDockChildren();
                 continue;
+            }
+
+            if (building === state.spaceBuildings.GasMoonOutpost && building.autoBuildEnabled && building.count >= 2) {
+                let eleriumBuilding = state.spaceBuildings.DwarfEleriumContainer;
+                if (eleriumBuilding.autoBuildEnabled && eleriumBuilding.autoMax >= 3 && state.spaceBuildings.DwarfEleriumContainer.count < 3) {
+                    // Don't build outposts until we have enough elerium storage to do our researches
+                    continue;
+                }
             }
             
             // Build building if less than our max
@@ -5574,6 +5914,11 @@
                     // it can't afford
                     if (itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest" && itemId !== "tech-wc_reject") {
                         removePoppers();
+
+                        // Immediately cause a recheck of factory assignment if we've just researched nanotubes
+                        if (itemId === "tech-nano_tubes" || itemId === "tech-polymer") {
+                            state.cityBuildings.Factory.isUpdated = false;
+                        }
                     }
                     return;
                 }
@@ -5590,24 +5935,68 @@
 
         // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build once MAD has been researched
         if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && isResearchUnlocked("mad")) {
-            state.projects.LaunchFacility.tryBuild(1, false);
+            state.projects.LaunchFacility.tryBuild(false);
         }
 
-        // No projects unlocked yet
-        if (projectList.length === 0) {
-            return;
-        }
-
+        // Loop through our managed projects
         for (let i = 0; i < projectList.length; i++) {
             const project = projectList[i];
 
-            //console.log(project.id + " level=" + project.level + " autoMax=" + project.autoMax + " autoSpace= " + settings.autoSpace)
             // Only level up to user defined max
             if (project.level >= project.autoMax) {
                 continue;
             }
 
-            project.tryBuild(1, true);
+            project.tryBuild(true);
+        }
+
+        // ONLY IF settings allow then...
+        // Loop through our unmanaged projects and build if storage if full for all resources except money
+        if (!settings.arpaBuildIfStorageFull) {
+            return;
+        }
+
+        projectList = state.projectManager.priorityList;
+
+        for (let i = 0; i < projectList.length; i++) {
+            const project = projectList[i];
+            let allowBuild = true;
+
+            if (project.resourceRequirements.length === 0) {
+                continue;
+            }
+
+            for (let j = 0; j < project.resourceRequirements.length; j++) {
+                const requirement = project.resourceRequirements[j];
+
+                if (requirement.resource === resources.money) {
+                    continue;
+                }
+
+                if (requirement.resource.currentQuantity < requirement.quantity) {
+                    allowBuild = false;
+                    break;
+                }
+
+                if (!requirement.resource.isCraftable && requirement.resource.storageRatio <= 0.98) {
+                    allowBuild = false;
+                    break;
+                }
+
+                if (requirement.quantity / requirement.resource.currentQuantity > (settings.arpaBuildIfStorageFullResourceMaxPercent / 100)) {
+                    allowBuild = false;
+                    break;
+                }
+
+                if (requirement.resource.isCraftable && requirement.resource.currentQuantity - requirement.quantity < settings.arpaBuildIfStorageFullCraftableMin) {
+                    allowBuild = false;
+                    break;
+                }
+            }
+
+            if (allowBuild) {
+                project.tryBuild(false);
+            }
         }
     }
 
@@ -5643,7 +6032,7 @@
                 let resourceType = building.consumption.resourceTypes[j];
 
                 // Mass driver effect
-                if (resourceType.resource === state.resources.Oil || resourceType.resource === state.resources.Helium_3) {
+                if (resourceType.resource === resources.oil || resourceType.resource === resources.helium_3) {
                     resourceType.rate = resourceType.initialRate * spaceFuelMultiplier;
                 }
                 
@@ -5666,7 +6055,7 @@
                 }
 
                 if (building === state.spaceBuildings.BeltEleriumShip) {
-                    if (state.resources.Elerium.storageRatio >= 0.99 && state.resources.Elerium.rateOfChange >= 0) {
+                    if (resources.elerium.storageRatio >= 0.99 && resources.elerium.rateOfChange >= 0) {
                         if (state.spaceBuildings.DwarfEleriumReactor.autoStateEnabled) {
                             let required = (state.spaceBuildings.DwarfEleriumReactor.count + 1) * 2;
                             if (requiredStateOn >= required) {
@@ -5683,9 +6072,18 @@
                     
                     // TODO: Implement minimum rates of change for each resource
                     // If resource rate is negative then we are gaining resources. So, only check if we are consuming resources
+                    // If we have more than 10% of our storage then its ok to lose some resources
                     if (resourceType.rate > 0) {
-                        if (resourceType.resource.calculatedRateOfChange <= 0 || resourceType.resource.calculatedRateOfChange - resourceType.rate < 0) {
-                            continue;
+                        let isStorageAvailable = false;
+
+                        if (resourceType.resource === resources.food) {
+                            isStorageAvailable = resourceType.resource.storageRatio > 0.1;
+                        }
+
+                        if (!isStorageAvailable) {
+                            if (resourceType.resource.calculatedRateOfChange <= 0 || resourceType.resource.calculatedRateOfChange - resourceType.rate < 0) {
+                                continue;
+                            }
                         }
                     }
 
@@ -5693,7 +6091,7 @@
                 }
 
                 // All resources passed the test so take them.
-                if ( resourcesToTake === building.consumption.resourceTypes.length) {
+                if (resourcesToTake === building.consumption.resourceTypes.length) {
                     availablePower -= building.consumption.power;
 
                     for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
@@ -5716,7 +6114,7 @@
                 adjustment = -building.stateOnCount;
             }
 
-            if (adjustment !== 0 && (building === state.cityBuildings.Factory || building === state.spaceBuildings.RedFactory)) {
+            if ((adjustment < -1 || adjustment > 1) && (building === state.cityBuildings.Factory || building === state.spaceBuildings.RedFactory)) {
                 state.cityBuildings.Factory.isUpdated = false;
             }
 
@@ -5729,96 +6127,214 @@
     //#region Auto Trade Specials
 
     /**
+     * @param {{ cratesToBuild: number; containersToBuild: number; availableCrates: number, availableContainers: number, adjustments: any[]; }} storageChanges
      * @param {Resource} resource
-     * @param {number} requiredRoutes
+     * @param {number} requiredCrates
+     * @param {number} requiredContainers
      */
-    function autoTradeResource(resource, requiredRoutes) {
-        if (!resource.isUnlocked() || !resource.isTradable()) {
-            return;
-        }
+    function addToStorageAdjustments(storageChanges, resource, requiredCrates, requiredContainers) {
+        if (resource.assignedCrates !== requiredCrates || resource.assignedContainers !== requiredContainers) {
+            let crates = Math.min(requiredCrates - resource.assignedCrates, storageChanges.availableCrates);
+            let containers = Math.min(requiredContainers - resource.assignedContainers, storageChanges.availableContainers);
 
-        let resourceTradeNode = document.getElementById('market-' + resource.id);
-        if (resourceTradeNode !== null && resourceTradeNode.style.display !== 'none') {
-            resourceTradeNode = resourceTradeNode.querySelector('.trade');
-            let currentTrade = parseInt(resourceTradeNode.querySelector(".current").textContent);
-            if (currentTrade < requiredRoutes) {
-                // @ts-ignore
-                resourceTradeNode.querySelector("span:nth-child(2) .sub .route").click();
+            if (crates !== 0 || containers !== 0) {
+                storageChanges.adjustments.push({ resource: resource, cratesAdjustment: crates, containersAdjustment: containers });
+
+                if (crates > 0) storageChanges.availableCrates -= crates;
+                if (containers > 0) storageChanges.availableContainers -= containers;
+
+                if (storageChanges.availableCrates < 0) storageChanges.availableCrates = 0;
+                if (storageChanges.availableContainers < 0) storageChanges.availableContainers = 0;
             }
-        }
-    }
 
-    /**
-     * @param {Resource} resource
-     * @param {number} requiredRoutes
-     */
-    function autoTradeBalanceResource(resource, requiredRoutes) {
-        // This is the same function as autoTradeResource except that it will set trade to be = rather than only add to trade
-        if (!resource.isUnlocked() || !resource.isTradable()) {
             return;
-        }
-
-        let resourceTradeNode = document.getElementById('market-' + resource.id);
-        if (resourceTradeNode !== null && resourceTradeNode.style.display !== 'none') {
-            resourceTradeNode = resourceTradeNode.querySelector('.trade');
-            let currentTrade = parseInt(resourceTradeNode.querySelector(".current").textContent);
-            if (currentTrade < requiredRoutes) {
-                // @ts-ignore
-                resourceTradeNode.querySelector("span:nth-child(2) .sub .route").click();
-            } else if (currentTrade > requiredRoutes) {
-                // @ts-ignore
-                resourceTradeNode.querySelector("span:nth-child(4) .add .route").click();
-            }
         }
     }
 
     function autoStorage() {
-        if (state.resources.Plasmids.currentQuantity < 500) {
-            // If you don't have many plasmids then you need quite a few crates
-            if (assignCrates(state.resources.Steel, 50)) { return }
-            if (assignCrates(state.resources.Aluminium, 50)) { return }
+        let storageList = state.storageManager.managedPriorityList();
+        let resourcesToUpdateCachedOptions = null;
+
+        if (storageList.length === 0) {
+            return;
+        }
+
+        if (state.cityBuildings.StorageYard.count > 0 && state.cityBuildings.Warehouse.count > 0) {
+            resourcesToUpdateCachedOptions = storageList.filter(resource => !resource.isAssignedCratesUpdated || !resource.isAssignedContainersUpdated);
+        } else if (state.cityBuildings.StorageYard.count > 0) {
+            resourcesToUpdateCachedOptions = storageList.filter(resource => !resource.isAssignedCratesUpdated);
+        } else if (state.cityBuildings.Warehouse.count > 0) {
+            resourcesToUpdateCachedOptions = storageList.filter(resource => !resource.isAssignedContainersUpdated);
         } else {
-            if (assignCrates(state.resources.Steel, 20)) { return }
-            if (assignCrates(state.resources.Aluminium, 20)) { return }
+            // We don't have any storage yet
+            return;
         }
 
-        if (assignCrates(state.resources.Titanium, 20)) { return }
-        if (assignCrates(state.resources.Alloy, 20)) { return }
-
-        // Polymer required for pre MAD tech is about 800. So just keep adding crates until we have that much storage space
-        if (state.resources.Polymer.isUnlocked() && state.resources.Polymer.maxQuantity < 800) {
-            state.resources.Polymer.updateOptions();
-            let requiredCrates = state.resources.Polymer.assignedCrates + 1;
-            if (assignCrates(state.resources.Polymer, requiredCrates)) { return }
+        // Update our cached options (crates & containers)
+        if (resourcesToUpdateCachedOptions!== null && resourcesToUpdateCachedOptions.length !== 0) {
+            state.windowManager.updateResourceCachedOptions(resourcesToUpdateCachedOptions);
+            return;
         }
 
-        if (settings.autoSpace) {
-            if (assignCrates(state.resources.Polymer, 20)) { return }
-            if (assignCrates(state.resources.Iridium, 20)) { return }
+        let numberOfCratesWeCanBuild = 1000000;
+        let numberOfContainersWeCanBuild = 1000000;
 
-            if (state.resources.Population.currentQuantity > 380) {
-                if (assignCrates(state.resources.Steel, 400)) { return }
-                if (assignCrates(state.resources.Aluminium, 100)) { return }
-                if (assignCrates(state.resources.Titanium, 200)) { return }
-                if (assignCrates(state.resources.Alloy, 200)) { return }
-                if (assignCrates(state.resources.Polymer, 200)) { return }
-                if (assignCrates(state.resources.Iridium, 200)) { return }
-            } else if (state.resources.Population.currentQuantity > 280) {
-                if (assignCrates(state.resources.Steel, 200)) { return }
-                if (assignCrates(state.resources.Aluminium, 50)) { return }
-                if (assignCrates(state.resources.Titanium, 100)) { return }
-                if (assignCrates(state.resources.Alloy, 100)) { return }
-                if (assignCrates(state.resources.Polymer, 100)) { return }
-                if (assignCrates(state.resources.Iridium, 100)) { return }
-            } else if (state.resources.Population.currentQuantity > 200) {
-                if (assignCrates(state.resources.Steel, 100)) { return }
-                if (assignCrates(state.resources.Aluminium, 25)) { return }
-                if (assignCrates(state.resources.Titanium, 50)) { return }
-                if (assignCrates(state.resources.Alloy, 50)) { return }
-                if (assignCrates(state.resources.Polymer, 50)) { return }
-                if (assignCrates(state.resources.Iridium, 50)) { return }
-                if (assignCrates(state.resources.Copper, 110)) { return }
+        resources.crates.resourceRequirements.forEach(requirement =>
+            numberOfCratesWeCanBuild = Math.min(numberOfCratesWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
+        );
+
+        resources.containers.resourceRequirements.forEach(requirement =>
+            numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
+        );
+
+        let storageChanges = {
+            cratesToBuild: Math.min(resources.crates.maxQuantity - resources.crates.currentQuantity, numberOfCratesWeCanBuild),
+            containersToBuild: Math.min(resources.containers.maxQuantity - resources.containers.currentQuantity, numberOfContainersWeCanBuild),
+            availableCrates: resources.crates.currentQuantity,
+            availableContainers: resources.containers.currentQuantity,
+            adjustments: []
+        };
+
+        let totalCratesWeighting = 0;
+        let totalContainersWeighting = 0;
+        let totalCrates = resources.crates.currentQuantity;
+        let totalContainers = resources.containers.currentQuantity;
+        let autoStorageTotalMaxCrates = 0;
+        let autoStorageTotalMaxContainers = 0;
+
+        storageList.forEach(resource => {
+            if (resource.autoCratesMax < 0 || resource.assignedCrates < resource.autoCratesMax) {
+                totalCratesWeighting += resource.autoStorageWeighting;
+                totalCrates += resource.assignedCrates;
+                autoStorageTotalMaxCrates += resource.autoCratesMax;
             }
+
+            if (resource.autoContainersMax < 0 || resource.assignedContainers < resource.autoContainersMax) {
+                totalContainersWeighting += resource.autoStorageWeighting;
+                totalContainers += resource.assignedContainers;
+                autoStorageTotalMaxContainers += resource.autoContainersMax;
+            }
+        });
+
+        if (settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
+            autoStorageTotalMaxCrates = 0;
+
+            if (isLowPlasmidCount()) {
+                // If you don't have many plasmids then you need quite a few crates
+                if (resources.steel.isUnlocked()) {
+                    addToStorageAdjustments(storageChanges, resources.steel, 50, 0);
+                    autoStorageTotalMaxCrates += 50;
+                }
+            } else {
+                if (resources.steel.isUnlocked()) {
+                    addToStorageAdjustments(storageChanges, resources.steel, 20, 0);
+                    autoStorageTotalMaxCrates += 20;
+                }
+            }
+
+            if (resources.aluminium.isUnlocked()) {
+                addToStorageAdjustments(storageChanges, resources.aluminium, 20, 0);
+                autoStorageTotalMaxCrates += 20;
+            }
+            if (resources.titanium.isUnlocked()) {
+                addToStorageAdjustments(storageChanges, resources.titanium, 20, 0);
+                autoStorageTotalMaxCrates += 20;
+            }
+            if (resources.alloy.isUnlocked()) {
+                addToStorageAdjustments(storageChanges, resources.alloy, 20, 0);
+                autoStorageTotalMaxCrates += 20;
+            }
+    
+            // Polymer required for pre MAD tech is about 800. So just keep adding crates until we have that much storage space
+            if (resources.polymer.isUnlocked() && resources.polymer.maxQuantity < 800) {
+                addToStorageAdjustments(storageChanges, resources.polymer, resources.polymer.assignedCrates + 1, 0);
+                autoStorageTotalMaxCrates += resources.polymer.assignedCrates + 1;
+            }
+
+            // We've tinkered with the autoStorageTotalMaxCrates settings in this IF statement so we'll have to do this here
+            if (totalCrates > autoStorageTotalMaxCrates) {
+                storageChanges.cratesToBuild = 0;
+            } else if (totalCrates + storageChanges.cratesToBuild >= autoStorageTotalMaxCrates) {
+                storageChanges.cratesToBuild = Math.max(0, autoStorageTotalMaxCrates - totalCrates);
+            }
+
+            // Don't open the window every second... wait for a minute if all we're doing is building new crates / containers
+            if (state.lastStorageBuildCheckLoop + 60 > state.loopCounter) {
+                storageChanges.cratesToBuild = 0;
+                storageChanges.containersToBuild = 0;
+            }
+
+        } else {
+            // Assign crates and containers according to their weighting and accounting for their max settings
+
+            // We'll also have the crates that we build
+            if (totalCrates > autoStorageTotalMaxCrates) {
+                storageChanges.cratesToBuild = 0;
+            } else if (totalCrates + storageChanges.cratesToBuild >= autoStorageTotalMaxCrates) {
+                storageChanges.cratesToBuild = Math.max(0, autoStorageTotalMaxCrates - totalCrates);
+            }
+
+            // We'll also have the containers that we build
+            if (totalContainers > autoStorageTotalMaxContainers) {
+                storageChanges.containersToBuild = 0;
+            } else if (totalContainers + storageChanges.containersToBuild >= autoStorageTotalMaxContainers) {
+                storageChanges.containersToBuild = Math.max(0, autoStorageTotalMaxContainers - totalContainers);
+            }
+
+            // Don't open the window every second... wait for a minute if all we're doing is building new crates / containers
+            if (state.lastStorageBuildCheckLoop + 60 > state.loopCounter) {
+                storageChanges.cratesToBuild = 0;
+                storageChanges.containersToBuild = 0;
+            }
+
+            totalCrates += storageChanges.cratesToBuild;
+            totalContainers += storageChanges.containersToBuild;
+
+            storageList.forEach(resource => {
+                let cratesStoragePercentage = resource.autoStorageWeighting / totalCratesWeighting;
+                let containersStoragePercentage = resource.autoStorageWeighting / totalContainersWeighting;
+                let requiredCrates = 0;
+                let requiredContainers = 0;
+
+                if (resource.assignedCrates >= resource.autoCratesMax) {
+                    requiredCrates = resource.autoCratesMax;
+                } else {
+                    requiredCrates = Math.ceil(totalCrates * cratesStoragePercentage);
+                }
+
+                // When we very first research MAD we don't want to suddenly reassign the storage that we added before.
+                // Leave that as a minimum
+                if (settings.storageLimitPreMad) {
+                    if (resource === resources.steel) { requiredCrates = Math.max(50, requiredCrates) }
+                    if (resource === resources.aluminium) { requiredCrates = Math.max(20, requiredCrates) }
+                    if (resource === resources.titanium) { requiredCrates = Math.max(20, requiredCrates) }
+                    if (resource === resources.alloy) { requiredCrates = Math.max(20, requiredCrates) }
+                    if (resource === resources.polymer) { requiredCrates = Math.max(5, requiredCrates) }
+                }
+
+                if (resource.assignedContainers >= resource.autoContainersMax) {
+                    requiredContainers = resource.autoContainersMax;
+                } else {
+                    requiredContainers = Math.ceil(totalContainers * containersStoragePercentage);
+                }
+
+                addToStorageAdjustments(storageChanges, resource, requiredCrates, requiredContainers);
+            });
+        }
+
+        //console.log("To build crates " + storageChanges.cratesToBuild + ", containers " + storageChanges.containersToBuild);
+        // for (let i = 0; i < storageChanges.adjustments.length; i++) {
+        //     const adjustment = storageChanges.adjustments[i];
+        //     console.log(adjustment.resource.id + " crates " + adjustment.cratesAdjustment + ", containers " + adjustment.containersAdjustment);
+        // }
+
+        if (storageChanges.cratesToBuild > 0 || storageChanges.containersToBuild > 0 || storageChanges.adjustments.length > 0) {
+            if (storageChanges.cratesToBuild > 0 || storageChanges.containersToBuild > 0) {
+                state.lastStorageBuildCheckLoop = state.loopCounter;
+            }
+
+            //console.log(storageChanges.adjustments.length + ", resource " + storageChanges.adjustments[0].resource.id + ", adjustment " + storageChanges.adjustments[0].cratesAdjustment)
+            state.windowManager.updateStorage(storageChanges);
         }
     }
 
@@ -5842,17 +6358,17 @@
     
     function adjustTradeRoutes() {
         let m = state.marketManager;
-        let resources = m.getSortedTradeRouteSellList();
+        let tradableResources = m.getSortedTradeRouteSellList();
         let maxTradeRoutes = m.getMaxTradeRoutes();
         let tradeRoutesUsed = 0;
-        let currentMoneyPerSecond = state.resources.Money.rateOfChange;
+        let currentMoneyPerSecond = resources.money.rateOfChange;
         let requiredTradeRoutes = [];
         let adjustmentTradeRoutes = [];
         let resourcesToTrade = [];
 
         // Calculate the resources and money that we would have if we weren't trading anything on the market
-        for (let i = 0; i < resources.length; i++) {
-            const resource = resources[i];
+        for (let i = 0; i < tradableResources.length; i++) {
+            const resource = tradableResources[i];
 
             if (resource.currentTradeRoutes > 0) {
                 currentMoneyPerSecond += resource.currentTradeRoutes * resource.currentTradeRouteBuyPrice;
@@ -5864,8 +6380,8 @@
         }
 
         // Fill our trade routes with selling
-        for (let i = 0; i < resources.length; i++) {
-            const resource = resources[i];
+        for (let i = 0; i < tradableResources.length; i++) {
+            const resource = tradableResources[i];
             requiredTradeRoutes.push(0);
 
             while (resource.autoTradeSellEnabled && tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.98 && resource.calculatedRateOfChange > resource.autoTradeSellMinPerSecond) {
@@ -5877,7 +6393,7 @@
 
             //console.log(resource.id + " tradeRoutesUsed " + tradeRoutesUsed + ", maxTradeRoutes " + maxTradeRoutes + ", storageRatio " + resource.storageRatio + ", calculatedRateOfChange " + resource.calculatedRateOfChange)
             if (resource.autoTradeBuyEnabled && resource.autoTradeBuyRoutes > 0) {
-                addResourceToTrade(resourcesToTrade, resources, resource);
+                addResourceToTrade(resourcesToTrade, tradableResources, resource);
             }
         }
 
@@ -5919,12 +6435,12 @@
                 if (resourceToTrade.requiredTradeRoutes > requiredTradeRoutes[resourceToTrade.index]) {
                     let addedTradeRoute = false;
 
-                    for (let i = resources.length - 1; i >= 0; i--) {
+                    for (let i = tradableResources.length - 1; i >= 0; i--) {
                         if (addedTradeRoute) {
                             break;
                         }
 
-                        const resource = resources[i];
+                        const resource = tradableResources[i];
                         let currentRequired = requiredTradeRoutes[i];
                         let reducedMoneyPerSecond = 0;
 
@@ -5964,13 +6480,13 @@
         }
 
         // Calculate adjustments
-        for (let i = 0; i < resources.length; i++) {
-            adjustmentTradeRoutes.push(requiredTradeRoutes[i] - resources[i].currentTradeRoutes);
+        for (let i = 0; i < tradableResources.length; i++) {
+            adjustmentTradeRoutes.push(requiredTradeRoutes[i] - tradableResources[i].currentTradeRoutes);
         }
 
         // Adjust our trade routes - always adjust towards zero first to free up trade routes
-        for (let i = 0; i < resources.length; i++) {
-            const resource = resources[i];
+        for (let i = 0; i < tradableResources.length; i++) {
+            const resource = tradableResources[i];
 
             if (adjustmentTradeRoutes[i] > 0 && resource.currentTradeRoutes < 0) {
                 m.addTradeRoutes(resource, adjustmentTradeRoutes[i]);
@@ -5982,8 +6498,8 @@
         }
 
         // Adjust our trade routes - we've adjusted towards zero, now adjust the rest
-        for (let i = 0; i < resources.length; i++) {
-            const resource = resources[i];
+        for (let i = 0; i < tradableResources.length; i++) {
+            const resource = tradableResources[i];
 
             if (adjustmentTradeRoutes[i] > 0) {
                 m.addTradeRoutes(resource, adjustmentTradeRoutes[i]);
@@ -5992,136 +6508,6 @@
             }
         }
     }
-    
-    /**
-     * @param {Resource} resource
-     * @param {number} nbrCrates
-     * @return {boolean} true if no further crate assignment can be done this loop; false otherwise
-     */
-    function assignCrates(resource, nbrCrates) {
-        // Can't assign crate if the resource doesn't exist or doesn't have options
-        log("assignCrates", "resource: " + resource.id);
-        if (!resource.isUnlocked() || !resource.hasOptions()) {
-            log("assignCrates", "resource: " + resource.id + ", not unlocked");
-            return false;
-        }
-
-        // Update options no longer requires the modal window to be open
-        //resource.updateOptions();
-
-        // User opened the modal - don't interfere with what they're doing
-        if (state.windowManager.isOpen() && !state.windowManager.openedByScript) {
-            return true;
-        }
-
-        // We already have more crates assigned to this resource than what is being requested
-        if (resource.isAssignedCratesUpdated && resource.assignedCrates >= nbrCrates) {
-            log("assignCrates", "resource: " + resource.id + ", enough crates 1, assigned: " + resource.assignedCrates);
-            return false;
-        }
-        
-        // There can only be one modal active at a time. If there is another modal active then don't continue
-        if (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle !== resource.id) {
-            log("assignCrates", "resource: " + resource.id + ", other modal active: " + state.windowManager.currentModalWindowTitle);
-            return false;
-        }
-
-        // If the resources lastConstructStorageAttemptLoopCounter is not 0 then we are attempting to construct a crate (or not enough room to construct a crate).
-        // Did we succeed? If so then reset the lastConstructStorageAttemptLoopCounter. Otherwise wait some number of loops and try again.
-        if (resource.lastConstructStorageAttemptLoopCounter !== 0 && state.resources.Crates.currentQuantity !== state.lastCratesOwned) {
-            log("assignCrates", "resource: " + resource.id + " successfully constructed a crate, current crates: " + state.resources.Crates.currentQuantity);
-
-            // Successfully constructed a crate so leave the modal window open and continue
-            resource.lastConstructStorageAttemptLoopCounter = 0;
-        } else if (resource.lastConstructStorageAttemptLoopCounter !== 0
-            && state.loopCounter > resource.lastConstructStorageAttemptLoopCounter && state.loopCounter < resource.lastConstructStorageAttemptLoopCounter + 120) {
-                log("assignCrates", "resource: " + resource.id + " EITHER we didn't successfully construct a crate, current crates : " + state.resources.Crates.currentQuantity + ", last crates: " + state.lastCratesOwned);
-                log("assignCrates", "resource: " + resource.id + ", OR awaiting loop, last loop: " + resource.lastConstructStorageAttemptLoopCounter + ", current loop: " + state.loopCounter);
-
-                // Ok, we failed to construct a crate. Close the modal window if it is open and we'll try again in some number of loops
-                state.windowManager.closeModalWindow();
-                return true;
-        } else {
-            // We've waited out our loop timer, let's try again!
-            resource.lastConstructStorageAttemptLoopCounter = 0;
-        }
-
-        // Open the modal this loop then continue processing next loop to give the modal time to open
-        if (!state.windowManager.isOpen()) {
-            log("assignCrates", "resource: " + resource.id + " opening options");
-            state.windowManager.openModalWindow();
-            resource.openOptions();
-            return true;
-        }
-
-        // Update our assigned crates and containers again
-        resource.updateOptions();
-        log("assignCrates", "resource: " + resource.id + ", updated crates assigned: " + resource.assignedCrates);
-        
-        let adjustedLastCratesOwned = state.lastCratesOwned;
-        let adjustedCurrentCratesOwned = state.resources.Crates.currentQuantity;
-        let adjustedMaxCrates = state.resources.Crates.maxQuantity;
-
-        // If we own some crates and can assign them then lets do that
-        let cratesToAssign = Math.min(state.resources.Crates.currentQuantity, nbrCrates - resource.assignedCrates);
-        if (cratesToAssign <= 0) {
-            cratesToAssign = 0;
-        } else {
-            // We've successfully got something to assign
-            log("assignCrates", "resource: " + resource.id + ", cratesToAssign: " + cratesToAssign);
-            resource.lastConstructStorageAttemptLoopCounter = 0;
-        }
-
-        log("assignCrates", "resource: " + resource.id + ", adjustedLastCratesOwned: " + adjustedLastCratesOwned + ", adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
-
-        for (let i = 0; i < cratesToAssign; i++) {
-            resource.tryAssignCrate();
-            resource.assignedCrates++;
-        }
-
-        adjustedLastCratesOwned -= cratesToAssign;
-        adjustedCurrentCratesOwned -= cratesToAssign;
-        adjustedMaxCrates -= cratesToAssign;
-
-        // Now that we've assigned crates and containers we have to do this check again.
-        // We already have more crates assigned to this resource than what is being requested
-        // so there is nothing to do. Close the modal window. Return true to give the modal window
-        // time to close
-        if (resource.assignedCrates >= nbrCrates) {
-            log("assignCrates", "resource: " + resource.id + ", enough crates 3, assigned: " + resource.assignedCrates);
-            state.windowManager.closeModalWindow();
-            return true;
-        }
-
-        // If we need to build more crates then lets try to do that.
-        // Since we don't have access to whether we can build a crate or not we'll have to be a little bit tricky.
-        // We'll try and construct a crate then compare the currently owned crates with our last known currently owned crates.
-        // If they are different then we successfully constructed a crate!
-        // DON'T DO THIS CHECK IF WE HAVEN'T TRIED CONSTRUCTING ANYTHING YET
-        state.lastCratesOwned = adjustedCurrentCratesOwned;
-        resource.lastConstructStorageAttemptLoopCounter = state.loopCounter;
-
-        // If we have space for more crates then try and construct another crate
-        // We'll have to wait until the next loop to see if we succeeded
-        if (adjustedCurrentCratesOwned < adjustedMaxCrates) {
-            log("assignCrates", "resource: " + resource.id + " trying to construct a crate, adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
-
-            // This is the last loop that we tried to construct a crate
-            let stillRequiredCrates = nbrCrates - resource.assignedCrates
-            for (let i = 0; i < stillRequiredCrates; i++) {
-                resource.tryConstructCrate();
-            }
-            return true;
-        } else {
-            log("assignCrates", "resource: " + resource.id + " don't have enough room for crates, adjustedCurrentCratesOwned: " + adjustedCurrentCratesOwned + ", adjustedMaxCrates: " + adjustedMaxCrates);
-
-            // We didn't try constructing a crate but not having enough room for crates is basically the same thing so set our last loop counter
-            // This is the last loop that we tried to construct a crate
-            state.windowManager.closeModalWindow();
-            return true;
-        }
-    }
-
 
     //#endregion Auto Trade Specials
     
@@ -6134,14 +6520,20 @@
             state.goal = "Standard";
         }
 
-        // Reset modal window open indicator
-        state.windowManager.openThisLoop = false;
+        if (settings.minimumMoneyPercentage > 0) {
+            state.minimumMoneyAllowed = resources.money.maxQuantity * settings.minimumMoneyPercentage / 100;
+        } else {
+            state.minimumMoneyAllowed = settings.minimumMoney;
+        }
 
         // If our script opened a modal window but it is now closed (and the script didn't close it) then the user did so don't continue
         // with whatever our script was doing with the open modal window.
-        if (state.windowManager.openedByScript && !state.windowManager.isOpen()) {
-            state.windowManager.openedByScript = false;
+        if (state.windowManager.openedByScript && !state.windowManager.isOpenHtml()) {
+            state.windowManager.resetWindowManager();
         }
+
+        state.buildingManager.updateResourceRequirements();
+        state.projectManager.updateResourceRequirements();
 
         // This would be better done in the class itself
         if (document.querySelector("#tech-breeder_reactor .oldTech") === null) {
@@ -6150,9 +6542,28 @@
             state.cityBuildings.FissionPower.consumption.power = -18;
         }
 
+        if (isLumberRace()) {
+            resources.crates.resourceRequirements[0].resource = resources.plywood;
+            resources.crates.resourceRequirements[0].quantity = 10;
+        } else {
+            resources.crates.resourceRequirements[0].resource = resources.stone;
+            resources.crates.resourceRequirements[0].quantity = 200;
+        }
+
         if (isEvilRace()) {
             if (state.jobs.Lumberjack.id === "lumberjack") {
                 state.jobs.Lumberjack.updateId("Hunter", "free");
+            }
+
+            if (resources.food.name === "Food") {
+                state.windowManager.updateGeneralCallback(resources.food.name, "Souls");
+                resources.food.name = "Souls";
+                state.windowManager.updateGeneralCallback(resources.lumber.name, "Bones");
+                resources.lumber.name = "Bones";
+                state.windowManager.updateGeneralCallback(resources.furs.name, "Flesh");
+                resources.furs.name = "Flesh";
+                state.windowManager.updateGeneralCallback(resources.plywood.name, "Boneweave");
+                resources.plywood.name = "Boneweave";
             }
         }
 
@@ -6205,6 +6616,9 @@
             if (settings.autoJobs) {
                 autoJobs();
             }
+            if (settings.autoTax) {
+                autoTax();
+            }
             if (settings.autoPower) {
                 autoBuildingPriority();
             }
@@ -6225,7 +6639,7 @@
             }
         }
         
-        if (state.loopCounter <= 10000) {
+        if (state.loopCounter <= 1000000000) {
             state.loopCounter++;
         } else {
             state.loopCounter = 1;
@@ -6233,6 +6647,12 @@
     }
 
     setInterval(automate, 1000);
+
+    function shortLoop() {
+        state.windowManager.checkCallbacks();
+    }
+
+    setInterval(shortLoop, 50);
 
     //#endregion Main Loop
 
@@ -6330,6 +6750,8 @@
         let scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
         $("#settings").append(scriptContentNode);
 
+        buildImportExport();
+        buildGeneralSettings();
         buildEvolutionSettings();
         buildResearchSettings();
         buildWarSettings();
@@ -6366,43 +6788,173 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function buildEvolutionSettings() {
+    function buildImportExport() {
+        let importExportNode = $('#settings .importExport');
+        if (importExportNode === null) {
+            return;
+        }
+
+        importExportNode.append(' <button id="script_settingsImport" class="button">Import Script Settings</button>');
+
+        $('#script_settingsImport').on("click", function() {
+            if ($('#importExport').val().length > 0) {
+                //let saveState = JSON.parse(LZString.decompressFromBase64($('#importExport').val()));
+                let saveState = JSON.parse($('#importExport').val());
+                if (saveState && 'scriptName' in saveState && saveState.scriptName === "TMVictor") {
+                    settings = saveState;
+                    updateStateFromSettings();
+                    updateSettingsUI();
+                    $('#importExport').val("");
+                }
+            }
+        });
+
+        importExportNode.append(' <button id="script_settingsExport" class="button">Export Script Settings</button>');
+
+        $('#script_settingsExport').on("click", function() {
+            //$('#importExport').val(LZString.compressToBase64(JSON.stringify(global)));
+            $('#importExport').val(JSON.stringify(settings));
+            $('#importExport').select();
+            document.execCommand('copy');
+        });
+    }
+
+    function updateSettingsUI() {
+        updateGeneralSettingsContent();
+        updateEvolutionSettingsContent();
+        updateResearchSettingsContent();
+        updateWarSettingsContent();
+        updateMarketSettingsContent();
+        updateStorageSettingsContent();
+        updateJobSettingsContent();
+        updateBuildingSettingsContent();
+        updateProjectSettingsContent();
+    }
+
+    function buildSettingsSection(sectionId, sectionName, resetFunction, updateSettingsContentFunction) {
         let scriptContentNode = $("#script_settings");
 
-        let evolutionNode = '<div id="script_evolutionSettings">' +
-                                '<h3 id="evolutionSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Evolution Settings</h3>' +
-                                '<div class="scriptcontent">' +
-                                '<div style="margin-top: 10px;"><button id="script_resetEvolution" class="button">Reset Evolution Settings</button></div>' +
-                                '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_evolutionBody"></div>' +
-                                '</div>';
-                            '</div>';
+        scriptContentNode.append(
+            '<div id="script_' + sectionId + 'Settings" style="margin-top: 10px;">' +
+                '<h3 id="' + sectionId + 'SettingsCollapsed" class="scriptcollapsible text-center has-text-success">' + sectionName + ' Settings</h3>' +
+                '<div class="scriptcontent">' +
+                    '<div style="margin-top: 10px;"><button id="script_reset' + sectionId + '" class="button">Reset ' + sectionName + ' Settings</button></div>' +
+                    '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_' + sectionId + 'Content"></div>' +
+                '</div>' +
+            '</div>');
 
-        scriptContentNode.append(evolutionNode);
-        buildEvolutionSection();
+        updateSettingsContentFunction();
 
-        if (!settings.evolutionSettingsCollapsed) {
-            let element = document.getElementById("evolutionSettingsCollapsed");
+        if (!settings[sectionId + "SettingsCollapsed"]) {
+            let element = document.getElementById(sectionId + "SettingsCollapsed");
             element.classList.toggle("scriptcontentactive");
             let content = element.nextElementSibling;
             //@ts-ignore
             content.style.display = "block";
         }
 
-        $("#script_resetEvolution").on("click", function() {
-            resetEvolutionSettings();
+        $("#script_reset" + sectionId).on("click", resetFunction);
+    }
+
+    /**
+     * @param {{ append: (arg0: string) => void; }} node
+     * @param {string} settingName
+     * @param {string} labelText
+     * @param {string} hintText
+     */
+    function addStandardSectionSettingsToggle(node, settingName, labelText, hintText) {
+        node.append('<div style="margin-top: 5px; width: 500px; display: inline-block;"><label title="' + hintText + '" tabindex="0" class="switch" id="script_' + settingName + '"><input type="checkbox" value=false> <span class="check"></span><span style="margin-left: 10px;">' + labelText + '</span></label></div>')
+
+        let toggleNode = $('#script_' + settingName + ' > input');
+        if (settings[settingName]) {
+            toggleNode.prop('checked', true);
+        }
+    
+        toggleNode.on('change', function(e) {
+            settings[settingName] = e.currentTarget.checked;
             updateSettingsFromState();
-            buildEvolutionSection();
         });
     }
 
-    function buildEvolutionSection() {
+    /**
+     * @param {{ append: (arg0: string) => void; }} node
+     * @param {string} settingName
+     * @param {string} labelText
+     * @param {string} hintText
+     */
+    function addStandardSectionSettingsNumber(node, settingName, labelText, hintText) {
+        node.append('<div style="margin-top: 5px; width: 500px; display: inline-block;"><label title="' + hintText + '" for="script_' + settingName + '">' + labelText + '</label><input id="script_' + settingName + '" type="text" class="input is-small" style="width: 150px; float: right;"></input></div>');
+
+        let textBox = $('#script_' + settingName);
+        textBox.val(settings[settingName]);
+    
+        textBox.on('change', function() {
+            let parsedValue = getRealNumber(textBox.val());
+            if (!isNaN(parsedValue)) {
+                settings[settingName] = parsedValue;
+                updateSettingsFromState();
+            }
+        });
+    }
+
+    function buildGeneralSettings() {
+        let sectionId = "general";
+        let sectionName = "General";
+
+        let resetFunction = function() {
+            //resetGeneralState();
+            resetGeneralSettings();
+            updateSettingsFromState();
+            updateGeneralSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateGeneralSettingsContent);
+    }
+
+    function updateGeneralSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let evolutionNode = $('#script_evolutionBody');
-        evolutionNode.empty().off("*");
+        let currentNode = $('#script_generalContent');
+        currentNode.empty().off("*");
+
+        updateGeneralPreTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateGeneralPreTable() {
+        let currentNode = $('#script_generalContent');
+
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_generalPreTable"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_generalPreTable');
+        addStandardSectionSettingsNumber(preTableNode, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
+        addStandardSectionSettingsNumber(preTableNode, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
+    }
+
+    function buildEvolutionSettings() {
+        let sectionId = "evolution";
+        let sectionName = "Evolution";
+
+        let resetFunction = function() {
+            resetEvolutionSettings();
+            updateSettingsFromState();
+            updateEvolutionSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateEvolutionSettingsContent);
+    }
+
+    function updateEvolutionSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_evolutionContent');
+        currentNode.empty().off("*");
 
         let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div><div><span id="script_race_warning" class="has-text-danger"></span></div>');
-        evolutionNode.append(targetEvolutionNode);
+        currentNode.append(targetEvolutionNode);
 
         let selectNode = $('#script_userEvolutionTargetName');
 
@@ -6418,6 +6970,11 @@
             selectNode.append(raceNode);
         }
 
+        let race = state.raceAchievementList[findArrayIndex(state.raceAchievementList, "name", settings.userEvolutionTargetName)];
+        if (race !== null && race !== undefined && race.isEvolutionConditional) {
+            document.getElementById("script_race_warning").textContent = "Warning! Only choose if you meet requirements: " + race.evolutionConditionText;
+        }
+
         selectNode.on('change', function() {
             let value = $("#script_userEvolutionTargetName :selected").val();
             settings.userEvolutionTargetName = value;
@@ -6430,49 +6987,39 @@
             } else {
                 document.getElementById("script_race_warning").textContent = "";
             }
+
+            let content = document.querySelector('#script_evolutionSettings .scriptcontent');
+            // @ts-ignore
+            content.style.height = null;
+            // @ts-ignore
+            content.style.height = content.offsetHeight + "px"
         });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     function buildResearchSettings() {
-        let scriptContentNode = $("#script_settings");
+        let sectionId = "research";
+        let sectionName = "Research";
 
-        let evolutionNode = '<div style="margin-top: 10px;" id="script_researchSettings">' +
-                                '<h3 id="researchSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Research Settings</h3>' +
-                                '<div class="scriptcontent">' +
-                                '<div style="margin-top: 10px;"><button id="script_resetResearch" class="button">Reset Research Settings</button></div>' +
-                                '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_researchBody"></div>' +
-                                '</div>' +
-                            '</div>';
-
-        scriptContentNode.append(evolutionNode);
-        buildResearchSection();
-
-        if (!settings.researchSettingsCollapsed) {
-            let element = document.getElementById("researchSettingsCollapsed");
-            element.classList.toggle("scriptcontentactive");
-            let content = element.nextElementSibling;
-            //@ts-ignore
-            content.style.display = "block";
-        }
-
-        $("#script_resetResearch").on("click", function() {
+        let resetFunction = function() {
             resetResearchSettings();
             updateSettingsFromState();
-            buildResearchSection();
-        });
+            updateResearchSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateResearchSettingsContent);
     }
 
-    function buildResearchSection() {
+    function updateResearchSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let researchNode = $('#script_researchBody');
-        researchNode.empty().off("*");
+        let currentNode = $('#script_researchContent');
+        currentNode.empty().off("*");
 
         // Theology 1
         let theology1Node = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchTheology_1">Target Theology 1:</label><select id="script_userResearchTheology_1" style="width: 150px; float: right;"></select></div>');
-        researchNode.append(theology1Node);
+        currentNode.append(theology1Node);
 
         let selectNode = $('#script_userResearchTheology_1');
         let selected = settings.userResearchTheology_1 === "auto" ? ' selected="selected"' : "";
@@ -6496,7 +7043,7 @@
 
         // Theology 2
         let theology2Node = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchTheology_2">Target Theology 2:</label><select id="script_userResearchTheology_2" style="width: 150px; float: right;"></select></div>');
-        researchNode.append(theology2Node);
+        currentNode.append(theology2Node);
 
         selectNode = $('#script_userResearchTheology_2');
         selected = settings.userResearchTheology_2 === "auto" ? ' selected="selected"' : "";
@@ -6520,7 +7067,7 @@
 
         // Unification
         let unificationNode = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchUnification">Target Unification:</label><select id="script_userResearchUnification" style="width: 150px; float: right;"></select></div>');
-        researchNode.append(unificationNode);
+        currentNode.append(unificationNode);
 
         selectNode = $('#script_userResearchUnification');
         selected = settings.userResearchUnification === "auto" ? ' selected="selected"' : "";
@@ -6554,50 +7101,37 @@
     }
 
     function buildWarSettings() {
-        let scriptContentNode = $("#script_settings");
+        let sectionId = "war";
+        let sectionName = "War";
 
-        let warNode =
-            `<div style="margin-top: 10px;" id="script_warSettings">
-                <h3 id="warSettingsCollapsed" class="scriptcollapsible text-center has-text-success">War Settings</h3>
-                <div class="scriptcontent">
-                    <div style="margin-top: 10px;"><button id="script_resetWars" class="button">Reset War Settings</button></div>
-                    <table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Campaign</th><th class="has-text-warning" style="width:25%">Minimum Attack Rating</th><th class="has-text-warning" style="width:50%"></th></tr>
-                        <tbody id="script_warBody" class="scriptcontenttbody"></tbody>
-                    </table>
-                </div>
-            </div>`;
-
-        scriptContentNode.append(warNode);
-        buildWarTableBody();
-
-        if (!settings.warSettingsCollapsed) {
-            let element = document.getElementById("warSettingsCollapsed");
-            element.classList.toggle("scriptcontentactive");
-            let content = element.nextElementSibling;
-            //@ts-ignore
-            content.style.display = "block";
-        }
-
-        $("#script_resetWars").on("click", function() {
+        let resetFunction = function() {
             resetWarState();
             updateSettingsFromState();
-            buildWarTableBody();
-        });
+            updateWarSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateWarSettingsContent);
     }
 
-    function buildWarTableBody() {
+    function updateWarSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let tableBodyNode = $('#script_warBody');
-        tableBodyNode.empty().off("*");
+        let currentNode = $('#script_warContent');
+        currentNode.empty().off("*");
 
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Campaign</th><th class="has-text-warning" style="width:25%">Minimum Attack Rating</th><th class="has-text-warning" style="width:50%"></th></tr>
+                <tbody id="script_warTableBody" class="scriptcontenttbody"></tbody>
+            </table>`);
+        
+        let warTableBody = $('#script_warTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             const campaign = state.warManager.campaignList[i];
             newTableBodyText += '<tr value="' + campaign.id + '"><td id="script_' + campaign.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:50%"></td></tr>';
         }
-        tableBodyNode.append($(newTableBodyText));
+        warTableBody.append($(newTableBodyText));
 
         // Build campaign settings rows
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
@@ -6635,69 +7169,51 @@
     }
 
     function buildMarketSettings() {
-        let scriptContentNode = $("#script_settings");
+        let sectionId = "market";
+        let sectionName = "Market";
 
-        // Textbox "input is-small" classes? Makes the placeholder text look weird
-        let marketNode =
-            `<div style="margin-top: 10px;" id="script_marketSettings">
-                <h3 id="marketSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Market Settings</h3>
-                <div class="scriptcontent">
-                    <div style="margin-top: 10px;"><button id="script_resetMarkets" class="button">Reset Market Settings</button></div>
-                    <div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreBody">
-                        <div style="margin-top: 5px; width: 400px"><label for="script_market_minmoneypersecond">Trade minimum money /s</label><input id="script_market_minmoneypersecond" type="text" class="input is-small" style="width: 150px; float: right;"></input></div>
-                    </div>
-                    <table style="width:100%"><tr><th class="has-text-warning" style="width:15%">Resource</th><th class="has-text-warning" style="width:10%">Buy</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Sell</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Trade For</th><th class="has-text-warning" style="width:10%">Routes</th><th class="has-text-warning" style="width:10%">Trade Away</th><th class="has-text-warning" style="width:10%">Min p/s</th><th style="width:5%"></th></tr>
-                        <tbody id="script_marketBody" class="scriptcontenttbody"></tbody>
-                    </table>
-                </div>
-            </div>`;
-        scriptContentNode.append(marketNode);
-
-        let textBox = $('#script_market_minmoneypersecond');
-        textBox.val(settings.tradeRouteMinimumMoneyPerSecond);
-    
-        textBox.on('change', function() {
-            let val = textBox.val();
-            let parsedValue = getRealNumber(val);
-            if (!isNaN(parsedValue)) {
-                //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
-                settings.tradeRouteMinimumMoneyPerSecond = parsedValue;
-                updateSettingsFromState();
-            }
-        });
-
-        
-        buildMarketTableBody();
-
-        if (!settings.marketSettingsCollapsed) {
-            let element = document.getElementById("marketSettingsCollapsed");
-            element.classList.toggle("scriptcontentactive");
-            let content = element.nextElementSibling;
-            //@ts-ignore
-            content.style.display = "block";
-        }
-
-        $("#script_resetMarkets").on("click", function() {
+        let resetFunction = function() {
             resetMarketState();
             resetMarketSettings();
             updateSettingsFromState();
-            updateMarketPreBody();
-            buildMarketTableBody();
-        });
+            updateMarketSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateMarketSettingsContent);
     }
 
-    function updateMarketPreBody() {
-        $('#script_market_minmoneypersecond').val(settings.tradeRouteMinimumMoneyPerSecond);
-        // let textBox = $('#script_market_minmoneypersecond');
-        // textBox.val(settings.tradeRouteMinimumMoneyPerSecond);
-    }
-
-    function buildMarketTableBody() {
+    function updateMarketSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let tableBodyNode = $('#script_marketBody');
-        tableBodyNode.empty().off("*");
+        let currentNode = $('#script_marketContent');
+        currentNode.empty().off("*");
 
+        updateMarketPreTable();
+        updateMarketTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateMarketPreTable() {
+        let currentNode = $('#script_marketContent');
+
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreTable"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_marketPreTable');
+        addStandardSectionSettingsNumber(preTableNode, "tradeRouteMinimumMoneyPerSecond", "Trade minimum money /s", "Will trade for resources until this minimum money per second amount is hit");
+    }
+
+    function updateMarketTable() {
+        let currentNode = $('#script_marketContent');
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:15%">Resource</th><th class="has-text-warning" style="width:10%">Buy</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Sell</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Trade For</th><th class="has-text-warning" style="width:10%">Routes</th><th class="has-text-warning" style="width:10%">Trade Away</th><th class="has-text-warning" style="width:10%">Min p/s</th><th style="width:5%"></th></tr>
+                <tbody id="script_marketTableBody" class="scriptcontenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_marketTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
@@ -6741,13 +7257,9 @@
 
             marketElement = marketElement.next();
             marketElement.append($('<span class="scriptlastcolumn"></span>'));
-
-            // marketElement = marketElement.next();
-            // toggle = buildMarketStateSettingsToggle(resource);
-            // marketElement.append(toggle);
         }
 
-        $('#script_marketBody').sortable( {
+        $('#script_marketTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 var $clone =  $(ui).clone();
@@ -6755,7 +7267,7 @@
                 return $clone.get(0);
             },
             update: function() {
-                let marketIds = $('#script_marketBody').sortable('toArray', {attribute: 'value'});
+                let marketIds = $('#script_marketTableBody').sortable('toArray', {attribute: 'value'});
 
                 for (let i = 0; i < marketIds.length; i++) {
                     // Market has been dragged... Update all market priorities
@@ -6766,8 +7278,6 @@
                 updateSettingsFromState();
             },
         } );
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     /**
@@ -6832,66 +7342,52 @@
     }
     
     function buildStorageSettings() {
-        let scriptContentNode = $("#script_settings");
+        let sectionId = "storage";
+        let sectionName = "Storage";
 
-        // Textbox "input is-small" classes? Makes the placeholder text look weird
-        let storageNode =
-            `<div style="margin-top: 10px;" id="script_storageSettings">
-                <h3 id="storageSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Storage Settings</h3>
-                <div class="scriptcontent">
-                    <div style="margin-top: 10px;"><button id="script_resetStorages" class="button">Reset Storage Settings</button></div>
-                    <div style="margin-top: 10px; margin-bottom: 10px;" id="script_storagePreBody">
-                        <div><span class="has-text-danger">Storage settings have not yet been implemented! You can change them but they won't take effect until a future version.</span></div>
-                        <div style="margin-top: 5px; width: 400px"><label tabindex="0" class="switch" id="script_storagelimitPreMad"><input type="checkbox" value=false> <span class="check"></span><span>Limit Pre-MAD Storage</span></label></div>
-                    </div>
-                    <table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Max Crates</th><th class="has-text-warning" style="width:20%">Max Containers</th></tr>
-                        <tbody id="script_storageBody" class="scriptcontenttbody"></tbody>
-                    </table>
-                </div>
-            </div>`;
-        scriptContentNode.append(storageNode);
-
-        // Above table settings
-        let storageLimitPreMadToggle = $('#script_storagelimitPreMad > input');
-        if (settings.storageLimitPreMad) {
-            storageLimitPreMadToggle.prop('checked', true);
-        }
-    
-        storageLimitPreMadToggle.on('change', function(e) {
-            settings.storageLimitPreMad = e.currentTarget.children[0].checked;
-            updateSettingsFromState();
-        });
-        
-        // Table settings
-        buildStorageTableBody();
-
-        if (!settings.storageSettingsCollapsed) {
-            let element = document.getElementById("storageSettingsCollapsed");
-            element.classList.toggle("scriptcontentactive");
-            let content = element.nextElementSibling;
-            //@ts-ignore
-            content.style.display = "block";
-        }
-
-        $("#script_resetStorages").on("click", function() {
+        let resetFunction = function() {
             resetStorageState();
             resetStorageSettings();
             updateSettingsFromState();
-            updateStoragePreBody();
-            buildStorageTableBody();
-        });
+            updateStorageSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateStorageSettingsContent);
     }
 
-    function updateStoragePreBody() {
-        $('#script_storagelimitPreMad > input').prop('checked', settings.storageLimitPreMad);
-    }
-
-    function buildStorageTableBody() {
+    function updateStorageSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let tableBodyNode = $('#script_storageBody');
-        tableBodyNode.empty().off("*");
+        let currentNode = $('#script_storageContent');
+        currentNode.empty().off("*");
 
+        updateStoragePreTable();
+        updateStorageTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateStoragePreTable() {
+        let currentNode = $('#script_storageContent');
+
+        // Add the pre table section
+        //currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_storagePreTable">' + '<div><span class="has-text-danger">Storage settings have not yet been implemented! You can change them but they won\'t take effect until a future version.</span></div>' + '</div>');
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_storagePreTable"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_storagePreTable');
+        addStandardSectionSettingsToggle(preTableNode, "storageLimitPreMad", "Limit Pre-MAD Storage", "Saves resources and shortens run time by limiting storage pre-MAD");
+    }
+
+    function updateStorageTable() {
+        let currentNode = $('#script_storageContent');
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Max Crates</th><th class="has-text-warning" style="width:20%">Max Containers</th></tr>
+                <tbody id="script_storageTableBody" class="scriptcontenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_storageTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < state.storageManager.priorityList.length; i++) {
@@ -6916,15 +7412,15 @@
             storageElement.append(buildStorageSettingsInput(resource, "res_storage_w_" + resource.id, "autoStorageWeighting"));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStorageSettingsInput(resource, "res_crates_m_" + resource.id, "autoCratesMax"));
+            storageElement.append(buildStorageSettingsInput(resource, "res_crates_m_" + resource.id, "_autoCratesMax"));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStorageSettingsInput(resource, "res_containers_m_" + resource.id, "autoContainersMax"));
+            storageElement.append(buildStorageSettingsInput(resource, "res_containers_m_" + resource.id, "_autoContainersMax"));
 
             storageElement.append($('<span class="scriptlastcolumn"></span>'));
         }
 
-        $('#script_storageBody').sortable( {
+        $('#script_storageTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 var $clone =  $(ui).clone();
@@ -6932,7 +7428,7 @@
                 return $clone.get(0);
             },
             update: function() {
-                let storageIds = $('#script_storageBody').sortable('toArray', {attribute: 'value'});
+                let storageIds = $('#script_storageTableBody').sortable('toArray', {attribute: 'value'});
 
                 for (let i = 0; i < storageIds.length; i++) {
                     // Storage has been dragged... Update all storage priorities
@@ -6943,8 +7439,6 @@
                 updateSettingsFromState();
             },
         } );
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     /**
@@ -6988,43 +7482,30 @@
     }
 
     function buildJobSettings() {
-        let scriptContentNode = $("#script_settings");
+        let sectionId = "job";
+        let sectionName = "Job";
 
-        let jobNode =
-            `<div style="margin-top: 10px;" id="script_jobSettings">
-                <h3 id="jobSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Job Settings</h3>
-                <div class="scriptcontent">
-                    <div style="margin-top: 10px;"><button id="script_resetJobs" class="button">Reset Job Settings</button></div>
-                    <table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Job</th><th class="has-text-warning" style="width:25%">1st Pass Max</th><th class="has-text-warning" style="width:25%">2nd Pass Max</th><th class="has-text-warning" style="width:25%">Final Max</th></tr>
-                        <tbody id="script_jobBody" class="scriptcontenttbody"></tbody>
-                    </table>
-                </div>
-            </div>`;
-
-        scriptContentNode.append(jobNode);
-        buildJobTableBody();
-
-        if (!settings.jobSettingsCollapsed) {
-            let element = document.getElementById("jobSettingsCollapsed");
-            element.classList.toggle("scriptcontentactive");
-            let content = element.nextElementSibling;
-            //@ts-ignore
-            content.style.display = "block";
-        }
-
-        $("#script_resetJobs").on("click", function() {
+        let resetFunction = function() {
             resetJobState();
             updateSettingsFromState();
-            buildJobTableBody();
-        });
+            updateJobSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateJobSettingsContent);
     }
 
-    function buildJobTableBody() {
+    function updateJobSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let tableBodyNode = $('#script_jobBody');
-        tableBodyNode.empty().off("*");
+        let currentNode = $('#script_jobContent');
+        currentNode.empty().off("*");
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Job</th><th class="has-text-warning" style="width:25%">1st Pass Max</th><th class="has-text-warning" style="width:25%">2nd Pass Max</th><th class="has-text-warning" style="width:25%">Final Max</th></tr>
+                <tbody id="script_jobTableBody" class="scriptcontenttbody"></tbody>
+            </table>`
+        );
 
+        let tableBodyNode = $('#script_jobTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
@@ -7049,7 +7530,7 @@
             jobElement.append(buildJobSettingsInput(job, 3));
         }
 
-        $('#script_jobBody').sortable( {
+        $('#script_jobTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 var $clone =  $(ui).clone();
@@ -7057,7 +7538,7 @@
                 return $clone.get(0);
             },
             update: function() {
-                let jobIds = $('#script_jobBody').sortable('toArray', {attribute: 'value'});
+                let jobIds = $('#script_jobTableBody').sortable('toArray', {attribute: 'value'});
 
                 for (let i = 0; i < jobIds.length; i++) {
                     // Job has been dragged... Update all job priorities
@@ -7120,69 +7601,65 @@
     }
 
     function buildBuildingSettings() {
-        let scriptContentNode = $("#script_settings");
+        let sectionId = "building";
+        let sectionName = "Building";
 
-        // Textbox "input is-small" classes? Makes the placeholder text look weird
-        let buildingNode =
-            `<div style="margin-top: 10px;" id="script_buildingSettings">
-                <h3 id="buildingSettingsCollapsed" class="scriptcollapsible text-center has-text-success">Building Settings</h3>
-                <div class="scriptcontent">
-                    <div style="margin-top: 10px;"><button id="script_resetBuildings" class="button">Reset Building Settings</button></div>
-                    <div><input id="script_buildingSearch" class="scriptsearchsettings" type="text" placeholder="Search for buildings.."></div>
-                    <table style="width:100%"><tr><th class="has-text-warning" style="width:40%">Building</th><th class="has-text-warning" style="width:20%">Auto Build</th><th class="has-text-warning" style="width:20%">Max Build</th><th class="has-text-warning" style="width:20%">Manage State</th></tr>
-                        <tbody id="script_buildingBody" class="scriptcontenttbody"></tbody>
-                    </table>
-                </div>
-            </div>`;
-
-        scriptContentNode.append(buildingNode);
-        buildBuildingTableBody();
-
-        if (!settings.buildingSettingsCollapsed) {
-            let element = document.getElementById("buildingSettingsCollapsed");
-            element.classList.toggle("scriptcontentactive");
-            let content = element.nextElementSibling;
-            //@ts-ignore
-            content.style.display = "block";
-        }
-
-        $("#script_resetBuildings").on("click", function() {
+        let resetFunction = function() {
             resetBuildingState();
             updateSettingsFromState();
-            buildBuildingTableBody();
-        });
+            updateBuildingSettingsContent();
+        };
 
-        $("#script_buildingSearch").on("keyup", filterBuildingSettingsTable);
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateBuildingSettingsContent);
     }
 
-    function filterBuildingSettingsTable() {
-        // Declare variables
-        let input = document.getElementById("script_buildingSearch");
-        //@ts-ignore
-        let filter = input.value.toUpperCase();
-        let table = document.getElementById("script_buildingBody");
-        let trs = table.getElementsByTagName("tr");
-
-        // Loop through all table rows, and hide those who don't match the search query
-        for (let i = 0; i < trs.length; i++) {
-            let td = trs[i].getElementsByTagName("td")[0];
-            if (td) {
-                if (td.textContent.toUpperCase().indexOf(filter) > -1) {
-                    trs[i].style.display = "";
-                } else {
-                    trs[i].style.display = "none";
-                }
-            }
-        }
-    }
-
-    function buildBuildingTableBody() {
+    function updateBuildingSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let tableBodyNode = $('#script_buildingBody');
-        tableBodyNode.empty().off("*");
+        let currentNode = $('#script_buildingContent');
+        currentNode.empty().off("*");
 
+        updateBuildingPreTable();
+        updateBuildingTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateBuildingPreTable() {
+        // let currentNode = $('#script_marketContent');
+        // currentNode.append(
+        //     `<div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreTable">
+        //         <div style="margin-top: 5px; width: 400px"><label for="script_market_minmoneypersecond">Trade minimum money /s</label><input id="script_market_minmoneypersecond" type="text" class="input is-small" style="width: 150px; float: right;"></input></div>
+        //     </div>`
+        // );
+
+        // let textBox = $('#script_market_minmoneypersecond');
+        // textBox.val(settings.tradeRouteMinimumMoneyPerSecond);
+    
+        // textBox.on('change', function() {
+        //     let val = textBox.val();
+        //     let parsedValue = getRealNumber(val);
+        //     if (!isNaN(parsedValue)) {
+        //         //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
+        //         settings.tradeRouteMinimumMoneyPerSecond = parsedValue;
+        //         updateSettingsFromState();
+        //     }
+        // });
+    }
+
+    function updateBuildingTable() {
+        let currentNode = $('#script_buildingContent');
+        currentNode.append(
+            `<div><input id="script_buildingSearch" class="scriptsearchsettings" type="text" placeholder="Search for buildings.."></div>
+            <table style="width:100%"><tr><th class="has-text-warning" style="width:40%">Building</th><th class="has-text-warning" style="width:20%">Auto Build</th><th class="has-text-warning" style="width:20%">Max Build</th><th class="has-text-warning" style="width:20%">Manage State</th></tr>
+                <tbody id="script_buildingTableBody" class="scriptcontenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_buildingTableBody');
         let newTableBodyText = "";
+
+        $("#script_buildingSearch").on("keyup", filterBuildingSettingsTable); // Add building filter
 
         // Add in a first row for switching "All"
         newTableBodyText += '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:40%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
@@ -7234,7 +7711,7 @@
             buildingElement.append(toggle);
         }
 
-        $('#script_buildingBody').sortable( {
+        $('#script_buildingTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 var $clone =  $(ui).clone();
@@ -7242,7 +7719,7 @@
                 return $clone.get(0);
             },
             update: function() {
-                let buildingIds = $('#script_buildingBody').sortable('toArray', {attribute: 'value'});
+                let buildingIds = $('#script_buildingTableBody').sortable('toArray', {attribute: 'value'});
 
                 for (let i = 0; i < buildingIds.length; i++) {
                     // Building has been dragged... Update all building priorities
@@ -7255,8 +7732,27 @@
                 updateSettingsFromState();
             },
         } );
+    }
 
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    function filterBuildingSettingsTable() {
+        // Declare variables
+        let input = document.getElementById("script_buildingSearch");
+        //@ts-ignore
+        let filter = input.value.toUpperCase();
+        let table = document.getElementById("script_buildingTableBody");
+        let trs = table.getElementsByTagName("tr");
+
+        // Loop through all table rows, and hide those who don't match the search query
+        for (let i = 0; i < trs.length; i++) {
+            let td = trs[i].getElementsByTagName("td")[0];
+            if (td) {
+                if (td.textContent.toUpperCase().indexOf(filter) > -1) {
+                    trs[i].style.display = "";
+                } else {
+                    trs[i].style.display = "none";
+                }
+            }
+        }
     }
 
     /**
@@ -7389,43 +7885,53 @@
     }
 
     function buildProjectSettings() {
-        let scriptContentNode = $("#script_settings");
+        let sectionId = "project";
+        let sectionName = "A.R.P.A.";
 
-        let projectNode =
-            `<div style="margin-top: 10px;" id="script_projectSettings">
-                <h3 id="projectSettingsCollapsed" class="scriptcollapsible text-center has-text-success">A.R.P.A. Settings</h3>
-                <div class="scriptcontent">
-                    <div style="margin-top: 10px;"><button id="script_resetProjects" class="button">Reset A.R.P.A. Settings</button></div>
-                    <table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:50%"></th></tr>
-                        <tbody id="script_projectBody" class="scriptcontenttbody"></tbody>
-                    </table>
-                </div>
-            </div>`;
-
-        scriptContentNode.append(projectNode);
-        buildProjectTableBody();
-
-        if (!settings.projectSettingsCollapsed) {
-            let element = document.getElementById("projectSettingsCollapsed");
-            element.classList.toggle("scriptcontentactive");
-            let content = element.nextElementSibling;
-            //@ts-ignore
-            content.style.display = "block";
-        }
-
-        $("#script_resetProjects").on("click", function() {
+        let resetFunction = function() {
+            resetProjectSettings();
             resetProjectState();
             updateSettingsFromState();
-            buildProjectTableBody();
-        });
+            updateProjectSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateProjectSettingsContent);
     }
 
-    function buildProjectTableBody() {
+    function updateProjectSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let tableBodyNode = $('#script_projectBody');
-        tableBodyNode.empty().off("*");
+        let currentNode = $('#script_projectContent');
+        currentNode.empty().off("*");
 
+        updateProjectPreTable();
+        updateProjectTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateProjectPreTable() {
+        let currentNode = $('#script_projectContent');
+
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_projectPreTable"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_projectPreTable');
+        addStandardSectionSettingsToggle(preTableNode, "arpaBuildIfStorageFull", "Override and build if storage is full", "Overrides the below settings to still build A.R.P.A projects if resources are full");
+        addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullCraftableMin", "Minimum craftables to keep if overriding", "A.R.P.A. projects that require crafted resources won't override and build if resources are below this amount");
+        addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullResourceMaxPercent", "Maximim percent of resources if overriding", "A.R.P.A. project that require more than this percentage of a non-crafted resource won't override and build");
+    }
+
+    function updateProjectTable() {
+        let currentNode = $('#script_projectContent');
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:50%"></th></tr>
+                <tbody id="script_projectTableBody" class="scriptcontenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_projectTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
@@ -7447,7 +7953,7 @@
             projectElement.append(buildProjectMaxSettingsInput(project));
         }
 
-        $('#script_projectBody').sortable( {
+        $('#script_projectTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 var $clone =  $(ui).clone();
@@ -7455,7 +7961,7 @@
                 return $clone.get(0);
             },
             update: function() {
-                let projectIds = $('#script_projectBody').sortable('toArray', {attribute: 'value'});
+                let projectIds = $('#script_projectTableBody').sortable('toArray', {attribute: 'value'});
 
                 for (let i = 0; i < projectIds.length; i++) {
                     // Project has been dragged... Update all project priorities
@@ -7466,8 +7972,6 @@
                 updateSettingsFromState();
             },
         } );
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     /**
@@ -7598,11 +8102,15 @@
         }
         if ($('#autoARPA').length === 0) {
             createSettingToggle('autoARPA', createArpaToggles, removeArpaToggles);
-        } else if (settings.autoArpa && $('.ea-arpa-toggle').length === 0) {
+        } else if (settings.autoARPA && $('.ea-arpa-toggle').length === 0) {
             createArpaToggles();
         }
+
         if ($('#autoJobs').length === 0) {
             createSettingToggle('autoJobs');
+        }
+        if ($('#autoTax').length === 0) {
+            createSettingToggle('autoTax');
         }
         if ($('#autoCraftsmen').length === 0) {
             createSettingToggle('autoCraftsmen');
@@ -7654,17 +8162,31 @@
             let settingsDiv = $('<div id="ea-settings"></div>');
             let minMoneyTxt = $('<div>Minimum money to keep :</div>')
             let minMoneyInput = $('<input type="text" class="input is-small" style="width:32%"/>');
-            minMoneyInput.val(settings.minimumMoney);
-            let setBtn = $('<a class="button is-dark is-small" id="set-min-money"><span>set</span></a>');
-            settingsDiv.append(minMoneyTxt).append(minMoneyInput).append(setBtn);
+            let minimumMoneyValue = settings.minimumMoney > 0 ? settings.minimumMoney : settings.minimumMoneyPercentage;
+            minMoneyInput.val(minimumMoneyValue);
+            let setBtn = $('<a class="button is-dark is-small" id="set-min-money"><span>Set</span></a>');
+            let setPercentBtn = $('<a class="button is-dark is-small" id="set-min-money" title="eg. 10 equals 10%"><span>Set %</span></a>');
+            settingsDiv.append(minMoneyTxt).append(minMoneyInput).append(setBtn).append(setPercentBtn);
             $('#autoScriptContainer').append(settingsDiv);
 
-            setBtn.on('mouseup', function() {
+            setBtn.on('click', function() {
                 let val = minMoneyInput.val();
                 let minMoney = getRealNumber(val);
                 if (!isNaN(minMoney)) {
-                    console.log('setting minimum money to : '+minMoney);
+                    console.log('Setting minimum money to : ' + minMoney);
                     settings.minimumMoney = minMoney;
+                    settings.minimumMoneyPercentage = 0;
+                    updateSettingsFromState();
+                }
+            });
+
+            setPercentBtn.on('click', function() {
+                let val = minMoneyInput.val();
+                let minMoneyPercent = getRealNumber(val);
+                if (!isNaN(minMoneyPercent)) {
+                    console.log('Setting minimum money percentage to : ' + minMoneyPercent);
+                    settings.minimumMoneyPercentage = minMoneyPercent;
+                    settings.minimumMoney = 0;
                     updateSettingsFromState();
                 }
             });
@@ -7784,9 +8306,9 @@
         let autoSellChecked = resource.autoSellEnabled ? " checked" : "";
         let autoTradeBuyChecked = resource.autoTradeBuyEnabled ? " checked" : "";
         let marketRow = $('#market-' + resource.id);
-        let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
-        let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">sell</span><span class="state"></span></label>');
-        let toggleTrade = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade for</span><span class="state"></span></label>');
+        let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
+        let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" title="Enable selling of this resource. When to sell is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">sell</span><span class="state"></span></label>');
+        let toggleTrade = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" title="Enable trading for this resource. Max routes is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade for</span><span class="state"></span></label>');
         marketRow.append(toggleBuy);
         marketRow.append(toggleSell);
         marketRow.append(toggleTrade);
@@ -7906,7 +8428,7 @@
     }
 
     function isLowPlasmidCount() {
-        return state.resources.Plasmids.currentQuantity < 500 || isNoPlasmidChallenge()
+        return resources.plasmid.currentQuantity < 500 || isNoPlasmidChallenge()
     }
 
     var numberSuffix = {
@@ -7969,7 +8491,7 @@
             return false;
         }
 
-        return state.resources.Money.currentQuantity - buyValue < settings.minimumMoney;
+        return resources.money.currentQuantity - buyValue < state.minimumMoneyAllowed;
     }
 
     /**
@@ -7999,6 +8521,11 @@
     function isEvilRace() {
         let raceId = getRaceId();
         return raceId === state.races.Balorg.id || raceId === state.races.Imp.id;
+    }
+
+    function isLumberRace() {
+        let raceId = getRaceId();
+        return raceId !== state.races.Entish.id && resources.lumber.isUnlocked();
     }
 
     function removePoppers() {
@@ -8031,11 +8558,11 @@
     $(document).keyup(function(e){
         modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
     });
-    window.onmousemove = function(e){
+    $(window).on('mousemove', function(e) {
         modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
-    }
+    });
 
-    var showLogging = false;
+    var showLogging = true;
     var loggingType = "autoStorage";
 
     /**
@@ -8051,7 +8578,7 @@
     //#endregion Utility Functions
 
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
-    window.onblur = function() {
+    $(window).on('blur', function(e) {
         let keyboardEvent = document.createEvent("KeyboardEvent");
         var initMethod = typeof keyboardEvent.initKeyboardEvent !== 'undefined' ? "initKeyboardEvent" : "initKeyEvent";
 
@@ -8068,7 +8595,7 @@
           0          // charCode: unsigned long - the Unicode character associated with the depressed key, else 0
         );
         document.dispatchEvent(keyboardEvent);
-    }
+    });
 
 // @ts-ignore
 })($);
