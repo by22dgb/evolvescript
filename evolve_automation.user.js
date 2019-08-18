@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.0.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -8563,7 +8563,7 @@
         modifierKeyPressed = e.ctrlKey || e.shiftKey || e.altKey;
     });
 
-    var showLogging = true;
+    var showLogging = false;
     var loggingType = "autoStorage";
 
     /**
