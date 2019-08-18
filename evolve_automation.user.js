@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.0.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5162,14 +5162,15 @@
 
         if (currentTaxRate < 50 &&
                 ((currentTaxRate < settings.generalMinimumTaxRate && resources.money.storageRatio < 0.98)
-                || (currentMorale >= 115 && currentMorale >= maxMorale))) {
+                || (currentMorale > 115 && currentMorale >= maxMorale)
+                || (currentMorale <= 115 && currentTaxRate < 26))) {
             // @ts-ignore
             raiseTaxNode.click();
         }
 
         if (currentTaxRate > 0
                 && (currentTaxRate > settings.generalMinimumTaxRate || resources.money.storageRatio >= 0.98)
-                && (currentMorale < maxMorale - 1 || currentMorale < 115)) {
+                && (currentMorale < maxMorale - 1 || (currentMorale < 115 && currentTaxRate > 26))) {
             // @ts-ignore
             lowerTaxNode.click();
         }
