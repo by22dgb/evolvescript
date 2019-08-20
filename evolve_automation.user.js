@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      1.0.2
+// @version      1.1.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -450,7 +450,7 @@
             this.autoBuildEnabled = defaultAllOptionsEnabled;
             this.autoStateEnabled = true;
 
-            if (this._id === "probes") { // Can't use buildings in the constructor as we are still creating them!
+            if (this._elementId === "spcdock-probes") { // Can't use buildings in the constructor as we are still creating them!
                 this._autoMax = 4; // Max of 4 Probes by default
             } else {
                 this._autoMax = -1;
@@ -484,6 +484,10 @@
 
         get id() {
             return this._id;
+        }
+
+        get settingId() {
+            return this._elementId;
         }
 
         get autoMax() {
@@ -682,7 +686,7 @@
          * @param {number} adjustCount
          */
         tryAdjustState(adjustCount) {
-            if (!this.hasState() || adjustCount === 0) {
+            if (adjustCount === 0 || !this.hasState()) {
                 return false;
             }
 
@@ -792,12 +796,6 @@
             this.autoTradeSellEnabled = true;
             this.autoTradeSellMinPerSecond = 0;
 
-            this.isAssignedCratesUpdated = false;
-            this.assignedCrates = 0;
-            this.isAssignedContainersUpdated = false;
-            this.assignedContainers = 0;
-            this.lastConstructStorageAttemptLoopCounter = 0;
-
             this.hasStorage = hasStorage;
             this.storagePriority = 0;
             this.autoStorageEnabled = true;
@@ -817,6 +815,28 @@
 
             /** @type {ResourceProductionCost[]} */
             this.productionCost = [];
+
+            this.cachedId = "";
+            this.setupCache();
+        }
+
+        setupCache() {
+            this._cachedId = this.id;
+            this._elementId = this._prefix + this.id;
+            this._extraStorageId = "stack-" + this.id;
+            this._storageCountId = "cnt" + this.id;
+            this._hashStorageCount = "#" + this._prefix + this.id + " .count";
+
+			this._rateOfChangeId = "inc" + this.id
+            this._hashCrateCountElement = "#stack-" + this.id + " span:nth-of-type(1) .current";
+            this._hashContainerCountElement = "#stack-" + this.id + " span:nth-of-type(2) .current";
+            this._hashCrateAddElement = "#stack-" + this.id + " span:nth-of-type(1) .add";
+            this._hashCrateRemoveElement = "#stack-" + this.id + " span:nth-of-type(1) .sub";
+            this._hashContainerAddElement = "#stack-" + this.id + " span:nth-of-type(2) .add";
+            this._hashContainerRemoveElement = "#stack-" + this.id + " span:nth-of-type(2) .sub";
+			
+			this._craftAllId = "inc" + this.id + "A";
+			this._hashCraft5Element = "#inc" + this.id + "5 a";
         }
 
         //#region Standard resource
@@ -831,7 +851,7 @@
         }
         
         isUnlocked() {
-            let containerNode = document.getElementById(this._prefix + this.id);
+            let containerNode = document.getElementById(this._elementId);
             return containerNode !== null && containerNode.style.display !== "none";
         }
 
@@ -879,7 +899,8 @@
                 return false;
             }
 
-            return document.getElementById("con" + this.id) !== null;
+            let storageNode = document.getElementById(this._extraStorageId);
+            return storageNode !== null && storageNode.style.display !== "none";
         }
 
         get isTradable() {
@@ -895,7 +916,7 @@
                 return 0;
             }
 
-            let storageNode = document.getElementById("cnt" + this.id);
+            let storageNode = document.getElementById(this._storageCountId);
 
             if (storageNode !== null) {
                 // 2 possibilities:
@@ -909,7 +930,7 @@
             }
 
             // If storage node is null then it might be plasmids which doesn't have the id...
-            let countNode = document.querySelector("#" + this._prefix + this.id + " .count");
+            let countNode = document.querySelector(this._hashStorageCount);
             if (countNode !== null) {
                 return parseInt(countNode.textContent);
             }
@@ -923,7 +944,7 @@
                 return 0;
             }
 
-            let storageNode = document.getElementById("cnt" + this.id);
+            let storageNode = document.getElementById(this._storageCountId);
 
             // 2 possibilities:
             // eg. "3124.16" there is no max quantity
@@ -952,7 +973,7 @@
                 return 0;
             }
 
-            let rateOfChangeNode = document.getElementById("inc" + this.id);
+            let rateOfChangeNode = document.getElementById(this._rateOfChangeId);
 
             // There is no rate of change for this resource
             if (rateOfChangeNode === null) {
@@ -960,7 +981,7 @@
             }
 
             // eg. "11.6K /s" the rate of change is 11600
-            return getRealNumber(rateOfChangeNode.textContent.split(' /s')[0]);
+            return getRealNumber(rateOfChangeNode.textContent.substring(0, rateOfChangeNode.textContent.indexOf(" /s")));
         }
 
         //#endregion Standard resource
@@ -983,160 +1004,89 @@
         }
 
         /**
-         * @param {number} value
+         * @param {number} count
          */
-        set autoContainersMax(value) {
-            this._autoContainersMax = value;
+        set autoContainersMax(count) {
+            this._autoContainersMax = count;
         }
 
-        isOptionsOpen() {
-            if (!this.hasOptions()) {
-                return;
-            }
-
-            return (state.windowManager.isOpen() && state.windowManager.currentModalWindowTitle === this.name);
-        }
-        
-        openOptions() {
-            if (!this.hasOptions()) {
-                return;
-            }
-            
-            let optionsNode = document.getElementById("con" + this.id);
-            state.windowManager.openModalWindow();
-            optionsNode.click();
+        get currentCrates() {
+            let node = document.querySelector(this._hashCrateCountElement);
+            //@ts-ignore
+            return node === null || node.style.display === "none" ? 0 : parseInt(node.textContent);
         }
 
-        updateCachedOptions() {
-            // We can only update options when the options window is open
-            if (!this.isOptionsOpen()) {
-                return false;
-            }
-
-            // eg. "Crates Assigned: 100"
-            let assignedCratesNode = document.querySelector('#modalCrates .crateHead > span:nth-child(2)');
-            this.isAssignedCratesUpdated = true;
-            if (assignedCratesNode !== null) {
-                this.assignedCrates = parseInt(assignedCratesNode.textContent.substring(17));
-            } else {
-                this.assignedCrates = 0;
-            }
-
-            // eg. "Containers Assigned: 0"
-            let assignedContainersNode = document.querySelector('#modalContainers .crateHead > span:nth-child(2)');
-            this.isAssignedContainersUpdated = true;
-            if (assignedContainersNode !== null) {
-                this.assignedContainers = parseInt(assignedContainersNode.textContent.substring(21));
-            } else {
-                this.assignedContainers = 0;
-            }
-
-            return true;
+        get currentContainers() {
+            let node = document.querySelector(this._hashContainerCountElement);
+            //@ts-ignore
+            return node === null || node.style.display === "none" ? 0 : parseInt(node.textContent);
         }
 
-        tryConstructCrate() {
-            // We can only construct a crate when the options window is open
-            if (!this.isOptionsOpen()) {
-                return false;
-            }
-
-            let crateButtons = document.querySelectorAll('#modalCrates .button');
-            for (let i = 0; i < crateButtons.length; i++) {
-                if (crateButtons[i].textContent === "Construct Crate") {
-                    // @ts-ignore
-                    crateButtons[i].click();
-                    return true;
+        /**
+         * @param {number} count
+         */
+        tryAssignCrate(count) {
+            let node = document.querySelector(this._hashCrateAddElement);
+            if (node !== null) {
+                for (let i = 0; i < count; i++) {
+                    //@ts-ignore
+                    node.click();
                 }
+
+                return true;
             }
 
             return false;
         }
 
-        tryAssignCrate() {
-            // We can only assign a crate when the options window is open
-            if (!this.isOptionsOpen()) {
-                return false;
-            }
-
-            let crateButtons = document.querySelectorAll('#modalCrates .button');
-            for (let i = 0; i < crateButtons.length; i++) {
-                if (crateButtons[i].textContent === "Assign Crate") {
-                    // @ts-ignore
-                    crateButtons[i].click();
-                    return true;
+        /**
+         * @param {number} count
+         */
+        tryUnassignCrate(count) {
+            let node = document.querySelector(this._hashCrateRemoveElement);
+            if (node !== null) {
+                count = count * -1;
+                for (let i = 0; i < count; i++) {
+                    //@ts-ignore
+                    node.click();
                 }
+
+                return true;
             }
 
             return false;
         }
 
-        tryUnassignCrate() {
-            // We can only unassign a crate when the options window is open
-            if (!this.isOptionsOpen()) {
-                return false;
-            }
-
-            let crateButtons = document.querySelectorAll('#modalCrates .button');
-            for (let i = 0; i < crateButtons.length; i++) {
-                if (crateButtons[i].textContent === "Unassign Crate") {
-                    // @ts-ignore
-                    crateButtons[i].click();
-                    return true;
+        /**
+         * @param {number} count
+         */
+        tryAssignContainer(count) {
+            let node = document.querySelector(this._hashContainerAddElement);
+            if (node !== null) {
+                for (let i = 0; i < count; i++) {
+                    //@ts-ignore
+                    node.click();
                 }
+
+                return true;
             }
 
             return false;
         }
 
-        tryConstructContainer() {
-            // We can only construct a container when the options window is open
-            if (!this.isOptionsOpen()) {
-                return false;
-            }
-
-            let containerButtons = document.querySelectorAll('#modalContainers .button');
-            for (let i = 0; i < containerButtons.length; i++) {
-                if (containerButtons[i].textContent === "Construct Container") {
-                    // @ts-ignore
-                    containerButtons[i].click();
-                    return true;
+        /**
+         * @param {number} count
+         */
+        tryUnassignContainer(count) {
+            let node = document.querySelector(this._hashContainerRemoveElement);
+            if (node !== null) {
+                count = count * -1;
+                for (let i = 0; i < count; i++) {
+                    //@ts-ignore
+                    node.click();
                 }
-            }
 
-            return false;
-        }
-
-        tryAssignContainer() {
-            // We can only assign a container when the options window is open
-            if (!this.isOptionsOpen()) {
-                return false;
-            }
-
-            let containerButtons = document.querySelectorAll('#modalContainers .button');
-            for (let i = 0; i < containerButtons.length; i++) {
-                if (containerButtons[i].textContent === "Assign Container") {
-                    // @ts-ignore
-                    containerButtons[i].click();
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        tryUnassignContainer() {
-            // We can only unassign a container when the options window is open
-            if (!this.isOptionsOpen()) {
-                return false;
-            }
-
-            let containerButtons = document.querySelectorAll('#modalContainers .button');
-            for (let i = 0; i < containerButtons.length; i++) {
-                if (containerButtons[i].textContent === "Unassign Container") {
-                    // @ts-ignore
-                    containerButtons[i].click();
-                    return true;
-                }
+                return true;
             }
 
             return false;
@@ -1151,28 +1101,25 @@
                 return false
             }
 
-            return document.getElementById("inc" + this.id + "A") !== null;
+            return document.getElementById(this._craftAllId) !== null;
         }
 
         /**
-         * @param {string} toCraft
+         * @param {number} count
          */
-        tryCraftX(toCraft) {
+        tryCraft5(count) {
             if (!this.isUnlocked()) {
                 return false
             }
 
-            // Get the required clickable craft node and if we find it, clilck it
-            let craftClickNode = document.getElementById("inc" + this.id + toCraft);
+            let node = document.querySelector(this._hashCraft5Element);
 
-            if (craftClickNode === null) {
-                return false;
-            }
-            
-            craftClickNode = craftClickNode.getElementsByTagName("a")[0];
-
-            if (craftClickNode !== null) {
-                craftClickNode.click();
+            if (node !== null) {
+                for (let i = 0; i < count; i++) {
+                    // @ts-ignore
+                    node.click();
+                }
+                
                 return true;
             }
             
@@ -1220,57 +1167,6 @@
         }
 
         //#endregion Standard resource
-
-        //#region Basic resource
-
-        isOptionsOpen() {
-            return false;
-        }
-        
-        openOptions() {
-            return;
-        }
-
-        updateCachedOptions() {
-            return false;
-        }
-
-        tryConstructCrate() {
-            return false;
-        }
-
-        tryAssignCrate() {
-            return false;
-        }
-
-        tryUnassignCrate() {
-            return false;
-        }
-
-        tryConstructContainer() {
-            return false;
-        }
-
-        tryAssignContainer() {
-            return false;
-        }
-
-        tryUnassignContainer() {
-            return false;
-        }
-
-        //#endregion Basic resource
-
-        //#region Craftable resource
-
-        /**
-         * @param {string} toCraft
-         */
-        tryCraftX(toCraft) {
-            return false;
-        }
-
-        //#endregion Craftable resource
     }
 
     class Support extends Resource {
@@ -1318,57 +1214,6 @@
         }
 
         //#endregion Standard resource
-
-        //#region Basic resource
-
-        isOptionsOpen() {
-            return false;
-        }
-        
-        openOptions() {
-            return;
-        }
-
-        updateCachedOptions() {
-            return false;
-        }
-
-        tryConstructCrate() {
-            return false;
-        }
-
-        tryAssignCrate() {
-            return false;
-        }
-
-        tryUnassignCrate() {
-            return false;
-        }
-
-        tryConstructContainer() {
-            return false;
-        }
-
-        tryAssignContainer() {
-            return false;
-        }
-
-        tryUnassignContainer() {
-            return false;
-        }
-
-        //#endregion Basic resource
-
-        //#region Craftable resource
-
-        /**
-         * @param {string} toCraft
-         */
-        tryCraftX(toCraft) {
-            return false;
-        }
-
-        //#endregion Craftable resource
     }
 
     class LuxuryGoods extends Resource {
@@ -1415,57 +1260,6 @@
         }
 
         //#endregion Standard resource
-
-        //#region Basic resource
-
-        isOptionsOpen() {
-            return false;
-        }
-        
-        openOptions() {
-            return;
-        }
-
-        updateCachedOptions() {
-            return false;
-        }
-
-        tryConstructCrate() {
-            return false;
-        }
-
-        tryAssignCrate() {
-            return false;
-        }
-
-        tryUnassignCrate() {
-            return false;
-        }
-
-        tryConstructContainer() {
-            return false;
-        }
-
-        tryAssignContainer() {
-            return false;
-        }
-
-        tryUnassignContainer() {
-            return false;
-        }
-
-        //#endregion Basic resource
-
-        //#region Craftable resource
-
-        /**
-         * @param {string} toCraft
-         */
-        tryCraftX(toCraft) {
-            return false;
-        }
-
-        //#endregion Craftable resource
     }
 
     const SmelterFuelTypes = {
@@ -1983,13 +1777,6 @@
 
             /** @type {{ windowName: string, optionsObject: any }[]} */
             this._callbacks = [];
-
-            /** @type {Resource[]} */
-            this._resourcesToRefreshOptions = [];
-            /** @type {{ cratesToBuild: number; containersToBuild: number; availableCrates: number, availableContainers: number, adjustments: any[]; }} */
-            this._storageChanges = null;
-            /** @type {Resource} */
-            this._openingResourceWindow = null;
         }
 
         /**
@@ -2011,47 +1798,6 @@
                 console.log("updating " + oldWindowName + " to be " + windowName)
                 this._callbacks[index].windowName = windowName;
             }
-        }
-
-        /**
-         * @param {Resource[]} resources
-         */
-        updateResourceCachedOptions(resources) {
-            if (this.isOpen()) {
-                return;
-            }
-
-            if (resources.length === 0) {
-                return;
-            }
-
-            this._resourcesToRefreshOptions = resources;
-            this._openingResourceWindow = this._resourcesToRefreshOptions[0];
-            this._openingResourceWindow.openOptions();
-        }
-
-        /**
-         * @param {{ cratesToBuild: number; containersToBuild: number; availableCrates: number, availableContainers: number, adjustments: any[]; }} storageChanges
-         */
-        updateStorage(storageChanges) {
-            if (this.isOpen()) {
-                return;
-            }
-
-            if (storageChanges.cratesToBuild === 0 && storageChanges.containersToBuild === 0 && storageChanges.adjustments.length === 0) {
-                return;
-            }
-
-            this._storageChanges = storageChanges;
-
-            // If we are just building storage then this may not be set...
-            if (this._storageChanges.adjustments.length > 0) {
-                this._openingResourceWindow = this._storageChanges.adjustments[0].resource;
-            } else {
-                this._openingResourceWindow = state.storageManager.managedPriorityList()[0];
-            }
-
-            this._openingResourceWindow.openOptions();
         }
 
         get currentModalWindowTitle() {
@@ -2096,7 +1842,7 @@
         }
 
         isOpen() {
-            return this.openedByScript || this._resourcesToRefreshOptions.length > 0 || this._storageChanges !== null || document.getElementById("modalBox") !== null;
+            return this.openedByScript || document.getElementById("modalBox") !== null;
         }
 
         closeModalWindow() {
@@ -2114,8 +1860,6 @@
             this._callbackWindowTitle = "";
             this._callbackFunction = null;
             this._callbackFunctionParameter = null;
-            this._resourcesToRefreshOptions.length = 0; // clear array
-            this._openingResourceWindow = null;
         }
 
         checkCallbacks() {
@@ -2127,98 +1871,9 @@
             let windowName = this.currentModalWindowTitle;
             //console.log("windowname " + windowName);
 
-            if (this._resourcesToRefreshOptions.length > 0 && this._openingResourceWindow === null && windowName === "") {
-                this._openingResourceWindow = this._resourcesToRefreshOptions[0];
-                //console.log("opening modal for " + this._resourcesToRefreshOptions[0].name);
-                this._openingResourceWindow.openOptions();
-                return;
-            }
-
-            if (this._storageChanges !== null && this._openingResourceWindow === null && windowName === "") {
-                this._openingResourceWindow = this._storageChanges.adjustments[0].resource;
-                //console.log("opening modal for " + this._resourcesToRefreshOptions[0].name);
-                this._openingResourceWindow.openOptions();
-                return;
-            }
-
             // It is open but doesn't have a title?
             if (windowName === "") {
                 return;
-            }
-
-            if (this._resourcesToRefreshOptions.length > 0 && this._openingResourceWindow !== null) {
-                if (this._openingResourceWindow.name == windowName) {
-                    this._openingResourceWindow.updateCachedOptions();
-                    //console.log("closing modal for " + this._openingResourceWindow.name);
-                    this.closeModalWindow();
-
-                    this._resourcesToRefreshOptions.shift();
-                    this._openingResourceWindow = null;
-                }
-
-                return;
-            }
-
-            if (this._storageChanges !== null && this._openingResourceWindow !== null) {
-                if (this._openingResourceWindow.name == windowName) {
-                    let constructionPerformed = false;
-
-                    if (this._storageChanges.cratesToBuild > 0) {
-                        for (let i = 0; i < this._storageChanges.cratesToBuild; i++) {
-                            this._openingResourceWindow.tryConstructCrate();
-                        }
-                        this._storageChanges.cratesToBuild = 0;
-                        constructionPerformed = true;
-                    }
-
-                    if (this._storageChanges.containersToBuild > 0) {
-                        for (let i = 0; i < this._storageChanges.containersToBuild; i++) {
-                            this._openingResourceWindow.tryConstructContainer();
-                        }
-                        this._storageChanges.containersToBuild = 0;
-                        constructionPerformed = true;
-                    }
-
-                    if (constructionPerformed) {
-                        this.closeModalWindow();
-                        if (this._storageChanges.adjustments.length === 0) this._storageChanges = null;
-                        this._openingResourceWindow = null;
-                        return;
-                    }
-
-                    if (this._storageChanges.adjustments[0].cratesAdjustment > 0) {
-                        for (let i = 0; i < this._storageChanges.adjustments[0].cratesAdjustment; i++) {
-                            this._openingResourceWindow.tryAssignCrate();
-                        }
-                    }
-
-                    if (this._storageChanges.adjustments[0].cratesAdjustment < 0) {
-                        this._storageChanges.adjustments[0].cratesAdjustment *= -1;
-                        for (let i = 0; i < this._storageChanges.adjustments[0].cratesAdjustment; i++) {
-                            this._openingResourceWindow.tryUnassignCrate();
-                        }
-                    }
-
-                    if (this._storageChanges.adjustments[0].containersAdjustment > 0) {
-                        for (let i = 0; i < this._storageChanges.adjustments[0].containersAdjustment; i++) {
-                            this._openingResourceWindow.tryAssignContainer();
-                        }
-                    }
-
-                    if (this._storageChanges.adjustments[0].containersAdjustment < 0) {
-                        this._storageChanges.adjustments[0].containersAdjustment *= -1;
-                        for (let i = 0; i < this._storageChanges.adjustments[0].containersAdjustment; i++) {
-                            this._openingResourceWindow.tryUnassignContainer();
-                        }
-                    }
-                    
-                    //console.log("closing modal for " + this._openingResourceWindow.name);
-                    this.closeModalWindow();
-                    this._storageChanges.adjustments.shift();
-                    if (this._storageChanges.adjustments.length === 0) this._storageChanges = null;
-                    this._openingResourceWindow = null;
-                    return;
-                }
             }
 
             //console.log("checking for general callbacks")
@@ -3194,17 +2849,17 @@
 
         /**
          * @param {Resource} resource
-         * @param {number} toAdd
+         * @param {number} count
          */
-        addTradeRoutes(resource, toAdd) {
+        addTradeRoutes(resource, count) {
             if (!this.isResourceUnlocked(resource)) {
                 return false;
             }
 
-            let button = document.querySelector("#market-" + resource.id + " .sub .route");
+            let button = document.querySelector("#market-" + resource.id + " .sub");
 
             if (button !== null) {
-                for (let i = 0; i < toAdd; i++) {
+                for (let i = 0; i < count; i++) {
                     // @ts-ignore
                     button.click();
                 }
@@ -3217,17 +2872,17 @@
 
         /**
          * @param {Resource} resource
-         * @param {number} toRemove
+         * @param {number} count
          */
-        removeTradeRoutes(resource, toRemove) {
+        removeTradeRoutes(resource, count) {
             if (!this.isResourceUnlocked(resource)) {
                 return false;
             }
 
-            let button = document.querySelector("#market-" + resource.id + " .add .route");
+            let button = document.querySelector("#market-" + resource.id + " .add");
 
             if (button !== null) {
-                for (let i = 0; i < toRemove; i++) {
+                for (let i = 0; i < count; i++) {
                     // @ts-ignore
                     button.click();
                 }
@@ -3292,6 +2947,48 @@
 
             return this._managedPriorityList;
         }
+
+        /**
+         * @param {number} count
+         */
+        tryConstructCrate(count) {
+            if (count === 0) {
+                return true;
+            }
+
+            let node = document.querySelector("#createHead span:nth-of-type(1) .button");
+            if (node !== null) {
+                for (let i = 0; i < count; i++) {
+                    // @ts-ignore
+                    node.click();
+                }
+                
+                return true;
+            }
+
+            return false;
+        }
+		
+        /**
+         * @param {number} count
+         */
+        tryConstructContainer(count) {
+            if (count === 0) {
+                return true;
+            }
+
+            let node = document.querySelector("#createHead span:nth-of-type(2) .button");
+            if (node !== null) {
+                for (let i = 0; i < count; i++) {
+                    // @ts-ignore
+                    node.click();
+                }
+                
+                return true;
+            }
+
+            return false;
+        }
     }
 
     class Race {
@@ -3353,55 +3050,109 @@
 
     //#region State and Initialisation
 
+    var races = {
+        Antid: new Race("antid", "Antid", false, "", "Ophiocordyceps Unilateralis"),
+        Mantis: new Race("mantis", "Mantis", false, "", "Praying Unanswered"),
+        Scorpid: new Race("scorpid", "Scorpid", false, "", "Pulmonoscorpius"),
+        Human: new Race("human", "Human", false, "", "Homo Adeadus"),
+        Orc: new Race("orc", "Orc", false, "", "Outlander"),
+        Elven: new Race("elven", "Elf", false, "", "The few, the proud, the dead"),
+        Troll: new Race("troll", "Troll", false, "", "Bad Juju"),
+        Ogre: new Race("orge", "Ogre", false, "", "Too stupid to live"),
+        Cyclops: new Race("cyclops", "Cyclops", false, "", "Blind Ambition"),
+        Kobold: new Race("kobold", "Kobold", false, "", "Took their candle"),
+        Goblin: new Race("goblin", "Goblin", false, "", "Greed before Need"),
+        Gnome: new Race("gnome", "Gnome", false, "", "Unathletic"),
+        Cath: new Race("cath", "Cath", false, "", "Saber Tooth Tiger"),
+        Wolven: new Race("wolven", "Wolven", false, "", "Dire Wolf"),
+        Centaur: new Race("centaur", "Centaur", false, "", "Ferghana"),
+        Balorg: new Race("balorg", "Balorg", true, "Hellscape planet", "Self immolation"),
+        Imp: new Race("imp", "Imp", true, "Hellscape planet", "Deal with the devil"),
+        Arraak: new Race("arraak", "Arraak", false, "", "Way of the Dodo"),
+        Pterodacti: new Race("pterodacti", "Pterodacti", false, "", "Chicxulub"),
+        Dracnid: new Race("dracnid", "Dracnid", false, "", "Desolate Smaug"),
+        Tortoisan: new Race("tortoisan", "Tortoisan", false, "", "Circle of Life"),
+        Gecko: new Race("gecko", "Gecko", false, "", "No Savings"),
+        Slitheryn: new Race("slitheryn", "Slitheryn", false, "", "Final Shedding"),
+        Sharkin: new Race("sharkin", "Sharkin", true, "Oceanic planet", "Megalodon"),
+        Octigoran: new Race("octigoran", "Octigoran", true, "Oceanic planet", "Calamari"),
+        Entish: new Race("entish", "Ent", false, "", "Saruman's Revenge"),
+        Cacti: new Race("cacti", "Cacti", false, "", "Desert Deserted"),
+        Sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
+        Shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
+        Valdi: new Race("junker", "Valdi", true, "Challenge genes unlocked", "Euthanasia"),
+    }
+
+    /** @type {Race[]} */
+    var raceAchievementList = [
+        races.Antid, races.Mantis, races.Scorpid, races.Human, races.Orc, races.Elven, races.Troll, races.Ogre, races.Cyclops,
+        races.Kobold, races.Goblin, races.Gnome, races.Cath, races.Wolven, races.Centaur, races.Balorg, races.Imp,
+        races.Arraak, races.Pterodacti, races.Dracnid, races.Tortoisan, races.Gecko, races.Slitheryn, races.Sharkin, races.Octigoran,
+        races.Entish, races.Cacti, races.Sporgar, races.Shroomi, races.Valdi
+    ];
+
     var resources = {
-            // Base resources
-            money: new Resource("Money", "res", "Money", false, false, -1, false, -1, false),
-            population: new Resource("Population", "res", "Population", false, false, -1, false, -1, false), // The population node is special and its id will change to the race name
-            knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1, false),
-            crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1, false),
-            containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1, false),
-            plasmid: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1, false),
-            phage: new Resource("Phage", "res", "Phage", false, false, -1, false, -1, false),
-            genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1, false),
+        // Base resources
+        money: new Resource("Money", "res", "Money", false, false, -1, false, -1, false),
+        population: new Resource("Population", "res", "Population", false, false, -1, false, -1, false), // The population node is special and its id will change to the race name
+        knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1, false),
+        crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1, false),
+        containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1, false),
+        plasmid: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1, false),
+        phage: new Resource("Phage", "res", "Phage", false, false, -1, false, -1, false),
+        dark: new Resource("Dark", "res", "Dark", false, false, -1, false, -1, false),
+        genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1, false),
 
-            // Special not-really-resources-but-we'll-treat-them-like-resources resources
-            power: new Power(),
-            luxury_goods: new LuxuryGoods(),
-            moon_support: new Support("Moon Support", "srspc_moon"),
-            red_support: new Support("Red Support", "srspc_red"),
-            sun_support: new Support("Sun Support", "srspc_sun"),
-            belt_support: new Support("Belt Support", "srspc_belt"),
+        // Special not-really-resources-but-we'll-treat-them-like-resources resources
+        power: new Power(),
+        luxury_goods: new LuxuryGoods(),
+        moon_support: new Support("Moon Support", "srspc_moon"),
+        red_support: new Support("Red Support", "srspc_red"),
+        sun_support: new Support("Sun Support", "srspc_sun"),
+        belt_support: new Support("Belt Support", "srspc_belt"),
+        alpha_support: new Support("Alpha Support", "srint_alpha"),
+        nebula_support: new Support("Nebula Support", "srint_nebula"),
 
-            // Basic resources (can trade for these)
-            food: new Resource("Food", "res", "Food", true, true, 2, false, -1, false),
-            lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1, false),
-            stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1, false),
-            furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1, false),
-            copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1, false),
-            iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1, false),
-            aluminium: new Resource("Aluminium", "res", "Aluminium", true, true, 1, false, -1, false),
-            cement: new Resource("Cement", "res", "Cement", true, true, 1, false, -1, false),
-            coal: new Resource("Coal", "res", "Coal", true, true, 1, false, -1, false),
-            oil: new Resource("Oil", "res", "Oil", false, true, 0.5, false, -1, false),
-            uranium: new Resource("Uranium", "res", "Uranium", false, true, 0.25, false, -1, false),
-            steel: new Resource("Steel", "res", "Steel", true, true, 0.5, false, -1, false),
-            titanium: new Resource("Titanium", "res", "Titanium", true, true, 0.25, false, -1, false),
-            alloy: new Resource("Alloy", "res", "Alloy", true, true, 0.2, false, -1, false),
-            polymer: new Resource("Polymer", "res", "Polymer", true, true, 0.2, false, -1, false),
-            iridium: new Resource("Iridium", "res", "Iridium", true, true, 0.1, false, -1, false),
-            helium_3: new Resource("Helium-3", "res", "Helium_3", false, true, 0.1, false, -1, false),
+        // Basic resources (can trade for these)
+        food: new Resource("Food", "res", "Food", true, true, 2, false, -1, false),
+        lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1, false),
+        stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1, false),
+        furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1, false),
+        copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1, false),
+        iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1, false),
+        aluminium: new Resource("Aluminium", "res", "Aluminium", true, true, 1, false, -1, false),
+        cement: new Resource("Cement", "res", "Cement", true, true, 1, false, -1, false),
+        coal: new Resource("Coal", "res", "Coal", true, true, 1, false, -1, false),
+        oil: new Resource("Oil", "res", "Oil", false, true, 0.5, false, -1, false),
+        uranium: new Resource("Uranium", "res", "Uranium", false, true, 0.25, false, -1, false),
+        steel: new Resource("Steel", "res", "Steel", true, true, 0.5, false, -1, false),
+        titanium: new Resource("Titanium", "res", "Titanium", true, true, 0.25, false, -1, false),
+        alloy: new Resource("Alloy", "res", "Alloy", true, true, 0.2, false, -1, false),
+        polymer: new Resource("Polymer", "res", "Polymer", true, true, 0.2, false, -1, false),
+        iridium: new Resource("Iridium", "res", "Iridium", true, true, 0.1, false, -1, false),
+        helium_3: new Resource("Helium-3", "res", "Helium_3", false, true, 0.1, false, -1, false),
 
-            // Advanced resources (can't trade for these)
-            elerium: new Resource("Elerium", "res", "Elerium", false, false, 0.1, false, -1, false),
-            neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.1, false, -1, false),
-            nano_tube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1, false),
-            
-            // Craftable resources
-            plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5, false),
-            brick: new Resource("Brick", "res", "Brick", false, false, -1, true, 0.5, false),
-            wrought_iron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5, false),
-            sheet_metal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5, false),
-            mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5, false),
+        // Advanced resources (can't trade for these)
+        elerium: new Resource("Elerium", "res", "Elerium", false, false, 0.02, false, -1, false),
+        neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.05, false, -1, false),
+        nano_tube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1, false),
+
+        // Intersteller
+        deuterium: new Resource("Deuterium", "res", "Deuterium", false, false, 0.1, false, -1, false),
+        adamantite: new Resource("Adamantite", "res", "Adamantite", true, false, 0.05, false, -1, false),
+        infernite: new Resource("Infernite", "res", "Infernite", false, false, 0.01, false, -1, false),
+        graphene: new Resource("Graphene", "res", "Graphene", true, false, 0.1, false, -1, false),
+        stanene: new Resource("Stanene", "res", "Stanene", true, false, 0.1, false, -1, false),
+        soul_gem: new Resource("Soul_Gem", "res", "Soul_Gem", false, false, -1, false, -1, false),
+
+        aerogel: new Resource("Aerogel", "res", "Aerogel", false, false, -1, true, 0.5, false),
+        
+        // Craftable resources
+        plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5, false),
+        brick: new Resource("Brick", "res", "Brick", false, false, -1, true, 0.5, false),
+        wrought_iron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5, false),
+        sheet_metal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5, false),
+        mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5, false),
     }
 
     var state = {
@@ -3443,6 +3194,7 @@
             Banker: new Job("Banker", "civ", "-", "banker", false),
             Colonist: new Job("Colonist", "civ", "-", "colonist", false),
             SpaceMiner: new Job("Space Miner", "civ", "-", "space_miner", false),
+            HellSurveyor: new Job("Surveyor", "civ", "-", "hell_surveyor", false),
 
             // Crafting jobs
             Plywood: new CraftingJob("Plywood Crafter", "craft", "", "Plywood", true),
@@ -3450,6 +3202,7 @@
             WroughtIron: new CraftingJob("Wrought Iron Crafter", "craft", "", "Wrought_Iron", true),
             SheetMetal: new CraftingJob("Sheet Metal Crafter", "craft", "", "Sheet_Metal", true),
             Mythril: new CraftingJob("Mythril Crafter", "craft", "", "Mythril", true),
+            Aerogel: new CraftingJob("Aerogel Crafter", "craft", "", "Aerogel", true),
         },
 
         evolutions: {
@@ -3535,8 +3288,6 @@
 
         },
 
-        /** @type {Race[]} */
-        raceAchievementList: [],
         /** @type {Race[][]} */
         raceGroupAchievementList: [ [] ],
         /** @type {Action[]} */
@@ -3546,38 +3297,6 @@
         evolutionTarget: null,
         /** @type {Race} */
         evolutionFallback: null,
-        races: {
-            Antid: new Race("antid", "Antid", false, "", "Ophiocordyceps Unilateralis"),
-            Mantis: new Race("mantis", "Mantis", false, "", "Praying Unanswered"),
-            Scorpid: new Race("scorpid", "Scorpid", false, "", "Pulmonoscorpius"),
-            Human: new Race("human", "Human", false, "", "Homo Adeadus"),
-            Orc: new Race("orc", "Orc", false, "", "Outlander"),
-            Elven: new Race("elven", "Elf", false, "", "The few, the proud, the dead"),
-            Troll: new Race("troll", "Troll", false, "", "Bad Juju"),
-            Ogre: new Race("orge", "Ogre", false, "", "Too stupid to live"),
-            Cyclops: new Race("cyclops", "Cyclops", false, "", "Blind Ambition"),
-            Kobold: new Race("kobold", "Kobold", false, "", "Took their candle"),
-            Goblin: new Race("goblin", "Goblin", false, "", "Greed before Need"),
-            Gnome: new Race("gnome", "Gnome", false, "", "Unathletic"),
-            Cath: new Race("cath", "Cath", false, "", "Saber Tooth Tiger"),
-            Wolven: new Race("wolven", "Wolven", false, "", "Dire Wolf"),
-            Centaur: new Race("centaur", "Centaur", false, "", "Ferghana"),
-            Balorg: new Race("balorg", "Balorg", true, "Hellscape planet", "Self immolation"),
-            Imp: new Race("imp", "Imp", true, "Hellscape planet", "Deal with the devil"),
-            Arraak: new Race("arraak", "Arraak", false, "", "Way of the Dodo"),
-            Pterodacti: new Race("pterodacti", "Pterodacti", false, "", "Chicxulub"),
-            Dracnid: new Race("dracnid", "Dracnid", false, "", "Desolate Smaug"),
-            Tortoisan: new Race("tortoisan", "Tortoisan", false, "", "Circle of Life"),
-            Gecko: new Race("gecko", "Gecko", false, "", "No Savings"),
-            Slitheryn: new Race("slitheryn", "Slitheryn", false, "", "Final Shedding"),
-            Sharkin: new Race("sharkin", "Sharkin", true, "Oceanic planet", "Megalodon"),
-            Octigoran: new Race("octigoran", "Octigoran", true, "Oceanic planet", "Calamari"),
-            Entish: new Race("entish", "Ent", false, "", "Saruman's Revenge"),
-            Cacti: new Race("cacti", "Cacti", false, "", "Desert Deserted"),
-            Sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
-            Shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
-            Valdi: new Race("junker", "Valdi", true, "Challenge genes unlocked", "Euthanasia"),
-        },
         
         cityBuildings: {
             Food: new Action("Food", "city", "food", false),
@@ -3698,6 +3417,36 @@
             DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", true),
             DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", true),
             DwarfWorldController: new Action("Dwarf WSC Control", "space", "world_controller", true),
+
+            AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", true),
+            AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", true),
+            AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", true),
+            AlphaMiningDroid: new Action("Alpha Mining Droid", "interstellar", "mining_droid", true),
+            AlphaProcessing: new Action("Alpha Processing", "interstellar", "processing", true),
+            AlphaFusion: new Action("Alpha Fusion", "interstellar", "fusion", true),
+            AlphaLaboratory: new Action("Alpha Laboratory", "interstellar", "laboratory", true),
+            AlphaExchange: new Action("Alpha Exchange", "interstellar", "exchange", true),
+            AlphaFactory: new Action("Alpha Factory", "interstellar", "g_factory", true),
+            AlphaWarehouse: new Action("Alpha Warehouse", "interstellar", "warehouse", true),
+
+            ProximaMission: new Action("Proxima Mission", "interstellar", "proxima_mission", true),
+            ProximaTransferStation: new Action("Proxima Transfer Station", "interstellar", "xfer_station", true),
+            ProximaCargoYard: new Action("Proxima Cargo Yard", "interstellar", "cargo_yard", true),
+            ProximaCruiser: new Action("Proxima Cruiser", "interstellar", "cruiser", true),
+            ProximaDyson: new Action("Proxima Dyson", "interstellar", "dyson", true),
+
+            NebulaMission: new Action("Nebula Mission", "interstellar", "nebula_mission", true),
+            NebulaNexus: new Action("Nebula Nexus", "interstellar", "nexus", true),
+            NebulaHarvestor: new Action("Nebula Harvester", "interstellar", "harvester", true),
+            NebulaEleriumProspector: new Action("Nebula Elerium Prospector", "interstellar", "elerium_prospector", true),
+
+            NeutronMission: new Action("Neutron Mission", "interstellar", "neutron_mission", true),
+            NeutronMiner: new Action("Neutron Miner", "interstellar", "neutron_miner", true),
+
+            Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", true),
+            BlackholeFarReach: new Action("Blackhole Far Reach", "interstellar", "far_reach", true),
+            BlackholeStellerEngine: new Action("Blackhole Steller Engine", "interstellar", "stellar_engine", true),
+            BlackholeMassEjector: new Action("Blackhole Mission", "interstellar", "mass_ejector", true),
         },
 
         projects: {
@@ -3718,10 +3467,6 @@
         state.windowManager.addGeneralCallback("Smelter", state.cityBuildings.Smelter);
         state.windowManager.addGeneralCallback("Factory", state.cityBuildings.Factory);
 
-        state.storageManager.priorityList.forEach(resource =>
-            state.windowManager.addGeneralCallback(resource.name, resource)
-        );
-
         // Construct craftable resource list
         state.craftableResourceList.push(resources.plywood);
         resources.plywood.resourceRequirements.push(new ResourceRequirement(resources.lumber, 100));
@@ -3734,6 +3479,9 @@
         state.craftableResourceList.push(resources.mythril);
         resources.mythril.resourceRequirements.push(new ResourceRequirement(resources.iridium, 100));
         resources.mythril.resourceRequirements.push(new ResourceRequirement(resources.alloy, 250));
+        state.craftableResourceList.push(resources.aerogel);
+        resources.aerogel.resourceRequirements.push(new ResourceRequirement(resources.graphene, 2500));
+        resources.aerogel.resourceRequirements.push(new ResourceRequirement(resources.infernite, 50));
 
         // Lets set our crate / container resource requirements
         resources.crates.resourceRequirements.push(new ResourceRequirement(resources.plywood, 10));
@@ -3753,6 +3501,8 @@
         state.allResourceList.push(resources.red_support);
         state.allResourceList.push(resources.sun_support);
         state.allResourceList.push(resources.belt_support);
+        state.allResourceList.push(resources.alpha_support);
+        state.allResourceList.push(resources.nebula_support);
         state.allResourceList.push(resources.neutronium);
         state.allResourceList.push(resources.elerium);
         state.allResourceList.push(resources.nano_tube);
@@ -3778,6 +3528,8 @@
         state.jobManager.addCraftingJob(state.jobs.SheetMetal);
         state.jobs.Mythril.resource = resources.mythril;
         state.jobManager.addCraftingJob(state.jobs.Mythril);
+        state.jobs.Aerogel.resource = resources.aerogel;
+        state.jobManager.addCraftingJob(state.jobs.Aerogel);
 
         resetJobState();
         
@@ -3851,7 +3603,45 @@
         state.spaceBuildings.DwarfEleriumContainer.addPowerConsumption(6);
         state.spaceBuildings.DwarfEleriumReactor.addPowerConsumption(-25);
         state.spaceBuildings.DwarfEleriumReactor.addResourceConsumption(resources.elerium, 0.05);
-        state.spaceBuildings.DwarfWorldController.addPowerConsumption(20);
+        state.spaceBuildings.DwarfWorldController.addPowerConsumption(10);
+
+        // state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.alpha_support, -5);
+        // state.spaceBuildings.AlphaStarport.addPowerConsumption(10);
+        // state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.food, 100);
+        // state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.helium_3, 5);
+        // state.spaceBuildings.AlphaHabitat.addResourceConsumption(resources.alpha_support, -1);
+        // state.spaceBuildings.AlphaHabitat.addPowerConsumption(2);
+        // state.spaceBuildings.AlphaMiningDroid.addResourceConsumption(resources.alpha_support, 1);
+        // state.spaceBuildings.AlphaMiningDroid.addPowerConsumption(1);
+        // state.spaceBuildings.AlphaProcessing.addResourceConsumption(resources.alpha_support, 1);
+        // state.spaceBuildings.AlphaProcessing.addPowerConsumption(1);
+        // state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.alpha_support, 1);
+        // state.spaceBuildings.AlphaFusion.addPowerConsumption(-11); // Produces power
+        // state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.deuterium, 1.25);
+        // state.spaceBuildings.AlphaLaboratory.addResourceConsumption(resources.alpha_support, 1);
+        // state.spaceBuildings.AlphaLaboratory.addPowerConsumption(1);
+        // state.spaceBuildings.AlphaExchange.addResourceConsumption(resources.alpha_support, 1);
+        // state.spaceBuildings.AlphaExchange.addPowerConsumption(1);
+        // state.spaceBuildings.AlphaFactory.addResourceConsumption(resources.alpha_support, 1);
+        // state.spaceBuildings.AlphaFactory.addPowerConsumption(1);
+
+        // state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.alpha_support, -1);
+        // state.spaceBuildings.ProximaTransferStation.addPowerConsumption(1);
+        // state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.uranium, 0.28);
+        // state.spaceBuildings.ProximaCruiser.addPowerConsumption(1);
+        // state.spaceBuildings.ProximaCruiser.addResourceConsumption(resources.helium_3, 6);
+
+        // state.spaceBuildings.NebulaNexus.addResourceConsumption(resources.nebula_support, -2);
+        // state.spaceBuildings.NebulaNexus.addPowerConsumption(8);
+        // state.spaceBuildings.NebulaHarvestor.addResourceConsumption(resources.nebula_support, 1);
+        // state.spaceBuildings.NebulaHarvestor.addPowerConsumption(1);
+        // state.spaceBuildings.NebulaEleriumProspector.addResourceConsumption(resources.nebula_support, 1);
+        // state.spaceBuildings.NebulaEleriumProspector.addPowerConsumption(1);
+
+        // state.spaceBuildings.NeutronMiner.addPowerConsumption(6);
+        // state.spaceBuildings.NeutronMiner.addResourceConsumption(resources.helium_3, 3);
+        // state.spaceBuildings.BlackholeFarReach.addPowerConsumption(5);
+        // state.spaceBuildings.BlackholeMassEjector.addPowerConsumption(2);
 
         // We aren't getting these ones yet...
         state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.money, 100000));
@@ -3873,98 +3663,67 @@
         let bilateralSymmetry = [e.BilateralSymmetry, e.Multicellular, e.Phagocytosis, e.SexualReproduction];
 
         let aquatic = [e.Sentience, e.Aquatic].concat(bilateralSymmetry);
-        state.races.Sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
-        state.races.Octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
-        state.raceGroupAchievementList.push([ state.races.Sharkin, state.races.Octigoran ]);
+        races.Sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
+        races.Octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
+        state.raceGroupAchievementList.push([ races.Sharkin, races.Octigoran ]);
 
         let arthropods = [e.Sentience, e.Arthropods].concat(bilateralSymmetry);
-        state.races.Antid.evolutionTree = [e.Antid].concat(arthropods);
-        state.races.Scorpid.evolutionTree = [e.Scorpid].concat(arthropods);
-        state.races.Mantis.evolutionTree = [e.Mantis].concat(arthropods);
-        state.raceGroupAchievementList.push([ state.races.Antid, state.races.Scorpid, state.races.Mantis ]);
+        races.Antid.evolutionTree = [e.Antid].concat(arthropods);
+        races.Scorpid.evolutionTree = [e.Scorpid].concat(arthropods);
+        races.Mantis.evolutionTree = [e.Mantis].concat(arthropods);
+        state.raceGroupAchievementList.push([ races.Antid, races.Scorpid, races.Mantis ]);
 
         let humanoid = [e.Sentience, e.Humanoid, e.Mammals].concat(bilateralSymmetry);
-        state.races.Human.evolutionTree = [e.Human].concat(humanoid);
-        state.races.Orc.evolutionTree = [e.Orc].concat(humanoid);
-        state.races.Elven.evolutionTree = [e.Elven].concat(humanoid);
-        state.races.Valdi.evolutionTree = [e.Valdi, e.Bunker].concat(humanoid); // requires bunker gene
-        state.raceGroupAchievementList.push([ state.races.Human, state.races.Orc, state.races.Elven, state.races.Valdi ]);
+        races.Human.evolutionTree = [e.Human].concat(humanoid);
+        races.Orc.evolutionTree = [e.Orc].concat(humanoid);
+        races.Elven.evolutionTree = [e.Elven].concat(humanoid);
+        races.Valdi.evolutionTree = [e.Valdi, e.Bunker].concat(humanoid); // requires bunker gene
+        state.raceGroupAchievementList.push([ races.Human, races.Orc, races.Elven, races.Valdi ]);
 
         let gigantism = [e.Sentience, e.Gigantism, e.Mammals].concat(bilateralSymmetry);
-        state.races.Troll.evolutionTree = [e.Troll].concat(gigantism);
-        state.races.Ogre.evolutionTree = [e.Ogre].concat(gigantism);
-        state.races.Cyclops.evolutionTree = [e.Cyclops].concat(gigantism);
-        state.raceGroupAchievementList.push([ state.races.Troll, state.races.Ogre, state.races.Cyclops ]);
+        races.Troll.evolutionTree = [e.Troll].concat(gigantism);
+        races.Ogre.evolutionTree = [e.Ogre].concat(gigantism);
+        races.Cyclops.evolutionTree = [e.Cyclops].concat(gigantism);
+        state.raceGroupAchievementList.push([ races.Troll, races.Ogre, races.Cyclops ]);
 
         let dwarfism = [e.Sentience, e.Dwarfism, e.Mammals].concat(bilateralSymmetry);
-        state.races.Kobold.evolutionTree = [e.Kobold].concat(dwarfism);
-        state.races.Goblin.evolutionTree = [e.Goblin].concat(dwarfism);
-        state.races.Gnome.evolutionTree = [e.Gnome].concat(dwarfism);
-        state.raceGroupAchievementList.push([ state.races.Kobold, state.races.Goblin, state.races.Gnome ]);
+        races.Kobold.evolutionTree = [e.Kobold].concat(dwarfism);
+        races.Goblin.evolutionTree = [e.Goblin].concat(dwarfism);
+        races.Gnome.evolutionTree = [e.Gnome].concat(dwarfism);
+        state.raceGroupAchievementList.push([ races.Kobold, races.Goblin, races.Gnome ]);
 
         let animalism = [e.Sentience, e.Animalism, e.Mammals].concat(bilateralSymmetry);
-        state.races.Cath.evolutionTree = [e.Cath].concat(animalism);
-        state.races.Wolven.evolutionTree = [e.Wolven].concat(animalism);
-        state.races.Centaur.evolutionTree = [e.Centaur].concat(animalism);
-        state.raceGroupAchievementList.push([ state.races.Cath, state.races.Wolven, state.races.Centaur ]);
+        races.Cath.evolutionTree = [e.Cath].concat(animalism);
+        races.Wolven.evolutionTree = [e.Wolven].concat(animalism);
+        races.Centaur.evolutionTree = [e.Centaur].concat(animalism);
+        state.raceGroupAchievementList.push([ races.Cath, races.Wolven, races.Centaur ]);
 
         let demonic = [e.Sentience, e.Demonic, e.Mammals].concat(bilateralSymmetry);
-        state.races.Balorg.evolutionTree = [e.Balorg].concat(demonic);
-        state.races.Imp.evolutionTree = [e.Imp].concat(demonic);
-        state.raceGroupAchievementList.push([ state.races.Balorg, state.races.Imp ]);
+        races.Balorg.evolutionTree = [e.Balorg].concat(demonic);
+        races.Imp.evolutionTree = [e.Imp].concat(demonic);
+        state.raceGroupAchievementList.push([ races.Balorg, races.Imp ]);
 
         let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
-        state.races.Arraak.evolutionTree = [e.Arraak].concat(endothermic);
-        state.races.Pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
-        state.races.Dracnid.evolutionTree = [e.Dracnid].concat(endothermic);
-        state.raceGroupAchievementList.push([ state.races.Arraak, state.races.Pterodacti, state.races.Dracnid ]);
+        races.Arraak.evolutionTree = [e.Arraak].concat(endothermic);
+        races.Pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
+        races.Dracnid.evolutionTree = [e.Dracnid].concat(endothermic);
+        state.raceGroupAchievementList.push([ races.Arraak, races.Pterodacti, races.Dracnid ]);
 
         let ectothermic = [e.Sentience, e.Ectothermic, e.Eggshell].concat(bilateralSymmetry);
-        state.races.Tortoisan.evolutionTree = [e.Tortoisan].concat(ectothermic);
-        state.races.Gecko.evolutionTree = [e.Gecko].concat(ectothermic);
-        state.races.Slitheryn.evolutionTree = [e.Slitheryn].concat(ectothermic);
-        state.raceGroupAchievementList.push([ state.races.Tortoisan, state.races.Gecko, state.races.Slitheryn ]);
+        races.Tortoisan.evolutionTree = [e.Tortoisan].concat(ectothermic);
+        races.Gecko.evolutionTree = [e.Gecko].concat(ectothermic);
+        races.Slitheryn.evolutionTree = [e.Slitheryn].concat(ectothermic);
+        state.raceGroupAchievementList.push([ races.Tortoisan, races.Gecko, races.Slitheryn ]);
 
         let chloroplasts = [e.Sentience, e.Bryophyte, e.Poikilohydric, e.Multicellular, e.Chloroplasts, e.SexualReproduction];
-        state.races.Entish.evolutionTree = [e.Entish].concat(chloroplasts);
-        state.races.Cacti.evolutionTree = [e.Cacti].concat(chloroplasts);
-        state.raceGroupAchievementList.push([ state.races.Entish, state.races.Cacti ]);
+        races.Entish.evolutionTree = [e.Entish].concat(chloroplasts);
+        races.Cacti.evolutionTree = [e.Cacti].concat(chloroplasts);
+        state.raceGroupAchievementList.push([ races.Entish, races.Cacti ]);
 
         let chitin = [e.Sentience, e.Bryophyte, e.Spores, e.Multicellular, e.Chitin, e.SexualReproduction];
-        state.races.Sporgar.evolutionTree = [e.Sporgar].concat(chitin);
-        state.races.Shroomi.evolutionTree = [e.Shroomi].concat(chitin);
-        state.raceGroupAchievementList.push([ state.races.Sporgar, state.races.Shroomi ]);
-
-        state.raceAchievementList.push(state.races.Antid);
-        state.raceAchievementList.push(state.races.Human);
-        state.raceAchievementList.push(state.races.Troll);
-        state.raceAchievementList.push(state.races.Kobold);
-        state.raceAchievementList.push(state.races.Cath);
-        state.raceAchievementList.push(state.races.Arraak);
-        state.raceAchievementList.push(state.races.Tortoisan);
-        state.raceAchievementList.push(state.races.Entish);
-        state.raceAchievementList.push(state.races.Sporgar);
-        state.raceAchievementList.push(state.races.Mantis);
-        state.raceAchievementList.push(state.races.Orc);
-        state.raceAchievementList.push(state.races.Ogre);
-        state.raceAchievementList.push(state.races.Goblin);
-        state.raceAchievementList.push(state.races.Wolven);
-        state.raceAchievementList.push(state.races.Pterodacti);
-        state.raceAchievementList.push(state.races.Gecko);
-        state.raceAchievementList.push(state.races.Cacti);
-        state.raceAchievementList.push(state.races.Shroomi);
-        state.raceAchievementList.push(state.races.Scorpid);
-        state.raceAchievementList.push(state.races.Elven);
-        state.raceAchievementList.push(state.races.Cyclops);
-        state.raceAchievementList.push(state.races.Gnome);
-        state.raceAchievementList.push(state.races.Centaur);
-        state.raceAchievementList.push(state.races.Dracnid);
-        state.raceAchievementList.push(state.races.Slitheryn);
-        state.raceAchievementList.push(state.races.Valdi);
-        state.raceAchievementList.push(state.races.Sharkin);
-        state.raceAchievementList.push(state.races.Octigoran);
-        state.raceAchievementList.push(state.races.Balorg);
-        state.raceAchievementList.push(state.races.Imp);
+        races.Sporgar.evolutionTree = [e.Sporgar].concat(chitin);
+        races.Shroomi.evolutionTree = [e.Shroomi].concat(chitin);
+        state.raceGroupAchievementList.push([ races.Sporgar, races.Shroomi ]);
 
         resetProjectState();
         resetWarState();
@@ -4042,6 +3801,9 @@
     function resetStorageState() {
         state.storageManager.clearPriorityList();
 
+        state.storageManager.addResourceToPriorityList(resources.stanene);
+        state.storageManager.addResourceToPriorityList(resources.graphene);
+        state.storageManager.addResourceToPriorityList(resources.adamantite);
         state.storageManager.addResourceToPriorityList(resources.iridium);
         state.storageManager.addResourceToPriorityList(resources.polymer);
         state.storageManager.addResourceToPriorityList(resources.alloy);
@@ -4071,6 +3833,9 @@
         resources.alloy.updateStorageState(true, 1, -1, -1);
         resources.polymer.updateStorageState(true, 1, -1, -1);
         resources.iridium.updateStorageState(true, 1, -1, -1);
+        resources.adamantite.updateStorageState(true, 1, -1, -1);
+        resources.graphene.updateStorageState(true, 1, -1, -1);
+        resources.stanene.updateStorageState(true, 1, -1, -1);
     }
 
     function resetStorageSettings() {
@@ -4097,6 +3862,7 @@
         state.jobManager.addJobToPriorityList(state.jobs.Banker);
         state.jobManager.addJobToPriorityList(state.jobs.Colonist);
         state.jobManager.addJobToPriorityList(state.jobs.SpaceMiner);
+        state.jobManager.addJobToPriorityList(state.jobs.HellSurveyor);
 
         state.jobs.Farmer.breakpointMaxs = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
         state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Lumberjacks and quarry workers are special - remaining worker divided between them
@@ -4117,6 +3883,7 @@
         state.jobs.Banker.breakpointMaxs = [3, 5, -1];
         state.jobs.Colonist.breakpointMaxs = [0, 0, -1];
         state.jobs.SpaceMiner.breakpointMaxs = [0, 0, -1];
+        state.jobs.HellSurveyor.breakpointMaxs = [0, 0, -1];
     }
 
     function resetBuildingState() {
@@ -4221,10 +3988,36 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldCollider);
 
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaStarport);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaHabitat);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMiningDroid);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaProcessing);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaFusion);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaLaboratory);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaExchange);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaFactory);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaWarehouse);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaTransferStation);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCargoYard);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCruiser);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaDyson);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaNexus);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaHarvestor);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaEleriumProspector);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMiner);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Blackhole);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeFarReach);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStellerEngine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeMassEjector);
+
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
             
-            if (building.id === "probes") {
+            if (building.settingId === "spcdock-probes") {
                 building._autoMax = 4;
             } else {
                 building._autoMax = -1;
@@ -4347,28 +4140,28 @@
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
 
-            let settingKey = 'bat' + building.id;
+            let settingKey = 'bat' + building.settingId;
             if (settings.hasOwnProperty(settingKey)) {
                 building.autoBuildEnabled = settings[settingKey];
             } else {
                 settings[settingKey] = building.autoBuildEnabled;
             }
 
-            settingKey = 'bld_p_' + building.id;
+            settingKey = 'bld_p_' + building.settingId;
             if (settings.hasOwnProperty(settingKey)) {
                 building.priority = parseInt(settings[settingKey]);
             } else {
                 settings[settingKey] = building.priority;
             }
 
-            settingKey = 'bld_s_' + building.id;
+            settingKey = 'bld_s_' + building.settingId;
             if (settings.hasOwnProperty(settingKey)) {
                 building.autoStateEnabled = settings[settingKey];
             } else {
                 settings[settingKey] = building.autoStateEnabled;
             }
 
-            settingKey = 'bld_m_' + building.id;
+            settingKey = 'bld_m_' + building.settingId;
             if (settings.hasOwnProperty(settingKey)) {
                 building.autoMax = parseInt(settings[settingKey]);
             } else {
@@ -4466,10 +4259,10 @@
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
-            settings['bat' + building.id] = building.autoBuildEnabled;
-            settings['bld_p_' + building.id] = building.priority;
-            settings['bld_s_' + building.id] = building.autoStateEnabled;
-            settings['bld_m_' + building.id] = building._autoMax;
+            settings['bat' + building.settingId] = building.autoBuildEnabled;
+            settings['bld_p_' + building.settingId] = building.priority;
+            settings['bld_s_' + building.settingId] = building.autoStateEnabled;
+            settings['bld_m_' + building.settingId] = building._autoMax;
         }
         
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -4625,14 +4418,14 @@
 
         // If the user has specified a target evolution then use that
         if (state.evolutionTarget === null && settings.userEvolutionTargetName != "auto") {
-            state.evolutionTarget = state.raceAchievementList[findArrayIndex(state.raceAchievementList, "name", settings.userEvolutionTargetName)];
-            state.evolutionFallback = state.races.Antid;
+            state.evolutionTarget = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
+            state.evolutionFallback = races.Antid;
 
             console.log("Targeting user specified race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
         } else if (state.evolutionTarget === null) {
             // User has automatic race selection enabled - Antids or autoAchievements
-            state.evolutionTarget = state.races.Antid;
-            state.evolutionFallback = state.races.Antid;
+            state.evolutionTarget = races.Antid;
+            state.evolutionFallback = races.Antid;
 
             if (settings.autoAchievements) {
                 const achievementLevel = settings.autoChallenge ? 5 : 1; // If autoChallenge set then go for full 5 stars
@@ -4776,7 +4569,7 @@
                 }
 
                 if (tryCraft) {
-                    craftable.tryCraftX("5");
+                    craftable.tryCraft5(1);
                 }
             }
         }
@@ -5774,15 +5567,15 @@
             // We specifically want to build a target building. Don't build anything else that uses the same resources
             if (targetBuilding !== null) {
                 if (targetBuilding.resourceRequirements.some(r => building.resourceRequirements.includes(r))) {
-                    log("autoBuild", building.id + " DOES conflict with target building " + targetBuilding.id);
+                    log("autoBuild", building.settingId + " DOES conflict with target building " + targetBuilding.settingId);
                     continue;
                 } else {
-                    log("autoBuild", building.id + " DOES NOT conflict with target building " + targetBuilding.id);
+                    log("autoBuild", building.settingId + " DOES NOT conflict with target building " + targetBuilding.settingId);
                 }
             }
 
             // Only build the following buildings if we have enough production to cover what they use
-            if (building === state.cityBuildings.Smelter && getRaceId() !== state.races.Entish.id) {
+            if (building === state.cityBuildings.Smelter && isLumberRace()) {
                 buildIfEnoughProduction(building, resources.lumber, 12);
                 continue;
             }
@@ -5903,6 +5696,14 @@
                             log("autoResearch", "Picking: " + itemId);
                             click = true;
                         }
+                    }
+
+                    // Hey, we can get both theology researches
+                    if (itemId === "tech-anthropology" && isResearchUnlocked("fanaticism")) {
+                        click = true;
+                    }
+                    if (itemId === "tech-fanaticism" && isResearchUnlocked("anthropology")) {
+                        click = true;
                     }
                 }
 
@@ -6033,7 +5834,7 @@
                 let resourceType = building.consumption.resourceTypes[j];
 
                 // Mass driver effect
-                if (resourceType.resource === resources.oil || resourceType.resource === resources.helium_3) {
+                if (building._tabPrefix === "space" && (resourceType.resource === resources.oil || resourceType.resource === resources.helium_3)) {
                     resourceType.rate = resourceType.initialRate * spaceFuelMultiplier;
                 }
                 
@@ -6112,7 +5913,9 @@
             // If the warning indicator is on then we don't know how many buildings are over-resourced
             // Just take them all off and sort it out next loop
             if (building.isStateOnWarning()) {
-                adjustment = -building.stateOnCount;
+                if (building.stateOnCount > 1) {
+                    adjustment = building.stateOnCount - 1;
+                }
             }
 
             if ((adjustment < -1 || adjustment > 1) && (building === state.cityBuildings.Factory || building === state.spaceBuildings.RedFactory)) {
@@ -6134,9 +5937,9 @@
      * @param {number} requiredContainers
      */
     function addToStorageAdjustments(storageChanges, resource, requiredCrates, requiredContainers) {
-        if (resource.assignedCrates !== requiredCrates || resource.assignedContainers !== requiredContainers) {
-            let crates = Math.min(requiredCrates - resource.assignedCrates, storageChanges.availableCrates);
-            let containers = Math.min(requiredContainers - resource.assignedContainers, storageChanges.availableContainers);
+        if (resource.currentCrates !== requiredCrates || resource.currentContainers !== requiredContainers) {
+            let crates = Math.min(requiredCrates - resource.currentCrates, storageChanges.availableCrates);
+            let containers = Math.min(requiredContainers - resource.currentContainers, storageChanges.availableContainers);
 
             if (crates !== 0 || containers !== 0) {
                 storageChanges.adjustments.push({ resource: resource, cratesAdjustment: crates, containersAdjustment: containers });
@@ -6154,26 +5957,8 @@
 
     function autoStorage() {
         let storageList = state.storageManager.managedPriorityList();
-        let resourcesToUpdateCachedOptions = null;
 
         if (storageList.length === 0) {
-            return;
-        }
-
-        if (state.cityBuildings.StorageYard.count > 0 && state.cityBuildings.Warehouse.count > 0) {
-            resourcesToUpdateCachedOptions = storageList.filter(resource => !resource.isAssignedCratesUpdated || !resource.isAssignedContainersUpdated);
-        } else if (state.cityBuildings.StorageYard.count > 0) {
-            resourcesToUpdateCachedOptions = storageList.filter(resource => !resource.isAssignedCratesUpdated);
-        } else if (state.cityBuildings.Warehouse.count > 0) {
-            resourcesToUpdateCachedOptions = storageList.filter(resource => !resource.isAssignedContainersUpdated);
-        } else {
-            // We don't have any storage yet
-            return;
-        }
-
-        // Update our cached options (crates & containers)
-        if (resourcesToUpdateCachedOptions!== null && resourcesToUpdateCachedOptions.length !== 0) {
-            state.windowManager.updateResourceCachedOptions(resourcesToUpdateCachedOptions);
             return;
         }
 
@@ -6204,15 +5989,15 @@
         let autoStorageTotalMaxContainers = 0;
 
         storageList.forEach(resource => {
-            if (resource.autoCratesMax < 0 || resource.assignedCrates < resource.autoCratesMax) {
+            if (resource.autoCratesMax < 0 || resource.currentCrates < resource.autoCratesMax) {
                 totalCratesWeighting += resource.autoStorageWeighting;
-                totalCrates += resource.assignedCrates;
+                totalCrates += resource.currentCrates;
                 autoStorageTotalMaxCrates += resource.autoCratesMax;
             }
 
-            if (resource.autoContainersMax < 0 || resource.assignedContainers < resource.autoContainersMax) {
+            if (resource.autoContainersMax < 0 || resource.currentContainers < resource.autoContainersMax) {
                 totalContainersWeighting += resource.autoStorageWeighting;
-                totalContainers += resource.assignedContainers;
+                totalContainers += resource.currentContainers;
                 autoStorageTotalMaxContainers += resource.autoContainersMax;
             }
         });
@@ -6248,8 +6033,8 @@
     
             // Polymer required for pre MAD tech is about 800. So just keep adding crates until we have that much storage space
             if (resources.polymer.isUnlocked() && resources.polymer.maxQuantity < 800) {
-                addToStorageAdjustments(storageChanges, resources.polymer, resources.polymer.assignedCrates + 1, 0);
-                autoStorageTotalMaxCrates += resources.polymer.assignedCrates + 1;
+                addToStorageAdjustments(storageChanges, resources.polymer, resources.polymer.currentCrates + 1, 0);
+                autoStorageTotalMaxCrates += resources.polymer.currentCrates + 1;
             }
 
             // We've tinkered with the autoStorageTotalMaxCrates settings in this IF statement so we'll have to do this here
@@ -6282,7 +6067,7 @@
                 storageChanges.containersToBuild = Math.max(0, autoStorageTotalMaxContainers - totalContainers);
             }
 
-            // Don't open the window every second... wait for a minute if all we're doing is building new crates / containers
+            // Wait for a minute if all we're doing is building new crates / containers
             if (state.lastStorageBuildCheckLoop + 60 > state.loopCounter) {
                 storageChanges.cratesToBuild = 0;
                 storageChanges.containersToBuild = 0;
@@ -6297,7 +6082,7 @@
                 let requiredCrates = 0;
                 let requiredContainers = 0;
 
-                if (resource.assignedCrates >= resource.autoCratesMax) {
+                if (resource.currentCrates >= resource.autoCratesMax) {
                     requiredCrates = resource.autoCratesMax;
                 } else {
                     requiredCrates = Math.ceil(totalCrates * cratesStoragePercentage);
@@ -6313,7 +6098,7 @@
                     if (resource === resources.polymer) { requiredCrates = Math.max(5, requiredCrates) }
                 }
 
-                if (resource.assignedContainers >= resource.autoContainersMax) {
+                if (resource.currentContainers >= resource.autoContainersMax) {
                     requiredContainers = resource.autoContainersMax;
                 } else {
                     requiredContainers = Math.ceil(totalContainers * containersStoragePercentage);
@@ -6335,7 +6120,24 @@
             }
 
             //console.log(storageChanges.adjustments.length + ", resource " + storageChanges.adjustments[0].resource.id + ", adjustment " + storageChanges.adjustments[0].cratesAdjustment)
-            state.windowManager.updateStorage(storageChanges);
+            state.storageManager.tryConstructCrate(storageChanges.cratesToBuild);
+            state.storageManager.tryConstructContainer(storageChanges.containersToBuild);
+
+            storageChanges.adjustments.forEach(adjustment => {
+                if (adjustment.cratesAdjustment > 0) {
+                    adjustment.resource.tryAssignCrate(adjustment.cratesAdjustment);
+                }
+                if (adjustment.cratesAdjustment < 0) {
+                    adjustment.resource.tryUnassignCrate(adjustment.cratesAdjustment);
+                }
+
+                if (adjustment.containersAdjustment > 0) {
+                    adjustment.resource.tryAssignContainer(adjustment.containersAdjustment);
+                }
+                if (adjustment.containersAdjustment < 0) {
+                    adjustment.resource.tryUnassignContainer(adjustment.containersAdjustment);
+                }
+            });
         }
     }
 
@@ -6482,6 +6284,7 @@
 
         // Calculate adjustments
         for (let i = 0; i < tradableResources.length; i++) {
+            //console.log(tradableResources[i].id + " " + (requiredTradeRoutes[i] - tradableResources[i].currentTradeRoutes))
             adjustmentTradeRoutes.push(requiredTradeRoutes[i] - tradableResources[i].currentTradeRoutes);
         }
 
@@ -6541,6 +6344,10 @@
             state.cityBuildings.FissionPower.consumption.power = -14;
         } else {
             state.cityBuildings.FissionPower.consumption.power = -18;
+        }
+
+        if (resources.population.cachedId !== resources.population.id) {
+            resources.population.setupCache();
         }
 
         if (isLumberRace()) {
@@ -6749,7 +6556,7 @@
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
         let scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
-        $("#settings").append(scriptContentNode);
+        $("#localization").parent().append(scriptContentNode);
 
         buildImportExport();
         buildGeneralSettings();
@@ -6963,15 +6770,15 @@
         let node = $('<option value = "auto"' + selected + '>Script Managed</option>');
         selectNode.append(node);
 
-        for (let i = 0; i < state.raceAchievementList.length; i++) {
-            const race = state.raceAchievementList[i];
+        for (let i = 0; i < raceAchievementList.length; i++) {
+            const race = raceAchievementList[i];
             let selected = settings.userEvolutionTargetName === race.name ? ' selected="selected"' : "";
 
             let raceNode = $('<option value = "' + race.name + '"' + selected + '>' + race.name + '</option>');
             selectNode.append(raceNode);
         }
 
-        let race = state.raceAchievementList[findArrayIndex(state.raceAchievementList, "name", settings.userEvolutionTargetName)];
+        let race = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
         if (race !== null && race !== undefined && race.isEvolutionConditional) {
             document.getElementById("script_race_warning").textContent = "Warning! Only choose if you meet requirements: " + race.evolutionConditionText;
         }
@@ -6982,7 +6789,7 @@
             updateSettingsFromState();
             //console.log("Chosen evolution target of " + value);
             
-            let race = state.raceAchievementList[findArrayIndex(state.raceAchievementList, "name", settings.userEvolutionTargetName)];
+            let race = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
             if (race !== null && race !== undefined && race.isEvolutionConditional) {
                 document.getElementById("script_race_warning").textContent = "Warning! Only choose if you meet requirements: " + race.evolutionConditionText;
             } else {
@@ -7668,7 +7475,7 @@
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
             let classAttribute = ' class="scriptdraggable"';
-            newTableBodyText += '<tr value="' + building.id + '"' + classAttribute + '><td id="script_' + building.id + 'Toggle" style="width:40%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+            newTableBodyText += '<tr value="' + building.settingId + '"' + classAttribute + '><td id="script_' + building.settingId + 'Toggle" style="width:40%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -7694,7 +7501,7 @@
         // Build all other buildings settings rows
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
-            let buildingElement = $('#script_' + building.id + 'Toggle');
+            let buildingElement = $('#script_' + building.settingId + 'Toggle');
 
             let classAttribute = building._tabPrefix === "city" ? ' class="has-text-info"' : ' class="has-text-danger"';
             let toggle = $('<span' + classAttribute + ' style="margin-left: 20px;">' + building.name + '</span>');
@@ -7761,14 +7568,14 @@
      */
     function buildBuildingEnabledSettingsToggle(building) {
         let checked = building.autoBuildEnabled ? " checked" : "";
-        let toggle = $('<label id=script_bat2_' + building.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+        let toggle = $('<label id=script_bat2_' + building.settingId + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
 
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = input.checked;
             building.autoBuildEnabled = state;
-            //$('#script_bat1_' + building.id + ' input').checked = state; // Update the on-building toggle
-            let otherCheckbox =  document.querySelector('#script_bat1_' + building.id + ' input');
+            //$('#script_bat1_' + building.settingId + ' input').checked = state; // Update the on-building toggle
+            let otherCheckbox =  document.querySelector('#script_bat1_' + building.settingId + ' input');
             if (otherCheckbox !== null) {
                 // @ts-ignore
                 otherCheckbox.checked = state;
@@ -7819,7 +7626,7 @@
         let checked = building.autoStateEnabled ? " checked" : "";
 
         if (building.hasConsumption()) {
-            toggle = $('<label id=script_bld_s_' + building.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="scriptlastcolumn"></span>');
+            toggle = $('<label id=script_bld_s_' + building.settingId + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="scriptlastcolumn"></span>');
         } else {
             toggle = $('<span class="scriptlastcolumn"></span>');
         }
@@ -7870,7 +7677,7 @@
      */
     function buildBuildingMaxSettingsInput(building) {
         let buildingMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
-        buildingMaxTextBox.val(settings["bld_m_" + building.id]);
+        buildingMaxTextBox.val(settings["bld_m_" + building.settingId]);
     
         buildingMaxTextBox.on('change', function() {
             let val = buildingMaxTextBox.val();
@@ -8269,16 +8076,16 @@
      */
     function createBuildingToggle(building) {
         let checked = building.autoBuildEnabled ? " checked" : "";
-        let buildingElement = $('#' + building._tabPrefix + '-' + building.id);
-        let toggle = $('<label id=script_bat1_' + building.id + ' tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span></label>');
+        let buildingElement = $('#' + building.settingId);
+        let toggle = $('<label id=script_bat1_' + building.settingId + ' tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span></label>');
         buildingElement.append(toggle);
 
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = input.checked;
             building.autoBuildEnabled = state;
-            //$('#script_bat2_' + building.id + ' input').checked = state; // Update the settings-building toggle
-            let otherCheckbox = document.querySelector('#script_bat2_' + building.id + ' input');
+            //$('#script_bat2_' + building.settingId + ' input').checked = state; // Update the settings-building toggle
+            let otherCheckbox = document.querySelector('#script_bat2_' + building.settingId + ' input');
             if (otherCheckbox !== null) {
                 // @ts-ignore
                 otherCheckbox.checked = state;
@@ -8480,7 +8287,7 @@
      * @param {string} raceId
      */
     function isRaceTraitIntelligent(raceId) {
-        return raceId === state.races.Cyclops.id;
+        return raceId === races.Cyclops.id;
     }
 
     /**
@@ -8504,29 +8311,29 @@
             return "";
         }
 
-        let index = findArrayIndex(state.raceAchievementList, "name", raceNameNode.textContent);
+        let index = findArrayIndex(raceAchievementList, "name", raceNameNode.textContent);
 
         if (index === -1) {
             return "";
         }
 
-        return state.raceAchievementList[index].id;
+        return raceAchievementList[index].id;
     }
 
     function isHunterRace() {
         // There are several hunter races but you can also gain the trait through fanaticism or deify
         let raceId = getRaceId();
-        return raceId === state.races.Cath.id || raceId === state.races.Balorg.id || raceId === state.races.Imp.id || state.jobManager._unemployed.getHtmlName() === "Hunter";
+        return raceId === races.Cath.id || raceId === races.Balorg.id || raceId === races.Imp.id || state.jobManager._unemployed.getHtmlName() === "Hunter";
     }
 
     function isEvilRace() {
         let raceId = getRaceId();
-        return raceId === state.races.Balorg.id || raceId === state.races.Imp.id;
+        return raceId === races.Balorg.id || raceId === races.Imp.id;
     }
 
     function isLumberRace() {
         let raceId = getRaceId();
-        return raceId !== state.races.Entish.id && resources.lumber.isUnlocked();
+        return raceId !== races.Entish.id && resources.lumber.isUnlocked();
     }
 
     function removePoppers() {
