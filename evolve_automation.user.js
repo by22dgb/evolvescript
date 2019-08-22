@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.1.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -495,7 +495,7 @@
             if (this.id == state.spaceBuildings.GasSpaceDock.id || this === state.spaceBuildings.DwarfWorldController) {
                 // Only clickable once but then hangs around in a "clickable" state even though you can't get more than one...
                 return this._autoMax === 0 ? 0 : 1;
-            } else if (this === state.spaceBuildings.GasSpaceDockShipSegment) {
+            } else if (this === state.spaceBuildings.GasSpaceDockShipSegment || this === state.spaceBuildings.ProximaDyson || this === state.spaceBuildings.BlackholeStellerEngine) {
                 // Only clickable 100 times but then hangs around in a "clickable" state even though you can't get more than 100...
                 return this._autoMax >= 0 && this._autoMax <= 100 ? this._autoMax : 100;
             } else if (this === state.spaceBuildings.DwarfWorldCollider) {
@@ -575,7 +575,7 @@
             if (this.id === state.spaceBuildings.GasSpaceDock.id || this === state.spaceBuildings.DwarfWorldController) {
                 // Only clickable once but then hangs around in a "clickable" state even though you can't get more than one...
                 return this.count === 0;
-            } else if (this === state.spaceBuildings.GasSpaceDockShipSegment) {
+            } else if (this === state.spaceBuildings.GasSpaceDockShipSegment || this === state.spaceBuildings.ProximaDyson || this === state.spaceBuildings.BlackholeStellerEngine) {
                 // Only clickable 100 times but then hangs around in a "clickable" state even though you can't get more than 100...
                 return this.count < 100;
             } else if (this === state.spaceBuildings.DwarfWorldCollider) {
@@ -1502,6 +1502,7 @@
         Alloy: 1,
         Polymer: 2,
         NanoTube: 3,
+        Stanene: 4,
     }
 
     class Factory extends Action {
@@ -1513,10 +1514,10 @@
             this.maxOperating = 0;
 
             /** @type {boolean[]} */
-            this._isProductionUnlocked = [ false, false, false, false ];
+            this._isProductionUnlocked = [ false, false, false, false, false ];
 
             /** @type {number[]} */
-            this._currentProduction = [ 0, 0, 0, 0 ];
+            this._currentProduction = [ 0, 0, 0, 0, 0 ];
         }
 
         /**
@@ -1582,6 +1583,7 @@
             this._isProductionUnlocked[FactoryGoods.Alloy] = productionNodes.length > FactoryGoods.Alloy;
             this._isProductionUnlocked[FactoryGoods.Polymer] = productionNodes.length > FactoryGoods.Polymer;
             this._isProductionUnlocked[FactoryGoods.NanoTube] = productionNodes.length > FactoryGoods.NanoTube;
+            this._isProductionUnlocked[FactoryGoods.Stanene] = productionNodes.length > FactoryGoods.Stanene;
 
             for (let i = 0; i < this._currentProduction.length; i++) {
                 if (this._isProductionUnlocked[i]) {
@@ -1658,6 +1660,7 @@
 
             this.Probes = null;
             this.Ship = null;
+            this.PrepForLaunch = new Action("Gas Prep Ship", "spcdock", "prep_ship", true);
             this.Launch = new Action("Gas Launch Ship", "spcdock", "launch_ship", true);
 
             this._isOptionsUpdated = false;
@@ -1749,13 +1752,21 @@
             // We're just going to try clicking 5 times until we get to 100 segments
             let canClick = this.Ship.tryBuild();
             if (canClick) {
-                this.Ship.tryBuild()
-                this.Ship.tryBuild()
-                this.Ship.tryBuild()
-                this.Ship.tryBuild()
+                this.Ship.tryBuild();
+                this.Ship.tryBuild();
+                this.Ship.tryBuild();
+                this.Ship.tryBuild();
             }
 
             return canClick;
+        }
+
+        tryPrepLaunchShip() {
+            if (!this.isOptionsOpen()) {
+                return false;
+            }
+
+            return this.PrepForLaunch.click();
         }
 
         tryLaunchShip() {
@@ -1995,26 +2006,14 @@
         }
 
         get currentSoldiers() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
             return parseInt(document.querySelector("#garrison .barracks > span:nth-Child(2)").textContent.split(" / ")[0]);
         }
 
         get maxSoldiers() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
             return parseInt(document.querySelector("#garrison .barracks > span:nth-Child(2)").textContent.split(" / ")[1]);
         }
 
         get woundedSoldiers() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
             return parseInt(document.querySelector("#garrison .barracks:nth-child(2) > span:nth-child(2)").textContent);
         }
 
@@ -3295,6 +3294,7 @@
 
         /** @type {Race} */
         evolutionTarget: null,
+        resetEvolutionTarget: false,
         /** @type {Race} */
         evolutionFallback: null,
         
@@ -3447,6 +3447,13 @@
             BlackholeFarReach: new Action("Blackhole Far Reach", "interstellar", "far_reach", true),
             BlackholeStellerEngine: new Action("Blackhole Steller Engine", "interstellar", "stellar_engine", true),
             BlackholeMassEjector: new Action("Blackhole Mission", "interstellar", "mass_ejector", true),
+
+            PortalTurret: new Action("Portal Laser Turret", "portal", "turret", true),
+            PortalCarport: new Action("Portal Surveyor Carport", "portal", "carport", true),
+            PortalWarDroid: new Action("Portal War Droid", "portal", "war_droid", true),
+            PortalWarDrone: new Action("Portal Predator Drone", "portal", "war_drone", true),
+            PortalSensorDrone: new Action("Portal Sensor Drone", "portal", "sensor_drone", true),
+            PortalAttractor: new Action("Portal Attractor Beacon", "portal", "attractor", true),
         },
 
         projects: {
@@ -3517,6 +3524,8 @@
         resources.polymer.productionCost.push(new ResourceProductionCost(resources.lumber, 36, 50));
         resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.coal, 20, 5));
         resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.neutronium, 0.125, 0.2));
+        resources.stanene.productionCost.push(new ResourceProductionCost(resources.aluminium, 75, 50));
+        resources.stanene.productionCost.push(new ResourceProductionCost(resources.nano_tube, 0.05, 10));
 
         state.jobs.Plywood.resource = resources.plywood;
         state.jobManager.addCraftingJob(state.jobs.Plywood);
@@ -3605,43 +3614,49 @@
         state.spaceBuildings.DwarfEleriumReactor.addResourceConsumption(resources.elerium, 0.05);
         state.spaceBuildings.DwarfWorldController.addPowerConsumption(10);
 
-        // state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.alpha_support, -5);
-        // state.spaceBuildings.AlphaStarport.addPowerConsumption(10);
-        // state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.food, 100);
-        // state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.helium_3, 5);
-        // state.spaceBuildings.AlphaHabitat.addResourceConsumption(resources.alpha_support, -1);
-        // state.spaceBuildings.AlphaHabitat.addPowerConsumption(2);
-        // state.spaceBuildings.AlphaMiningDroid.addResourceConsumption(resources.alpha_support, 1);
-        // state.spaceBuildings.AlphaMiningDroid.addPowerConsumption(1);
-        // state.spaceBuildings.AlphaProcessing.addResourceConsumption(resources.alpha_support, 1);
-        // state.spaceBuildings.AlphaProcessing.addPowerConsumption(1);
-        // state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.alpha_support, 1);
-        // state.spaceBuildings.AlphaFusion.addPowerConsumption(-11); // Produces power
-        // state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.deuterium, 1.25);
-        // state.spaceBuildings.AlphaLaboratory.addResourceConsumption(resources.alpha_support, 1);
-        // state.spaceBuildings.AlphaLaboratory.addPowerConsumption(1);
-        // state.spaceBuildings.AlphaExchange.addResourceConsumption(resources.alpha_support, 1);
-        // state.spaceBuildings.AlphaExchange.addPowerConsumption(1);
-        // state.spaceBuildings.AlphaFactory.addResourceConsumption(resources.alpha_support, 1);
-        // state.spaceBuildings.AlphaFactory.addPowerConsumption(1);
+        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.alpha_support, -5);
+        state.spaceBuildings.AlphaStarport.addPowerConsumption(10);
+        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.food, 100);
+        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.helium_3, 5);
+        state.spaceBuildings.AlphaHabitat.addResourceConsumption(resources.alpha_support, -1);
+        state.spaceBuildings.AlphaHabitat.addPowerConsumption(2);
+        state.spaceBuildings.AlphaMiningDroid.addResourceConsumption(resources.alpha_support, 1);
+        state.spaceBuildings.AlphaMiningDroid.addPowerConsumption(1);
+        state.spaceBuildings.AlphaProcessing.addResourceConsumption(resources.alpha_support, 1);
+        state.spaceBuildings.AlphaProcessing.addPowerConsumption(1);
+        state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.alpha_support, 1);
+        state.spaceBuildings.AlphaFusion.addPowerConsumption(-11); // Produces power
+        state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.deuterium, 1.25);
+        state.spaceBuildings.AlphaLaboratory.addResourceConsumption(resources.alpha_support, 1);
+        state.spaceBuildings.AlphaLaboratory.addPowerConsumption(1);
+        state.spaceBuildings.AlphaExchange.addResourceConsumption(resources.alpha_support, 1);
+        state.spaceBuildings.AlphaExchange.addPowerConsumption(1);
+        state.spaceBuildings.AlphaFactory.addResourceConsumption(resources.alpha_support, 1);
+        state.spaceBuildings.AlphaFactory.addPowerConsumption(1);
 
-        // state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.alpha_support, -1);
-        // state.spaceBuildings.ProximaTransferStation.addPowerConsumption(1);
-        // state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.uranium, 0.28);
-        // state.spaceBuildings.ProximaCruiser.addPowerConsumption(1);
-        // state.spaceBuildings.ProximaCruiser.addResourceConsumption(resources.helium_3, 6);
+        state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.alpha_support, -1);
+        state.spaceBuildings.ProximaTransferStation.addPowerConsumption(1);
+        state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.uranium, 0.28);
+        state.spaceBuildings.ProximaCruiser.addPowerConsumption(1);
+        state.spaceBuildings.ProximaCruiser.addResourceConsumption(resources.helium_3, 6);
 
-        // state.spaceBuildings.NebulaNexus.addResourceConsumption(resources.nebula_support, -2);
-        // state.spaceBuildings.NebulaNexus.addPowerConsumption(8);
-        // state.spaceBuildings.NebulaHarvestor.addResourceConsumption(resources.nebula_support, 1);
-        // state.spaceBuildings.NebulaHarvestor.addPowerConsumption(1);
-        // state.spaceBuildings.NebulaEleriumProspector.addResourceConsumption(resources.nebula_support, 1);
-        // state.spaceBuildings.NebulaEleriumProspector.addPowerConsumption(1);
+        state.spaceBuildings.NebulaNexus.addResourceConsumption(resources.nebula_support, -2);
+        state.spaceBuildings.NebulaNexus.addPowerConsumption(8);
+        state.spaceBuildings.NebulaHarvestor.addResourceConsumption(resources.nebula_support, 1);
+        state.spaceBuildings.NebulaHarvestor.addPowerConsumption(1);
+        state.spaceBuildings.NebulaEleriumProspector.addResourceConsumption(resources.nebula_support, 1);
+        state.spaceBuildings.NebulaEleriumProspector.addPowerConsumption(1);
 
-        // state.spaceBuildings.NeutronMiner.addPowerConsumption(6);
-        // state.spaceBuildings.NeutronMiner.addResourceConsumption(resources.helium_3, 3);
-        // state.spaceBuildings.BlackholeFarReach.addPowerConsumption(5);
-        // state.spaceBuildings.BlackholeMassEjector.addPowerConsumption(2);
+        state.spaceBuildings.NeutronMiner.addPowerConsumption(6);
+        state.spaceBuildings.NeutronMiner.addResourceConsumption(resources.helium_3, 3);
+        state.spaceBuildings.BlackholeFarReach.addPowerConsumption(5);
+        state.spaceBuildings.BlackholeMassEjector.addPowerConsumption(2);
+
+        state.spaceBuildings.PortalTurret.addPowerConsumption(4);
+        state.spaceBuildings.PortalWarDroid.addPowerConsumption(2);
+        state.spaceBuildings.PortalWarDrone.addPowerConsumption(5);
+        state.spaceBuildings.PortalSensorDrone.addPowerConsumption(3);
+        state.spaceBuildings.PortalAttractor.addPowerConsumption(3);
 
         // We aren't getting these ones yet...
         state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.money, 100000));
@@ -3916,11 +3931,14 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceNavBeacon);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonBase); // this building resets ui when clicked
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonIridiumMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonHeliumMine);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMining);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceport); // this building resets ui when clicked
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedTower);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedLivingQuarters);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaStarport);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaHabitat);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFabrication);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMine);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedBiodome);
@@ -3931,7 +3949,6 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceBarracks);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFactory);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
 
@@ -3989,8 +4006,6 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldCollider);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaStarport);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaHabitat);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMiningDroid);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaProcessing);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaFusion);
@@ -4013,6 +4028,13 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeFarReach);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStellerEngine);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeMassEjector);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalTurret);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSensorDrone);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWarDroid);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWarDrone);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAttractor);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalCarport);
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
@@ -4124,6 +4146,30 @@
             else { settings[settingKey] = resource._autoContainersMax; }
         }
         state.marketManager.sortByPriority();
+
+        for (let i = 0; i < state.storageManager.priorityList.length; i++) {
+            let resource = state.storageManager.priorityList[i];
+
+            let settingKey = 'res_storage' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoStorageEnabled = settings[settingKey]; }
+            else { settings[settingKey] = resource.autoStorageEnabled; }
+
+            settingKey = 'res_storage_w_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.autoStorageWeighting = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = resource.autoStorageWeighting; }
+
+            settingKey = 'res_storage_p_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.storagePriority = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = resource.storagePriority; }
+
+            settingKey = 'res_crates_m_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource._autoCratesMax = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource._autoCratesMax; }
+
+            settingKey = 'res_containers_m_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource._autoContainersMax = parseInt(settings[settingKey]); }
+            else { settings[settingKey] = resource._autoContainersMax; }
+        }
         state.storageManager.sortByPriority();
 
         // Retrieve settings for crafting resources
@@ -4252,6 +4298,19 @@
     function updateSettingsFromState() {
         updateStandAloneSettings();
 
+        // Remove old building settings... We had to update these with the prefix as well as building ids started to have duplicates
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            const building = state.buildingManager.priorityList[i];
+            if (settings.hasOwnProperty('bat' + building.id)) { delete settings['bat' + building.id]; }
+            if (settings.hasOwnProperty('bld_p_' + building.id)) { delete settings['bld_p_' + building.id]; }
+            if (settings.hasOwnProperty('bld_s_' + building.id)) { delete settings['bld_s_' + building.id]; }
+            if (settings.hasOwnProperty('bld_m_' + building.id)) { delete settings['bld_m_' + building.id]; }
+            
+            delete settings['bld_p_' + building.id];
+            delete settings['bld_s_' + building.id];
+            delete settings['bld_m_' + building.id];
+        }
+
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             let campaign = state.warManager.campaignList[i];
             settings['btl_' + campaign.name] = campaign.rating;
@@ -4289,6 +4348,10 @@
             settings['res_trade_buy_mtr_' + resource.id] = resource.autoTradeBuyRoutes;
             settings['res_trade_sell_' + resource.id] = resource.autoTradeSellEnabled;
             settings['res_trade_sell_mps_' + resource.id] = resource.autoTradeSellMinPerSecond;
+        }
+
+        for (let i = 0; i < state.storageManager.priorityList.length; i++) {
+            const resource = state.storageManager.priorityList[i];
             settings['res_storage' + resource.id] = resource.autoStorageEnabled;
             settings['res_storage_w_' + resource.id] = resource.autoStorageWeighting;
             settings['res_storage_p_' + resource.id] = resource.storagePriority;
@@ -4414,6 +4477,11 @@
                     return;
                 }
             }
+        }
+
+        if (state.resetEvolutionTarget) {
+            state.evolutionTarget = null;
+            state.resetEvolutionTarget = false;
         }
 
         // If the user has specified a target evolution then use that
@@ -4618,6 +4686,10 @@
     //#region Auto Battle
 
     function autoBattle() {
+
+
+
+
         if (!state.warManager.isUnlocked()) {
             return;
         }
@@ -4934,8 +5006,11 @@
     //#region Auto Tax
 
     function autoTax() {
+        let taxRateNode = document.getElementById("tax_rates");
+        if (taxRateNode === null || taxRateNode.style.display === "none") return;
+
         let currentTaxRateNode = document.querySelector("#tax_rates .current");
-        if (currentTaxRateNode === null) return;
+        if (currentTaxRateNode === null ) return;
 
         let currentMoraleNode = document.querySelector("#morale");
         if (currentMoraleNode === null) return;
@@ -5121,9 +5196,10 @@
         let remainingOperatingFactories = { quantity: state.cityBuildings.Factory.maxOperating, };
         let productionChanges = [];
 
-        // Produce as many nano-tubes as is reasonable, then alloy, then polymer and finally luxury goods
-        // Realistically it will only get through to nano tubes and alloy
+        // Produce as many nano-tubes as is reasonable, then stanene, then alloy, then polymer and finally luxury goods
+        // Realistically it will only get through to nano tubes, stanene and alloy
         updateProductionChange(productionChanges, remainingOperatingFactories, resources.nano_tube, FactoryGoods.NanoTube);
+        updateProductionChange(productionChanges, remainingOperatingFactories, resources.stanene, FactoryGoods.Stanene);
         updateProductionChange(productionChanges, remainingOperatingFactories, resources.alloy, FactoryGoods.Alloy);
         updateProductionChange(productionChanges, remainingOperatingFactories, resources.polymer, FactoryGoods.Polymer);
         updateProductionChange(productionChanges, remainingOperatingFactories, resources.luxury_goods, FactoryGoods.LuxuryGoods);
@@ -5172,7 +5248,15 @@
         for (let i = 0; i < resource.productionCost.length; i++) {
             let productionCost = resource.productionCost[i];
             let adjustedRateOfChange = productionCost.resource.rateOfChange + (state.cityBuildings.Factory.currentProduction(factoryGoods) * productionCost.quantity);
-            let maxForResource = Math.floor((adjustedRateOfChange - productionCost.minRateOfChange) / productionCost.quantity);
+            let maxForResource = 0;
+
+            if (productionCost.resource.storageRatio < 0.8) {
+                maxForResource = Math.floor((adjustedRateOfChange - productionCost.minRateOfChange) / productionCost.quantity);
+            } else {
+                // We've got over 80% storage full. Lets use some
+                adjustedRateOfChange = 1000000;
+                maxForResource = Math.floor(adjustedRateOfChange / productionCost.quantity);
+            }
 
             if (maxForResource < 0) { maxForResource = 0; }
 
@@ -5278,6 +5362,11 @@
         if (!state.windowManager.isOpen()) {
             state.goal = "LaunchingSeeder";
             spaceDock.openOptions();
+            return;
+        }
+
+        if (spaceDock.PrepForLaunch.isUnlocked()) {
+            spaceDock.tryPrepLaunchShip();
             return;
         }
 
@@ -5618,7 +5707,7 @@
 
             if (building === state.spaceBuildings.GasMoonOutpost && building.autoBuildEnabled && building.count >= 2) {
                 let eleriumBuilding = state.spaceBuildings.DwarfEleriumContainer;
-                if (eleriumBuilding.autoBuildEnabled && eleriumBuilding.autoMax >= 3 && state.spaceBuildings.DwarfEleriumContainer.count < 3) {
+                if (eleriumBuilding.autoBuildEnabled && eleriumBuilding.autoMax >= 3 && state.spaceBuildings.DwarfEleriumContainer.count < 2) {
                     // Don't build outposts until we have enough elerium storage to do our researches
                     continue;
                 }
@@ -5874,12 +5963,19 @@
                     
                     // TODO: Implement minimum rates of change for each resource
                     // If resource rate is negative then we are gaining resources. So, only check if we are consuming resources
-                    // If we have more than 10% of our storage then its ok to lose some resources
                     if (resourceType.rate > 0) {
                         let isStorageAvailable = false;
 
+                        // If we have more than xx% of our storage then its ok to lose some resources.
+                        // This check is mainly so that power producing buildings don't turn off when rate of change goes negative.
+                        // That can cause massive loss of life if turning off space habitats :-)
+                        // We'll turn power producing structures off one at a time below if they are below xx% storage
                         if (resourceType.resource === resources.food) {
                             isStorageAvailable = resourceType.resource.storageRatio > 0.1;
+                        } else if (resourceType.resource === resources.coal || resourceType.resource === resources.oil
+                                || resourceType.resource === resources.uranium || resourceType.resource === resources.helium_3
+                                || resourceType.resource === resources.elerium || resourceType.resource === resources.deuterium) {
+                            isStorageAvailable = resourceType.resource.storageRatio > 0.05;
                         }
 
                         if (!isStorageAvailable) {
@@ -5903,6 +5999,11 @@
 
                     requiredStateOn++;
                 } else {
+                    // If this is a power producing structure then only turn off one at a time!
+                    if (building.consumption.power < 0) {
+                        requiredStateOn = building.stateOnCount - 1;
+                    }
+
                     // We couldn't get the resources so skip the rest of this building type
                     break;
                 }
@@ -6597,7 +6698,7 @@
     }
 
     function buildImportExport() {
-        let importExportNode = $('#settings .importExport');
+        let importExportNode = $(".importExport");
         if (importExportNode === null) {
             return;
         }
@@ -6786,6 +6887,7 @@
         selectNode.on('change', function() {
             let value = $("#script_userEvolutionTargetName :selected").val();
             settings.userEvolutionTargetName = value;
+            state.resetEvolutionTarget = true;
             updateSettingsFromState();
             //console.log("Chosen evolution target of " + value);
             
@@ -7532,7 +7634,7 @@
                 for (let i = 0; i < buildingIds.length; i++) {
                     // Building has been dragged... Update all building priorities
                     if (buildingIds[i] !== "All") {
-                        state.buildingManager.priorityList[findArrayIndex(state.buildingManager.priorityList, "id", buildingIds[i])].priority = i - 1;
+                        state.buildingManager.priorityList[findArrayIndex(state.buildingManager.priorityList, "settingId", buildingIds[i])].priority = i - 1;
                     }
                 }
 
