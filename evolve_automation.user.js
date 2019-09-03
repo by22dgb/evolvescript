@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1
+// @version      1.1.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3136,7 +3136,7 @@
         neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.05, false, -1, false),
         nano_tube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1, false),
 
-        // Intersteller
+        // Interstellar
         deuterium: new Resource("Deuterium", "res", "Deuterium", false, false, 0.1, false, -1, false),
         adamantite: new Resource("Adamantite", "res", "Adamantite", true, false, 0.05, false, -1, false),
         infernite: new Resource("Infernite", "res", "Infernite", false, false, 0.01, false, -1, false),
@@ -3168,6 +3168,9 @@
         minimumMoneyAllowed: 0,
         
         lastStorageBuildCheckLoop: 0,
+        lastSmelterCheckLoop: 0,
+
+        assembleGeneButton: null,
         
         goal: "Standard",
 
@@ -3522,7 +3525,7 @@
         resources.alloy.productionCost.push(new ResourceProductionCost(resources.aluminium, 2, 5)); //0.29
         resources.polymer.productionCost.push(new ResourceProductionCost(resources.oil, 0.45, 2));
         resources.polymer.productionCost.push(new ResourceProductionCost(resources.lumber, 36, 50));
-        resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.coal, 20, 5));
+        resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.coal, 20, 15));
         resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.neutronium, 0.125, 0.2));
         resources.stanene.productionCost.push(new ResourceProductionCost(resources.aluminium, 75, 50));
         resources.stanene.productionCost.push(new ResourceProductionCost(resources.nano_tube, 0.05, 10));
@@ -3792,10 +3795,10 @@
 
         resources.food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
         resources.lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 15);
+        resources.stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
         resources.furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
         resources.copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
         resources.aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
         resources.cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 10);
         resources.coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
@@ -3931,8 +3934,8 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceNavBeacon);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonBase); // this building resets ui when clicked
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonIridiumMine);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonHeliumMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMining);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceport); // this building resets ui when clicked
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedTower);
@@ -4427,6 +4430,7 @@
         addSetting("autoSpace", false); // Space currently equals less plasmids so off by default. Also kind of conflicts with MAD don't you think?
         addSetting("autoSeeder", false);
         addSetting("autoAssembleGene", false);
+        addSetting("genesAssembleGeneAlways", false);
 
         addSetting("minimumMoney", 0);
         addSetting("minimumMoneyPercentage", 0);
@@ -4464,11 +4468,21 @@
         autoGatherResource(state.evolutions.Rna, 10);
         autoGatherResource(state.evolutions.Dna, 10);
 
-        buildIfCountLessThan(state.evolutions.Membrane, 10);
-        buildIfCountLessThan(state.evolutions.Organelles, 15);
-        buildIfCountLessThan(state.evolutions.Nucleus, 5);
-        buildIfCountLessThan(state.evolutions.EukaryoticCell, 5);
-        buildIfCountLessThan(state.evolutions.Mitochondria, 3);
+        if (buildIfCountLessThan(state.evolutions.Membrane, 10)) {
+            return;
+        }
+        if (buildIfCountLessThan(state.evolutions.Organelles, 15)) {
+            return;
+        }
+        if (buildIfCountLessThan(state.evolutions.Nucleus, 5)) {
+            return;
+        }
+        if (buildIfCountLessThan(state.evolutions.EukaryoticCell, 5)) {
+            return;
+        }
+        if (buildIfCountLessThan(state.evolutions.Mitochondria, 3)) {
+            return;
+        }
 
         if (settings.autoChallenge) {
             for (let i = 0; i < state.evolutionChallengeList.length; i++) {
@@ -4688,6 +4702,9 @@
     function autoBattle() {
 
 
+        // if (resources.money.storageRatio > 0.98 && state.warManager.currentSoldiers < state.warManager.maxSoldiers - 6) {
+        //     state.warManager.hireMercenary();
+        // }
 
 
         if (!state.warManager.isUnlocked()) {
@@ -5067,11 +5084,30 @@
         let smelterOptions = null;
 
         if (state.cityBuildings.Smelter.isUpdated) {
-            // We've already got our cached values so just check if there is any need to change our ratios
-            smelterOptions = determineSmelterOptions();
+            if (state.lastSmelterCheckLoop === 0 || (state.lastSmelterCheckLoop + 300 <= state.loopCounter)) {
+                // We've already got our cached values so just check if there is any need to change our ratios
+                smelterOptions = determineSmelterOptions();
+                state.lastSmelterCheckLoop = state.loopCounter;
 
-            if (smelterOptions.steelAdjustment >= -1 && smelterOptions.steelAdjustment <= 1) {
-                return;
+                if (smelterOptions.steelAdjustment === 0) {
+                    return;
+                }
+            } else {
+                let steelSmeltingConsumption = state.cityBuildings.Smelter.smeltingConsumption[SmelterSmeltingTypes.Steel];
+                for (let i = 0; i < steelSmeltingConsumption.length; i++) {
+                    let productionCost = steelSmeltingConsumption[i];
+                    
+                    if (productionCost.resource.rateOfChange < productionCost.minRateOfChange
+                            && productionCost.resource.storageRatio < 0.5
+                            && state.cityBuildings.Smelter.smeltingCount(SmelterSmeltingTypes.Steel) > 0) {
+                        smelterOptions = { steelAdjustment: -2 }
+                        break;
+                    }
+                }
+
+                if (smelterOptions === null) {
+                    return;
+                }
             }
         }
 
@@ -5118,6 +5154,8 @@
         } else if (state.cityBuildings.CoalMine.count < 10) {
             // two thirds to steel with any remainder going to steel
             desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.count * 2 / 3);
+        } else if (resources.iron.rateOfChange > 100) {
+            desiredSteelCount = state.cityBuildings.Smelter.count;
         } else if (smelterIronCount >= 2) {
             desiredSteelCount = state.cityBuildings.Smelter.count - 2;
         }
@@ -5379,22 +5417,27 @@
     //#region Auto Assemble Gene
 
     function autoAssembleGene() {
-        if (isResearchUnlocked("dna_sequencer")) {
+        if (!settings.genesAssembleGeneAlways && isResearchUnlocked("dna_sequencer")) {
             return;
         }
 
-        let buttons = document.querySelectorAll('#arpaSequence .button');
+        if (state.assembleGeneButton === null || !state.assembleGeneButton.isConnected) {
+            let buttons = document.querySelectorAll('#arpaSequence .button');
 
-        if (buttons === null) {
-            return;
-        }
-
-        for (let i = 0; i < buttons.length; i++) {
-            const button = buttons[i];
-            if (button.textContent === "Assemble Gene" && resources.knowledge.currentQuantity === resources.knowledge.maxQuantity) {
-                // @ts-ignore
-                button.click();
+            if (buttons === null) {
+                return;
             }
+    
+            for (let i = 0; i < buttons.length; i++) {
+                const button = buttons[i];
+                if (button.textContent === "Assemble Gene") {
+                    state.assembleGeneButton = button;
+                }
+            }
+        }
+
+        if (state.assembleGeneButton !== null && resources.knowledge.currentQuantity === resources.knowledge.maxQuantity) {
+            state.assembleGeneButton.click();
         }
     }
 
@@ -5487,9 +5530,10 @@
      */
     function buildIfEnoughProduction(building, requiredResource, requiredProduction) {
         if (building.autoBuildEnabled && building.count < building.autoMax && requiredResource.rateOfChange > requiredProduction) {
-            building.tryBuild();
-            return;
+            return building.tryBuild();
         }
+
+        return false;
     }
     
     function autoGatherResources() {
@@ -5526,8 +5570,10 @@
     function buildIfCountLessThan(building, count) {
         // If we have less than what we want then try to buy it
         if (building.count < count && building.count < building.autoMax) {
-            building.tryBuild();
+            return building.tryBuild();
         }
+
+        return false;
     }
 
     function autoBuildSpaceDockChildren() {
@@ -5665,40 +5711,49 @@
 
             // Only build the following buildings if we have enough production to cover what they use
             if (building === state.cityBuildings.Smelter && isLumberRace()) {
-                buildIfEnoughProduction(building, resources.lumber, 12);
-                continue;
+                if (buildIfEnoughProduction(building, resources.lumber, 12)) {
+                    return;
+                }
             }
 
             if (building === state.cityBuildings.CoalPower) {
                 // I'd like to check if we are in a "no plasmids" run but not sure how... so check manual crafting instead
                 if (!isLowPlasmidCount()) {
-                    buildIfEnoughProduction(building, resources.coal, 2.35);
+                    if (buildIfEnoughProduction(building, resources.coal, 2.35)) {
+                        return;
+                    }
                 } else {
-                    buildIfEnoughProduction(building, resources.coal, 0.5); // If we don't have plasmids then have to go much lower
+                    if (buildIfEnoughProduction(building, resources.coal, 0.5)) { // If we don't have plasmids then have to go much lower
+                        return;
+                    }
                 }
-
-                continue;
             }
 
             if (!settings.autoSpace && resources.plasmid.currentQuantity > 2000 && building === state.cityBuildings.OilPower && state.jobManager.canManualCraft()) {
-                buildIfCountLessThan(building, 5);
-                continue;
+                if (buildIfCountLessThan(building, 5)) {
+                    return;
+                }
             } else if (isLowPlasmidCount() && building === state.cityBuildings.OilPower) {
-                buildIfEnoughProduction(building, resources.oil, 1);
-                continue;
+                if (buildIfEnoughProduction(building, resources.oil, 1)) {
+                    return;
+                }
             } else if (building === state.cityBuildings.OilPower) {
-                buildIfEnoughProduction(building, resources.oil, 2.65);
-                continue;
+                if (buildIfEnoughProduction(building, resources.oil, 2.65)) {
+                    return;
+                }
             }
 
             if (building === state.cityBuildings.FissionPower) {
-                buildIfEnoughProduction(building, resources.uranium, 0.5);
-                continue;
+                if(buildIfEnoughProduction(building, resources.uranium, 0.5)) {
+                    return;
+                }
             }
 
             if (building === state.spaceBuildings.GasSpaceDock) {
                 if (building.autoBuildEnabled) {
-                    building.tryBuild();
+                    if (building.tryBuild()) {
+                        return;
+                    }
                 }
 
                 autoBuildSpaceDockChildren();
@@ -5716,9 +5771,11 @@
             // Build building if less than our max
             if (building.count < building.autoMax) {
                 if (building.tryBuild()) {
-                    if (building._tabPrefix === "space") {
+                    if (building._tabPrefix === "space" || building._tabPrefix === "interstellar" || building._tabPrefix === "portal") {
                         removePoppers();
                     }
+
+                    return;
                 }
             }
         }
@@ -5734,6 +5791,11 @@
             if (items[i].className.indexOf("cna") < 0) {
                 const itemId = items[i].id;
                 let click = false;
+
+                // Don't click any of the whitehole reset options without user consent... that would be a dick move, man.
+                if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole") {
+                    continue;
+                }
 
                 if (itemId !== "tech-anthropology" && itemId !== "tech-fanaticism" && itemId !== "tech-wc_reject"
                     && itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest"
@@ -6104,6 +6166,9 @@
         });
 
         if (settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
+            // Don't build any containers if we are pre-mad and we are limiting pre-mad storage
+            storageChanges.containersToBuild = 0;
+
             autoStorageTotalMaxCrates = 0;
 
             if (isLowPlasmidCount()) {
@@ -6543,7 +6608,7 @@
             if (settings.autoSeeder) {
                 autoSeeder();
             }
-            if (settings.autoAssembleGene) {
+            if (settings.autoAssembleGene && !settings.genesAssembleGeneAlways) {
                 autoAssembleGene();
             }
         }
@@ -6559,6 +6624,10 @@
 
     function shortLoop() {
         state.windowManager.checkCallbacks();
+
+        if (settings.autoAssembleGene && settings.genesAssembleGeneAlways) {
+            autoAssembleGene();
+        }
     }
 
     setInterval(shortLoop, 50);
@@ -6710,8 +6779,11 @@
                 //let saveState = JSON.parse(LZString.decompressFromBase64($('#importExport').val()));
                 let saveState = JSON.parse($('#importExport').val());
                 if (saveState && 'scriptName' in saveState && saveState.scriptName === "TMVictor") {
+                    console.log("Importing script settings");
                     settings = saveState;
                     updateStateFromSettings();
+                    updateSettingsFromState();
+                    $('#autoScriptContainer').remove();
                     updateSettingsUI();
                     $('#importExport').val("");
                 }
@@ -6722,6 +6794,7 @@
 
         $('#script_settingsExport').on("click", function() {
             //$('#importExport').val(LZString.compressToBase64(JSON.stringify(global)));
+            console.log("Exporting script settings")
             $('#importExport').val(JSON.stringify(settings));
             $('#importExport').select();
             document.execCommand('copy');
@@ -6841,6 +6914,7 @@
         let preTableNode = $('#script_generalPreTable');
         addStandardSectionSettingsNumber(preTableNode, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
         addStandardSectionSettingsNumber(preTableNode, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
+        addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
     }
 
     function buildEvolutionSettings() {
@@ -7942,6 +8016,15 @@
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
+
+            if (name === "autoMAD" && input.checked && isResearchUnlocked("mad")) {
+                let confirmation = confirm("MAD has already been researched. This may MAD immediately. Are you sure you want to enable autoMAD?");
+                if (!confirmation) {
+                    input.checked = false;
+                    return;
+                }
+            }
+
             input.setAttribute('value', state);
             settings[name] = state;
             updateSettingsFromState();
