@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.0.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -43,7 +43,7 @@
 // * autoPower - Manages power based on a priority order of buildings. Starts with city based building then space based. Settings available in Settings tab.
 // * autoSmelter - Manages smelter output at different stages at the game. Not currently user configurable.
 // * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
-//          Not currently user configurable.
+//          Settings available in the Settings tab.
 // * autoMiningDroid - Manages mining droid production based on power and consumption. Produces Adamantite only. Not currently user configurable.
 // * autoGraphenePlant - Uses what fuel it can to fuel the graphene plant. Not currently user configurable.
 // * autoMAD - Once MAD is unlocked will stop sending out troops and will perform MAD
@@ -72,6 +72,7 @@
     var racialTraitSoulEater = "soul_eater";
     var racialTraitKindlingKindred = "kindling_kindred";
     var racialTraitEvil = "evil";
+    var techFactory = "factory";
 
     // --------------------
 
@@ -101,9 +102,15 @@
 
             /** @type {number[]} */
             this.breakpointMaxs = [];
+
+            this.jobOverride = null;
         }
 
         get definition() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.definition;
+            }
+
             // We've already got the definition previously so return it
             if (this._definition !== null) {
                 return this._definition;
@@ -125,6 +132,10 @@
         }
 
         get id() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.id;
+            }
+
             let definition = this.definition;
             if (definition === this._nullJob) {
                 return this._originalId;
@@ -134,6 +145,10 @@
         }
 
         get name() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.name;
+            }
+
             let definition = this.definition;
             if (definition === this._nullJob) {
                 return this._originalName;
@@ -141,12 +156,27 @@
 
             return races[game.global.race.species].name;
         }
+
+        /**
+         * @param {Job} jobOverride
+         */
+        setJobOverride(jobOverride) {
+            this.jobOverride = jobOverride;
+        }
         
         isUnlocked() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.isUnlocked();
+            }
+
             return this.definition.display;
         }
 
         isManaged() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.isManaged();
+            }
+
             if (!this.isUnlocked()) {
                 return false;
             }
@@ -155,14 +185,26 @@
         }
 
         isCraftsman() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.isCraftsman();
+            }
+
             return game.craftCost[this._originalId] !== undefined;
         }
         
         get count() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.count;
+            }
+
             return this.definition.workers;
         }
 
         get max() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.max;
+            }
+
             let definition = this.definition;
 
             if (definition.max === -1) {
@@ -177,6 +219,10 @@
          * @param {number} employees
          */
         setBreakpoint(breakpoint, employees) {
+            if (this.jobOverride !== null) {
+               this.jobOverride.setBreakpoint(breakpoint, employees);
+            }
+
             this.breakpointMaxs[breakpoint - 1] = employees;
         }
 
@@ -184,6 +230,10 @@
          * @param {number} breakpoint
          */
         getBreakpoint(breakpoint) {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.getBreakpoint(breakpoint);
+            }
+
             return this.breakpointMaxs[breakpoint - 1];
         }
 
@@ -191,6 +241,10 @@
          * @param {number} breakpoint
          */
         breakpointEmployees(breakpoint) {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.breakpointEmployees(breakpoint);
+            }
+
             if ((breakpoint >= 0 && this.breakpointMaxs.length === 0) || breakpoint < 0 || breakpoint > this.breakpointMaxs.length - 1) {
                 return 0;
             }
@@ -210,6 +264,10 @@
          * @param {number} count
          */
         addWorkers(count) {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.addWorkers(count);
+            }
+
             if (!this.isUnlocked()) {
                 return false;
             }
@@ -238,6 +296,10 @@
          * @param {number} count
          */
         removeWorkers(count) {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.removeWorkers(count);
+            }
+
             if (!this.isUnlocked()) {
                 return false;
             }
@@ -798,8 +860,7 @@
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
 
-            /** @type {ResourceProductionCost[]} */
-            this.productionCost = [];
+            this._instance = null;
 
             this.cachedId = "";
             this.setupCache();
@@ -825,6 +886,14 @@
         }
 
         //#region Standard resource
+
+        get instance() {
+            if (this._instance === null) {
+                this._instance = game.global.resource[this.id];
+            }
+
+            return this._instance;
+        }
 
         get id() {
             // The population node is special and its id is actually the race name rather than a static name
@@ -901,26 +970,14 @@
                 return 0;
             }
 
-            let storageNode = document.getElementById(this._storageCountId);
-
-            if (storageNode !== null) {
-                // 2 possibilities:
-                // eg. "3124.16" the current quantity is 3124.16
-                // eg. in "1234 / 10.2K" the current quantity is 1234
-                if (storageNode.textContent.indexOf("/") === -1) {
-                    return getRealNumber(storageNode.textContent);
-                }
-
-                return getRealNumber(storageNode.textContent.split(" / ")[0]);
+            if (this.instance !== undefined) {
+                return this.instance.hasOwnProperty("amount") ? this.instance.amount : 0;
             }
 
-            // If storage node is null then it might be plasmids which doesn't have the id...
-            let countNode = document.querySelector(this._hashStorageCount);
-            if (countNode !== null) {
-                return parseInt(countNode.textContent);
+            if (game.global.race[this.id]) {
+                return game.global.race[this.id].count;
             }
 
-            // No idea!
             return 0;
         }
 
@@ -958,15 +1015,7 @@
                 return 0;
             }
 
-            let rateOfChangeNode = document.getElementById(this._rateOfChangeId);
-
-            // There is no rate of change for this resource
-            if (rateOfChangeNode === null) {
-                return 0;
-            }
-
-            // eg. "11.6K /s" the rate of change is 11600
-            return getRealNumber(rateOfChangeNode.textContent.substring(0, rateOfChangeNode.textContent.indexOf(" /s")));
+            return this.instance !== undefined && this.instance.hasOwnProperty("diff") ? this.instance.diff : 0;
         }
 
         //#endregion Standard resource
@@ -1531,6 +1580,9 @@
             super("Factory", "city", "factory", "");
 
             this._vue = null;
+
+            this._productionCosts = null;
+            this._productionOptions = null;
         }
 
         hasOptions() {
@@ -1565,6 +1617,26 @@
             return game.global.space['red_factory'] ? game.global.space.red_factory.on + game.global.city.factory.on : game.global.city.factory.on;
         }
 
+        get productionOptions() {
+            if (this._productionOptions === null) {
+                this._productionOptions = [];
+                this._productionOptions.push({ seq: 1, goods: FactoryGoods.LuxuryGoods, resource: resources.money, enabled: true, weighting: 1, requiredFactories: 0, factoryAdjustment: 0, completed: false });
+                this._productionOptions.push({ seq: 2, goods: FactoryGoods.Alloy, resource: resources.alloy, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 3, goods: FactoryGoods.Polymer, resource: resources.polymer, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 4, goods: FactoryGoods.NanoTube, resource: resources.nano_tube, enabled: true, weighting: 4, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 5, goods: FactoryGoods.Stanene, resource: resources.stanene, enabled: true, weighting: 4, requiredFactories: 0, completed: false });
+            }
+
+            this._productionOptions.forEach(production => {
+                production.requiredFactories = 0;
+                production.factoryAdjustment = 0;
+                production.completed = !production.enabled || !state.cityBuildings.Factory.isProductionUnlocked(production.goods);
+            });
+    
+            this._productionOptions.sort(function (a, b) { return b.weighting - a.weighting } );
+            return this._productionOptions;
+        }
+
         /**
          * @param {string} production
          */
@@ -1590,6 +1662,61 @@
             }
 
             return false;
+        }
+
+        /**
+         * @param {string} production
+         */
+        productionCosts(production) {
+            if (this._productionCosts === null) {
+                this._productionCosts = {};
+                this._productionCosts[FactoryGoods.LuxuryGoods] = [];
+                this._productionCosts[FactoryGoods.LuxuryGoods].push(new ResourceProductionCost(resources.furs, 1, 5));
+                
+                this._productionCosts[FactoryGoods.Alloy] = [];
+                this._productionCosts[FactoryGoods.Alloy].push(new ResourceProductionCost(resources.copper, 1, 5));
+                this._productionCosts[FactoryGoods.Alloy].push(new ResourceProductionCost(resources.aluminium, 1, 5));
+
+                this._productionCosts[FactoryGoods.Polymer] = [];
+                this._productionCosts[FactoryGoods.Polymer].push(new ResourceProductionCost(resources.oil, 1, 2));
+                this._productionCosts[FactoryGoods.Polymer].push(new ResourceProductionCost(resources.lumber, 1, 50));
+
+                this._productionCosts[FactoryGoods.NanoTube] = [];
+                this._productionCosts[FactoryGoods.NanoTube].push(new ResourceProductionCost(resources.coal, 1, 15));
+                this._productionCosts[FactoryGoods.NanoTube].push(new ResourceProductionCost(resources.neutronium, 1, 0.2));
+
+                this._productionCosts[FactoryGoods.Stanene] = [];
+                this._productionCosts[FactoryGoods.Stanene].push(new ResourceProductionCost(resources.aluminium, 1, 50));
+                this._productionCosts[FactoryGoods.Stanene].push(new ResourceProductionCost(resources.nano_tube, 1, 5));
+            }
+
+            let assembly = game.global.tech[techFactory] ? true : false;
+
+            if (production === FactoryGoods.LuxuryGoods) {
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Lux.fur[game.global.tech[techFactory]] : game.f_rate.Lux.fur[0]);
+            }
+            
+            if (production === FactoryGoods.Alloy) {
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Alloy.copper[game.global.tech[techFactory]] : game.f_rate.Alloy.copper[0]);
+                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Alloy.aluminium[game.global.tech[techFactory]] : game.f_rate.Alloy.aluminium[0]);
+            }
+
+            if (production === FactoryGoods.Polymer) {
+                this._productionCosts[production][0].quantity = game.global.race[racialTraitKindlingKindred] ? (assembly ? game.f_rate.Polymer.oil_kk[game.global.tech[techFactory]] : game.f_rate.Polymer.oil_kk[0]) : (assembly ? game.f_rate.Polymer.oil[game.global.tech[techFactory]] : game.f_rate.Polymer.oil[0]);
+                this._productionCosts[production][1].quantity = game.global.race[racialTraitKindlingKindred] ? 0 : (assembly ? game.f_rate.Polymer.lumber[game.global.tech[techFactory]] : game.f_rate.Polymer.lumber[0]);
+            }
+
+            if (production === FactoryGoods.NanoTube) {
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Nano_Tube.coal[game.global.tech[techFactory]] : game.f_rate.Nano_Tube.coal[0]);
+                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Nano_Tube.neutronium[game.global.tech[techFactory]] : game.f_rate.Nano_Tube.neutronium[0]);
+            }
+
+            if (production === FactoryGoods.Stanene) {
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Stanene.aluminium[game.global.tech[techFactory]] : game.f_rate.Stanene.aluminium[0]);
+                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Stanene.nano[game.global.tech[techFactory]] : game.f_rate.Stanene.nano[0]);
+            }
+
+            return this._productionCosts[production];
         }
 
         /**
@@ -3315,6 +3442,7 @@
         crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1, false),
         containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1, false),
         plasmid: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1, false),
+        antiplasmid: new Resource("Anti-Plasmid", "res", "AntiPlasmid", false, false, -1, false, -1, false),
         phage: new Resource("Phage", "res", "Phage", false, false, -1, false, -1, false),
         dark: new Resource("Dark", "res", "Dark", false, false, -1, false, -1, false),
         genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1, false),
@@ -3574,6 +3702,7 @@
             MetalRefinery: new Action("Metal Refinery", "city", "metal_refinery", ""),
             SlavePen: new Action("Slave Pen", "city", "slave_pen", ""),
             SlaveMarket: new Action("Slave Market", "city", "slave_market", ""),
+            Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
         },
         
         spaceBuildings: {
@@ -3738,19 +3867,6 @@
         state.allResourceList.push(resources.neutronium);
         state.allResourceList.push(resources.elerium);
         state.allResourceList.push(resources.nano_tube);
-
-        // TODO: Depending on tech level. Will have to adjust
-        // copper: [0.75,1.12,1.49,1.86],
-        // aluminium: [1,1.5,2,2.5],
-        // output: [0.075,0.112,0.149,0.186]
-        resources.alloy.productionCost.push(new ResourceProductionCost(resources.copper, 1.86, 5)); //1.49
-        resources.alloy.productionCost.push(new ResourceProductionCost(resources.aluminium, 2, 5)); //0.29
-        resources.polymer.productionCost.push(new ResourceProductionCost(resources.oil, 0.45, 2));
-        resources.polymer.productionCost.push(new ResourceProductionCost(resources.lumber, 36, 50));
-        resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.coal, 20, 15));
-        resources.nano_tube.productionCost.push(new ResourceProductionCost(resources.neutronium, 0.125, 0.2));
-        resources.stanene.productionCost.push(new ResourceProductionCost(resources.aluminium, 75, 50));
-        resources.stanene.productionCost.push(new ResourceProductionCost(resources.nano_tube, 0.05, 10));
 
         state.jobs.Plywood.resource = resources.plywood;
         state.jobManager.addCraftingJob(state.jobs.Plywood);
@@ -4172,6 +4288,7 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MetalRefinery);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlavePen); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlaveMarket); // Evil only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Graveyard); // Evil only
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
@@ -4261,10 +4378,28 @@
         }
     }
 
+    function resetProductionSettings() {
+        // None at the moment
+    }
+
+    function resetProductionState() {
+        let productionSettings = state.cityBuildings.Factory.productionOptions;
+        for (let i = 0; i < productionSettings.length; i++) {
+            const production = productionSettings[i];
+
+            production.enabled = true;
+            if (production.goods === FactoryGoods.LuxuryGoods) production.weighting = 1;
+            if (production.goods === FactoryGoods.Alloy) production.weighting = 2;
+            if (production.goods === FactoryGoods.Polymer) production.weighting = 2;
+            if (production.goods === FactoryGoods.NanoTube) production.weighting = 4;
+            if (production.goods === FactoryGoods.Stanene) production.weighting = 4;
+        }
+    }
+
     initialiseState();
 
     var settingsSections = ["generalSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
-                            "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed"];
+                            "productionSettingsCollapsed", "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed"];
     
     function updateStateFromSettings() {
         updateStandAloneSettings();
@@ -4487,6 +4622,25 @@
             }
         }
         state.projectManager.sortByPriority();
+
+        let productionSettings = state.cityBuildings.Factory.productionOptions;
+        for (let i = 0; i < productionSettings.length; i++) {
+            const production = productionSettings[i];
+
+            let settingKey = "production_" + production.resource.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                production.enabled = settings[settingKey];
+            } else {
+                settings[settingKey] = production.enabled;
+            }
+
+            settingKey = "production_w_" + production.resource.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                production.weighting = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = production.weighting;
+            }
+        }
     }
 
     function updateSettingsFromState() {
@@ -4567,6 +4721,13 @@
             settings.arpa[project.id] = project.autoBuildEnabled;
             settings['arpa_p_' + project.id] = project.priority;
             settings['arpa_m_' + project.id] = project._autoMax;
+        }
+
+        let productionSettings = state.cityBuildings.Factory.productionOptions;
+        for (let i = 0; i < productionSettings.length; i++) {
+            const production = productionSettings[i];
+            settings["production_" + production.resource.id] = production.enabled;
+            settings["production_w_" + production.resource.id] = production.weighting;
         }
 
         localStorage.setItem('settings', JSON.stringify(settings));
@@ -4996,6 +5157,8 @@
         let requiredJobs = [];
         let jobAdjustments = [];
 
+        log("autoJobs", "Total employees: " + availableEmployees);
+
         // First figure out how many farmers are required
         if (state.jobs.Farmer.isManaged()) {
             if (!state.jobs.Lumberjack.isUnlocked() && !state.jobs.QuarryWorker.isUnlocked()) {
@@ -5398,105 +5561,62 @@
             return;
         }
 
-        // We've already got our cached values so just check if there is any need to change our ratios
-        let factoryOptions = determineFactoryOptions();
+        let allProduction = factory.productionOptions;
+        let remainingFactories = state.cityBuildings.Factory.maxOperating;
 
-        if (factoryOptions.productionChanges.length === 0) {
-            return;
-        }
+        while (remainingFactories > 0 && findArrayIndex(allProduction, "completed", false) != -1) {
+            let maxOperatingFactories = remainingFactories;
+            let totalWeight = allProduction.reduce((sum, production) => sum + (production.completed ? 0 : production.weighting), 0);
 
-        // First decrease any production so that we have room to increase others
-        for (let i = 0; i < factoryOptions.productionChanges.length; i++) {
-            let productionChange = factoryOptions.productionChanges[i];
-            if (productionChange.quantity < 0) { state.cityBuildings.Factory.decreaseProduction(productionChange.factoryGoods, productionChange.quantity * -1) }
-        }
+            for (let i = 0; i < allProduction.length; i++) {
+                const production = allProduction[i];
+                
+                if (production.completed) {
+                    continue;
+                }
 
-        // Increase any production required (if they are 0 then don't do anything with them)
-        for (let i = 0; i < factoryOptions.productionChanges.length; i++) {
-            let productionChange = factoryOptions.productionChanges[i];
-            if (productionChange.quantity > 0) { state.cityBuildings.Factory.increaseProduction(productionChange.factoryGoods, productionChange.quantity) }
-        }
-    }
+                let calculatedRequiredFactories = Math.min(remainingFactories, Math.ceil(maxOperatingFactories / totalWeight * production.weighting));
+                let actualRequiredFactories = calculatedRequiredFactories;
+                let productionCosts = state.cityBuildings.Factory.productionCosts(production.goods);
 
-    function determineFactoryOptions() {
-        let remainingOperatingFactories = { quantity: state.cityBuildings.Factory.maxOperating, };
-        let productionChanges = [];
+                productionCosts.forEach(resourceCost => {
+                    let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
+                    let cost = actualRequiredFactories * resourceCost.quantity;
+                    let rate = resourceCost.resource.rateOfChange + resourceCost.minRateOfChange + previousCost;
 
-        // Produce as many nano-tubes as is reasonable, then stanene, then alloy, then polymer and finally luxury goods
-        // Realistically it will only get through to nano tubes, stanene and alloy
-        updateProductionChange(productionChanges, remainingOperatingFactories, resources.nano_tube, FactoryGoods.NanoTube);
-        updateProductionChange(productionChanges, remainingOperatingFactories, resources.stanene, FactoryGoods.Stanene);
-        updateProductionChange(productionChanges, remainingOperatingFactories, resources.alloy, FactoryGoods.Alloy);
-        updateProductionChange(productionChanges, remainingOperatingFactories, resources.polymer, FactoryGoods.Polymer);
-        updateProductionChange(productionChanges, remainingOperatingFactories, resources.luxury_goods, FactoryGoods.LuxuryGoods);
-
-        return { productionChanges: productionChanges };
-    }
-
-    /**
-     * @param {{ factoryGoods: string; quantity: number; }[]} productionChanges
-     * @param {{ quantity: number; }} remainingOperatingFactories
-     * @param {Resource} resource
-     * @param {string} factoryGoods
-     */
-    function updateProductionChange(productionChanges, remainingOperatingFactories, resource, factoryGoods) {
-        if (!state.cityBuildings.Factory.isProductionUnlocked(factoryGoods)) {
-            return;
-        }
-
-        let minimumAllowedProduction = remainingOperatingFactories.quantity; // Can't have more than our total!
-
-        // We're going to check if we are limited by anything that goes into producing the resource.
-        // We want to take the highest number we can produce without going over our minimums
-        for (let i = 0; i < resource.productionCost.length; i++) {
-            let productionCost = resource.productionCost[i];
-            let adjustedRateOfChange = productionCost.resource.rateOfChange + (state.cityBuildings.Factory.currentProduction(factoryGoods) * productionCost.quantity);
-            let maxForResource = 0;
-
-            if (productionCost.resource.storageRatio < 0.8) {
-                maxForResource = Math.floor((adjustedRateOfChange - productionCost.minRateOfChange) / productionCost.quantity);
-            } else {
-                // We've got over 80% storage full. Lets use some
-                adjustedRateOfChange = 1000000;
-                maxForResource = Math.floor(adjustedRateOfChange / productionCost.quantity);
-            }
-
-            if (maxForResource < 0) { maxForResource = 0; }
-
-            if (maxForResource < minimumAllowedProduction) {
-                minimumAllowedProduction = maxForResource;
-            }
-        }
-
-        if (resource !== resources.nano_tube && resource.storageRatio > 0.98) {
-            minimumAllowedProduction = 0;
-        }
-
-        if (resource === resources.nano_tube) {
-            if (resource.storageRatio === 1) {
-                minimumAllowedProduction = 0;
-            } else if (resources.neutronium.storageRatio < 0.98) {
-                if (state.spaceBuildings.GasSpaceDock.count === 0 && resources.nano_tube.currentQuantity > 250000) {
-                    minimumAllowedProduction = 0;
-                } else if (!isResearchUnlocked("quantum_computing") && resources.nano_tube.currentQuantity > 100000) { // Research costs 100000
-                    minimumAllowedProduction = 0;
-                } else if (state.spaceBuildings.GasSpaceDock.count > 0) {
-                    let requiredNanoTubes = state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.find(resource => resource.resource === resources.nano_tube);
-
-                    if (requiredNanoTubes !== undefined) {
-                        if (resources.nano_tube.currentQuantity > requiredNanoTubes.quantity * 1.1) {
-                            minimumAllowedProduction = 0;
+                    if (production.resource.storageRatio > 0.99) {
+                        actualRequiredFactories = 0;
+                    } else {
+                        // If we can't afford it (it's above our minimum rate of change) then remove a factory
+                        // UNLESS we've got over 80% storage full. In that case lets go wild!
+                        while (cost > 0 && cost > rate && resourceCost.resource.storageRatio < 0.8) {
+                            cost -= resourceCost.quantity;
+                            actualRequiredFactories -= 1;
                         }
                     }
+                });
+
+                remainingFactories -= actualRequiredFactories;
+                production.requiredFactories += actualRequiredFactories;
+
+                if (calculatedRequiredFactories !== actualRequiredFactories) {
+                    production.completed = true;
                 }
             }
         }
-        
-        let differenceInProduction = minimumAllowedProduction - state.cityBuildings.Factory.currentProduction(factoryGoods);
-        remainingOperatingFactories.quantity -= minimumAllowedProduction;
 
-        if (differenceInProduction !== 0) {
-            productionChanges.push( { factoryGoods: factoryGoods, quantity: differenceInProduction } );
+        // First decrease any production so that we have room to increase others
+        for (let i = 0; i < allProduction.length; i++) {
+            let production = allProduction[i];
+            production.factoryAdjustment = production.requiredFactories - state.cityBuildings.Factory.currentProduction(production.goods);
+
+            if (production.factoryAdjustment < 0) { state.cityBuildings.Factory.decreaseProduction(production.goods, production.factoryAdjustment * -1) }
+        }
+
+        // Increase any production required (if they are 0 then don't do anything with them)
+        for (let i = 0; i < allProduction.length; i++) {
+            let production = allProduction[i];
+            if (production.factoryAdjustment > 0) { state.cityBuildings.Factory.increaseProduction(production.goods, production.factoryAdjustment) }
         }
     }
 
@@ -6653,11 +6773,11 @@
         }
 
         if (isEvilRace() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
-            state.jobs.Lumberjack = state.jobManager.unemployedJob;
+            state.jobs.Lumberjack.setJobOverride(state.jobManager.unemployedJob);
         }
 
         if (isHunterRace() && state.jobs.Farmer !== state.jobManager.unemployedJob) {
-            state.jobs.Farmer = state.jobManager.unemployedJob;
+            state.jobs.Farmer.setJobOverride(state.jobManager.unemployedJob);
         }
     }
 
@@ -6876,6 +6996,7 @@
         buildWarSettings();
         buildMarketSettings();
         buildStorageSettings();
+        buildProductionSettings();
         buildJobSettings();
         buildBuildingSettings();
         buildProjectSettings();
@@ -7610,6 +7731,121 @@
             if (!isNaN(parsedValue)) {
                 //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
                 resource[property] = parsedValue;
+                updateSettingsFromState();
+            }
+        });
+
+        return textBox;
+    }
+
+    function buildProductionSettings() {
+        let sectionId = "production";
+        let sectionName = "Production";
+
+        let resetFunction = function() {
+            resetProductionState();
+            resetProductionSettings();
+            updateSettingsFromState();
+            updateProductionSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateProductionSettingsContent);
+    }
+
+    function updateProductionSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_productionContent');
+        currentNode.empty().off("*");
+
+        updateProductionPreTable();
+        updateProductionTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateProductionPreTable() {
+        let currentNode = $('#script_productionContent');
+
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTable"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_productionPreTable');
+        // There are no pre-table settings yet
+        //addStandardSectionSettingsToggle(preTableNode, "productionLimitPreMad", "Limit Pre-MAD Production", "Saves resources and shortens run time by limiting production pre-MAD");
+    }
+
+    function updateProductionTable() {
+        let currentNode = $('#script_productionContent');
+        currentNode.append(
+            `<table style="width:60%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th></tr>
+                <tbody id="script_productionTableBody" class="scriptcontenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_productionTableBody');
+        let newTableBodyText = "";
+
+        let productionSettings = state.cityBuildings.Factory.productionOptions;
+        productionSettings.sort(function (a, b) { return a.seq - b.seq } );
+        
+        for (let i = 0; i < productionSettings.length; i++) {
+            const production = productionSettings[i];
+            let classAttribute = ' ';
+            newTableBodyText += '<tr value="' + production.resource.id + '"' + classAttribute + '><td id="script_production_' + production.resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other productions settings rows
+        for (let i = 0; i < productionSettings.length; i++) {
+            const production = productionSettings[i];
+            let productionElement = $('#script_production_' + production.resource.id + 'Toggle');
+
+            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + production.resource.name + '</span>');
+            productionElement.append(toggle);
+
+            productionElement = productionElement.next();
+            productionElement.append(buildProductionSettingsEnabledToggle(production));
+
+            productionElement = productionElement.next();
+            productionElement.append(buildProductionSettingsInput(production, "production_w_" + production.resource.id, "weighting"));
+        }
+    }
+
+    /**
+     * @param {{ enabled: any; resource: Resource; }} production
+     */
+    function buildProductionSettingsEnabledToggle(production) {
+        let checked = production.enabled ? " checked" : "";
+        let toggle = $('<label id=script_production_' + production.resource.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            production.enabled = state;
+            updateSettingsFromState();
+            //console.log(resource.name + " changed enabled to " + state);
+        });
+
+        return toggle;
+    }
+
+    /**
+     * @param {string} settingKey
+     * @param {string} property
+     * @param {{ [x: string]: number; }} production
+     */
+    function buildProductionSettingsInput(production, settingKey, property) {
+        let textBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        textBox.val(settings[settingKey]);
+    
+        textBox.on('change', function() {
+            let val = textBox.val();
+            let parsedValue = getRealNumber(val);
+            if (!isNaN(parsedValue)) {
+                //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
+                production[property] = parsedValue;
                 updateSettingsFromState();
             }
         });
@@ -8706,7 +8942,7 @@
     }
 
     var showLogging = false;
-    var loggingType = "autoStorage";
+    var loggingType = "autoJobs";
 
     /**
      * @param {string} type
@@ -8746,7 +8982,7 @@
     $(document).ready(function() {
         let autoEvolveScriptText = `
         import { global, vues, keyMultiplier } from './vars.js';
-        import { actions, checkAffordable, checkOldTech } from './actions.js';
+        import { actions, checkAffordable, checkOldTech, f_rate } from './actions.js';
         import { craftingRatio, craftCost } from './resources.js';
 
         window.game =  {
@@ -8761,6 +8997,8 @@
 
             craftCost: craftCost,
             craftingRatio: craftingRatio,
+
+            f_rate: f_rate,
         };
         window.dispatchEvent(new CustomEvent('loadAutoEvolveScript'));
         `;
