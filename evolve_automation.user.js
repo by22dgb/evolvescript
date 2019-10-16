@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
+// @version      2.1.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3494,6 +3494,8 @@
         Centaur: new Race("centaur", "Centaur", false, "", "Ferghana"),
         Balorg: new Race("balorg", "Balorg", true, "Hellscape planet", "Self immolation"),
         Imp: new Race("imp", "Imp", true, "Hellscape planet", "Deal with the devil"),
+        Seraph: new Race("seraph", "Seraph", true, "Eden planet", "Fallen Angel"),
+        Unicorn: new Race("unicorn", "Unicorn", true, "Eden planet", "Unicorn Burgers"),
         Arraak: new Race("arraak", "Arraak", false, "", "Way of the Dodo"),
         Pterodacti: new Race("pterodacti", "Pterodacti", false, "", "Chicxulub"),
         Dracnid: new Race("dracnid", "Dracnid", false, "", "Desolate Smaug"),
@@ -3512,7 +3514,7 @@
     /** @type {Race[]} */
     var raceAchievementList = [
         races.Antid, races.Mantis, races.Scorpid, races.Human, races.Orc, races.Elven, races.Troll, races.Ogre, races.Cyclops,
-        races.Kobold, races.Goblin, races.Gnome, races.Cath, races.Wolven, races.Centaur, races.Balorg, races.Imp,
+        races.Kobold, races.Goblin, races.Gnome, races.Cath, races.Wolven, races.Centaur, races.Balorg, races.Imp, races.Seraph, races.Unicorn,
         races.Arraak, races.Pterodacti, races.Dracnid, races.Tortoisan, races.Gecko, races.Slitheryn, races.Sharkin, races.Octigoran,
         races.Entish, races.Cacti, races.Sporgar, races.Shroomi, races.Valdi
     ];
@@ -3674,6 +3676,9 @@
                                 Demonic: new EvolutionAction("", "evo", "demonic", ""), // hellscape only
                                     Balorg: new EvolutionAction("", "evo", "balorg", ""),
                                     Imp: new EvolutionAction("", "evo", "imp", ""),
+                                Celestial: new EvolutionAction("", "evo", "celestial", ""), // eden only
+                                    Seraph: new EvolutionAction("", "evo", "seraph", ""),
+                                    Unicorn: new EvolutionAction("", "evo", "unicorn", ""),
 
                             Eggshell: new EvolutionAction("", "evo", "eggshell", ""),
                                 Endothermic: new EvolutionAction("", "evo", "endothermic", ""),
@@ -3786,6 +3791,7 @@
             SlavePen: new Action("Slave Pen", "city", "slave_pen", ""),
             SlaveMarket: new SlaveMarket(),
             Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
+            Shrine: new Action ("Shrine", "city", "shrine", ""),
         },
         
         spaceBuildings: {
@@ -4102,6 +4108,11 @@
         races.Imp.evolutionTree = [e.Imp].concat(demonic);
         state.raceGroupAchievementList.push([ races.Balorg, races.Imp ]);
 
+        let celestial = [e.Sentience, e.Celestial, e.Mammals].concat(bilateralSymmetry);
+        races.Seraph.evolutionTree = [e.Seraph].concat(celestial);
+        races.Unicorn.evolutionTree = [e.Unicorn].concat(celestial);
+        state.raceGroupAchievementList.push([ races.Seraph, races.Unicorn ]);
+
         let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
         races.Arraak.evolutionTree = [e.Arraak].concat(endothermic);
         races.Pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
@@ -4373,6 +4384,7 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlavePen); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlaveMarket); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Graveyard); // Evil only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shrine); // Celestial only
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
