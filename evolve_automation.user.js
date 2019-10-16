@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.0.1
+// @version      2.1.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -71,8 +71,11 @@
     var racialTraitCarnivore = "carnivore";
     var racialTraitSoulEater = "soul_eater";
     var racialTraitKindlingKindred = "kindling_kindred";
+    var racialTraitHiveMind = "hivemind"
     var racialTraitEvil = "evil";
+    var racialTraitSlaver = "slaver"
     var techFactory = "factory";
+    var techSuperstar = "superstar";
 
     // --------------------
 
@@ -1337,6 +1340,44 @@
         }
     }
 
+    class SlaveMarket extends Action {
+        constructor() {
+            super("Slave Market", "city", "slave_market", "");
+        }
+
+        get autoMax() {
+            // Always allow more unless auto max is set to 0
+            return this._autoMax === 0 ? 0 : Number.MAX_SAFE_INTEGER;
+        }
+
+        // Not overriden but required if overridding the getter
+        set autoMax(value) {
+            if (value < 0) value = -1;
+            this._autoMax = value;
+        }
+        
+        // Whether the action is clickable is determined by whether it is unlocked and affordable
+        // The slave market can always be clicked so lets only do it when we have 90%+ money
+        isClickable() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            // If we have over 90% money...
+            if (resources.money.storageRatio > 0.9 && game.checkAffordable(this.definition)) {
+                // and we are a slaver with the slave pen unlocked...
+                if (game.global.race[racialTraitSlaver] && state.cityBuildings.SlavePen.isUnlocked()){
+                    // and we are less than max slaves then we can click!
+                    if (state.cityBuildings.SlavePen.count * 5 > game.global.city.slave_pen.slaves) {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+    }
+
     const SmelterFuelTypes = {
         Wood: 0,
         Coal: 1,
@@ -1620,9 +1661,9 @@
         get productionOptions() {
             if (this._productionOptions === null) {
                 this._productionOptions = [];
-                this._productionOptions.push({ seq: 1, goods: FactoryGoods.LuxuryGoods, resource: resources.money, enabled: true, weighting: 1, requiredFactories: 0, factoryAdjustment: 0, completed: false });
+                this._productionOptions.push({ seq: 1, goods: FactoryGoods.LuxuryGoods, resource: resources.money, enabled: false, weighting: 1, requiredFactories: 0, factoryAdjustment: 0, completed: false });
                 this._productionOptions.push({ seq: 2, goods: FactoryGoods.Alloy, resource: resources.alloy, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 3, goods: FactoryGoods.Polymer, resource: resources.polymer, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 3, goods: FactoryGoods.Polymer, resource: resources.polymer, enabled: false, weighting: 2, requiredFactories: 0, completed: false });
                 this._productionOptions.push({ seq: 4, goods: FactoryGoods.NanoTube, resource: resources.nano_tube, enabled: true, weighting: 4, requiredFactories: 0, completed: false });
                 this._productionOptions.push({ seq: 5, goods: FactoryGoods.Stanene, resource: resources.stanene, enabled: true, weighting: 4, requiredFactories: 0, completed: false });
             }
@@ -2265,11 +2306,13 @@
          * @param {string} name
          * @param {string} id
          * @param {number} rating
+         * @param {number} maxRating
          */
-        constructor(name, id, rating) {
+        constructor(name, id, rating, maxRating) {
             this.name = name;
             this.id = id;
             this.rating = rating;
+            this.maxRating = maxRating;
         }
     }
 
@@ -2277,6 +2320,9 @@
         constructor() {
             /** @type {Campaign[]} */
             this.campaignList = [];
+            this._vueName = "civ_garrison";
+
+            this._textArmy = "army";
         }
 
         clearCampaignList() {
@@ -2286,9 +2332,10 @@
         /**
          * @param {string} name
          * @param {number} rating
+         * @param {number} maxRating
          */
-        addToCampaignList(name, rating) {
-            this.campaignList.push(new Campaign(name, name, rating));
+        addToCampaignList(name, rating, maxRating) {
+            this.campaignList.push(new Campaign(name, name, rating, maxRating));
         }
 
         /**
@@ -2314,8 +2361,7 @@
                 return false;
             }
 
-            //@ts-ignore
-            document.querySelector("#garrison .campaign").click();
+            game.vues[this._vueName].campaign();
             return true;
         }
 
@@ -2328,8 +2374,7 @@
                 return false;
             }
 
-            //@ts-ignore
-            document.querySelector("#garrison .first").click();
+            game.vues[this._vueName].hire();
             return true;
         }
 
@@ -2350,15 +2395,15 @@
         }
 
         get currentSoldiers() {
-            return parseInt(document.querySelector("#garrison .barracks > span:nth-Child(2)").textContent.split(" / ")[0]);
+            return game.global.civic.garrison.workers;
         }
 
         get maxSoldiers() {
-            return parseInt(document.querySelector("#garrison .barracks > span:nth-Child(2)").textContent.split(" / ")[1]);
+            return game.global.civic.garrison.max;
         }
 
         get woundedSoldiers() {
-            return parseInt(document.querySelector("#garrison .barracks:nth-child(2) > span:nth-child(2)").textContent);
+            return game.global.civic.garrison.wounded;
         }
 
         get attackType() {
@@ -2374,8 +2419,7 @@
                 return false;
             }
 
-            //@ts-ignore
-            document.querySelector("#tactics .add").click();
+            game.vues[this._vueName].next();
             return true;
         }
 
@@ -2384,8 +2428,7 @@
                 return false;
             }
 
-            //@ts-ignore
-            document.querySelector("#tactics .sub").click();
+            game.vues[this._vueName].last();
             return true;
         }
 
@@ -2394,34 +2437,74 @@
                 return 0;
             }
 
-            return parseInt(document.querySelector("#battalion .current").textContent);
+            return game.global.civic.garrison.raid;
         }
 
-        addBattalion() {
+        /**
+         * @param {number} count
+         */
+        addBattalion(count) {
             if (!this.isUnlocked()) {
                 return false;
             }
 
-            //@ts-ignore
-            document.querySelector("#battalion .add").click();
+            for (let i = 0; i < count; i++) {
+                game.vues[this._vueName].aNext();
+            }
+            
             return true;
         }
 
-        removeBattalion() {
+        /**
+         * @param {number} count
+         */
+        removeBattalion(count) {
             if (!this.isUnlocked()) {
                 return false;
             }
 
-            //@ts-ignore
-            document.querySelector("#battalion .sub").click();
+            for (let i = 0; i < count; i++) {
+                game.vues[this._vueName].aLast();
+            }
+
             return true;
+        }
+
+        get maxSoldiersForAttackType() {
+            // armyRating is a Math.floor! We'll have to do some tinkering to get a more accurate rating
+            let campaign = this.campaignList[findArrayIndex(this.campaignList, "name", this.attackType)];
+            let singleSoldierAttackRating = 0;
+
+            if (!game.global.race[racialTraitHiveMind]) {
+                // No hivemind so take the army rating to 2 decimal places by getting the rating for all soldiers and dividing it by number of soldiers
+                // eg. single soldier = 3.8657. armyRating(1) = floor(3.8657) = 3. armyRating(100) / 100 = 386 / 100 = 3.86
+                let soldiers = this.currentSoldiers - this.woundedSoldiers;
+                singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy) / soldiers;
+
+                return Math.ceil(campaign.maxRating / singleSoldierAttackRating);
+            }
+
+            // Ok, we've done no hivemind. Hivemind is trickier because each soldier gives attack rating and a bonus to all other soldiers.
+            // I'm sure there is an exact mathematical calculation for this but...
+            // Just loop through and remove 2 at a time until we're under the max rating.
+            let soldiers = Math.min(10, this.currentSoldiers - this.woundedSoldiers);
+            singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy) / soldiers;
+            let maxSoldiers = Math.ceil(campaign.maxRating / singleSoldierAttackRating);
+            let testMaxSoldiers = maxSoldiers - 2;
+
+            while (testMaxSoldiers > 3 && game.armyRating(testMaxSoldiers, this._textArmy) > campaign.maxRating) {
+                maxSoldiers = testMaxSoldiers;
+                testMaxSoldiers -= 2;
+            }
+
+            return maxSoldiers;
         }
 
        /**
          * @return {boolean}
          */
         switchToBestAttackType() {
-            let offense = this.currentOffensiveRating;
+            let attackRating = game.armyRating(this.maxSoldiers, this._textArmy)
             let currentAttackTypeIndex = findArrayIndex(this.campaignList, "name", this.attackType);
 
             if (this.campaignList.length === 0 || currentAttackTypeIndex === -1) {
@@ -2431,12 +2514,12 @@
             for (let i = this.campaignList.length - 1; i >= 0; i--) {
                 let campaign = this.campaignList[i];
                 
-                if (offense >= campaign.rating && currentAttackTypeIndex < i) {
+                if (attackRating >= campaign.rating && currentAttackTypeIndex < i) {
                     this.increaseCampaignDifficulty();
                     return false;
                 }
 
-                if (offense < campaign.rating && currentAttackTypeIndex >= i && i > 0) {
+                if (attackRating < campaign.rating && currentAttackTypeIndex >= i && i > 0) {
                     this.decreaseCampaignDifficulty();
                     return false;
                 }
@@ -3701,7 +3784,7 @@
             Wharf: new Action("Wharf", "city", "wharf", ""),
             MetalRefinery: new Action("Metal Refinery", "city", "metal_refinery", ""),
             SlavePen: new Action("Slave Pen", "city", "slave_pen", ""),
-            SlaveMarket: new Action("Slave Market", "city", "slave_market", ""),
+            SlaveMarket: new SlaveMarket(),
             Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
         },
         
@@ -4048,15 +4131,16 @@
     function resetWarState() {
         state.warManager.clearCampaignList();
 
-        state.warManager.addToCampaignList("Ambush", 10);
-        state.warManager.addToCampaignList("Raid", 50);
-        state.warManager.addToCampaignList("Pillage", 100);
-        state.warManager.addToCampaignList("Assault", 200);
-        state.warManager.addToCampaignList("Siege", 500);
+        state.warManager.addToCampaignList("Ambush", 10, 20);
+        state.warManager.addToCampaignList("Raid", 50, 100);
+        state.warManager.addToCampaignList("Pillage", 100, 180);
+        state.warManager.addToCampaignList("Assault", 200, 360);
+        state.warManager.addToCampaignList("Siege", 500, 800);
     }
 
     function resetGeneralSettings() {
         settings.generalMinimumTaxRate = 20;
+        settings.generalMinimumMorale = 105;
         settings.generalMaximumMorale = 200;
     }
 
@@ -4379,7 +4463,7 @@
     }
 
     function resetProductionSettings() {
-        // None at the moment
+        settings.productionMoneyIfOnly = true;
     }
 
     function resetProductionState() {
@@ -4388,9 +4472,15 @@
             const production = productionSettings[i];
 
             production.enabled = true;
-            if (production.goods === FactoryGoods.LuxuryGoods) production.weighting = 1;
+            if (production.goods === FactoryGoods.LuxuryGoods) {
+                production.weighting = 1;
+                production.enabled = false;
+            }
             if (production.goods === FactoryGoods.Alloy) production.weighting = 2;
-            if (production.goods === FactoryGoods.Polymer) production.weighting = 2;
+            if (production.goods === FactoryGoods.Polymer) {
+                production.weighting = 2;
+                production.enabled = false;
+            }
             if (production.goods === FactoryGoods.NanoTube) production.weighting = 4;
             if (production.goods === FactoryGoods.Stanene) production.weighting = 4;
         }
@@ -4413,6 +4503,13 @@
                 campaign.rating = parseFloat(settings[settingKey]);
             } else {
                 settings[settingKey] = campaign.rating;
+            }
+
+            settingKey = 'btl_max_' + campaign.name;
+            if (settings.hasOwnProperty(settingKey)) {
+                campaign.maxRating = parseFloat(settings[settingKey]);
+            } else {
+                settings[settingKey] = campaign.maxRating;
             }
         }
 
@@ -4662,6 +4759,7 @@
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             let campaign = state.warManager.campaignList[i];
             settings['btl_' + campaign.name] = campaign.rating;
+            settings['btl_max_' + campaign.name] = campaign.maxRating;
         }
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
@@ -4751,6 +4849,8 @@
         addSetting("arpaBuildIfStorageFullCraftableMin", 50000);
         addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
 
+        addSetting("productionMoneyIfOnly", true);
+
         addSetting("autoEvolution", defaultAllOptionsEnabled);
         addSetting("autoAchievements", false);
         addSetting("autoChallenge", false);
@@ -4788,6 +4888,7 @@
         addSetting("minimumMoneyPercentage", 0);
         addSetting("tradeRouteMinimumMoneyPerSecond", 300);
         addSetting("generalMinimumTaxRate", 20);
+        addSetting("generalMinimumMorale", 105)
         addSetting("generalMaximumMorale", 200);
 
         addSetting("userEvolutionTargetName", "auto");
@@ -5098,16 +5199,29 @@
             return;
         }
         
-        // Don't launch an attack until we are happy with our battalion size (returns true if we've added a battalion)
-        if (state.warManager.currentSoldiers > state.warManager.currentBattalion) {
-            if (state.warManager.addBattalion()) {
-                return;
-            }
-        }
-        
         // If we're switching attack types this loop then don't launch an attack. Wait for the UI to catch up (returns true when we are at the right attack type)
         if (!state.warManager.switchToBestAttackType()) {
             return;
+        }
+
+        // Don't launch an attack until we are happy with our battalion size (returns true if we've added a battalion)
+        let maxSoldiers = state.warManager.maxSoldiersForAttackType;
+        if (state.warManager.currentBattalion < maxSoldiers && state.warManager.currentSoldiers > state.warManager.currentBattalion) {
+            let soldiersToAdd = Math.min(maxSoldiers - state.warManager.currentBattalion, state.warManager.currentSoldiers - state.warManager.currentBattalion);
+
+            if (soldiersToAdd > 0) {
+                if (state.warManager.addBattalion(soldiersToAdd)) {
+                    return;
+                }
+            }
+        } else if (state.warManager.currentBattalion > maxSoldiers) {
+            let soldiersToRemove = state.warManager.currentBattalion - maxSoldiers;
+
+            if (soldiersToRemove > 0) {
+                if (state.warManager.removeBattalion(soldiersToRemove)) {
+                    return;
+                }
+            }
         }
 
         // If we have solders, they're not wounded and they're ready to go, then charge!
@@ -5406,22 +5520,28 @@
     //#region Auto Tax
 
     function autoTax() {
-        let taxRateNode = document.getElementById("tax_rates");
-        if (taxRateNode === null || taxRateNode.style.display === "none") return;
+        let taxVue = game.vues["civ_taxes"];
 
-        let currentTaxRateNode = document.querySelector("#tax_rates .current");
-        if (currentTaxRateNode === null ) return;
+        if (game.vues === undefined) {
+            return;
+        }
 
-        let currentMoraleNode = document.querySelector("#morale");
-        if (currentMoraleNode === null) return;
+        let taxInstance = game.global.civic["taxes"];
+        let moraleInstance = game.global.city["morale"];
 
-        let raiseTaxNode = document.querySelector("#tax_rates .add");
-        let lowerTaxNode = document.querySelector("#tax_rates .sub");
+        if (!taxInstance.display || !moraleInstance) {
+            return;
+        }
 
-        let currentTaxRate = parseInt(currentTaxRateNode.textContent);
-        let currentMorale = parseInt(currentMoraleNode.firstElementChild.textContent);
+        let currentTaxRate = taxInstance.tax_rate;
+        let currentMorale = moraleInstance.current;
 
-        let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.count + (state.projects.Monument.level * 2);
+        let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.count
+            + (state.spaceBuildings.RedVrCenter.count * 2) + (state.projects.Monument.level * 2);
+        if (game.global.tech[techSuperstar]) {
+            maxMorale += state.jobs.Entertainer.count;
+        }
+
         if (currentTaxRate < 20) {
             maxMorale += 10 - Math.floor(currentTaxRate / 2);
         }
@@ -5430,17 +5550,15 @@
 
         if (currentTaxRate < 50 &&
                 ((currentTaxRate < settings.generalMinimumTaxRate && resources.money.storageRatio < 0.98)
-                || (currentMorale > 115 && currentMorale >= maxMorale)
-                || (currentMorale <= 115 && currentTaxRate < 26))) {
-            // @ts-ignore
-            raiseTaxNode.click();
+                || (currentMorale > settings.generalMinimumMorale && currentMorale >= maxMorale)
+                || (currentMorale <= settings.generalMinimumMorale && currentTaxRate < 26))) {
+            taxVue.add();
         }
 
         if (currentTaxRate > 0
                 && (currentTaxRate > settings.generalMinimumTaxRate || resources.money.storageRatio >= 0.98)
-                && (currentMorale < maxMorale - 1 || (currentMorale < 115 && currentTaxRate > 26))) {
-            // @ts-ignore
-            lowerTaxNode.click();
+                && (currentMorale < maxMorale - 1 || (currentMorale < settings.generalMinimumMorale && currentTaxRate > 26))) {
+            taxVue.sub();
         }
     }
 
@@ -5605,6 +5723,32 @@
             }
         }
 
+        // If we have any remaining factories and the user wants to allocate unallocated factories to money then do it
+        let luxuryGoodsIndex = findArrayIndex(allProduction, "goods", FactoryGoods.LuxuryGoods);
+        if (remainingFactories > 0 && allProduction[luxuryGoodsIndex].requiredFactories === 0 && settings.productionMoneyIfOnly) {
+            let actualRequiredFactories = remainingFactories;
+            let productionCosts = state.cityBuildings.Factory.productionCosts(FactoryGoods.LuxuryGoods);
+
+            productionCosts.forEach(resourceCost => {
+                let previousCost = state.cityBuildings.Factory.currentProduction(FactoryGoods.LuxuryGoods) * resourceCost.quantity;
+                let cost = actualRequiredFactories * resourceCost.quantity;
+                let rate = resourceCost.resource.rateOfChange + resourceCost.minRateOfChange + previousCost;
+
+                if (allProduction[luxuryGoodsIndex].resource.storageRatio > 0.99) {
+                    actualRequiredFactories = 0;
+                } else {
+                    // If we can't afford it (it's above our minimum rate of change) then remove a factory
+                    // UNLESS we've got over 80% storage full. In that case lets go wild!
+                    while (cost > 0 && cost > rate && resourceCost.resource.storageRatio < 0.8) {
+                        cost -= resourceCost.quantity;
+                        actualRequiredFactories -= 1;
+                    }
+                }
+
+                allProduction[luxuryGoodsIndex].requiredFactories += actualRequiredFactories;
+            });
+        }
+
         // First decrease any production so that we have room to increase others
         for (let i = 0; i < allProduction.length; i++) {
             let production = allProduction[i];
@@ -5616,6 +5760,7 @@
         // Increase any production required (if they are 0 then don't do anything with them)
         for (let i = 0; i < allProduction.length; i++) {
             let production = allProduction[i];
+
             if (production.factoryAdjustment > 0) { state.cityBuildings.Factory.increaseProduction(production.goods, production.factoryAdjustment) }
         }
     }
@@ -5967,8 +6112,8 @@
         }
 
         // Loop through the auto build list and try to buy them
-        for(let i = 0; i < buildingList.length; i++) {
-            let building = buildingList[i];
+        for (let i = 0; i < buildingList.length; i++) {
+            const building = buildingList[i];
 
             if (!building.autoBuildEnabled) {
                 continue;
@@ -7107,7 +7252,7 @@
      * @param {string} hintText
      */
     function addStandardSectionSettingsToggle(node, settingName, labelText, hintText) {
-        node.append('<div style="margin-top: 5px; width: 500px; display: inline-block;"><label title="' + hintText + '" tabindex="0" class="switch" id="script_' + settingName + '"><input type="checkbox" value=false> <span class="check"></span><span style="margin-left: 10px;">' + labelText + '</span></label></div>')
+        node.append('<div style="margin-top: 5px; width: 600px; display: inline-block;"><label title="' + hintText + '" tabindex="0" class="switch" id="script_' + settingName + '"><input type="checkbox" value=false> <span class="check"></span><span style="margin-left: 10px;">' + labelText + '</span></label></div>')
 
         let toggleNode = $('#script_' + settingName + ' > input');
         if (settings[settingName]) {
@@ -7175,6 +7320,7 @@
         // Add any pre table settings
         let preTableNode = $('#script_generalPreTable');
         addStandardSectionSettingsNumber(preTableNode, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
+        addStandardSectionSettingsNumber(preTableNode, "generalMinimumMorale", "Minimum allowed morale", "Use this to set a minimum allowed morale. Remember that less than 100% can cause riots and weather can cause sudden swings");
         addStandardSectionSettingsNumber(preTableNode, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
         addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
     }
@@ -7377,7 +7523,7 @@
         currentNode.empty().off("*");
 
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Campaign</th><th class="has-text-warning" style="width:25%">Minimum Attack Rating</th><th class="has-text-warning" style="width:50%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Campaign</th><th class="has-text-warning" style="width:25%">Minimum Attack Rating</th><th class="has-text-warning" style="width:25%">Maximum Rating to Send</th><th class="has-text-warning" style="width:25%"></th></tr>
                 <tbody id="script_warTableBody" class="scriptcontenttbody"></tbody>
             </table>`);
         
@@ -7386,7 +7532,7 @@
 
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             const campaign = state.warManager.campaignList[i];
-            newTableBodyText += '<tr value="' + campaign.id + '"><td id="script_' + campaign.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:50%"></td></tr>';
+            newTableBodyText += '<tr value="' + campaign.id + '"><td id="script_' + campaign.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
         }
         warTableBody.append($(newTableBodyText));
 
@@ -7400,6 +7546,9 @@
 
             warElement = warElement.next();
             warElement.append(buildCampaignRatingSettingsInput(campaign));
+
+            warElement = warElement.next();
+            warElement.append(buildCampaignMaxRatingSettingsInput(campaign));
         }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -7418,6 +7567,26 @@
             if (!isNaN(rating)) {
                 //console.log('Setting max for war ' + war.name + ' to be ' + max);
                 campaign.rating = rating;
+                updateSettingsFromState();
+            }
+        });
+
+        return campaignMaxTextBox;
+    }
+
+    /**
+     * @param {Campaign} campaign
+     */
+    function buildCampaignMaxRatingSettingsInput(campaign) {
+        let campaignMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        campaignMaxTextBox.val(settings["btl_max_" + campaign.id]);
+    
+        campaignMaxTextBox.on('change', function() {
+            let val = campaignMaxTextBox.val();
+            let rating = getRealNumber(val);
+            if (!isNaN(rating)) {
+                //console.log('Setting max for war ' + war.name + ' to be ' + max);
+                campaign.maxRating = rating;
                 updateSettingsFromState();
             }
         });
@@ -7772,14 +7941,13 @@
 
         // Add any pre table settings
         let preTableNode = $('#script_productionPreTable');
-        // There are no pre-table settings yet
-        //addStandardSectionSettingsToggle(preTableNode, "productionLimitPreMad", "Limit Pre-MAD Production", "Saves resources and shortens run time by limiting production pre-MAD");
+        addStandardSectionSettingsToggle(preTableNode, "productionMoneyIfOnly", "Override and produce money if we can't fill factories with other production", "If all other production has been allocated and there are leftover factories then use them to produce money");
     }
 
     function updateProductionTable() {
         let currentNode = $('#script_productionContent');
         currentNode.append(
-            `<table style="width:60%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
                 <tbody id="script_productionTableBody" class="scriptcontenttbody"></tbody>
             </table>`
         );
@@ -7793,7 +7961,7 @@
         for (let i = 0; i < productionSettings.length; i++) {
             const production = productionSettings[i];
             let classAttribute = ' ';
-            newTableBodyText += '<tr value="' + production.resource.id + '"' + classAttribute + '><td id="script_production_' + production.resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+            newTableBodyText += '<tr value="' + production.resource.id + '"' + classAttribute + '><td id="script_production_' + production.resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -8984,11 +9152,14 @@
         import { global, vues, keyMultiplier } from './vars.js';
         import { actions, checkAffordable, checkOldTech, f_rate } from './actions.js';
         import { craftingRatio, craftCost } from './resources.js';
+        import { armyRating } from './civics.js';
 
         window.game =  {
             global: global,
             vues: vues,
             actions: actions,
+
+            armyRating: armyRating,
 
             keyMultiplier: keyMultiplier,
 
