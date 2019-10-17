@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.1.1
+// @version      2.1.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -41,7 +41,7 @@
 //  ** autoCraftsmen - Enable this when performing challenge runs and autoJobs will also manage craftsmen
 // * autoTax - Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.
 // * autoPower - Manages power based on a priority order of buildings. Starts with city based building then space based. Settings available in Settings tab.
-// * autoSmelter - Manages smelter output at different stages at the game. Not currently user configurable.
+// * autoSmelter - Manages smelter output at different stages at the game. Fuel preferences are available in the Production section of the Settings tab.
 // * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
 //          Settings available in the Settings tab.
 // * autoMiningDroid - Manages mining droid production based on power and consumption. Produces Adamantite only. Not currently user configurable.
@@ -242,10 +242,11 @@
 
         /**
          * @param {number} breakpoint
+         * @param {boolean} [ignoreOverride]
          */
-        breakpointEmployees(breakpoint) {
-            if (this.jobOverride !== null) {
-                return this.jobOverride.breakpointEmployees(breakpoint);
+        breakpointEmployees(breakpoint, ignoreOverride) {
+            if (this.jobOverride !== null && !ignoreOverride) {
+                return this.jobOverride.breakpointEmployees(breakpoint, ignoreOverride);
             }
 
             if ((breakpoint >= 0 && this.breakpointMaxs.length === 0) || breakpoint < 0 || breakpoint > this.breakpointMaxs.length - 1) {
@@ -1389,6 +1390,23 @@
         Steel: 1,
     }
 
+    class SmelterFuel {
+        /**
+         * @param {Resource} resource
+         */
+        constructor(resource) {
+            this.id = resource.id;
+            this.resource = resource;
+            this.enabled = true;
+            this.priority = 0;
+
+            this.fuelIndex = 0;
+            this.productionCost = null;
+            this.required = 0;
+            this.adjustment = 0;
+        }
+    }
+
     class Smelter extends Action {
         constructor() {
             super("Smelter", "city", "smelter", "");
@@ -1397,6 +1415,57 @@
 
             /** @type {ResourceProductionCost[][]} */
             this.smeltingConsumption = [ [], [] ];
+
+            /** @type {SmelterFuel[]} */
+            this._fuelPriorityList = [];
+        }
+
+        clearFuelPriorityList() {
+            this._fuelPriorityList.length = 0;
+        }
+
+        /**
+         * @param {SmelterFuel} fuel
+         */
+        addFuelToPriorityList(fuel) {
+            fuel.priority = this._fuelPriorityList.length;
+            this._fuelPriorityList.push(fuel);
+
+            if (fuel.resource === resources.lumber) {
+                fuel.fuelIndex = SmelterFuelTypes.Wood;
+                fuel.productionCost = new ResourceProductionCost(resources.lumber, 0, 6);
+            }
+
+            if (fuel.resource === resources.coal) {
+                fuel.fuelIndex = SmelterFuelTypes.Coal;
+                fuel.productionCost = new ResourceProductionCost(resources.coal, 0, 2);
+            }
+
+            if (fuel.resource === resources.oil) {
+                fuel.fuelIndex = SmelterFuelTypes.Oil;
+                fuel.productionCost = new ResourceProductionCost(resources.oil, 0.35, 2);
+            }
+        }
+
+        sortByPriority() {
+            this._fuelPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+        }
+
+        managedFuelPriorityList() {
+            this._fuelPriorityList.forEach(fuel => {
+                fuel.required = 0;
+                fuel.adjustment = 0;
+
+                if (fuel.resource === resources.lumber) {
+                    fuel.productionCost.quantity = (game.global.race[racialTraitEvil] && !game.global.race[racialTraitSoulEater] ? 1 : 3);
+                }
+    
+                if (fuel.resource === resources.coal) {
+                    fuel.productionCost.quantity = game.global.race[racialTraitKindlingKindred] ? 0.15 : 0.25;
+                }
+            });
+
+            return this._fuelPriorityList;
         }
 
         /**
@@ -1664,8 +1733,8 @@
                 this._productionOptions.push({ seq: 1, goods: FactoryGoods.LuxuryGoods, resource: resources.money, enabled: false, weighting: 1, requiredFactories: 0, factoryAdjustment: 0, completed: false });
                 this._productionOptions.push({ seq: 2, goods: FactoryGoods.Alloy, resource: resources.alloy, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
                 this._productionOptions.push({ seq: 3, goods: FactoryGoods.Polymer, resource: resources.polymer, enabled: false, weighting: 2, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 4, goods: FactoryGoods.NanoTube, resource: resources.nano_tube, enabled: true, weighting: 4, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 5, goods: FactoryGoods.Stanene, resource: resources.stanene, enabled: true, weighting: 4, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 4, goods: FactoryGoods.NanoTube, resource: resources.nano_tube, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 5, goods: FactoryGoods.Stanene, resource: resources.stanene, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
             }
 
             this._productionOptions.forEach(production => {
@@ -2650,7 +2719,7 @@
             let jobList = this.managedPriorityList();
 
             for (let i = 0; i < jobList.length; i++) {
-                total += Math.max(0, jobList[i].breakpointEmployees(breakpoint));
+                total += Math.max(0, jobList[i].breakpointEmployees(breakpoint, false));
             }
 
             return total;
@@ -4137,6 +4206,7 @@
 
         resetProjectState();
         resetWarState();
+        resetProductionState();
     }
 
     function resetWarState() {
@@ -4259,6 +4329,11 @@
 
     function resetStorageSettings() {
         settings.storageLimitPreMad = true;
+    }
+
+    function resetJobSettings() {
+        settings.jobLumberWeighting = 50;
+        settings.jobQuarryWeighting = 50;
     }
 
     function resetJobState() {
@@ -4479,6 +4554,13 @@
     }
 
     function resetProductionState() {
+        // Smelter settings
+        state.cityBuildings.Smelter.clearFuelPriorityList();
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.oil));
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.coal));
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.lumber));
+
+        // Factory settings
         let productionSettings = state.cityBuildings.Factory.productionOptions;
         for (let i = 0; i < productionSettings.length; i++) {
             const production = productionSettings[i];
@@ -4493,8 +4575,8 @@
                 production.weighting = 2;
                 production.enabled = false;
             }
-            if (production.goods === FactoryGoods.NanoTube) production.weighting = 4;
-            if (production.goods === FactoryGoods.Stanene) production.weighting = 4;
+            if (production.goods === FactoryGoods.NanoTube) production.weighting = 8;
+            if (production.goods === FactoryGoods.Stanene) production.weighting = 8;
         }
     }
 
@@ -4750,6 +4832,25 @@
                 settings[settingKey] = production.weighting;
             }
         }
+
+        for (let i = 0; i < state.cityBuildings.Smelter._fuelPriorityList.length; i++) {
+            const fuel = state.cityBuildings.Smelter._fuelPriorityList[i];
+
+            let settingKey = "smelter_fuel_" + fuel.resource.id;
+            if (settings.arpa.hasOwnProperty(settingKey)) {
+                fuel.enabled = settings.arpa[settingKey];
+            } else {
+                settings.arpa[settingKey] = fuel.enabled;
+            }
+
+            settingKey = "smelter_fuel_p_" + fuel.resource.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                fuel.priority = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = fuel.priority;
+            }
+        }
+        state.cityBuildings.Smelter.sortByPriority();
     }
 
     function updateSettingsFromState() {
@@ -4840,6 +4941,12 @@
             settings["production_w_" + production.resource.id] = production.weighting;
         }
 
+        for (let i = 0; i < state.cityBuildings.Smelter._fuelPriorityList.length; i++) {
+            const fuel = state.cityBuildings.Smelter._fuelPriorityList[i];
+            settings["smelter_fuel_" + fuel.resource.id] = fuel.enabled;
+            settings["smelter_fuel_p_" + fuel.resource.id] = fuel.priority;
+        }
+
         localStorage.setItem('settings', JSON.stringify(settings));
     }
 
@@ -4862,6 +4969,9 @@
         addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
 
         addSetting("productionMoneyIfOnly", true);
+
+        addSetting("jobLumberWeighting", 50);
+        addSetting("jobQuarryWeighting", 50);
 
         addSetting("autoEvolution", defaultAllOptionsEnabled);
         addSetting("autoAchievements", false);
@@ -5271,8 +5381,8 @@
         if (isHunterRace()) {
             for (let i = 0; i < jobList.length; i++) {
                 const job = jobList[i];
-                breakpoint0Max += job.breakpointEmployees(0);
-                breakpoint1Max += job.breakpointEmployees(1);
+                breakpoint0Max += job.breakpointEmployees(0, false);
+                breakpoint1Max += job.breakpointEmployees(1, false);
             }
 
             log("autoJobs", "Max breakpoint 0: " + breakpoint0Max)
@@ -5309,14 +5419,14 @@
                 log("autoJobs", "Leaving current farmers")
             }
 
-            log("autoJobs", "currentQuantity " + resources.population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0))
+            log("autoJobs", "currentQuantity " + resources.population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1, false) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0, false))
             if (isEvilRace()) {
-                if (resources.population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1)) {
+                if (resources.population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1, false)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
-                    requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(1);
-                } else if (requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(0)) {
+                    requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(1, false);
+                } else if (requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(0, false)) {
                     log("autoJobs", "Setting required hunters to breakpoint 0")
-                    requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(0);
+                    requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(0, false);
                 }
             }
 
@@ -5339,8 +5449,8 @@
                     availableEmployees += requiredJobs[j];
                 }
 
-                log("autoJobs", "job " + job._originalId + " job.breakpointEmployees(i) " + job.breakpointEmployees(i) + " availableEmployees " + availableEmployees);
-                let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
+                log("autoJobs", "job " + job._originalId + " job.breakpointEmployees(i) " + job.breakpointEmployees(i, false) + " availableEmployees " + availableEmployees);
+                let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i, false));
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
                 if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.money.storageRatio > 0.98) {
@@ -5412,45 +5522,64 @@
                 jobAdjustments[lumberjackIndex] += availableEmployees;
                 availableEmployees = 0
             } else {
-                if (!isEvilRace()) {
-                    let lumberjacks = 0;
-                    availableEmployees += requiredJobs[lumberjackIndex];
-                    requiredJobs[lumberjackIndex] = 0;
-                    jobAdjustments[lumberjackIndex] = 0 - state.jobs.Lumberjack.count;
-                    availableEmployees += requiredJobs[quarryWorkerIndex];
-                    requiredJobs[quarryWorkerIndex] = 0;
-                    jobAdjustments[quarryWorkerIndex] = 0 - state.jobs.QuarryWorker.count;
+                let minLumberjacks = 0;
+                
+                if (isEvilRace()) {
+                    // Evil races are a little bit different. Their "umemployed" workers act as both farmers and lumberjacks
+                    // We need to keep a minimum number on farming.
+                    minLumberjacks = requiredJobs[lumberjackIndex];
+                }
 
-                    // If we've got over 100 population then keep lumberjacks 5 more than quarry workers (due to sawmills providing bonus)
-                    if (resources.population.currentQuantity >= 100) {
-                        lumberjacks = Math.min(availableEmployees, 4);
-                        requiredJobs[lumberjackIndex] += lumberjacks;
-                        jobAdjustments[lumberjackIndex] += lumberjacks;
-                        availableEmployees -= lumberjacks;
+                // Reduce lumberjacks and quarry workers down to 0 and add them to the available employee pool
+                let lumberjacks = 0;
+                availableEmployees += requiredJobs[lumberjackIndex];
+                requiredJobs[lumberjackIndex] = 0;
+                jobAdjustments[lumberjackIndex] = 0 - state.jobs.Lumberjack.count;
+                availableEmployees += requiredJobs[quarryWorkerIndex];
+                requiredJobs[quarryWorkerIndex] = 0;
+                jobAdjustments[quarryWorkerIndex] = 0 - state.jobs.QuarryWorker.count;
+
+                // Bring them both up to breakpoint 0 one each at a time
+                while (availableEmployees >= 1
+                        && (requiredJobs[quarryWorkerIndex] < state.jobs.QuarryWorker.breakpointEmployees(0, true) || requiredJobs[lumberjackIndex] < state.jobs.Lumberjack.breakpointEmployees(0, true))) {
+                    if (requiredJobs[lumberjackIndex] <= requiredJobs[quarryWorkerIndex] && requiredJobs[lumberjackIndex] < state.jobs.Lumberjack.breakpointEmployees(0, true)) {
+                        requiredJobs[lumberjackIndex]++;
+                        jobAdjustments[lumberjackIndex]++;
+                    } else {
+                        requiredJobs[quarryWorkerIndex]++;
+                        jobAdjustments[quarryWorkerIndex]++;
                     }
 
-                    // Split the remainder between lumberjacks and quarry workers
-                    lumberjacks = Math.ceil(availableEmployees / 2);
+                    availableEmployees--;
+                }
+
+                // Bring them both up to breakpoint 1 one each at a time
+                while (availableEmployees >= 1 
+                        && (requiredJobs[quarryWorkerIndex] < state.jobs.QuarryWorker.breakpointEmployees(1, true) || requiredJobs[lumberjackIndex] < state.jobs.Lumberjack.breakpointEmployees(1, true))) {
+                    if (requiredJobs[lumberjackIndex] <= requiredJobs[quarryWorkerIndex] && requiredJobs[lumberjackIndex] < state.jobs.Lumberjack.breakpointEmployees(1, true)) {
+                        requiredJobs[lumberjackIndex]++;
+                        jobAdjustments[lumberjackIndex]++;
+                    } else {
+                        requiredJobs[quarryWorkerIndex]++;
+                        jobAdjustments[quarryWorkerIndex]++;
+                    }
+
+                    availableEmployees--;
+                }
+
+                if (availableEmployees > 0) {
+                    // Split the remainder between lumberjacks and quarry workers in accordance to the given weightings
+                    let totalWeighting = settings.jobLumberWeighting + settings.jobQuarryWeighting;
+                    lumberjacks = Math.ceil(availableEmployees * settings.jobLumberWeighting / totalWeighting);
+
+                    //lumberjacks = Math.ceil(availableEmployees / 2);
+                    lumberjacks = Math.max(minLumberjacks - requiredJobs[lumberjackIndex], lumberjacks);
                     requiredJobs[lumberjackIndex] += lumberjacks;
                     jobAdjustments[lumberjackIndex] += lumberjacks;
                     availableEmployees -= lumberjacks;
+
                     requiredJobs[quarryWorkerIndex] += availableEmployees;
                     jobAdjustments[quarryWorkerIndex] += availableEmployees;
-                } else {
-                    // Evil races are a little bit different. Their "umemployed" workers act as both farmers and lumberjacks
-                    // We need to keep a minimum number on farming. Distribute all available workers first to quarry workers
-                    // until they are equal to lumberjacks and then equally for the rest.
-                    while (availableEmployees >= 1) {
-                        if (requiredJobs[lumberjackIndex] <= requiredJobs[quarryWorkerIndex]) {
-                            requiredJobs[lumberjackIndex]++;
-                            jobAdjustments[lumberjackIndex]++;
-                        } else {
-                            requiredJobs[quarryWorkerIndex]++;
-                            jobAdjustments[quarryWorkerIndex]++;
-                        }
-
-                        availableEmployees--;
-                    }
                 }
             }
         }
@@ -5591,7 +5720,39 @@
             smelter.cacheOptions();
             return;
         }
+
+        // Adjust fuels
+        let fuels = smelter.managedFuelPriorityList();
+        let remainingSmelters = smelter.count;
+        fuels.forEach(fuel => {
+            if (remainingSmelters <= 0) {
+                return;
+            }
+
+            let remainingRateOfChange = fuel.productionCost.resource.rateOfChange + (smelter.fueledCount(fuel.fuelIndex) * fuel.productionCost.quantity);
+
+            while (remainingSmelters > 0 && remainingRateOfChange - fuel.productionCost.quantity > fuel.productionCost.minRateOfChange) {
+                fuel.required++;
+                remainingRateOfChange -= fuel.productionCost.quantity;
+                remainingSmelters --;
+            }
+        });
+
+        fuels.forEach(fuel => {
+            fuel.adjustment = fuel.required - smelter.fueledCount(fuel.fuelIndex);
+
+            if (fuel.adjustment < 0) {
+                smelter.decreaseFuel(fuel.fuelIndex, fuel.adjustment);
+            }
+        });
+
+        fuels.forEach(fuel => {
+            if (fuel.adjustment > 0) {
+                smelter.increaseFuel(fuel.fuelIndex, fuel.adjustment);
+            }
+        });
         
+        // Adjust steel production
         let steelAdjustment = 0;
 
         if (state.lastSmelterCheckLoop === 0 || (state.lastSmelterCheckLoop + 30 <= state.loopCounter)) {
@@ -7259,6 +7420,14 @@
 
     /**
      * @param {{ append: (arg0: string) => void; }} node
+     * @param {string} heading
+     */
+    function addStandardHeading(node, heading) {
+        node.append('<div style="margin-top: 5px; width: 600px; display: inline-block;"><span class="has-text-danger" style="margin-left: 10px;">' + heading + '</span></div>')
+    }
+
+    /**
+     * @param {{ append: (arg0: string) => void; }} node
      * @param {string} settingName
      * @param {string} labelText
      * @param {string} hintText
@@ -7939,32 +8108,101 @@
         let currentNode = $('#script_productionContent');
         currentNode.empty().off("*");
 
-        updateProductionPreTable();
-        updateProductionTable();
+        updateProductionPreTableSmelter();
+        updateProductionTableSmelter();
+
+        updateProductionPreTableFactory();
+        updateProductionTableFactory();
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function updateProductionPreTable() {
+    function updateProductionPreTableSmelter() {
         let currentNode = $('#script_productionContent');
 
         // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTable"></div>');
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableSmelter"></div>');
 
         // Add any pre table settings
-        let preTableNode = $('#script_productionPreTable');
-        addStandardSectionSettingsToggle(preTableNode, "productionMoneyIfOnly", "Override and produce money if we can't fill factories with other production", "If all other production has been allocated and there are leftover factories then use them to produce money");
+        let preTableNode = $('#script_productionPreTableSmelter');
+        addStandardHeading(preTableNode, "Smelter");
+        //addStandardSectionSettingsToggle(preTableNode, "productionMoneyIfOnly", "Override and produce money if we can't fill factories with other production", "If all other production has been allocated and there are leftover factories then use them to produce money");
     }
 
-    function updateProductionTable() {
+    function updateProductionTableSmelter() {
         let currentNode = $('#script_productionContent');
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
-                <tbody id="script_productionTableBody" class="scriptcontenttbody"></tbody>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Fuel</th><th class="has-text-warning" style="width:75%"></th></tr>
+                <tbody id="script_productionTableBodySmelter" class="scriptcontenttbody"></tbody>
             </table>`
         );
 
-        let tableBodyNode = $('#script_productionTableBody');
+        let tableBodyNode = $('#script_productionTableBodySmelter');
+        let newTableBodyText = "";
+
+        let smelterFuels = state.cityBuildings.Smelter._fuelPriorityList;
+        
+        for (let i = 0; i < smelterFuels.length; i++) {
+            const fuel = smelterFuels[i];
+            let classAttribute = ' ';
+            newTableBodyText += '<tr value="' + fuel.resource.id + '"' + classAttribute + '><td id="script_smelter_' + fuel.resource.id + '" style="width:25%"></td><td style="width:75%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other productions settings rows
+        for (let i = 0; i < smelterFuels.length; i++) {
+            const fuel = smelterFuels[i];
+            let productionElement = $('#script_smelter_' + fuel.resource.id);
+
+            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + fuel.resource.name + '</span>');
+            productionElement.append(toggle);
+
+            productionElement = productionElement.next();
+            productionElement.append($('<span class="scriptlastcolumn"></span>'));
+        }
+
+        $('#script_productionTableBodySmelter').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let fuelIds = $('#script_productionTableBodySmelter').sortable('toArray', {attribute: 'value'});
+
+                for (let i = 0; i < fuelIds.length; i++) {
+                    // Fuel has been dragged... Update all fuel priorities
+                    state.cityBuildings.Smelter._fuelPriorityList[findArrayIndex(state.cityBuildings.Smelter._fuelPriorityList, "id", fuelIds[i])].priority = i;
+                }
+
+                state.cityBuildings.Smelter.sortByPriority();
+                updateSettingsFromState();
+            },
+        } );
+    }
+
+    function updateProductionPreTableFactory() {
+        let currentNode = $('#script_productionContent');
+
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFactory"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_productionPreTableFactory');
+        addStandardHeading(preTableNode, "Factory");
+        addStandardSectionSettingsToggle(preTableNode, "productionMoneyIfOnly", "Override and produce money if we can't fill factories with other production", "If all other production has been allocated and there are leftover factories then use them to produce money");
+    }
+
+    function updateProductionTableFactory() {
+        let currentNode = $('#script_productionContent');
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
+                <tbody id="script_productionTableBodyFactory" class="scriptcontenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_productionTableBodyFactory');
         let newTableBodyText = "";
 
         let productionSettings = state.cityBuildings.Factory.productionOptions;
@@ -7973,14 +8211,14 @@
         for (let i = 0; i < productionSettings.length; i++) {
             const production = productionSettings[i];
             let classAttribute = ' ';
-            newTableBodyText += '<tr value="' + production.resource.id + '"' + classAttribute + '><td id="script_production_' + production.resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
+            newTableBodyText += '<tr value="' + production.resource.id + '"' + classAttribute + '><td id="script_factory_' + production.resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < productionSettings.length; i++) {
             const production = productionSettings[i];
-            let productionElement = $('#script_production_' + production.resource.id + 'Toggle');
+            let productionElement = $('#script_factory_' + production.resource.id + 'Toggle');
 
             let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + production.resource.name + '</span>');
             productionElement.append(toggle);
@@ -7998,7 +8236,7 @@
      */
     function buildProductionSettingsEnabledToggle(production) {
         let checked = production.enabled ? " checked" : "";
-        let toggle = $('<label id=script_production_' + production.resource.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+        let toggle = $('<label id=script_factory_' + production.resource.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
 
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
@@ -8038,6 +8276,7 @@
         let sectionName = "Job";
 
         let resetFunction = function() {
+            resetJobSettings();
             resetJobState();
             updateSettingsFromState();
             updateJobSettingsContent();
@@ -8051,6 +8290,29 @@
 
         let currentNode = $('#script_jobContent');
         currentNode.empty().off("*");
+
+        updateJobPreTable();
+        updateJobTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateJobPreTable() {
+        let currentNode = $('#script_jobContent');
+
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_jobPreTable"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_jobPreTable');
+        addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks and quarry workers");
+        addStandardSectionSettingsNumber(preTableNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks and quarry workers");
+    }
+
+    function updateJobTable() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_jobContent');
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Job</th><th class="has-text-warning" style="width:25%">1st Pass Max</th><th class="has-text-warning" style="width:25%">2nd Pass Max</th><th class="has-text-warning" style="width:25%">Final Max</th></tr>
                 <tbody id="script_jobTableBody" class="scriptcontenttbody"></tbody>
