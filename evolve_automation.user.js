@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.1.2
+// @version      2.1.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3546,46 +3546,46 @@
     //#region State and Initialisation
 
     var races = {
-        Antid: new Race("antid", "Antid", false, "", "Ophiocordyceps Unilateralis"),
-        Mantis: new Race("mantis", "Mantis", false, "", "Praying Unanswered"),
-        Scorpid: new Race("scorpid", "Scorpid", false, "", "Pulmonoscorpius"),
-        Human: new Race("human", "Human", false, "", "Homo Adeadus"),
-        Orc: new Race("orc", "Orc", false, "", "Outlander"),
-        Elven: new Race("elven", "Elf", false, "", "The few, the proud, the dead"),
-        Troll: new Race("troll", "Troll", false, "", "Bad Juju"),
-        Ogre: new Race("orge", "Ogre", false, "", "Too stupid to live"),
-        Cyclops: new Race("cyclops", "Cyclops", false, "", "Blind Ambition"),
-        Kobold: new Race("kobold", "Kobold", false, "", "Took their candle"),
-        Goblin: new Race("goblin", "Goblin", false, "", "Greed before Need"),
-        Gnome: new Race("gnome", "Gnome", false, "", "Unathletic"),
-        Cath: new Race("cath", "Cath", false, "", "Saber Tooth Tiger"),
-        Wolven: new Race("wolven", "Wolven", false, "", "Dire Wolf"),
-        Centaur: new Race("centaur", "Centaur", false, "", "Ferghana"),
-        Balorg: new Race("balorg", "Balorg", true, "Hellscape planet", "Self immolation"),
-        Imp: new Race("imp", "Imp", true, "Hellscape planet", "Deal with the devil"),
-        Seraph: new Race("seraph", "Seraph", true, "Eden planet", "Fallen Angel"),
-        Unicorn: new Race("unicorn", "Unicorn", true, "Eden planet", "Unicorn Burgers"),
-        Arraak: new Race("arraak", "Arraak", false, "", "Way of the Dodo"),
-        Pterodacti: new Race("pterodacti", "Pterodacti", false, "", "Chicxulub"),
-        Dracnid: new Race("dracnid", "Dracnid", false, "", "Desolate Smaug"),
-        Tortoisan: new Race("tortoisan", "Tortoisan", false, "", "Circle of Life"),
-        Gecko: new Race("gecko", "Gecko", false, "", "No Savings"),
-        Slitheryn: new Race("slitheryn", "Slitheryn", false, "", "Final Shedding"),
-        Sharkin: new Race("sharkin", "Sharkin", true, "Oceanic planet", "Megalodon"),
-        Octigoran: new Race("octigoran", "Octigoran", true, "Oceanic planet", "Calamari"),
-        Entish: new Race("entish", "Ent", false, "", "Saruman's Revenge"),
-        Cacti: new Race("cacti", "Cacti", false, "", "Desert Deserted"),
-        Sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
-        Shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
-        Valdi: new Race("junker", "Valdi", true, "Challenge genes unlocked", "Euthanasia"),
+        antid: new Race("antid", "Antid", false, "", "Ophiocordyceps Unilateralis"),
+        mantis: new Race("mantis", "Mantis", false, "", "Praying Unanswered"),
+        scorpid: new Race("scorpid", "Scorpid", false, "", "Pulmonoscorpius"),
+        human: new Race("human", "Human", false, "", "Homo Adeadus"),
+        orc: new Race("orc", "Orc", false, "", "Outlander"),
+        elven: new Race("elven", "Elf", false, "", "The few, the proud, the dead"),
+        troll: new Race("troll", "Troll", false, "", "Bad Juju"),
+        ogre: new Race("orge", "Ogre", false, "", "Too stupid to live"),
+        cyclops: new Race("cyclops", "Cyclops", false, "", "Blind Ambition"),
+        kobold: new Race("kobold", "Kobold", false, "", "Took their candle"),
+        goblin: new Race("goblin", "Goblin", false, "", "Greed before Need"),
+        gnome: new Race("gnome", "Gnome", false, "", "Unathletic"),
+        cath: new Race("cath", "Cath", false, "", "Saber Tooth Tiger"),
+        wolven: new Race("wolven", "Wolven", false, "", "Dire Wolf"),
+        centaur: new Race("centaur", "Centaur", false, "", "Ferghana"),
+        balorg: new Race("balorg", "Balorg", true, "Hellscape planet", "Self immolation"),
+        imp: new Race("imp", "Imp", true, "Hellscape planet", "Deal with the devil"),
+        seraph: new Race("seraph", "Seraph", true, "Eden planet", "Fallen Angel"),
+        unicorn: new Race("unicorn", "Unicorn", true, "Eden planet", "Unicorn Burgers"),
+        arraak: new Race("arraak", "Arraak", false, "", "Way of the Dodo"),
+        pterodacti: new Race("pterodacti", "Pterodacti", false, "", "Chicxulub"),
+        dracnid: new Race("dracnid", "Dracnid", false, "", "Desolate Smaug"),
+        tortoisan: new Race("tortoisan", "Tortoisan", false, "", "Circle of Life"),
+        gecko: new Race("gecko", "Gecko", false, "", "No Savings"),
+        slitheryn: new Race("slitheryn", "Slitheryn", false, "", "Final Shedding"),
+        sharkin: new Race("sharkin", "Sharkin", true, "Oceanic planet", "Megalodon"),
+        octigoran: new Race("octigoran", "Octigoran", true, "Oceanic planet", "Calamari"),
+        entish: new Race("entish", "Ent", false, "", "Saruman's Revenge"),
+        cacti: new Race("cacti", "Cacti", false, "", "Desert Deserted"),
+        sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
+        shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
+        junker: new Race("junker", "Valdi", true, "Challenge genes unlocked", "Euthanasia"),
     }
 
     /** @type {Race[]} */
     var raceAchievementList = [
-        races.Antid, races.Mantis, races.Scorpid, races.Human, races.Orc, races.Elven, races.Troll, races.Ogre, races.Cyclops,
-        races.Kobold, races.Goblin, races.Gnome, races.Cath, races.Wolven, races.Centaur, races.Balorg, races.Imp, races.Seraph, races.Unicorn,
-        races.Arraak, races.Pterodacti, races.Dracnid, races.Tortoisan, races.Gecko, races.Slitheryn, races.Sharkin, races.Octigoran,
-        races.Entish, races.Cacti, races.Sporgar, races.Shroomi, races.Valdi
+        races.antid, races.mantis, races.scorpid, races.human, races.orc, races.elven, races.troll, races.ogre, races.cyclops,
+        races.kobold, races.goblin, races.gnome, races.cath, races.wolven, races.centaur, races.balorg, races.imp, races.seraph, races.unicorn,
+        races.arraak, races.pterodacti, races.dracnid, races.tortoisan, races.gecko, races.slitheryn, races.sharkin, races.octigoran,
+        races.entish, races.cacti, races.sporgar, races.shroomi, races.junker
     ];
 
     var resources = {
@@ -4137,72 +4137,72 @@
         let bilateralSymmetry = [e.BilateralSymmetry, e.Multicellular, e.Phagocytosis, e.SexualReproduction];
 
         let aquatic = [e.Sentience, e.Aquatic].concat(bilateralSymmetry);
-        races.Sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
-        races.Octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
-        state.raceGroupAchievementList.push([ races.Sharkin, races.Octigoran ]);
+        races.sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
+        races.octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
+        state.raceGroupAchievementList.push([ races.sharkin, races.octigoran ]);
 
         let arthropods = [e.Sentience, e.Arthropods].concat(bilateralSymmetry);
-        races.Antid.evolutionTree = [e.Antid].concat(arthropods);
-        races.Scorpid.evolutionTree = [e.Scorpid].concat(arthropods);
-        races.Mantis.evolutionTree = [e.Mantis].concat(arthropods);
-        state.raceGroupAchievementList.push([ races.Antid, races.Scorpid, races.Mantis ]);
+        races.antid.evolutionTree = [e.Antid].concat(arthropods);
+        races.scorpid.evolutionTree = [e.Scorpid].concat(arthropods);
+        races.mantis.evolutionTree = [e.Mantis].concat(arthropods);
+        state.raceGroupAchievementList.push([ races.antid, races.scorpid, races.mantis ]);
 
         let humanoid = [e.Sentience, e.Humanoid, e.Mammals].concat(bilateralSymmetry);
-        races.Human.evolutionTree = [e.Human].concat(humanoid);
-        races.Orc.evolutionTree = [e.Orc].concat(humanoid);
-        races.Elven.evolutionTree = [e.Elven].concat(humanoid);
-        races.Valdi.evolutionTree = [e.Valdi, e.Bunker].concat(humanoid); // requires bunker gene
-        state.raceGroupAchievementList.push([ races.Human, races.Orc, races.Elven, races.Valdi ]);
+        races.human.evolutionTree = [e.Human].concat(humanoid);
+        races.orc.evolutionTree = [e.Orc].concat(humanoid);
+        races.elven.evolutionTree = [e.Elven].concat(humanoid);
+        races.junker.evolutionTree = [e.Valdi, e.Bunker].concat(humanoid); // requires bunker gene
+        state.raceGroupAchievementList.push([ races.human, races.orc, races.elven, races.junker ]);
 
         let gigantism = [e.Sentience, e.Gigantism, e.Mammals].concat(bilateralSymmetry);
-        races.Troll.evolutionTree = [e.Troll].concat(gigantism);
-        races.Ogre.evolutionTree = [e.Ogre].concat(gigantism);
-        races.Cyclops.evolutionTree = [e.Cyclops].concat(gigantism);
-        state.raceGroupAchievementList.push([ races.Troll, races.Ogre, races.Cyclops ]);
+        races.troll.evolutionTree = [e.Troll].concat(gigantism);
+        races.ogre.evolutionTree = [e.Ogre].concat(gigantism);
+        races.cyclops.evolutionTree = [e.Cyclops].concat(gigantism);
+        state.raceGroupAchievementList.push([ races.troll, races.ogre, races.cyclops ]);
 
         let dwarfism = [e.Sentience, e.Dwarfism, e.Mammals].concat(bilateralSymmetry);
-        races.Kobold.evolutionTree = [e.Kobold].concat(dwarfism);
-        races.Goblin.evolutionTree = [e.Goblin].concat(dwarfism);
-        races.Gnome.evolutionTree = [e.Gnome].concat(dwarfism);
-        state.raceGroupAchievementList.push([ races.Kobold, races.Goblin, races.Gnome ]);
+        races.kobold.evolutionTree = [e.Kobold].concat(dwarfism);
+        races.goblin.evolutionTree = [e.Goblin].concat(dwarfism);
+        races.gnome.evolutionTree = [e.Gnome].concat(dwarfism);
+        state.raceGroupAchievementList.push([ races.kobold, races.goblin, races.gnome ]);
 
         let animalism = [e.Sentience, e.Animalism, e.Mammals].concat(bilateralSymmetry);
-        races.Cath.evolutionTree = [e.Cath].concat(animalism);
-        races.Wolven.evolutionTree = [e.Wolven].concat(animalism);
-        races.Centaur.evolutionTree = [e.Centaur].concat(animalism);
-        state.raceGroupAchievementList.push([ races.Cath, races.Wolven, races.Centaur ]);
+        races.cath.evolutionTree = [e.Cath].concat(animalism);
+        races.wolven.evolutionTree = [e.Wolven].concat(animalism);
+        races.centaur.evolutionTree = [e.Centaur].concat(animalism);
+        state.raceGroupAchievementList.push([ races.cath, races.wolven, races.centaur ]);
 
         let demonic = [e.Sentience, e.Demonic, e.Mammals].concat(bilateralSymmetry);
-        races.Balorg.evolutionTree = [e.Balorg].concat(demonic);
-        races.Imp.evolutionTree = [e.Imp].concat(demonic);
-        state.raceGroupAchievementList.push([ races.Balorg, races.Imp ]);
+        races.balorg.evolutionTree = [e.Balorg].concat(demonic);
+        races.imp.evolutionTree = [e.Imp].concat(demonic);
+        state.raceGroupAchievementList.push([ races.balorg, races.imp ]);
 
         let celestial = [e.Sentience, e.Celestial, e.Mammals].concat(bilateralSymmetry);
-        races.Seraph.evolutionTree = [e.Seraph].concat(celestial);
-        races.Unicorn.evolutionTree = [e.Unicorn].concat(celestial);
-        state.raceGroupAchievementList.push([ races.Seraph, races.Unicorn ]);
+        races.seraph.evolutionTree = [e.Seraph].concat(celestial);
+        races.unicorn.evolutionTree = [e.Unicorn].concat(celestial);
+        state.raceGroupAchievementList.push([ races.seraph, races.unicorn ]);
 
         let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
-        races.Arraak.evolutionTree = [e.Arraak].concat(endothermic);
-        races.Pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
-        races.Dracnid.evolutionTree = [e.Dracnid].concat(endothermic);
-        state.raceGroupAchievementList.push([ races.Arraak, races.Pterodacti, races.Dracnid ]);
+        races.arraak.evolutionTree = [e.Arraak].concat(endothermic);
+        races.pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
+        races.dracnid.evolutionTree = [e.Dracnid].concat(endothermic);
+        state.raceGroupAchievementList.push([ races.arraak, races.pterodacti, races.dracnid ]);
 
         let ectothermic = [e.Sentience, e.Ectothermic, e.Eggshell].concat(bilateralSymmetry);
-        races.Tortoisan.evolutionTree = [e.Tortoisan].concat(ectothermic);
-        races.Gecko.evolutionTree = [e.Gecko].concat(ectothermic);
-        races.Slitheryn.evolutionTree = [e.Slitheryn].concat(ectothermic);
-        state.raceGroupAchievementList.push([ races.Tortoisan, races.Gecko, races.Slitheryn ]);
+        races.tortoisan.evolutionTree = [e.Tortoisan].concat(ectothermic);
+        races.gecko.evolutionTree = [e.Gecko].concat(ectothermic);
+        races.slitheryn.evolutionTree = [e.Slitheryn].concat(ectothermic);
+        state.raceGroupAchievementList.push([ races.tortoisan, races.gecko, races.slitheryn ]);
 
         let chloroplasts = [e.Sentience, e.Bryophyte, e.Poikilohydric, e.Multicellular, e.Chloroplasts, e.SexualReproduction];
-        races.Entish.evolutionTree = [e.Entish].concat(chloroplasts);
-        races.Cacti.evolutionTree = [e.Cacti].concat(chloroplasts);
-        state.raceGroupAchievementList.push([ races.Entish, races.Cacti ]);
+        races.entish.evolutionTree = [e.Entish].concat(chloroplasts);
+        races.cacti.evolutionTree = [e.Cacti].concat(chloroplasts);
+        state.raceGroupAchievementList.push([ races.entish, races.cacti ]);
 
         let chitin = [e.Sentience, e.Bryophyte, e.Spores, e.Multicellular, e.Chitin, e.SexualReproduction];
-        races.Sporgar.evolutionTree = [e.Sporgar].concat(chitin);
-        races.Shroomi.evolutionTree = [e.Shroomi].concat(chitin);
-        state.raceGroupAchievementList.push([ races.Sporgar, races.Shroomi ]);
+        races.sporgar.evolutionTree = [e.Sporgar].concat(chitin);
+        races.shroomi.evolutionTree = [e.Shroomi].concat(chitin);
+        state.raceGroupAchievementList.push([ races.sporgar, races.shroomi ]);
 
         resetProjectState();
         resetWarState();
@@ -4334,6 +4334,7 @@
     function resetJobSettings() {
         settings.jobLumberWeighting = 50;
         settings.jobQuarryWeighting = 50;
+        settings.jobScavengerWeighting = 50;
     }
 
     function resetJobState() {
@@ -4342,6 +4343,7 @@
         state.jobManager.addJobToPriorityList(state.jobs.Farmer);
         state.jobManager.addJobToPriorityList(state.jobs.Lumberjack);
         state.jobManager.addJobToPriorityList(state.jobs.QuarryWorker);
+        state.jobManager.addJobToPriorityList(state.jobs.Scavenger);
         state.jobManager.addJobToPriorityList(state.jobs.Plywood);
         state.jobManager.addJobToPriorityList(state.jobs.Brick);
         state.jobManager.addJobToPriorityList(state.jobs.WroughtIron);
@@ -4359,8 +4361,9 @@
         state.jobManager.addJobToPriorityList(state.jobs.HellSurveyor);
 
         state.jobs.Farmer.breakpointMaxs = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
-        state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Lumberjacks and quarry workers are special - remaining worker divided between them
-        state.jobs.QuarryWorker.breakpointMaxs = [5, 10, 10]; // Lumberjacks and quarry workers are special - remaining worker divided between them
+        state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
+        state.jobs.QuarryWorker.breakpointMaxs = [5, 10, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
+        state.jobs.Scavenger.breakpointMaxs = [0, 0, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
 
         state.jobs.SheetMetal.breakpointMaxs = [2, 4, -1];
         state.jobs.Plywood.breakpointMaxs = [2, 4, -1];
@@ -4419,6 +4422,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedLivingQuarters);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaStarport);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaHabitat);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaTransferStation);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFabrication);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMine);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedBiodome);
@@ -4492,7 +4496,6 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaFactory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaWarehouse);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaTransferStation);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCargoYard);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCruiser);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaDyson);
@@ -4972,6 +4975,7 @@
 
         addSetting("jobLumberWeighting", 50);
         addSetting("jobQuarryWeighting", 50);
+        addSetting("jobScavengerWeighting", 50);
 
         addSetting("autoEvolution", defaultAllOptionsEnabled);
         addSetting("autoAchievements", false);
@@ -5096,13 +5100,13 @@
         // If the user has specified a target evolution then use that
         if (state.evolutionTarget === null && settings.userEvolutionTargetName != "auto") {
             state.evolutionTarget = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
-            state.evolutionFallback = races.Antid;
+            state.evolutionFallback = races.antid;
 
             console.log("Targeting user specified race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
         } else if (state.evolutionTarget === null) {
             // User has automatic race selection enabled - Antids or autoAchievements
-            state.evolutionTarget = races.Antid;
-            state.evolutionFallback = races.Antid;
+            state.evolutionTarget = races.antid;
+            state.evolutionFallback = races.antid;
 
             if (settings.autoAchievements) {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
@@ -5367,6 +5371,7 @@
 
         let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
         let lumberjackIndex = -1;
+        let scavengerIndex = jobList.indexOf(state.jobs.Scavenger);
         
         if (!isEvilRace()) {
             lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
@@ -5509,78 +5514,91 @@
             }
         }
 
-        // Balance lumberjacks and quarry workers if they are unlocked
-        if (lumberjackIndex !== -1 || quarryWorkerIndex !== -1) {
-            if (availableEmployees >= 0 && lumberjackIndex === -1) {
-                // No lumber jacks so can only have quarry workers
-                requiredJobs[quarryWorkerIndex] += availableEmployees;
-                jobAdjustments[quarryWorkerIndex] += availableEmployees;
-                availableEmployees = 0
-            } else if (availableEmployees >= 0 && quarryWorkerIndex === -1) {
-                // No quarry workers so can only have lumber jacks
-                requiredJobs[lumberjackIndex] += availableEmployees;
-                jobAdjustments[lumberjackIndex] += availableEmployees;
-                availableEmployees = 0
-            } else {
-                let minLumberjacks = 0;
-                
-                if (isEvilRace()) {
-                    // Evil races are a little bit different. Their "umemployed" workers act as both farmers and lumberjacks
-                    // We need to keep a minimum number on farming.
-                    minLumberjacks = requiredJobs[lumberjackIndex];
-                }
+        let splitJobs = [];
+        if (lumberjackIndex !== -1) splitJobs.push( { jobIndex: lumberjackIndex, job: state.jobs.Lumberjack, weighting: settings.jobLumberWeighting, completed: false } );
+        if (quarryWorkerIndex !== -1) splitJobs.push( { jobIndex: quarryWorkerIndex, job: state.jobs.QuarryWorker, weighting: settings.jobQuarryWeighting, completed: false });
+        if (scavengerIndex !== -1) splitJobs.push( { jobIndex: scavengerIndex, job: state.jobs.Scavenger, weighting: settings.jobScavengerWeighting, completed: false });
 
-                // Reduce lumberjacks and quarry workers down to 0 and add them to the available employee pool
-                let lumberjacks = 0;
-                availableEmployees += requiredJobs[lumberjackIndex];
-                requiredJobs[lumberjackIndex] = 0;
-                jobAdjustments[lumberjackIndex] = 0 - state.jobs.Lumberjack.count;
-                availableEmployees += requiredJobs[quarryWorkerIndex];
-                requiredJobs[quarryWorkerIndex] = 0;
-                jobAdjustments[quarryWorkerIndex] = 0 - state.jobs.QuarryWorker.count;
+        // Balance lumberjacks, quarry workers and scavengers if they are unlocked
+        if (splitJobs.length > 0) {
+            let minLumberjacks = 0;
+            let totalWeighting = 0;
+            
+            if (isEvilRace() && lumberjackIndex !== -1) {
+                // Evil races are a little bit different. Their "umemployed" workers act as both farmers and lumberjacks
+                // We need to keep a minimum number on farming.
+                minLumberjacks = requiredJobs[lumberjackIndex];
+            }
 
-                // Bring them both up to breakpoint 0 one each at a time
-                while (availableEmployees >= 1
-                        && (requiredJobs[quarryWorkerIndex] < state.jobs.QuarryWorker.breakpointEmployees(0, true) || requiredJobs[lumberjackIndex] < state.jobs.Lumberjack.breakpointEmployees(0, true))) {
-                    if (requiredJobs[lumberjackIndex] <= requiredJobs[quarryWorkerIndex] && requiredJobs[lumberjackIndex] < state.jobs.Lumberjack.breakpointEmployees(0, true)) {
-                        requiredJobs[lumberjackIndex]++;
-                        jobAdjustments[lumberjackIndex]++;
-                    } else {
-                        requiredJobs[quarryWorkerIndex]++;
-                        jobAdjustments[quarryWorkerIndex]++;
+            // Reduce jobs required down to 0 and add them to the available employee pool so that we can split them according to weightings
+            splitJobs.forEach(jobDetails => {
+                availableEmployees += requiredJobs[jobDetails.jobIndex];
+                requiredJobs[jobDetails.jobIndex] = 0;
+                jobAdjustments[jobDetails.jobIndex] = 0 - jobDetails.job.count;
+                totalWeighting += jobDetails.weighting;
+            });
+
+            // Bring them all up to breakpoint 0 one each at a time
+            while (availableEmployees >= 1 && findArrayIndex(splitJobs, "completed", false) != -1) {
+                splitJobs.forEach(jobDetails => {
+                    if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(0, true)) {
+                        jobDetails.completed = true;
+                        return;
                     }
 
+                    requiredJobs[jobDetails.jobIndex]++;
+                    jobAdjustments[jobDetails.jobIndex]++;
                     availableEmployees--;
-                }
+                });
+            }
 
-                // Bring them both up to breakpoint 1 one each at a time
-                while (availableEmployees >= 1 
-                        && (requiredJobs[quarryWorkerIndex] < state.jobs.QuarryWorker.breakpointEmployees(1, true) || requiredJobs[lumberjackIndex] < state.jobs.Lumberjack.breakpointEmployees(1, true))) {
-                    if (requiredJobs[lumberjackIndex] <= requiredJobs[quarryWorkerIndex] && requiredJobs[lumberjackIndex] < state.jobs.Lumberjack.breakpointEmployees(1, true)) {
-                        requiredJobs[lumberjackIndex]++;
-                        jobAdjustments[lumberjackIndex]++;
-                    } else {
-                        requiredJobs[quarryWorkerIndex]++;
-                        jobAdjustments[quarryWorkerIndex]++;
+            // Bring them all up to breakpoint 1 one each at a time
+            while (availableEmployees >= 1 && findArrayIndex(splitJobs, "completed", false) != -1) {
+                splitJobs.forEach(jobDetails => {
+                    if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(1, true)) {
+                        jobDetails.completed = true;
+                        return;
                     }
 
+                    requiredJobs[jobDetails.jobIndex]++;
+                    jobAdjustments[jobDetails.jobIndex]++;
                     availableEmployees--;
-                }
+                });
+            }
 
-                if (availableEmployees > 0) {
-                    // Split the remainder between lumberjacks and quarry workers in accordance to the given weightings
-                    let totalWeighting = settings.jobLumberWeighting + settings.jobQuarryWeighting;
-                    lumberjacks = Math.ceil(availableEmployees * settings.jobLumberWeighting / totalWeighting);
+            // splitJobs.forEach(jobDetails => {
+            //     console.log("3 " + jobDetails.job.name + " required " + requiredJobs[jobDetails.jobIndex] + ", adjustment " + jobAdjustments[jobDetails.jobIndex])
+            // });
 
-                    //lumberjacks = Math.ceil(availableEmployees / 2);
+            if (availableEmployees > 0) {
+                // Split the remainder in accordance to the given weightings
+                if (isEvilRace() && lumberjackIndex !== -1) {
+                    // Lumberjacks are special! for evil races they are also farmers so we need to keep a minimum even if the split doens't have that many
+                    let lumberjacks = Math.ceil(availableEmployees * settings.jobLumberWeighting / totalWeighting);
                     lumberjacks = Math.max(minLumberjacks - requiredJobs[lumberjackIndex], lumberjacks);
                     requiredJobs[lumberjackIndex] += lumberjacks;
                     jobAdjustments[lumberjackIndex] += lumberjacks;
                     availableEmployees -= lumberjacks;
-
-                    requiredJobs[quarryWorkerIndex] += availableEmployees;
-                    jobAdjustments[quarryWorkerIndex] += availableEmployees;
                 }
+                
+                splitJobs.forEach(jobDetails => {
+                    if (availableEmployees <= 0 || (isEvilRace() && jobDetails.job === state.jobs.Lumberjack)) {
+                        // We've already dealt with evil lumberjacks above. Those dastardly lumberjacks!
+                        return;
+                    }
+
+                    let workers = Math.ceil(availableEmployees * jobDetails.weighting / totalWeighting);
+                    workers = Math.min(availableEmployees, workers);
+                    requiredJobs[jobDetails.jobIndex] += workers;
+                    jobAdjustments[jobDetails.jobIndex] += workers;
+                    availableEmployees -= workers;
+                });
+
+                // Any leftovers assign to the last job
+                let jobIndex = splitJobs[splitJobs.length - 1].jobIndex;
+                requiredJobs[jobIndex] += availableEmployees;
+                jobAdjustments[jobIndex] += availableEmployees;
+                availableEmployees -= availableEmployees;
             }
         }
 
@@ -8305,8 +8323,9 @@
 
         // Add any pre table settings
         let preTableNode = $('#script_jobPreTable');
-        addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks and quarry workers");
-        addStandardSectionSettingsNumber(preTableNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks and quarry workers");
+        addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
+        addStandardSectionSettingsNumber(preTableNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
+        addStandardSectionSettingsNumber(preTableNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
     }
 
     function updateJobTable() {
@@ -8393,7 +8412,7 @@
     function buildJobSettingsInput(job, breakpoint) {
         let lastSpan = breakpoint === 3 && job !== state.jobs.Farmer ? '<span class="scriptlastcolumn"></span>' : "";
 
-        if (job === state.jobs.Farmer || (breakpoint === 3 && (job === state.jobs.Lumberjack || job === state.jobs.QuarryWorker))) {
+        if (job === state.jobs.Farmer || (breakpoint === 3 && (job === state.jobs.Lumberjack || job === state.jobs.QuarryWorker || job === state.jobs.Scavenger))) {
             let span = $('<span>Managed</span>' + lastSpan);
             return span;
         }
@@ -9310,7 +9329,7 @@
      * @param {string} raceId
      */
     function isRaceTraitIntelligent(raceId) {
-        return raceId === races.Cyclops.id;
+        return raceId === races.cyclops.id;
     }
 
     /**
@@ -9353,7 +9372,7 @@
 
 
     function isLumberRace() {
-        return game.global.race[racialTraitKindlingKindred];
+        return !game.global.race[racialTraitKindlingKindred];
     }
 
     function removePoppers() {
