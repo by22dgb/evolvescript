@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.1.3
+// @version      2.2.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
 // @author       TMVictor
 // @match        https://pmotschmann.github.io/Evolve/
+// @match        https://localhost/*
+// @match        http://localhost/*
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.3.1.min.js
 // @require      https://code.jquery.com/ui/1.12.1/jquery-ui.min.js
@@ -421,7 +423,7 @@
             let vue = game.vues[this._vueName];
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
-                    vue.sub(this._originalId);            
+                    vue.sub(this._originalId);
                 }
 
                 return true;
@@ -590,37 +592,29 @@
         }
 
         updateResourceRequirements() {
-            let actionNode = document.querySelector(this._hashButtonElement);
-
-            if (actionNode === null || actionNode.attributes.length === 0) {
+            if (!this.isUnlocked()) {
                 return;
             }
 
-            // Some building requirements can change but we want to reuse our resource requirements array if possible
-            // (eg. shed requirements change over time)
-            let count = 0;
-            for (let i = 0; i < actionNode.attributes.length; i++) {
-                const attribute = actionNode.attributes[i];
+            let resourceIndex = 0;
 
-                if (attribute.nodeName.startsWith("data-")) {
-                    if (this.resourceRequirements.length > count) {
-                        this.resourceRequirements[i].resource = resources[attribute.nodeName.substring(5)];
-                        this.resourceRequirements[i].quantity = getRealNumber(attribute.nodeValue);
-                    } else {
-                        this.resourceRequirements.push(new ResourceRequirement(resources[attribute.nodeName.substring(5)], getRealNumber(attribute.nodeValue)));
-                    }
-                    count++;
+            Object.keys(this.definition.cost).forEach(resourceName => {
+                let testCost = game.adjustCosts(Number(this.definition.cost[resourceName]()) || 0);
+
+                if (this.resourceRequirements.length > resourceIndex) {
+                    this.resourceRequirements[resourceIndex].resource = resources[resourceName];
+                    this.resourceRequirements[resourceIndex].quantity = testCost;
+                } else {
+                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], getRealNumber(testCost)));
                 }
-            }
+
+                resourceIndex++;
+            });
 
             // Remove any extra elements that we have that are greater than the current number of requirements
-            while (this.resourceRequirements.length > count) {
+            while (this.resourceRequirements.length > resourceIndex) {
                 this.resourceRequirements.pop();
             }
-
-            // let logText = this.id;
-            // this.resourceRequirements.forEach(requirement => logText += " " + requirement.resource.id + " - " + requirement.quantity + ", ");
-            // log("autoStorage", logText);
         }
 
         // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
@@ -629,7 +623,7 @@
                 return false;
             }
 
-            if (!game.checkAffordable(this.definition)) {
+            if (!game.checkAffordable(this.definition, false)) {
                 return false;
             }
 
@@ -650,11 +644,17 @@
                 return false
             }
 
+            let retVal = true;
+            let tempRetVal = true;
+
             for (let i = 0; i < count; i++) {
-                game.vues[this._vueName].action();
+                if (retVal) {
+                    tempRetVal = game.vues[this._vueName].action();
+                    retVal = tempRetVal === undefined ? retVal : retVal && tempRetVal;
+                }
             }
 
-            return true;
+            return retVal;
         }
 
         /**
@@ -1325,11 +1325,11 @@
             }
 
             if (this.count === 0) {
-                if (!game.checkAffordable(this.definition)) {
+                if (!game.checkAffordable(this.definition, false)) {
                     return false;
                 }
             } else {
-                if (resources.population.currentQuantity < 20 || resources.population.currentQuantity !== resources.population.maxQuantity) {
+                if (resources.Population.currentQuantity < 20 || resources.Population.currentQuantity !== resources.Population.maxQuantity) {
                     return false;
                 } else {
                     return game.global.city.s_alter.rage < 86400 || game.global.city.s_alter.regen < 86400 || game.global.city.s_alter.mind < 86400
@@ -1365,7 +1365,7 @@
             }
 
             // If we have over 90% money...
-            if (resources.money.storageRatio > 0.9 && game.checkAffordable(this.definition)) {
+            if (resources.Money.storageRatio > 0.9 && game.checkAffordable(this.definition, false)) {
                 // and we are a slaver with the slave pen unlocked...
                 if (game.global.race[racialTraitSlaver] && state.cityBuildings.SlavePen.isUnlocked()){
                     // and we are less than max slaves then we can click!
@@ -1431,19 +1431,19 @@
             fuel.priority = this._fuelPriorityList.length;
             this._fuelPriorityList.push(fuel);
 
-            if (fuel.resource === resources.lumber) {
+            if (fuel.resource === resources.Lumber) {
                 fuel.fuelIndex = SmelterFuelTypes.Wood;
-                fuel.productionCost = new ResourceProductionCost(resources.lumber, 0, 6);
+                fuel.productionCost = new ResourceProductionCost(resources.Lumber, 0, 6);
             }
 
-            if (fuel.resource === resources.coal) {
+            if (fuel.resource === resources.Coal) {
                 fuel.fuelIndex = SmelterFuelTypes.Coal;
-                fuel.productionCost = new ResourceProductionCost(resources.coal, 0, 2);
+                fuel.productionCost = new ResourceProductionCost(resources.Coal, 0, 2);
             }
 
-            if (fuel.resource === resources.oil) {
+            if (fuel.resource === resources.Oil) {
                 fuel.fuelIndex = SmelterFuelTypes.Oil;
-                fuel.productionCost = new ResourceProductionCost(resources.oil, 0.35, 2);
+                fuel.productionCost = new ResourceProductionCost(resources.Oil, 0.35, 2);
             }
         }
 
@@ -1456,11 +1456,11 @@
                 fuel.required = 0;
                 fuel.adjustment = 0;
 
-                if (fuel.resource === resources.lumber) {
+                if (fuel.resource === resources.Lumber) {
                     fuel.productionCost.quantity = (game.global.race[racialTraitEvil] && !game.global.race[racialTraitSoulEater] ? 1 : 3);
                 }
     
-                if (fuel.resource === resources.coal) {
+                if (fuel.resource === resources.Coal) {
                     fuel.productionCost.quantity = game.global.race[racialTraitKindlingKindred] ? 0.15 : 0.25;
                 }
             });
@@ -1493,7 +1493,7 @@
             }
             
             let optionsNode = document.querySelector("#city-smelter .special");
-            let title = typeof game.actions.city.smelter.title === 'string' ? game.actions.city.smelter.title : game.actions.city.smelter.title.title();
+            let title = typeof game.actions.city.smelter.title === 'string' ? game.actions.city.smelter.title : game.actions.city.smelter.title();
             state.windowManager.openModalWindowWithCallback(title, this.cacheOptionsCallback, optionsNode);
         }
 
@@ -1710,7 +1710,7 @@
             }
             
             let optionsNode = document.querySelector("#city-factory .special");
-            let title = typeof game.actions.city.factory.title === 'string' ? game.actions.city.factory.title : game.actions.city.factory.title.title();
+            let title = typeof game.actions.city.factory.title === 'string' ? game.actions.city.factory.title : game.actions.city.factory.title();
             state.windowManager.openModalWindowWithCallback(title, this.cacheOptionsCallback, optionsNode);
         }
         
@@ -1730,11 +1730,11 @@
         get productionOptions() {
             if (this._productionOptions === null) {
                 this._productionOptions = [];
-                this._productionOptions.push({ seq: 1, goods: FactoryGoods.LuxuryGoods, resource: resources.money, enabled: false, weighting: 1, requiredFactories: 0, factoryAdjustment: 0, completed: false });
-                this._productionOptions.push({ seq: 2, goods: FactoryGoods.Alloy, resource: resources.alloy, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 3, goods: FactoryGoods.Polymer, resource: resources.polymer, enabled: false, weighting: 2, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 4, goods: FactoryGoods.NanoTube, resource: resources.nano_tube, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 5, goods: FactoryGoods.Stanene, resource: resources.stanene, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 1, goods: FactoryGoods.LuxuryGoods, resource: resources.Money, enabled: false, weighting: 1, requiredFactories: 0, factoryAdjustment: 0, completed: false });
+                this._productionOptions.push({ seq: 2, goods: FactoryGoods.Alloy, resource: resources.Alloy, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 3, goods: FactoryGoods.Polymer, resource: resources.Polymer, enabled: false, weighting: 2, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 4, goods: FactoryGoods.NanoTube, resource: resources.Nano_Tube, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 5, goods: FactoryGoods.Stanene, resource: resources.Stanene, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
             }
 
             this._productionOptions.forEach(production => {
@@ -1781,23 +1781,23 @@
             if (this._productionCosts === null) {
                 this._productionCosts = {};
                 this._productionCosts[FactoryGoods.LuxuryGoods] = [];
-                this._productionCosts[FactoryGoods.LuxuryGoods].push(new ResourceProductionCost(resources.furs, 1, 5));
+                this._productionCosts[FactoryGoods.LuxuryGoods].push(new ResourceProductionCost(resources.Furs, 1, 5));
                 
                 this._productionCosts[FactoryGoods.Alloy] = [];
-                this._productionCosts[FactoryGoods.Alloy].push(new ResourceProductionCost(resources.copper, 1, 5));
-                this._productionCosts[FactoryGoods.Alloy].push(new ResourceProductionCost(resources.aluminium, 1, 5));
+                this._productionCosts[FactoryGoods.Alloy].push(new ResourceProductionCost(resources.Copper, 1, 5));
+                this._productionCosts[FactoryGoods.Alloy].push(new ResourceProductionCost(resources.Aluminium, 1, 5));
 
                 this._productionCosts[FactoryGoods.Polymer] = [];
-                this._productionCosts[FactoryGoods.Polymer].push(new ResourceProductionCost(resources.oil, 1, 2));
-                this._productionCosts[FactoryGoods.Polymer].push(new ResourceProductionCost(resources.lumber, 1, 50));
+                this._productionCosts[FactoryGoods.Polymer].push(new ResourceProductionCost(resources.Oil, 1, 2));
+                this._productionCosts[FactoryGoods.Polymer].push(new ResourceProductionCost(resources.Lumber, 1, 50));
 
                 this._productionCosts[FactoryGoods.NanoTube] = [];
-                this._productionCosts[FactoryGoods.NanoTube].push(new ResourceProductionCost(resources.coal, 1, 15));
-                this._productionCosts[FactoryGoods.NanoTube].push(new ResourceProductionCost(resources.neutronium, 1, 0.2));
+                this._productionCosts[FactoryGoods.NanoTube].push(new ResourceProductionCost(resources.Coal, 1, 15));
+                this._productionCosts[FactoryGoods.NanoTube].push(new ResourceProductionCost(resources.Neutronium, 1, 0.2));
 
                 this._productionCosts[FactoryGoods.Stanene] = [];
-                this._productionCosts[FactoryGoods.Stanene].push(new ResourceProductionCost(resources.aluminium, 1, 50));
-                this._productionCosts[FactoryGoods.Stanene].push(new ResourceProductionCost(resources.nano_tube, 1, 5));
+                this._productionCosts[FactoryGoods.Stanene].push(new ResourceProductionCost(resources.Aluminium, 1, 50));
+                this._productionCosts[FactoryGoods.Stanene].push(new ResourceProductionCost(resources.Nano_Tube, 1, 5));
             }
 
             let assembly = game.global.tech[techFactory] ? true : false;
@@ -1910,7 +1910,7 @@
             }
             
             let optionsNode = document.querySelector("#interstellar-mining_droid .special");
-            let title = typeof game.actions.interstellar.int_alpha.mining_droid.title === 'string' ? game.actions.interstellar.int_alpha.mining_droid.title : game.actions.interstellar.int_alpha.mining_droid.title.title();
+            let title = typeof game.actions.interstellar.int_alpha.mining_droid.title === 'string' ? game.actions.interstellar.int_alpha.mining_droid.title : game.actions.interstellar.int_alpha.mining_droid.title();
             state.windowManager.openModalWindowWithCallback(title, this.cacheOptionsCallback, optionsNode);
         }
         
@@ -2027,7 +2027,7 @@
             }
             
             let optionsNode = document.querySelector("#interstellar-g_factory .special");
-            let title = typeof game.actions.interstellar.int_alpha.g_factory.title === 'string' ? game.actions.interstellar.int_alpha.g_factory.title : game.actions.interstellar.int_alpha.g_factory.title.title();
+            let title = typeof game.actions.interstellar.int_alpha.g_factory.title === 'string' ? game.actions.interstellar.int_alpha.g_factory.title : game.actions.interstellar.int_alpha.g_factory.title();
             state.windowManager.openModalWindowWithCallback(title, this.cacheOptionsCallback, optionsNode);
         }
 
@@ -2796,7 +2796,7 @@
                 } else if (job === state.jobs.Brick && state.cityBuildings.CementPlant.count === 0) {
                     // We've got no cement plants so don't put any craftsmen on making Brick
                     job.max = 0;
-                } else if (job === state.jobs.Mythril && resources.mythril.currentQuantity > 1000 && (resources.mythril.currentQuantity > 10000 || resources.iridium.currentQuantity < 10000)) {
+                } else if (job === state.jobs.Mythril && resources.Mythril.currentQuantity > 1000 && (resources.Mythril.currentQuantity > 10000 || resources.Iridium.currentQuantity < 10000)) {
                     // Don't make Mythril if we have too much mythril or too little iridium
                     job.max = 0;
                 } else if (!job.isManaged()) {
@@ -2937,10 +2937,34 @@
 
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
+
+            this._vueName = "arpa" + this.id;
+            this._instance = null;
+            this._definition = null;
         }
 
         isUnlocked() {
             return document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x1') !== null;
+        }
+
+        get instance() {
+            if (this._instance !== null) {
+                return this._instance;
+            }
+
+            this._instance = game.global.arpa[this.id];
+
+            return this._instance;
+        }
+
+        get definition() {
+            if (this._definition !== null) {
+                return this._definition;
+            }
+
+            this._definition = game.arpaProjects[this.id];
+
+            return this._definition;
         }
 
         updateResourceRequirements() {
@@ -2971,21 +2995,21 @@
 
                 if (requirement.indexOf("$") !== -1) {
                     if (currentIndex < this.resourceRequirements.length) {
-                        this.resourceRequirements[currentIndex].resource = resources.money;
+                        this.resourceRequirements[currentIndex].resource = resources.Money;
                         this.resourceRequirements[currentIndex].quantity = getRealNumber(requirement.split("$")[1]);
                         currentIndex++;
                     } else {
-                        this.resourceRequirements.push(new ResourceRequirement(resources.money, getRealNumber(requirement.split("$")[1])));
+                        this.resourceRequirements.push(new ResourceRequirement(resources.Money, getRealNumber(requirement.split("$")[1])));
                     }
                 } else {
                     let requirementArray = requirement.split(":");
                     let indexAdjustment = requirementArray.length === 2 ? 0 : 1;
-                    let resourceName = requirement.split(":")[indexAdjustment].trim().toLowerCase().replace(" ", "_");
+                    let resourceName = requirement.split(":")[indexAdjustment].trim().replace(" ", "_");
 
-                    if (resourceName === "souls") { resourceName = "food" }
-                    else if (resourceName === "bones") { resourceName = "lumber" }
-                    else if (resourceName === "flesh") { resourceName = "furs" }
-                    else if (resourceName === "boneweave") { resourceName = "plywood" }
+                    if (resourceName === "Souls") { resourceName = "Food" }
+                    else if (resourceName === "Bones") { resourceName = "Lumber" }
+                    else if (resourceName === "Flesh") { resourceName = "Furs" }
+                    else if (resourceName === "Boneweave") { resourceName = "Plywood" }
 
                     // To account for: "42.8K." - note the period at the end there.
                     let quantity = requirement.split(":")[1 + indexAdjustment];
@@ -3003,9 +3027,9 @@
                 }
             });
 
-            // let logText = this.id;
-            // this.resourceRequirements.forEach(requirement => logText += " " + requirement.resource.id + " - " + requirement.quantity + ", ");
-            // log("autoStorage", logText);
+            // // let logText = this.id;
+            // // this.resourceRequirements.forEach(requirement => logText += " " + requirement.resource.id + " - " + requirement.quantity + ", ");
+            // // log("autoStorage", logText);
         }
 
         get autoBuildEnabled() {
@@ -3056,7 +3080,7 @@
             }
 
             let moneyFloor = 0;
-            let moneyRequirement = this.resourceRequirements.find(requirement => requirement.resource === resources.money);
+            let moneyRequirement = this.resourceRequirements.find(requirement => requirement.resource === resources.Money);
             if (moneyRequirement !== undefined) {
                 moneyFloor = moneyRequirement.quantity;
             }
@@ -3540,10 +3564,442 @@
             return false;
         }
     }
+
+    class Technology {
+        constructor(action) {
+            this._id = action.id.substring(5);
+            this._action = action;
+
+            this._vueName = this._action.id;
+            this._definition = null;
+
+            /** @type {ResourceRequirement[]} */
+            this.resourceRequirements = [];
+        }
+
+        get id() {
+            return this._id;
+        }
+
+        isUnlocked() {
+            return document.querySelector("#" + this._action.id + " > a") !== null && game.vues[this._vueName] !== undefined;
+        }
+
+        get definition() {
+            return this._action;
+        }
+
+        // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
+        isClickable() {
+            if (!this.isUnlocked()) {
+                return false;
+            }
+
+            if (!game.checkAffordable(this.definition, false)) {
+                return false;
+            }
+            
+            return true;
+        }
+        
+        /**
+         * This is a "safe" click. It will only click if the container is currently clickable.
+         * ie. it won't bypass the interface and click the node if it isn't clickable in the UI.
+         */
+        click() {
+            if (!this.isClickable()) {
+                return false
+            }
+
+            return game.vues[this._vueName].action();
+        }
+
+        isResearched() {
+            return game.checkOldTech(this.id);
+        }
+
+        updateResourceRequirements() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+            let resourceIndex = 0;
+
+            Object.keys(this.definition.cost).forEach(resourceName => {
+                let testCost = game.adjustCosts(Number(this.definition.cost[resourceName]()) || 0);
+
+                if (this.resourceRequirements.length > resourceIndex) {
+                    this.resourceRequirements[resourceIndex].resource = resources[resourceName];
+                    this.resourceRequirements[resourceIndex].quantity = testCost;
+                } else {
+                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], getRealNumber(testCost)));
+                }
+
+                resourceIndex++;
+            });
+
+            // Remove any extra elements that we have that are greater than the current number of requirements
+            while (this.resourceRequirements.length > resourceIndex) {
+                this.resourceRequirements.pop();
+            }
+        }
+    }
+
+    class Trigger {
+        /**
+         * @param {number} seq
+         * @param {number} priority
+         * @param {string} type
+         * @param {string} requirementType
+         * @param {string} requirementId
+         * @param {number} requirementCount
+         * @param {string} actionType
+         * @param {string} actionId
+         * @param {number} actionCount
+         */
+        constructor(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
+            this.seq = seq;
+            this.priority = priority;
+
+            this.type = type;
+
+            this.requirementType = requirementType;
+            this.requirementId = requirementId;
+            this.requirementCount = requirementCount;
+
+            this.actionType = actionType;
+            this.actionId = actionId;
+            this.actionCount = actionCount;
+
+            this.complete = false;
+        }
+
+        get cost() {
+            if (this.actionType === "research") {
+                return tech[this.actionId].definition.cost;
+            }
+        }
+
+        isActionPossible() {
+            if (this.actionType === "research") {
+                // check against MAX as we want to know if it is possible...
+                return game.checkAffordable(tech[this.actionId].definition, true);
+            }
+        }
+
+        /** @return {boolean} */
+        updateComplete() {
+            if (this.complete) {
+                return false;
+            }
+
+            if (this.type === "tech") {
+                if (this.requirementType === "unlocked") {
+                    if (tech[this.actionId].isResearched()) {
+                        this.complete = true;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        areRequirementsMet() {
+            if (this.type === "tech") {
+                if (this.requirementType === "unlocked") {
+                    if (tech[this.actionId].isUnlocked()) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /** @param {string} type */
+        updateType(type) {
+            if (type === this.type) {
+                return;
+            }
+
+            this.type = type;
+            this.complete = false;
+
+            if (this.type === "tech") {
+                this.requirementType = "unlock";
+                this.requirementId = "club";
+                this.requirementCount = 0;
+                this.actionType = "research";
+                this.actionId = "club";
+                this.actionCount = 0;
+                return;
+            }
+
+            if (this.type === "bld") {
+                this.requirementType = "";
+                this.requirementId = "";
+                this.requirementCount = 0;
+                this.actionType = "";
+                this.actionId = "";
+                this.actionCount = 0;
+                return;
+            }
+        }
+
+        /** @param {string} requirementType */
+        updateRequirementType(requirementType) {
+            if (requirementType === this.requirementType) {
+                return;
+            }
+
+            this.requirementType = requirementType;
+            this.complete = false;
+
+            if (this.type === "tech") {
+                if (this.requirementType === "unlocked") {
+                    this.requirementId = "club";
+                    this.requirementCount = 0;
+                    this.actionType = "research";
+                    this.actionId = "club";
+                    this.actionCount = 0;
+                    return;
+                }
+
+                if (this.requirementType === "researched") {
+                    this.requirementId = "";
+                    this.requirementCount = 0;
+                    this.actionType = "";
+                    this.actionId = "";
+                    this.actionCount = 0;
+                    return;
+                }
+            }
+
+            this.requirementId = "";
+            this.requirementCount = 0;
+            this.actionType = "";
+            this.actionId = "";
+            this.actionCount = 0;
+            return;
+        }
+
+        /** @param {string} requirementId */
+        updateRequirementId(requirementId) {
+            if (requirementId === this.requirementId) {
+                return;
+            }
+
+            this.requirementId = requirementId;
+            this.complete = false;
+
+            // changing id doesn't change other requirements
+        }
+
+        /** @param {number} requirementCount */
+        updateRequirementCount(requirementCount) {
+            if (requirementCount === this.requirementCount) {
+                return;
+            }
+
+            this.requirementCount = requirementCount;
+            this.complete = false;
+
+            // changing count doesn't change other requirements
+        }
+
+        /** @param {string} actionType */
+        updateActionType(actionType) {
+            if (actionType === this.actionType) {
+                return;
+            }
+
+            this.actionType = actionType;
+            this.complete = false;
+
+            this.actionId = "";
+            this.actionCount = 0;
+            return;
+        }
+
+        /** @param {string} actionId */
+        updateActionId(actionId) {
+            if (actionId === this.actionId) {
+                return;
+            }
+
+            this.actionId = actionId;
+            this.complete = false;
+        }
+
+        /** @param {number} actionCount */
+        updateActionCount(actionCount) {
+            if (actionCount === this.actionCount) {
+                return;
+            }
+
+            this.actionCount = actionCount;
+            this.complete = false;
+        }
+    }
+
+    class TriggerManager {
+        constructor() {
+            /** @type {Trigger[]} */
+            this.priorityList = [];
+
+            /** @type {Trigger[]} */
+            this._targetTriggers = null;
+        }
+
+        get targetTriggers() {
+            if (this._targetTriggers === null) {
+                this._targetTriggers = [];
+
+                //console.log(this.priorityList.length)
+
+                this.priorityList.forEach(trigger => {
+                    //console.log("trigger " + trigger.complete + " is possible? " + trigger.isActionPossible() + " conflicts? " + this.actionConflicts(trigger))
+                    if (!trigger.complete && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
+                        this._targetTriggers.push(trigger);
+                    }
+                });
+            }
+
+            return this._targetTriggers;
+        }
+
+        resetTargetTriggers() {
+            //console.log("resetting")
+            this._targetTriggers = null;
+        }
+
+        updateCompleteTriggers() {
+            let resetTargets = false;
+
+            for (let i = 0; i < this.priorityList.length; i++) {
+                const trigger = this.priorityList[i];
+                if (trigger.updateComplete()) {
+                    resetTargets = true;
+                }
+            }
+
+            if (resetTargets) {
+                state.triggerManager.resetTargetTriggers()
+            }
+        }
+
+        /**
+         * @param {any} seq
+         * @return {Trigger}
+         */
+        getTrigger(seq) {
+            let index = findArrayIndex(this.priorityList, "seq", seq);
+
+            if (index === -1) {
+                return null;
+            }
+
+            return this.priorityList[index];
+        }
+
+        clearPriorityList() {
+            this.priorityList.length = 0;
+        }
+
+        sortByPriority() {
+            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
+        }
+
+        /** @return {Trigger} */
+        AddTrigger(type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
+            let trigger = new Trigger(this.priorityList.length, this.priorityList.length, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
+            this.priorityList.push(trigger);
+            return trigger;
+        }
+
+        AddTriggerFromSetting(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
+            let trigger = new Trigger(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
+            this.priorityList.push(trigger);
+        }
+
+        /** @param {number} seq */
+        RemoveTrigger(seq) {
+            let indexToRemove = findArrayIndex(this.priorityList, "seq", seq);
+
+            if (indexToRemove === -1) {
+                return;
+            }
+
+            this.priorityList.splice(indexToRemove, 1);
+
+            for (let i = 0; i < this.priorityList.length; i++) {
+                const trigger = this.priorityList[i];
+                trigger.seq = i;
+            }
+        }
+
+        /**
+         * @param {Trigger} trigger
+         * @return {boolean}
+        */
+       actionConflicts(trigger) {
+            if (this._targetTriggers === null) {
+                return false;
+            }
+
+            for (let i = 0; i < this._targetTriggers.length; i++) {
+                const targetTrigger = this._targetTriggers[i];
+
+                if (Object.keys(targetTrigger.cost).some(cost => Object.keys(trigger.cost).includes(cost))) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /**
+         * @param {Action} building
+         * @return {boolean}
+        */
+        buildingConflicts(building) {
+            for (let i = 0; i < this.targetTriggers.length; i++) {
+                const targetTrigger = this.targetTriggers[i];
+                if (Object.keys(targetTrigger.cost).some(resource => Object.keys(building.definition.cost).includes(resource))) {
+
+                    //console.log("building " + building.id + " CONFLICTS with target")
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /**
+         * @param {Project} project
+         * @return {boolean}
+        */
+       projectConflicts(project) {
+        for (let i = 0; i < this.targetTriggers.length; i++) {
+            const targetTrigger = this.targetTriggers[i];
+            if (Object.keys(targetTrigger.cost).some(resource => Object.keys(project.definition.cost).includes(resource))) {
+
+                //console.log("building " + building.id + " CONFLICTS with target")
+                return true;
+            }
+        }
+
+        return false;
+    }
+    }
     
     //#endregion Class Declarations
 
     //#region State and Initialisation
+
+    var tech = {};
+    var techIds = {};
 
     var races = {
         antid: new Race("antid", "Antid", false, "", "Ophiocordyceps Unilateralis"),
@@ -3589,68 +4045,72 @@
     ];
 
     var resources = {
+        // Evolution resources
+        RNA: new Resource("RNA", "res", "RNA", false, false, -1, false, -1, false),
+        DNA: new Resource("DNA", "res", "DNA", false, false, -1, false, -1, false),
+
         // Base resources
-        money: new Resource("Money", "res", "Money", false, false, -1, false, -1, false),
-        population: new Resource("Population", "res", "Population", false, false, -1, false, -1, false), // The population node is special and its id will change to the race name
-        knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1, false),
-        crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1, false),
-        containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1, false),
-        plasmid: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1, false),
-        antiplasmid: new Resource("Anti-Plasmid", "res", "AntiPlasmid", false, false, -1, false, -1, false),
-        phage: new Resource("Phage", "res", "Phage", false, false, -1, false, -1, false),
-        dark: new Resource("Dark", "res", "Dark", false, false, -1, false, -1, false),
-        genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1, false),
+        Money: new Resource("Money", "res", "Money", false, false, -1, false, -1, false),
+        Population: new Resource("Population", "res", "Population", false, false, -1, false, -1, false), // The population node is special and its id will change to the race name
+        Knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1, false),
+        Crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1, false),
+        Containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1, false),
+        Plasmid: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1, false),
+        Antiplasmid: new Resource("Anti-Plasmid", "res", "AntiPlasmid", false, false, -1, false, -1, false),
+        Phage: new Resource("Phage", "res", "Phage", false, false, -1, false, -1, false),
+        Dark: new Resource("Dark", "res", "Dark", false, false, -1, false, -1, false),
+        Genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1, false),
 
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
-        power: new Power(),
-        luxury_goods: new LuxuryGoods(),
-        moon_support: new Support("Moon Support", "srspc_moon"),
-        red_support: new Support("Red Support", "srspc_red"),
-        sun_support: new Support("Sun Support", "srspc_sun"),
-        belt_support: new Support("Belt Support", "srspc_belt"),
-        alpha_support: new Support("Alpha Support", "srint_alpha"),
-        nebula_support: new Support("Nebula Support", "srint_nebula"),
+        Power: new Power(),
+        Luxury_Goods: new LuxuryGoods(),
+        Moon_Support: new Support("Moon Support", "srspc_moon"),
+        Red_Support: new Support("Red Support", "srspc_red"),
+        Sun_Support: new Support("Sun Support", "srspc_sun"),
+        Belt_Support: new Support("Belt Support", "srspc_belt"),
+        Alpha_Support: new Support("Alpha Support", "srint_alpha"),
+        Nebula_Support: new Support("Nebula Support", "srint_nebula"),
 
         // Basic resources (can trade for these)
-        food: new Resource("Food", "res", "Food", true, true, 2, false, -1, false),
-        lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1, false),
-        stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1, false),
-        furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1, false),
-        copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1, false),
-        iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1, false),
-        aluminium: new Resource("Aluminium", "res", "Aluminium", true, true, 1, false, -1, false),
-        cement: new Resource("Cement", "res", "Cement", true, true, 1, false, -1, false),
-        coal: new Resource("Coal", "res", "Coal", true, true, 1, false, -1, false),
-        oil: new Resource("Oil", "res", "Oil", false, true, 0.5, false, -1, false),
-        uranium: new Resource("Uranium", "res", "Uranium", false, true, 0.25, false, -1, false),
-        steel: new Resource("Steel", "res", "Steel", true, true, 0.5, false, -1, false),
-        titanium: new Resource("Titanium", "res", "Titanium", true, true, 0.25, false, -1, false),
-        alloy: new Resource("Alloy", "res", "Alloy", true, true, 0.2, false, -1, false),
-        polymer: new Resource("Polymer", "res", "Polymer", true, true, 0.2, false, -1, false),
-        iridium: new Resource("Iridium", "res", "Iridium", true, true, 0.1, false, -1, false),
-        helium_3: new Resource("Helium-3", "res", "Helium_3", false, true, 0.1, false, -1, false),
+        Food: new Resource("Food", "res", "Food", true, true, 2, false, -1, false),
+        Lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1, false),
+        Stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1, false),
+        Furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1, false),
+        Copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1, false),
+        Iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1, false),
+        Aluminium: new Resource("Aluminium", "res", "Aluminium", true, true, 1, false, -1, false),
+        Cement: new Resource("Cement", "res", "Cement", true, true, 1, false, -1, false),
+        Coal: new Resource("Coal", "res", "Coal", true, true, 1, false, -1, false),
+        Oil: new Resource("Oil", "res", "Oil", false, true, 0.5, false, -1, false),
+        Uranium: new Resource("Uranium", "res", "Uranium", false, true, 0.25, false, -1, false),
+        Steel: new Resource("Steel", "res", "Steel", true, true, 0.5, false, -1, false),
+        Titanium: new Resource("Titanium", "res", "Titanium", true, true, 0.25, false, -1, false),
+        Alloy: new Resource("Alloy", "res", "Alloy", true, true, 0.2, false, -1, false),
+        Polymer: new Resource("Polymer", "res", "Polymer", true, true, 0.2, false, -1, false),
+        Iridium: new Resource("Iridium", "res", "Iridium", true, true, 0.1, false, -1, false),
+        Helium_3: new Resource("Helium-3", "res", "Helium_3", false, true, 0.1, false, -1, false),
 
         // Advanced resources (can't trade for these)
-        elerium: new Resource("Elerium", "res", "Elerium", false, false, 0.02, false, -1, false),
-        neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.05, false, -1, false),
-        nano_tube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1, false),
+        Elerium: new Resource("Elerium", "res", "Elerium", false, false, 0.02, false, -1, false),
+        Neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.05, false, -1, false),
+        Nano_Tube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1, false),
 
         // Interstellar
-        deuterium: new Resource("Deuterium", "res", "Deuterium", false, false, 0.1, false, -1, false),
-        adamantite: new Resource("Adamantite", "res", "Adamantite", true, false, 0.05, false, -1, false),
-        infernite: new Resource("Infernite", "res", "Infernite", false, false, 0.01, false, -1, false),
-        graphene: new Resource("Graphene", "res", "Graphene", true, false, 0.1, false, -1, false),
-        stanene: new Resource("Stanene", "res", "Stanene", true, false, 0.1, false, -1, false),
-        soul_gem: new Resource("Soul_Gem", "res", "Soul_Gem", false, false, -1, false, -1, false),
+        Deuterium: new Resource("Deuterium", "res", "Deuterium", false, false, 0.1, false, -1, false),
+        Adamantite: new Resource("Adamantite", "res", "Adamantite", true, false, 0.05, false, -1, false),
+        Infernite: new Resource("Infernite", "res", "Infernite", false, false, 0.01, false, -1, false),
+        Graphene: new Resource("Graphene", "res", "Graphene", true, false, 0.1, false, -1, false),
+        Stanene: new Resource("Stanene", "res", "Stanene", true, false, 0.1, false, -1, false),
+        Soul_Gem: new Resource("Soul Gem", "res", "Soul_Gem", false, false, -1, false, -1, false),
 
-        aerogel: new Resource("Aerogel", "res", "Aerogel", false, false, -1, true, 0.5, false),
+        Aerogel: new Resource("Aerogel", "res", "Aerogel", false, false, -1, true, 0.5, false),
         
         // Craftable resources
-        plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5, false),
-        brick: new Resource("Brick", "res", "Brick", false, false, -1, true, 0.5, false),
-        wrought_iron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5, false),
-        sheet_metal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5, false),
-        mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5, false),
+        Plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5, false),
+        Brick: new Resource("Brick", "res", "Brick", false, false, -1, true, 0.5, false),
+        Wrought_Iron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5, false),
+        Sheet_Metal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5, false),
+        Mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5, false),
     }
 
     var state = {
@@ -3663,13 +4123,12 @@
         projectManager: new ProjectManager(),
         marketManager: new MarketManager(),
         storageManager: new StorageManager(),
+        triggerManager: new TriggerManager(),
 
         minimumMoneyAllowed: 0,
         
         lastStorageBuildCheckLoop: 0,
         lastSmelterCheckLoop: 0,
-
-        assembleGeneButton: null,
         
         goal: "Standard",
 
@@ -3835,8 +4294,8 @@
             Apartment: new Action("Apartment", "city", "apartment", ""),
             Farm: new Action("Farm", "city", "farm", ""),
             SoulWell: new Action("Soul Well", "city", "soul_well", ""),
-            Mill: new Action("Mill", "city", "mill", ""),
-            Windmill: new Action("Windmill", "city", "windmill", ""),
+            Mill: new Action("Mill (Good Windmill)", "city", "mill", ""),
+            Windmill: new Action("Windmill (Evil only)", "city", "windmill", ""),
             Silo: new Action("Grain Silo", "city", "silo", ""),
             Shed: new Action("Shed", "city", "shed", ""),
             LumberYard: new Action("Lumber Yard", "city", "lumber_yard", ""),
@@ -3987,56 +4446,56 @@
         resetStorageState();
 
         // Construct craftable resource list
-        state.craftableResourceList.push(resources.plywood);
-        resources.plywood.resourceRequirements.push(new ResourceRequirement(resources.lumber, 100));
-        state.craftableResourceList.push(resources.brick);
-        resources.brick.resourceRequirements.push(new ResourceRequirement(resources.cement, 40));
-        state.craftableResourceList.push(resources.wrought_iron);
-        resources.wrought_iron.resourceRequirements.push(new ResourceRequirement(resources.iron, 80));
-        state.craftableResourceList.push(resources.sheet_metal);
-        resources.sheet_metal.resourceRequirements.push(new ResourceRequirement(resources.aluminium, 120));
-        state.craftableResourceList.push(resources.mythril);
-        resources.mythril.resourceRequirements.push(new ResourceRequirement(resources.iridium, 100));
-        resources.mythril.resourceRequirements.push(new ResourceRequirement(resources.alloy, 250));
-        state.craftableResourceList.push(resources.aerogel);
-        resources.aerogel.resourceRequirements.push(new ResourceRequirement(resources.graphene, 2500));
-        resources.aerogel.resourceRequirements.push(new ResourceRequirement(resources.infernite, 50));
+        state.craftableResourceList.push(resources.Plywood);
+        resources.Plywood.resourceRequirements.push(new ResourceRequirement(resources.Lumber, 100));
+        state.craftableResourceList.push(resources.Brick);
+        resources.Brick.resourceRequirements.push(new ResourceRequirement(resources.Cement, 40));
+        state.craftableResourceList.push(resources.Wrought_Iron);
+        resources.Wrought_Iron.resourceRequirements.push(new ResourceRequirement(resources.Iron, 80));
+        state.craftableResourceList.push(resources.Sheet_Metal);
+        resources.Sheet_Metal.resourceRequirements.push(new ResourceRequirement(resources.Aluminium, 120));
+        state.craftableResourceList.push(resources.Mythril);
+        resources.Mythril.resourceRequirements.push(new ResourceRequirement(resources.Iridium, 100));
+        resources.Mythril.resourceRequirements.push(new ResourceRequirement(resources.Alloy, 250));
+        state.craftableResourceList.push(resources.Aerogel);
+        resources.Aerogel.resourceRequirements.push(new ResourceRequirement(resources.Graphene, 2500));
+        resources.Aerogel.resourceRequirements.push(new ResourceRequirement(resources.Infernite, 50));
 
         // Lets set our crate / container resource requirements
-        resources.crates.resourceRequirements.push(new ResourceRequirement(resources.plywood, 10));
-        resources.containers.resourceRequirements.push(new ResourceRequirement(resources.steel, 125));
+        resources.Crates.resourceRequirements.push(new ResourceRequirement(resources.Plywood, 10));
+        resources.Containers.resourceRequirements.push(new ResourceRequirement(resources.Steel, 125));
 
         // Construct all resource list
         state.allResourceList = state.marketManager.priorityList.concat(state.craftableResourceList);
-        state.allResourceList.push(resources.money);
-        state.allResourceList.push(resources.population);
-        state.allResourceList.push(resources.knowledge);
-        state.allResourceList.push(resources.crates);
-        state.allResourceList.push(resources.containers);
-        state.allResourceList.push(resources.plasmid);
-        state.allResourceList.push(resources.genes);
-        state.allResourceList.push(resources.power);
-        state.allResourceList.push(resources.moon_support);
-        state.allResourceList.push(resources.red_support);
-        state.allResourceList.push(resources.sun_support);
-        state.allResourceList.push(resources.belt_support);
-        state.allResourceList.push(resources.alpha_support);
-        state.allResourceList.push(resources.nebula_support);
-        state.allResourceList.push(resources.neutronium);
-        state.allResourceList.push(resources.elerium);
-        state.allResourceList.push(resources.nano_tube);
+        state.allResourceList.push(resources.Money);
+        state.allResourceList.push(resources.Population);
+        state.allResourceList.push(resources.Knowledge);
+        state.allResourceList.push(resources.Crates);
+        state.allResourceList.push(resources.Containers);
+        state.allResourceList.push(resources.Plasmid);
+        state.allResourceList.push(resources.Genes);
+        state.allResourceList.push(resources.Power);
+        state.allResourceList.push(resources.Moon_Support);
+        state.allResourceList.push(resources.Red_Support);
+        state.allResourceList.push(resources.Sun_Support);
+        state.allResourceList.push(resources.Belt_Support);
+        state.allResourceList.push(resources.Alpha_Support);
+        state.allResourceList.push(resources.Nebula_Support);
+        state.allResourceList.push(resources.Neutronium);
+        state.allResourceList.push(resources.Elerium);
+        state.allResourceList.push(resources.Nano_Tube);
 
-        state.jobs.Plywood.resource = resources.plywood;
+        state.jobs.Plywood.resource = resources.Plywood;
         state.jobManager.addCraftingJob(state.jobs.Plywood);
-        state.jobs.Brick.resource = resources.brick;
+        state.jobs.Brick.resource = resources.Brick;
         state.jobManager.addCraftingJob(state.jobs.Brick);
-        state.jobs.WroughtIron.resource = resources.wrought_iron;
+        state.jobs.WroughtIron.resource = resources.Wrought_Iron;
         state.jobManager.addCraftingJob(state.jobs.WroughtIron);
-        state.jobs.SheetMetal.resource = resources.sheet_metal;
+        state.jobs.SheetMetal.resource = resources.Sheet_Metal;
         state.jobManager.addCraftingJob(state.jobs.SheetMetal);
-        state.jobs.Mythril.resource = resources.mythril;
+        state.jobs.Mythril.resource = resources.Mythril;
         state.jobManager.addCraftingJob(state.jobs.Mythril);
-        state.jobs.Aerogel.resource = resources.aerogel;
+        state.jobs.Aerogel.resource = resources.Aerogel;
         state.jobManager.addCraftingJob(state.jobs.Aerogel);
 
         resetJobState();
@@ -4052,75 +4511,75 @@
         state.spaceBuildings.BlackholeStellerEngine.gameMax = 100;
         state.spaceBuildings.DwarfWorldCollider.gameMax = 1859;
 
-        state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.coal, 0.25, 1.25);
-        state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.iron, 2, 6);
-        state.cityBuildings.CoalPower.addResourceConsumption(resources.coal, 0.35);
-        state.cityBuildings.OilPower.addResourceConsumption(resources.oil, 0.65);
-        state.cityBuildings.FissionPower.addResourceConsumption(resources.uranium, 0.1);
-        state.cityBuildings.TouristCenter.addResourceConsumption(resources.food, 50);
+        state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Coal, 0.25, 1.25);
+        state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Iron, 2, 6);
+        state.cityBuildings.CoalPower.addResourceConsumption(resources.Coal, 0.35);
+        state.cityBuildings.OilPower.addResourceConsumption(resources.Oil, 0.65);
+        state.cityBuildings.FissionPower.addResourceConsumption(resources.Uranium, 0.1);
+        state.cityBuildings.TouristCenter.addResourceConsumption(resources.Food, 50);
 
         // Construct space buildings list
-        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.moon_support, -1);
-        state.spaceBuildings.MoonBase.addResourceConsumption(resources.moon_support, -2);
-        state.spaceBuildings.MoonBase.addResourceConsumption(resources.oil, 2);
-        state.spaceBuildings.MoonIridiumMine.addResourceConsumption(resources.moon_support, 1);
-        state.spaceBuildings.MoonHeliumMine.addResourceConsumption(resources.moon_support, 1);
-        state.spaceBuildings.MoonObservatory.addResourceConsumption(resources.moon_support, 1);
-        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.red_support, -3);
-        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.helium_3, 1.25);
-        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.food, 25);
-        state.spaceBuildings.RedTower.addResourceConsumption(resources.red_support, -1);
-        state.spaceBuildings.RedLivingQuarters.addResourceConsumption(resources.red_support, 1);
-        state.spaceBuildings.RedMine.addResourceConsumption(resources.red_support, 1);
-        state.spaceBuildings.RedFabrication.addResourceConsumption(resources.red_support, 1);
-        state.spaceBuildings.RedFactory.addResourceConsumption(resources.helium_3, 1);
-        state.spaceBuildings.RedBiodome.addResourceConsumption(resources.red_support, 1);
-        state.spaceBuildings.RedExoticLab.addResourceConsumption(resources.red_support, 1);
-        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.oil, 2);
-        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.food, 10);
-        state.spaceBuildings.HellGeothermal.addResourceConsumption(resources.helium_3, 0.5);
-        state.spaceBuildings.SunSwarmControl.addResourceConsumption(resources.sun_support, -4);
-        state.spaceBuildings.SunSwarmSatellite.addResourceConsumption(resources.sun_support, 1);
-        state.spaceBuildings.GasMoonOutpost.addResourceConsumption(resources.oil, 2);
-        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.belt_support, -3);
-        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.food, 10);
-        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.helium_3, 2.5);
-        state.spaceBuildings.BeltEleriumShip.addResourceConsumption(resources.belt_support, 2);
-        state.spaceBuildings.BeltIridiumShip.addResourceConsumption(resources.belt_support, 1);
-        state.spaceBuildings.BeltIronShip.addResourceConsumption(resources.belt_support, 1);
-        state.spaceBuildings.DwarfEleriumReactor.addResourceConsumption(resources.elerium, 0.05);
+        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.Moon_Support, -1);
+        state.spaceBuildings.MoonBase.addResourceConsumption(resources.Moon_Support, -2);
+        state.spaceBuildings.MoonBase.addResourceConsumption(resources.Oil, 2);
+        state.spaceBuildings.MoonIridiumMine.addResourceConsumption(resources.Moon_Support, 1);
+        state.spaceBuildings.MoonHeliumMine.addResourceConsumption(resources.Moon_Support, 1);
+        state.spaceBuildings.MoonObservatory.addResourceConsumption(resources.Moon_Support, 1);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.Red_Support, -3);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.Helium_3, 1.25);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.Food, 25);
+        state.spaceBuildings.RedTower.addResourceConsumption(resources.Red_Support, -1);
+        state.spaceBuildings.RedLivingQuarters.addResourceConsumption(resources.Red_Support, 1);
+        state.spaceBuildings.RedMine.addResourceConsumption(resources.Red_Support, 1);
+        state.spaceBuildings.RedFabrication.addResourceConsumption(resources.Red_Support, 1);
+        state.spaceBuildings.RedFactory.addResourceConsumption(resources.Helium_3, 1);
+        state.spaceBuildings.RedBiodome.addResourceConsumption(resources.Red_Support, 1);
+        state.spaceBuildings.RedExoticLab.addResourceConsumption(resources.Red_Support, 1);
+        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.Oil, 2);
+        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.Food, 10);
+        state.spaceBuildings.HellGeothermal.addResourceConsumption(resources.Helium_3, 0.5);
+        state.spaceBuildings.SunSwarmControl.addResourceConsumption(resources.Sun_Support, -4);
+        state.spaceBuildings.SunSwarmSatellite.addResourceConsumption(resources.Sun_Support, 1);
+        state.spaceBuildings.GasMoonOutpost.addResourceConsumption(resources.Oil, 2);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.Belt_Support, -3);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.Food, 10);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.Helium_3, 2.5);
+        state.spaceBuildings.BeltEleriumShip.addResourceConsumption(resources.Belt_Support, 2);
+        state.spaceBuildings.BeltIridiumShip.addResourceConsumption(resources.Belt_Support, 1);
+        state.spaceBuildings.BeltIronShip.addResourceConsumption(resources.Belt_Support, 1);
+        state.spaceBuildings.DwarfEleriumReactor.addResourceConsumption(resources.Elerium, 0.05);
 
-        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.alpha_support, -5);
-        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.food, 100);
-        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.helium_3, 5);
-        state.spaceBuildings.AlphaHabitat.addResourceConsumption(resources.alpha_support, -1);
-        state.spaceBuildings.AlphaMiningDroid.addResourceConsumption(resources.alpha_support, 1);
-        state.spaceBuildings.AlphaProcessing.addResourceConsumption(resources.alpha_support, 1);
-        state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.alpha_support, 1);
-        state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.deuterium, 1.25);
-        state.spaceBuildings.AlphaLaboratory.addResourceConsumption(resources.alpha_support, 1);
-        state.spaceBuildings.AlphaExchange.addResourceConsumption(resources.alpha_support, 1);
-        state.spaceBuildings.AlphaFactory.addResourceConsumption(resources.alpha_support, 1);
-        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.lumber, 350, 100);
-        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.coal, 25, 10);
-        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.oil, 15, 10);
+        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.Alpha_Support, -5);
+        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.Food, 100);
+        state.spaceBuildings.AlphaStarport.addResourceConsumption(resources.Helium_3, 5);
+        state.spaceBuildings.AlphaHabitat.addResourceConsumption(resources.Alpha_Support, -1);
+        state.spaceBuildings.AlphaMiningDroid.addResourceConsumption(resources.Alpha_Support, 1);
+        state.spaceBuildings.AlphaProcessing.addResourceConsumption(resources.Alpha_Support, 1);
+        state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.Alpha_Support, 1);
+        state.spaceBuildings.AlphaFusion.addResourceConsumption(resources.Deuterium, 1.25);
+        state.spaceBuildings.AlphaLaboratory.addResourceConsumption(resources.Alpha_Support, 1);
+        state.spaceBuildings.AlphaExchange.addResourceConsumption(resources.Alpha_Support, 1);
+        state.spaceBuildings.AlphaFactory.addResourceConsumption(resources.Alpha_Support, 1);
+        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Lumber, 350, 100);
+        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Coal, 25, 10);
+        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Oil, 15, 10);
 
-        state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.alpha_support, -1);
-        state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.uranium, 0.28);
-        state.spaceBuildings.ProximaCruiser.addResourceConsumption(resources.helium_3, 6);
+        state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.Alpha_Support, -1);
+        state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.Uranium, 0.28);
+        state.spaceBuildings.ProximaCruiser.addResourceConsumption(resources.Helium_3, 6);
 
-        state.spaceBuildings.NebulaNexus.addResourceConsumption(resources.nebula_support, -2);
-        state.spaceBuildings.NebulaHarvestor.addResourceConsumption(resources.nebula_support, 1);
-        state.spaceBuildings.NebulaEleriumProspector.addResourceConsumption(resources.nebula_support, 1);
+        state.spaceBuildings.NebulaNexus.addResourceConsumption(resources.Nebula_Support, -2);
+        state.spaceBuildings.NebulaHarvestor.addResourceConsumption(resources.Nebula_Support, 1);
+        state.spaceBuildings.NebulaEleriumProspector.addResourceConsumption(resources.Nebula_Support, 1);
 
-        state.spaceBuildings.NeutronMiner.addResourceConsumption(resources.helium_3, 3);
+        state.spaceBuildings.NeutronMiner.addResourceConsumption(resources.Helium_3, 3);
 
         // We aren't getting these ones yet...
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.money, 100000));
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.steel, 25000));
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.neutronium, 240));
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.elerium, 10));
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.nano_tube, 12000));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Money, 100000));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Steel, 25000));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Neutronium, 240));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Elerium, 10));
+        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Nano_Tube, 12000));
 
         state.evolutionChallengeList.push(state.evolutions.Bunker);
         state.evolutionChallengeList.push(state.evolutions.Plasmid);
@@ -4246,41 +4705,41 @@
     function resetMarketState() {
         state.marketManager.clearPriorityList();
 
-        state.marketManager.addResourceToPriorityList(resources.helium_3);
-        state.marketManager.addResourceToPriorityList(resources.iridium);
-        state.marketManager.addResourceToPriorityList(resources.polymer);
-        state.marketManager.addResourceToPriorityList(resources.alloy);
-        state.marketManager.addResourceToPriorityList(resources.titanium);
-        state.marketManager.addResourceToPriorityList(resources.steel);
-        state.marketManager.addResourceToPriorityList(resources.uranium);
-        state.marketManager.addResourceToPriorityList(resources.oil);
-        state.marketManager.addResourceToPriorityList(resources.coal);
-        state.marketManager.addResourceToPriorityList(resources.cement);
-        state.marketManager.addResourceToPriorityList(resources.aluminium);
-        state.marketManager.addResourceToPriorityList(resources.iron);
-        state.marketManager.addResourceToPriorityList(resources.copper);
-        state.marketManager.addResourceToPriorityList(resources.furs);
-        state.marketManager.addResourceToPriorityList(resources.stone);
-        state.marketManager.addResourceToPriorityList(resources.lumber);
-        state.marketManager.addResourceToPriorityList(resources.food);
+        state.marketManager.addResourceToPriorityList(resources.Helium_3);
+        state.marketManager.addResourceToPriorityList(resources.Iridium);
+        state.marketManager.addResourceToPriorityList(resources.Polymer);
+        state.marketManager.addResourceToPriorityList(resources.Alloy);
+        state.marketManager.addResourceToPriorityList(resources.Titanium);
+        state.marketManager.addResourceToPriorityList(resources.Steel);
+        state.marketManager.addResourceToPriorityList(resources.Uranium);
+        state.marketManager.addResourceToPriorityList(resources.Oil);
+        state.marketManager.addResourceToPriorityList(resources.Coal);
+        state.marketManager.addResourceToPriorityList(resources.Cement);
+        state.marketManager.addResourceToPriorityList(resources.Aluminium);
+        state.marketManager.addResourceToPriorityList(resources.Iron);
+        state.marketManager.addResourceToPriorityList(resources.Copper);
+        state.marketManager.addResourceToPriorityList(resources.Furs);
+        state.marketManager.addResourceToPriorityList(resources.Stone);
+        state.marketManager.addResourceToPriorityList(resources.Lumber);
+        state.marketManager.addResourceToPriorityList(resources.Food);
 
-        resources.food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
-        resources.furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
-        resources.aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 10);
-        resources.coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.oil.updateMarketState(false, 0.5, false, 0.9, true, 5, false, 10);
-        resources.uranium.updateMarketState(false, 0.5, false, 0.9, true, 2, false, 10);
-        resources.steel.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.titanium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        resources.alloy.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        resources.polymer.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        resources.iridium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        resources.helium_3.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.Food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.Lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.Stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
+        resources.Furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.Copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.Iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
+        resources.Aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.Cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 10);
+        resources.Coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.Oil.updateMarketState(false, 0.5, false, 0.9, true, 5, false, 10);
+        resources.Uranium.updateMarketState(false, 0.5, false, 0.9, true, 2, false, 10);
+        resources.Steel.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
+        resources.Titanium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.Alloy.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.Polymer.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.Iridium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.Helium_3.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
     }
 
     function resetMarketSettings() {
@@ -4290,41 +4749,41 @@
     function resetStorageState() {
         state.storageManager.clearPriorityList();
 
-        state.storageManager.addResourceToPriorityList(resources.stanene);
-        state.storageManager.addResourceToPriorityList(resources.graphene);
-        state.storageManager.addResourceToPriorityList(resources.adamantite);
-        state.storageManager.addResourceToPriorityList(resources.iridium);
-        state.storageManager.addResourceToPriorityList(resources.polymer);
-        state.storageManager.addResourceToPriorityList(resources.alloy);
-        state.storageManager.addResourceToPriorityList(resources.titanium);
-        state.storageManager.addResourceToPriorityList(resources.steel);
-        state.storageManager.addResourceToPriorityList(resources.coal);
-        state.storageManager.addResourceToPriorityList(resources.cement);
-        state.storageManager.addResourceToPriorityList(resources.aluminium);
-        state.storageManager.addResourceToPriorityList(resources.iron);
-        state.storageManager.addResourceToPriorityList(resources.copper);
-        state.storageManager.addResourceToPriorityList(resources.furs);
-        state.storageManager.addResourceToPriorityList(resources.stone);
-        state.storageManager.addResourceToPriorityList(resources.lumber);
-        state.storageManager.addResourceToPriorityList(resources.food);
+        state.storageManager.addResourceToPriorityList(resources.Stanene);
+        state.storageManager.addResourceToPriorityList(resources.Graphene);
+        state.storageManager.addResourceToPriorityList(resources.Adamantite);
+        state.storageManager.addResourceToPriorityList(resources.Iridium);
+        state.storageManager.addResourceToPriorityList(resources.Polymer);
+        state.storageManager.addResourceToPriorityList(resources.Alloy);
+        state.storageManager.addResourceToPriorityList(resources.Titanium);
+        state.storageManager.addResourceToPriorityList(resources.Steel);
+        state.storageManager.addResourceToPriorityList(resources.Coal);
+        state.storageManager.addResourceToPriorityList(resources.Cement);
+        state.storageManager.addResourceToPriorityList(resources.Aluminium);
+        state.storageManager.addResourceToPriorityList(resources.Iron);
+        state.storageManager.addResourceToPriorityList(resources.Copper);
+        state.storageManager.addResourceToPriorityList(resources.Furs);
+        state.storageManager.addResourceToPriorityList(resources.Stone);
+        state.storageManager.addResourceToPriorityList(resources.Lumber);
+        state.storageManager.addResourceToPriorityList(resources.Food);
 
-        resources.food.updateStorageState(true, 0, -1, -1);
-        resources.lumber.updateStorageState(true, 1, -1, -1);
-        resources.stone.updateStorageState(true, 1, -1, -1);
-        resources.furs.updateStorageState(true, 1, -1, -1);
-        resources.copper.updateStorageState(true, 1, -1, -1);
-        resources.iron.updateStorageState(true, 1, -1, -1);
-        resources.aluminium.updateStorageState(true, 1, -1, -1);
-        resources.cement.updateStorageState(true, 1, -1, -1);
-        resources.coal.updateStorageState(true, 1, -1, -1);
-        resources.steel.updateStorageState(true, 2, -1, -1);
-        resources.titanium.updateStorageState(true, 1, -1, -1);
-        resources.alloy.updateStorageState(true, 1, -1, -1);
-        resources.polymer.updateStorageState(true, 1, -1, -1);
-        resources.iridium.updateStorageState(true, 1, -1, -1);
-        resources.adamantite.updateStorageState(true, 1, -1, -1);
-        resources.graphene.updateStorageState(true, 1, -1, -1);
-        resources.stanene.updateStorageState(true, 1, -1, -1);
+        resources.Food.updateStorageState(true, 0, -1, -1);
+        resources.Lumber.updateStorageState(true, 1, -1, -1);
+        resources.Stone.updateStorageState(true, 1, -1, -1);
+        resources.Furs.updateStorageState(true, 1, -1, -1);
+        resources.Copper.updateStorageState(true, 1, -1, -1);
+        resources.Iron.updateStorageState(true, 1, -1, -1);
+        resources.Aluminium.updateStorageState(true, 1, -1, -1);
+        resources.Cement.updateStorageState(true, 1, -1, -1);
+        resources.Coal.updateStorageState(true, 1, -1, -1);
+        resources.Steel.updateStorageState(true, 2, -1, -1);
+        resources.Titanium.updateStorageState(true, 1, -1, -1);
+        resources.Alloy.updateStorageState(true, 1, -1, -1);
+        resources.Polymer.updateStorageState(true, 1, -1, -1);
+        resources.Iridium.updateStorageState(true, 1, -1, -1);
+        resources.Adamantite.updateStorageState(true, 1, -1, -1);
+        resources.Graphene.updateStorageState(true, 1, -1, -1);
+        resources.Stanene.updateStorageState(true, 1, -1, -1);
     }
 
     function resetStorageSettings() {
@@ -4559,9 +5018,9 @@
     function resetProductionState() {
         // Smelter settings
         state.cityBuildings.Smelter.clearFuelPriorityList();
-        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.oil));
-        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.coal));
-        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.lumber));
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.Oil));
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.Coal));
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.Lumber));
 
         // Factory settings
         let productionSettings = state.cityBuildings.Factory.productionOptions;
@@ -4583,6 +5042,14 @@
         }
     }
 
+    function resetTriggerSettings() {
+
+    }
+
+    function resetTriggerState() {
+        state.triggerManager.clearPriorityList();
+    }
+
     initialiseState();
 
     var settingsSections = ["generalSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
@@ -4590,6 +5057,14 @@
     
     function updateStateFromSettings() {
         updateStandAloneSettings();
+
+        if (!settings["triggers"]) {
+            settings.triggers = [];
+        }
+
+        settings.triggers.forEach(trigger => {
+            state.triggerManager.AddTriggerFromSetting(trigger.seq, trigger.priority, trigger.type, trigger.requirementType, trigger.requirementId, trigger.requirementCount, trigger.actionType, trigger.actionId, trigger.actionCount);
+        });
 
         // Retrieve settings for battle
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
@@ -4859,6 +5334,8 @@
     function updateSettingsFromState() {
         updateStandAloneSettings();
 
+        settings.triggers = state.triggerManager.priorityList;
+
         // Remove old building settings... We had to update these with the prefix as well as building ids started to have duplicates
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
@@ -5060,26 +5537,6 @@
         // If we have performed a soft reset with a bioseeded ship then we get to choose our planet
         autoPlanetSelection();
 
-        // Gather some resources and evolve (currently targeting Antids)
-        state.evolutions.Rna.click(50);
-        state.evolutions.Dna.click(50);
-
-        if (state.evolutions.Membrane.clickIfCountLessThan(10)) {
-            return;
-        }
-        if (state.evolutions.Organelles.clickIfCountLessThan(10)) {
-            return;
-        }
-        if (state.evolutions.Nucleus.clickIfCountLessThan(10)) {
-            return;
-        }
-        if (state.evolutions.EukaryoticCell.clickIfCountLessThan(10)) {
-            return;
-        }
-        if (state.evolutions.Mitochondria.clickIfCountLessThan(10)) {
-            return;
-        }
-
         if (settings.autoChallenge) {
             for (let i = 0; i < state.evolutionChallengeList.length; i++) {
                 const challenge = state.evolutionChallengeList[i];
@@ -5160,6 +5617,31 @@
             console.log("Script chosen race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
         }
 
+        // Calculate the maximum RNA and DNA required to evolve and don't build more than that
+        let maxRNA = 0;
+        let maxDNA = 0;
+
+        for (let i = 0; i < state.evolutionTarget.evolutionTree.length; i++) {
+            const evolution = state.evolutionTarget.evolutionTree[i];
+            const costs = evolution.definition.cost;
+
+            if (costs["RNA"]) {
+                let rnaCost = game.adjustCosts(Number(evolution.definition.cost["RNA"]()) || 0);
+                maxRNA = Math.max(maxRNA, rnaCost);
+            }
+
+            if (costs["DNA"]) {
+                let dnaCost = game.adjustCosts(Number(evolution.definition.cost["DNA"]()) || 0);
+                maxDNA = Math.max(maxDNA, dnaCost);
+            }
+        }
+
+        // Gather some resources and evolve (currently targeting Antids)
+        // 320 is the max rna / dna that is required... currently
+        state.evolutions.Rna.click(maxRNA);
+        state.evolutions.Dna.click(maxDNA);
+        state.evolutions.Rna.click(maxRNA);
+
         // Lets go for our targeted evolution
         let targetedEvolutionFound = false;
         for (let i = 0; i < state.evolutionTarget.evolutionTree.length; i++) {
@@ -5184,6 +5666,22 @@
                     return;
                 }
             }
+        }
+
+        if ((resources.RNA.maxQuantity < maxRNA || resources.DNA.maxQuantity < maxDNA)) {
+            state.evolutions.Mitochondria.click(1);
+        }
+        if (resources.DNA.maxQuantity < maxDNA) {
+            state.evolutions.EukaryoticCell.click(1);
+        }
+        if (resources.RNA.maxQuantity < maxRNA) {
+            state.evolutions.Membrane.click(1);
+        }
+        if (state.evolutions.Nucleus.clickIfCountLessThan(10)) {
+            return;
+        }
+        if (state.evolutions.Organelles.clickIfCountLessThan(10)) {
+            return;
         }
     }
 
@@ -5227,7 +5725,7 @@
     //#region Auto Crafting
 
     function autoCraft() {
-        if (!resources.population.isUnlocked()) {
+        if (!resources.Population.isUnlocked()) {
             return;
         }
         
@@ -5242,10 +5740,10 @@
 
                 let tryCraft = true;
 
-                if (craftable === resources.mythril) {
-                    if (resources.mythril.currentQuantity < 1000) {
+                if (craftable === resources.Mythril) {
+                    if (resources.Mythril.currentQuantity < 1000) {
                         tryCraft = true;
-                    } else if (resources.mythril.currentQuantity > 10000 || resources.iridium.currentQuantity < 10000) {
+                    } else if (resources.Mythril.currentQuantity > 10000 || resources.Iridium.currentQuantity < 10000) {
                         tryCraft = false;
                     }
                 }
@@ -5270,7 +5768,7 @@
      */
     function updateCraftRatio(craftable) {
         // We want to get to a healthy number of buildings that require craftable materials so leaving crafting ratio low early
-        if (craftable === resources.plywood) {
+        if (craftable === resources.Plywood) {
             craftable.craftRatio = 0.9;
             
             if (state.cityBuildings.Library.count < 20 || state.cityBuildings.Cottage.count < 20) {
@@ -5278,7 +5776,7 @@
             }
         }
         
-        if (craftable === resources.brick) {
+        if (craftable === resources.Brick) {
             craftable.craftRatio = 0.9;
             
             if (state.cityBuildings.Library.count < 20 || state.cityBuildings.Cottage.count < 20) {
@@ -5286,7 +5784,7 @@
             }
         }
         
-        if (craftable === resources.wrought_iron) {
+        if (craftable === resources.Wrought_Iron) {
             craftable.craftRatio = 0.9;
             
             if (state.cityBuildings.Cottage.count < 20) {
@@ -5294,7 +5792,7 @@
             }
         }
         
-        if (craftable === resources.sheet_metal) {
+        if (craftable === resources.Sheet_Metal) {
             craftable.craftRatio = 0.9;
             
             if (state.cityBuildings.Wardenclyffe.count < 20) {
@@ -5406,15 +5904,15 @@
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs.push(availableEmployees);
                 log("autoJobs", "Pushing all farmers")
-            } else if (resources.food.storageRatio < 0.2 && resources.food.rateOfChange < 0) {
+            } else if (resources.Food.storageRatio < 0.2 && resources.Food.rateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to add one per loop until positive
                 requiredJobs.push(Math.min(state.jobs.Farmer.count + 1, availableEmployees));
                 log("autoJobs", "Adding one farmer")
-            } else if (resources.food.storageRatio > 0.8 && resources.food.rateOfChange > 0) {
+            } else if (resources.Food.storageRatio > 0.8 && resources.Food.rateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
                 log("autoJobs", "Removing one farmer")
-            } else if (isHunterRace() && resources.food.storageRatio > 0.3 && resources.food.rateOfChange > resources.population.currentQuantity / 10) {
+            } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > resources.Population.currentQuantity / 10) {
                 // Carnivore race. Put We've got some food so put them to work!
                 requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
                 log("autoJobs", "Removing one farmer - Carnivore")
@@ -5424,9 +5922,9 @@
                 log("autoJobs", "Leaving current farmers")
             }
 
-            log("autoJobs", "currentQuantity " + resources.population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1, false) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0, false))
+            log("autoJobs", "currentQuantity " + resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1, false) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0, false))
             if (isEvilRace()) {
-                if (resources.population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1, false)) {
+                if (resources.Population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1, false)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
                     requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(1, false);
                 } else if (requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(0, false)) {
@@ -5458,7 +5956,7 @@
                 let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i, false));
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
-                if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.money.storageRatio > 0.98) {
+                if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.Money.storageRatio > 0.98) {
                     jobsToAssign = 0;
                 }
 
@@ -5467,26 +5965,26 @@
                 // Once we've research shotgun sequencing we get boost and soon autoassemble genes so stop unassigning
                 if (!isRaceTraitIntelligent(getRaceId()) && !isResearchUnlocked("shotgun_sequencing")) {
                     // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
-                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && resources.knowledge.storageRatio > 0.98) {
+                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && resources.Knowledge.storageRatio > 0.98) {
                         jobsToAssign = 0;
                     }
 
                     // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our knowledge cap
-                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && resources.knowledge.storageRatio > 0.98) {
+                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && resources.Knowledge.storageRatio > 0.98) {
                         jobsToAssign = 0;
                     }
                 }
 
                 if (job === state.jobs.CementWorker) {
                     let currentCementWorkers = job.count;
-                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.stone.rateOfChange);
+                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.Stone.rateOfChange);
 
                     if (jobsToAssign < currentCementWorkers) {
                         // great, remove workers as we want less than we have
-                    } else if (jobsToAssign >= currentCementWorkers && resources.stone.rateOfChange < 5) {
+                    } else if (jobsToAssign >= currentCementWorkers && resources.Stone.rateOfChange < 5) {
                         // If we're making less than 5 stone then lets remove a cement worker even if we want more
                         jobsToAssign = job.count - 1;
-                    } else if (jobsToAssign > job.count && resources.stone.rateOfChange > 8) {
+                    } else if (jobsToAssign > job.count && resources.Stone.rateOfChange > 8) {
                         // If we want more cement workers and we're making more than 8 stone then add a cement worker
                         jobsToAssign = job.count + 1;
                     } else {
@@ -5708,14 +6206,14 @@
         maxMorale = Math.min(maxMorale, settings.generalMaximumMorale);
 
         if (currentTaxRate < 50 &&
-                ((currentTaxRate < settings.generalMinimumTaxRate && resources.money.storageRatio < 0.98)
+                ((currentTaxRate < settings.generalMinimumTaxRate && resources.Money.storageRatio < 0.98)
                 || (currentMorale > settings.generalMinimumMorale && currentMorale >= maxMorale)
                 || (currentMorale <= settings.generalMinimumMorale && currentTaxRate < 26))) {
             taxVue.add();
         }
 
         if (currentTaxRate > 0
-                && (currentTaxRate > settings.generalMinimumTaxRate || resources.money.storageRatio >= 0.98)
+                && (currentTaxRate > settings.generalMinimumTaxRate || resources.Money.storageRatio >= 0.98)
                 && (currentMorale < maxMorale - 1 || (currentMorale < settings.generalMinimumMorale && currentTaxRate > 26))) {
             taxVue.sub();
         }
@@ -5839,7 +6337,7 @@
         } else if (state.cityBuildings.CoalMine.count < 10) {
             // two thirds to steel with any remainder going to steel
             desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.count * 2 / 3);
-        } else if (resources.iron.rateOfChange > 100) {
+        } else if (resources.Iron.rateOfChange > 100) {
             desiredSteelCount = state.cityBuildings.Smelter.count;
         } else if (smelterIronCount >= 2) {
             desiredSteelCount = state.cityBuildings.Smelter.count - 2;
@@ -6035,7 +6533,7 @@
             return;
         }
 
-        if (!resources.population.isUnlocked()) {
+        if (!resources.Population.isUnlocked()) {
             return;
         }
         
@@ -6114,23 +6612,14 @@
             return;
         }
 
-        if (state.assembleGeneButton === null || !state.assembleGeneButton.isConnected) {
-            let buttons = document.querySelectorAll('#arpaSequence .button');
-
-            if (buttons === null) {
-                return;
-            }
-    
-            for (let i = 0; i < buttons.length; i++) {
-                const button = buttons[i];
-                if (button.textContent === "Assemble Gene") {
-                    state.assembleGeneButton = button;
-                }
-            }
+        // If we haven't got the assemble gene button or don't have full knowledge then return
+        if (game.global.tech["genetics"] < 6 || resources.Knowledge.storageRatio < 0.99) {
+            return;
         }
-
-        if (state.assembleGeneButton !== null && resources.knowledge.currentQuantity === resources.knowledge.maxQuantity) {
-            state.assembleGeneButton.click();
+        
+        let vue = game.vues["arpaSequence"];
+        if (vue !== undefined) {
+            vue.novo();
         }
     }
 
@@ -6145,7 +6634,7 @@
     function autoMarket(bulkSell, ignoreSellRatio) {
         adjustTradeRoutes();
 
-        let currentMoney = resources.money.currentQuantity;
+        let currentMoney = resources.Money.currentQuantity;
         let tradeQuantity = 1000;
 
         // Market has not been unlocked in game yet (tech not researched)
@@ -6178,7 +6667,7 @@
 
                 while(true) {
                     // break if not enough resource or not enough money storage
-                    if (currentMoney + sellValue >= resources.money.maxQuantity || currentResourceQuantity - tradeQuantity <= 0 || counter++ > 10) {
+                    if (currentMoney + sellValue >= resources.Money.maxQuantity || currentResourceQuantity - tradeQuantity <= 0 || counter++ > 10) {
                         break;
                     }
 
@@ -6231,7 +6720,7 @@
     
     function autoGatherResources() {
         // Don't spam click once we've got a bit of population going
-        if (resources.population.currentQuantity > 15) {
+        if (resources.Population.currentQuantity > 15) {
             return;
         }
 
@@ -6267,7 +6756,7 @@
             log("autoBuild", "Checking for early game target building");
             building = state.cityBuildings.Library;
             if (building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 10) {
-                if (building.count < 10) {
+                if (building.count < 10 && !state.triggerManager.buildingConflicts(building)) {
                     building.click(1);
                     log("autoBuild", "Target building: library");
                     targetBuilding = building;
@@ -6276,7 +6765,7 @@
 
             building = state.cityBuildings.Cottage;
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 10 && state.cityBuildings.Smelter.count > 5) {
-                if (building.count < 10) {
+                if (building.count < 10 && !state.triggerManager.buildingConflicts(building)) {
                     building.click(1);
                     log("autoBuild", "Target building: cottage");
                     targetBuilding = building;
@@ -6285,7 +6774,7 @@
             
             building = state.cityBuildings.CoalMine;
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 5 && state.cityBuildings.Smelter.count > 5) {
-                if (building.count < 5) {
+                if (building.count < 5 && !state.triggerManager.buildingConflicts(building)) {
                     building.click(1);
                     log("autoBuild", "Target building: coal mine");
                     targetBuilding = building;
@@ -6294,7 +6783,7 @@
 
             building = state.cityBuildings.StorageYard;
             if (targetBuilding === null && building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 5 && state.cityBuildings.Smelter.count > 5) {
-                if (building.count < 5) {
+                if (building.count < 5 && !state.triggerManager.buildingConflicts(building)) {
                     building.click(1);
                     log("autoBuild", "Target building: freight yard");
                     targetBuilding = building;
@@ -6306,7 +6795,7 @@
         for (let i = 0; i < buildingList.length; i++) {
             const building = buildingList[i];
 
-            if (!building.autoBuildEnabled) {
+            if (!building.autoBuildEnabled || state.triggerManager.buildingConflicts(building)) {
                 continue;
             }
 
@@ -6322,7 +6811,7 @@
 
             // Only build the following buildings if we have enough production to cover what they use
             if (building === state.cityBuildings.Smelter && isLumberRace()) {
-                if (buildIfEnoughProduction(building, resources.lumber, 12)) {
+                if (buildIfEnoughProduction(building, resources.Lumber, 12)) {
                     return;
                 }
             }
@@ -6330,32 +6819,32 @@
             if (building === state.cityBuildings.CoalPower) {
                 // I'd like to check if we are in a "no plasmids" run but not sure how... so check manual crafting instead
                 if (!isLowPlasmidCount()) {
-                    if (buildIfEnoughProduction(building, resources.coal, 2.35)) {
+                    if (buildIfEnoughProduction(building, resources.Coal, 2.35)) {
                         return;
                     }
                 } else {
-                    if (buildIfEnoughProduction(building, resources.coal, 0.5)) { // If we don't have plasmids then have to go much lower
+                    if (buildIfEnoughProduction(building, resources.Coal, 0.5)) { // If we don't have plasmids then have to go much lower
                         return;
                     }
                 }
             }
 
-            if (!settings.autoSpace && resources.plasmid.currentQuantity > 2000 && building === state.cityBuildings.OilPower && state.jobManager.canManualCraft()) {
+            if (!settings.autoSpace && resources.Plasmid.currentQuantity > 2000 && building === state.cityBuildings.OilPower && state.jobManager.canManualCraft()) {
                 if (building.clickIfCountLessThan(5)) {
                     return;
                 }
             } else if (isLowPlasmidCount() && building === state.cityBuildings.OilPower) {
-                if (buildIfEnoughProduction(building, resources.oil, 1)) {
+                if (buildIfEnoughProduction(building, resources.Oil, 1)) {
                     return;
                 }
             } else if (building === state.cityBuildings.OilPower) {
-                if (buildIfEnoughProduction(building, resources.oil, 2.65)) {
+                if (buildIfEnoughProduction(building, resources.Oil, 2.65)) {
                     return;
                 }
             }
 
             if (building === state.cityBuildings.FissionPower) {
-                if(buildIfEnoughProduction(building, resources.uranium, 0.5)) {
+                if(buildIfEnoughProduction(building, resources.Uranium, 0.5)) {
                     return;
                 }
             }
@@ -6387,89 +6876,104 @@
 
     function autoResearch() {
         let items = document.querySelectorAll('#tech .action');
+
+        let targetResearch = "";
+        for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
+            const trigger = state.triggerManager.targetTriggers[i];
+            
+            if (trigger.actionType === "research" && trigger.areRequirementsMet()) {
+                for (let j = 0; j < items.length; j++) {
+                    const itemId = items[j].id;
+                    
+                    if (tech[trigger.actionId].definition.id === itemId) {
+                        targetResearch = itemId;
+                    }
+                }
+            }
+        }
+
         for (let i = 0; i < items.length; i++) {
-            if (items[i].className.indexOf("cna") < 0) {
-                const itemId = items[i].id;
-                let click = false;
+            const itemId = items[i].id;
+            let click = false;
 
-                // Don't click any of the whitehole reset options without user consent... that would be a dick move, man.
-                if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole") {
-                    continue;
+            if (targetResearch !== "" && itemId !== targetResearch) {
+                continue;
+            }
+
+            // Don't click any of the whitehole reset options without user consent... that would be a dick move, man.
+            if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole") {
+                continue;
+            }
+
+            if (itemId !== "tech-anthropology" && itemId !== "tech-fanaticism" && itemId !== "tech-wc_reject"
+                && itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest"
+                && itemId !== "tech-study" && itemId !== "tech-deify") {
+                    click = true;
+            } else {
+                if (itemId === settings.userResearchTheology_1) {
+                    // use the user's override choice
+                    log("autoResearch", "Picking user's choice of theology 1: " + itemId);
+                    click = true;
                 }
 
-                if (itemId !== "tech-anthropology" && itemId !== "tech-fanaticism" && itemId !== "tech-wc_reject"
-                    && itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest"
-                    && itemId !== "tech-study" && itemId !== "tech-deify") {
-                        click = true;
-                } else {
-                    if (itemId === settings.userResearchTheology_1) {
-                        // use the user's override choice
-                        log("autoResearch", "Picking user's choice of theology 1: " + itemId);
+                if (settings.userResearchTheology_1 === "auto") {
+                    if (!settings.autoSpace && itemId === "tech-anthropology") {
+                        // If we're not going to space then research anthropology
+                        log("autoResearch", "Picking: " + itemId);
                         click = true;
                     }
-
-                    if (settings.userResearchTheology_1 === "auto") {
-                        if (!settings.autoSpace && itemId === "tech-anthropology") {
-                            // If we're not going to space then research anthropology
-                            log("autoResearch", "Picking: " + itemId);
-                            click = true;
-                        }
-                        if (settings.autoSpace && itemId === "tech-fanaticism") {
-                            // If we're going to space then research fanatacism
-                            log("autoResearch", "Picking: " + itemId);
-                            click = true;
-                        }
-                    }
-
-                    if (itemId === settings.userResearchTheology_2) {
-                        // use the user's override choice
-                        log("autoResearch", "Picking user's choice of theology 2: " + itemId);
-                        click = true;
-                    }
-
-                    if (settings.userResearchTheology_2 === "auto") {
-                        if (itemId === "tech-deify") {
-                            // Just pick deify for now
-                            log("autoResearch", "Picking: " + itemId);
-                            click = true;
-                        }
-                    }
-
-                    if (itemId === settings.userResearchUnification) {
-                        // use the user's override choice
-                        log("autoResearch", "Picking user's choice of unification: " + itemId);
-                        click = true;
-                    }
-
-                    if (settings.userResearchUnification === "auto") {
-                        // Don't reject world unity. We want the +25% resource bonus
-                        if (itemId === "tech-wc_money" || itemId === "tech-wc_morale"|| itemId === "tech-wc_conquest") {
-                            log("autoResearch", "Picking: " + itemId);
-                            click = true;
-                        }
-                    }
-
-                    // Hey, we can get both theology researches
-                    if (itemId === "tech-anthropology" && isResearchUnlocked("fanaticism")) {
-                        click = true;
-                    }
-                    if (itemId === "tech-fanaticism" && isResearchUnlocked("anthropology")) {
+                    if (settings.autoSpace && itemId === "tech-fanaticism") {
+                        // If we're going to space then research fanatacism
+                        log("autoResearch", "Picking: " + itemId);
                         click = true;
                     }
                 }
 
-                if (click) {
-                    // @ts-ignore
-                    items[i].children[0].click();
-
-                    // The unification techs are special as they are always "clickable" even if they can't be afforded.
-                    // We don't want to continually remove the poppers if the script is clicking one every second that
-                    // it can't afford
-                    if (itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest" && itemId !== "tech-wc_reject") {
-                        removePoppers();
-                    }
-                    return;
+                if (itemId === settings.userResearchTheology_2) {
+                    // use the user's override choice
+                    log("autoResearch", "Picking user's choice of theology 2: " + itemId);
+                    click = true;
                 }
+
+                if (settings.userResearchTheology_2 === "auto") {
+                    if (itemId === "tech-deify") {
+                        // Just pick deify for now
+                        log("autoResearch", "Picking: " + itemId);
+                        click = true;
+                    }
+                }
+
+                if (itemId === settings.userResearchUnification) {
+                    // use the user's override choice
+                    log("autoResearch", "Picking user's choice of unification: " + itemId);
+                    click = true;
+                }
+
+                if (settings.userResearchUnification === "auto") {
+                    // Don't reject world unity. We want the +25% resource bonus
+                    if (itemId === "tech-wc_money" || itemId === "tech-wc_morale"|| itemId === "tech-wc_conquest") {
+                        log("autoResearch", "Picking: " + itemId);
+                        click = true;
+                    }
+                }
+
+                // Hey, we can get both theology researches
+                if (itemId === "tech-anthropology" && isResearchUnlocked("fanaticism")) {
+                    click = true;
+                }
+                if (itemId === "tech-fanaticism" && isResearchUnlocked("anthropology")) {
+                    click = true;
+                }
+            }
+
+            if (click && techIds[itemId].click()) {
+                // The unification techs are special as they are always "clickable" even if they can't be afforded.
+                // We don't want to continually remove the poppers if the script is clicking one every second that
+                // it can't afford
+                if (itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest" && itemId !== "tech-wc_reject") {
+                    removePoppers();
+                }
+                return;
             }
         }
     }
@@ -6483,7 +6987,9 @@
 
         // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build once MAD has been researched
         if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && isResearchUnlocked("mad")) {
-            state.projects.LaunchFacility.tryBuild(false);
+            if (!state.triggerManager.projectConflicts(state.projects.LaunchFacility)) {
+                state.projects.LaunchFacility.tryBuild(false);
+            }
         }
 
         // Loop through our managed projects
@@ -6495,7 +7001,9 @@
                 continue;
             }
 
-            project.tryBuild(true);
+            if (!state.triggerManager.projectConflicts(project)) {
+                project.tryBuild(true);
+            }
         }
 
         // ONLY IF settings allow then...
@@ -6517,7 +7025,7 @@
             for (let j = 0; j < project.resourceRequirements.length; j++) {
                 const requirement = project.resourceRequirements[j];
 
-                if (requirement.resource === resources.money) {
+                if (requirement.resource === resources.Money) {
                     continue;
                 }
 
@@ -6542,7 +7050,7 @@
                 }
             }
 
-            if (allowBuild) {
+            if (allowBuild && !state.triggerManager.projectConflicts(project)) {
                 project.tryBuild(false);
             }
         }
@@ -6580,7 +7088,7 @@
                 let resourceType = building.consumption.resourceTypes[j];
 
                 // Mass driver effect
-                if (building._tab === "space" && (resourceType.resource === resources.oil || resourceType.resource === resources.helium_3)) {
+                if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
                     resourceType.rate = resourceType.initialRate * spaceFuelMultiplier;
                 }
                 
@@ -6603,7 +7111,7 @@
                 }
 
                 if (building === state.spaceBuildings.BeltEleriumShip) {
-                    if (resources.elerium.storageRatio >= 0.99 && resources.elerium.rateOfChange >= 0) {
+                    if (resources.Elerium.storageRatio >= 0.99 && resources.Elerium.rateOfChange >= 0) {
                         if (state.spaceBuildings.DwarfEleriumReactor.autoStateEnabled) {
                             let required = (state.spaceBuildings.DwarfEleriumReactor.count + 1) * 2;
                             if (requiredStateOn >= required) {
@@ -6627,11 +7135,11 @@
                         // This check is mainly so that power producing buildings don't turn off when rate of change goes negative.
                         // That can cause massive loss of life if turning off space habitats :-)
                         // We'll turn power producing structures off one at a time below if they are below xx% storage
-                        if (resourceType.resource === resources.food) {
+                        if (resourceType.resource === resources.Food) {
                             isStorageAvailable = resourceType.resource.storageRatio > 0.1;
-                        } else if (resourceType.resource === resources.coal || resourceType.resource === resources.oil
-                                || resourceType.resource === resources.uranium || resourceType.resource === resources.helium_3
-                                || resourceType.resource === resources.elerium || resourceType.resource === resources.deuterium) {
+                        } else if (resourceType.resource === resources.Coal || resourceType.resource === resources.Oil
+                                || resourceType.resource === resources.Uranium || resourceType.resource === resources.Helium_3
+                                || resourceType.resource === resources.Elerium || resourceType.resource === resources.Deuterium) {
                             isStorageAvailable = resourceType.resource.storageRatio > 0.05;
                         }
 
@@ -6719,26 +7227,26 @@
         let numberOfCratesWeCanBuild = 1000000;
         let numberOfContainersWeCanBuild = 1000000;
 
-        resources.crates.resourceRequirements.forEach(requirement =>
+        resources.Crates.resourceRequirements.forEach(requirement =>
             numberOfCratesWeCanBuild = Math.min(numberOfCratesWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
         );
 
-        resources.containers.resourceRequirements.forEach(requirement =>
+        resources.Containers.resourceRequirements.forEach(requirement =>
             numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
         );
 
         let storageChanges = {
-            cratesToBuild: Math.min(resources.crates.maxQuantity - resources.crates.currentQuantity, numberOfCratesWeCanBuild),
-            containersToBuild: Math.min(resources.containers.maxQuantity - resources.containers.currentQuantity, numberOfContainersWeCanBuild),
-            availableCrates: resources.crates.currentQuantity,
-            availableContainers: resources.containers.currentQuantity,
+            cratesToBuild: Math.min(resources.Crates.maxQuantity - resources.Crates.currentQuantity, numberOfCratesWeCanBuild),
+            containersToBuild: Math.min(resources.Containers.maxQuantity - resources.Containers.currentQuantity, numberOfContainersWeCanBuild),
+            availableCrates: resources.Crates.currentQuantity,
+            availableContainers: resources.Containers.currentQuantity,
             adjustments: []
         };
 
         let totalCratesWeighting = 0;
         let totalContainersWeighting = 0;
-        let totalCrates = resources.crates.currentQuantity;
-        let totalContainers = resources.containers.currentQuantity;
+        let totalCrates = resources.Crates.currentQuantity;
+        let totalContainers = resources.Containers.currentQuantity;
         let autoStorageTotalMaxCrates = 0;
         let autoStorageTotalMaxContainers = 0;
 
@@ -6764,34 +7272,34 @@
 
             if (isLowPlasmidCount()) {
                 // If you don't have many plasmids then you need quite a few crates
-                if (resources.steel.isUnlocked()) {
-                    addToStorageAdjustments(storageChanges, resources.steel, 50, 0);
+                if (resources.Steel.isUnlocked()) {
+                    addToStorageAdjustments(storageChanges, resources.Steel, 50, 0);
                     autoStorageTotalMaxCrates += 50;
                 }
             } else {
-                if (resources.steel.isUnlocked()) {
-                    addToStorageAdjustments(storageChanges, resources.steel, 20, 0);
+                if (resources.Steel.isUnlocked()) {
+                    addToStorageAdjustments(storageChanges, resources.Steel, 20, 0);
                     autoStorageTotalMaxCrates += 20;
                 }
             }
 
-            if (resources.aluminium.isUnlocked()) {
-                addToStorageAdjustments(storageChanges, resources.aluminium, 20, 0);
+            if (resources.Aluminium.isUnlocked()) {
+                addToStorageAdjustments(storageChanges, resources.Aluminium, 20, 0);
                 autoStorageTotalMaxCrates += 20;
             }
-            if (resources.titanium.isUnlocked()) {
-                addToStorageAdjustments(storageChanges, resources.titanium, 20, 0);
+            if (resources.Titanium.isUnlocked()) {
+                addToStorageAdjustments(storageChanges, resources.Titanium, 20, 0);
                 autoStorageTotalMaxCrates += 20;
             }
-            if (resources.alloy.isUnlocked()) {
-                addToStorageAdjustments(storageChanges, resources.alloy, 20, 0);
+            if (resources.Alloy.isUnlocked()) {
+                addToStorageAdjustments(storageChanges, resources.Alloy, 20, 0);
                 autoStorageTotalMaxCrates += 20;
             }
     
             // Polymer required for pre MAD tech is about 800. So just keep adding crates until we have that much storage space
-            if (resources.polymer.isUnlocked() && resources.polymer.maxQuantity < 800) {
-                addToStorageAdjustments(storageChanges, resources.polymer, resources.polymer.currentCrates + 1, 0);
-                autoStorageTotalMaxCrates += resources.polymer.currentCrates + 1;
+            if (resources.Polymer.isUnlocked() && resources.Polymer.maxQuantity < 800) {
+                addToStorageAdjustments(storageChanges, resources.Polymer, resources.Polymer.currentCrates + 1, 0);
+                autoStorageTotalMaxCrates += resources.Polymer.currentCrates + 1;
             }
 
             // We've tinkered with the autoStorageTotalMaxCrates settings in this IF statement so we'll have to do this here
@@ -6848,11 +7356,11 @@
                 // When we very first research MAD we don't want to suddenly reassign the storage that we added before.
                 // Leave that as a minimum
                 if (settings.storageLimitPreMad) {
-                    if (resource === resources.steel) { requiredCrates = Math.max(50, requiredCrates) }
-                    if (resource === resources.aluminium) { requiredCrates = Math.max(20, requiredCrates) }
-                    if (resource === resources.titanium) { requiredCrates = Math.max(20, requiredCrates) }
-                    if (resource === resources.alloy) { requiredCrates = Math.max(20, requiredCrates) }
-                    if (resource === resources.polymer) { requiredCrates = Math.max(5, requiredCrates) }
+                    if (resource === resources.Steel) { requiredCrates = Math.max(50, requiredCrates) }
+                    if (resource === resources.Aluminium) { requiredCrates = Math.max(20, requiredCrates) }
+                    if (resource === resources.Titanium) { requiredCrates = Math.max(20, requiredCrates) }
+                    if (resource === resources.Alloy) { requiredCrates = Math.max(20, requiredCrates) }
+                    if (resource === resources.Polymer) { requiredCrates = Math.max(5, requiredCrates) }
                 }
 
                 if (resource.currentContainers >= resource.autoContainersMax) {
@@ -6921,7 +7429,7 @@
         let tradableResources = m.getSortedTradeRouteSellList();
         let maxTradeRoutes = m.getMaxTradeRoutes();
         let tradeRoutesUsed = 0;
-        let currentMoneyPerSecond = resources.money.rateOfChange;
+        let currentMoneyPerSecond = resources.Money.rateOfChange;
         let requiredTradeRoutes = [];
         let adjustmentTradeRoutes = [];
         let resourcesToTrade = [];
@@ -7082,7 +7590,7 @@
         }
 
         if (settings.minimumMoneyPercentage > 0) {
-            state.minimumMoneyAllowed = resources.money.maxQuantity * settings.minimumMoneyPercentage / 100;
+            state.minimumMoneyAllowed = resources.Money.maxQuantity * settings.minimumMoneyPercentage / 100;
         } else {
             state.minimumMoneyAllowed = settings.minimumMoney;
         }
@@ -7096,16 +7604,16 @@
         state.buildingManager.updateResourceRequirements();
         state.projectManager.updateResourceRequirements();
 
-        if (resources.population.cachedId !== resources.population.id) {
-            resources.population.setupCache();
+        if (resources.Population.cachedId !== resources.Population.id) {
+            resources.Population.setupCache();
         }
 
         if (isLumberRace()) {
-            resources.crates.resourceRequirements[0].resource = resources.plywood;
-            resources.crates.resourceRequirements[0].quantity = 10;
+            resources.Crates.resourceRequirements[0].resource = resources.Plywood;
+            resources.Crates.resourceRequirements[0].quantity = 10;
         } else {
-            resources.crates.resourceRequirements[0].resource = resources.stone;
-            resources.crates.resourceRequirements[0].quantity = 200;
+            resources.Crates.resourceRequirements[0].resource = resources.Stone;
+            resources.Crates.resourceRequirements[0].quantity = 200;
         }
 
         if (isEvilRace() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
@@ -7120,9 +7628,32 @@
     function automate() {
         // Setup in the first loop only
         if (state.loopCounter === 1) {
+            let tempTech = {};
+            let technologies = Object.entries(game.actions.tech);
+            for (const [technology, action] of technologies) {
+                tempTech[technology] = new Technology(action);
+                techIds[action.id] = tempTech[technology];
+            }
+
+            Object.keys(tempTech).sort().forEach(function(key) {
+                tech[key] = tempTech[key];
+            });
+
             resetBuildingState();
             updateStateFromSettings();
             updateSettingsFromState();
+
+            state.triggerManager.priorityList.forEach(trigger => {
+                trigger.complete = false;
+            });
+        }
+
+        state.triggerManager.updateCompleteTriggers();
+
+        if (state.loopCounter < Number.MAX_SAFE_INTEGER) {
+            state.loopCounter++;
+        } else {
+            state.loopCounter = 1;
         }
 
         updateState();
@@ -7193,12 +7724,6 @@
             if (settings.autoAssembleGene && !settings.genesAssembleGeneAlways) {
                 autoAssembleGene();
             }
-        }
-        
-        if (state.loopCounter < Number.MAX_SAFE_INTEGER) {
-            state.loopCounter++;
-        } else {
-            state.loopCounter = 1;
         }
     }
 
@@ -7310,7 +7835,7 @@
         }
       
         if (existingScript && callback) callback();
-      };
+    };
 
     function createScriptSettings() {
         loadJQueryUI(() => {
@@ -7328,6 +7853,7 @@
         buildImportExport();
         buildGeneralSettings();
         buildEvolutionSettings();
+        buildTriggerSettings();
         buildResearchSettings();
         buildWarSettings();
         buildMarketSettings();
@@ -7402,10 +7928,12 @@
     function updateSettingsUI() {
         updateGeneralSettingsContent();
         updateEvolutionSettingsContent();
+        updateTriggerSettingsContent();
         updateResearchSettingsContent();
         updateWarSettingsContent();
         updateMarketSettingsContent();
         updateStorageSettingsContent();
+        updateProductionSettingsContent();
         updateJobSettingsContent();
         updateBuildingSettingsContent();
         updateProjectSettingsContent();
@@ -7433,7 +7961,18 @@
             content.style.display = "block";
         }
 
-        $("#script_reset" + sectionId).on("click", resetFunction);
+        $("#script_reset" + sectionId).on("click", function() {genericResetFunction(resetFunction, sectionName)});
+    }
+
+    /**
+     * @param {() => void} resetFunction
+     * @param {string} sectionName
+     */
+    function genericResetFunction(resetFunction, sectionName) {
+        let confirmation = confirm("Are you sure you wish to reset " + sectionName + " Settings?");
+        if (confirmation) {
+            resetFunction();
+        }
     }
 
     /**
@@ -7598,6 +8137,358 @@
         addStandardSectionSettingsToggle(currentNode, "challenge_junker", "Junker", "Challenge mode - junker");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function buildTriggerSettings() {
+        let sectionId = "trigger";
+        let sectionName = "Trigger";
+
+        let resetFunction = function() {
+            resetTriggerSettings();
+            resetTriggerState();
+            updateSettingsFromState();
+            updateTriggerSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateTriggerSettingsContent);
+    }
+
+    function updateTriggerSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_triggerContent');
+        currentNode.empty().off("*");
+        updateTriggerPreTable();
+        updateTriggerTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateTriggerPreTable() {
+        let currentNode = $('#script_triggerContent');
+
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_triggerPreTable"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_triggerPreTable');
+        let addButton = $('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
+        preTableNode.append(addButton);
+        $("#script_trigger_add").on("click", addTriggerSetting);
+        //addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
+    }
+
+    function addTriggerSetting() {
+        let trigger = state.triggerManager.AddTrigger("tech", "unlocked", "club", 0, "research", "club", 0);
+        updateSettingsFromState();
+        
+        let tableBodyNode = $('#script_triggerTableBody');
+        let newTableBodyText = "";
+
+        let classAttribute = ' class="scriptdraggable"';
+        newTableBodyText += '<tr value="' + trigger.seq + '"' + classAttribute + '><td id="script_trigger_' + trigger.seq + '" style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:10%"></td></tr>';
+
+        tableBodyNode.append($(newTableBodyText));
+
+        buildTriggerType(trigger);
+        buildTriggerRequirementType(trigger);
+        buildTriggerRequirementId(trigger);
+        buildTriggerRequirementCount(trigger);
+
+        buildTriggerActionType(trigger);
+        buildTriggerActionId(trigger);
+        buildTriggerActionCount(trigger);
+
+        buildTriggerSettingsColumn(trigger);
+
+        state.triggerManager.resetTargetTriggers();
+    }
+
+    function updateTriggerTable() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_triggerContent');
+        currentNode.append(
+            `<table style="width:100%">
+                    <tr><th class="has-text-warning" colspan="1">Trigger</th><th class="has-text-warning" colspan="3">Requirement</th><th class="has-text-warning" colspan="4">Action</th></tr>
+                    <tr><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Id</th><th class="has-text-warning" style="width:12.85%">Count</th><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Id</th><th class="has-text-warning" style="width:12.85%">Count</th><th class="has-text-warning" style="width:10%"></th></tr>
+                <tbody id="script_triggerTableBody" class="scriptcontenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_triggerTableBody');
+        let newTableBodyText = "";
+
+        for (let i = 0; i < state.triggerManager.priorityList.length; i++) {
+            const trigger = state.triggerManager.priorityList[i];
+            let classAttribute = ' class="scriptdraggable"';
+            newTableBodyText += '<tr value="' + trigger.seq + '"' + classAttribute + '><td id="script_trigger_' + trigger.seq + '" style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:10%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        for (let i = 0; i < state.triggerManager.priorityList.length; i++) {
+            const trigger = state.triggerManager.priorityList[i];
+            //let triggerElement = $('#script_trigger_' + trigger.seq);
+
+            buildTriggerType(trigger);
+            buildTriggerRequirementType(trigger);
+            buildTriggerRequirementId(trigger);
+            buildTriggerRequirementCount(trigger);
+
+            buildTriggerActionType(trigger);
+            buildTriggerActionId(trigger);
+            buildTriggerActionCount(trigger);
+
+            buildTriggerSettingsColumn(trigger);
+        }
+
+        $('#script_triggerTableBody').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let triggerIds = $('#script_triggerTableBody').sortable('toArray', {attribute: 'value'});
+
+                for (let i = 0; i < triggerIds.length; i++) {
+                    const seq = parseInt(triggerIds[i]);
+                    // Trigger has been dragged... Update all trigger priorities
+                    state.triggerManager.getTrigger(seq).priority = i;
+                }
+
+                state.triggerManager.sortByPriority();
+                updateSettingsFromState();
+            },
+        } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    /**
+     * @param {Trigger} trigger
+     */
+    function buildTriggerType(trigger) {
+        let triggerElement = $('#script_trigger_' + trigger.seq);
+
+        // Trigger Type
+        let typeSelectNode = $('<select></select>');
+        let selected = trigger.type === "tech" ? ' selected="selected"' : "";
+        let typeOptionNode = $('<option value="tech"' + selected + '>Technology</option>');
+        typeSelectNode.append(typeOptionNode);
+
+        // selected = trigger.type === "bld" ? ' selected="selected"' : "";
+        // typeOptionNode = $('<option value="bld"' + selected + '>Building</option>');
+        // typeSelectNode.append(typeOptionNode);
+
+        triggerElement.append(typeSelectNode);
+
+        typeSelectNode.on('change', function() {
+            trigger.updateType(this.value);
+            state.triggerManager.resetTargetTriggers();
+
+            buildTriggerRequirementType(trigger);
+            buildTriggerRequirementId(trigger);
+            buildTriggerRequirementCount(trigger);
+
+            buildTriggerActionType(trigger);
+            buildTriggerActionId(trigger);
+            buildTriggerActionCount(trigger);
+            
+            updateSettingsFromState();
+        });
+    }
+
+    /**
+     * @param {Trigger} trigger
+     */
+    function buildTriggerRequirementType(trigger) {
+        let triggerElement = $('#script_trigger_' + trigger.seq);
+        triggerElement = triggerElement.next();
+        triggerElement.empty().off("*");
+
+        if (trigger.type === "tech") {
+            let typeSelectNode = $('<select></select>');
+
+            let selected = trigger.requirementType === "unlocked" ? ' selected="selected"' : "";
+            let typeOptionNode = $('<option value = "unlocked"' + selected + '>Unlocked</option>');
+            typeSelectNode.append(typeOptionNode);
+
+            // selected = trigger.type === "researched" ? ' selected="selected"' : "";
+            // typeOptionNode = $('<option value = "researched"' + selected + '>Researched</option>');
+            // typeSelectNode.append(typeOptionNode);
+
+            triggerElement.append(typeSelectNode);
+
+            typeSelectNode.on('change', function() {
+                trigger.updateRequirementType(this.value);
+                state.triggerManager.resetTargetTriggers();
+    
+                buildTriggerRequirementId(trigger);
+                buildTriggerRequirementCount(trigger);
+    
+                buildTriggerActionType(trigger);
+                buildTriggerActionId(trigger);
+                buildTriggerActionCount(trigger);
+                
+                updateSettingsFromState();
+            });
+
+            return;
+        }
+
+        if (trigger.type === "bld") {
+            // TODO: Building triggers
+        }
+    }
+
+    /**
+     * @param {Trigger} trigger
+     */
+    function buildTriggerRequirementId(trigger) {
+        let triggerElement = $('#script_trigger_' + trigger.seq);
+        triggerElement = triggerElement.next().next();
+        triggerElement.empty().off("*");
+
+        if (trigger.type === "tech") {
+            // Requirement Id
+            let typeSelectNode = $('<select style ="width:100%"></select>');
+
+            Object.keys(tech).forEach(technology => {
+                let title = typeof tech[technology].definition.title === 'string' ? tech[technology].definition.title : tech[technology].definition.title();
+                let selected = trigger.requirementId === technology ? ' selected="selected"' : "";
+                let typeOptionNode = $('<option value = "' + technology + '"' + selected + '>' + title + '</option>');
+                typeSelectNode.append(typeOptionNode);
+            });
+
+            triggerElement.append(typeSelectNode);
+
+            typeSelectNode.on('change', function() {
+                trigger.updateRequirementId(this.value);
+                state.triggerManager.resetTargetTriggers();
+    
+                buildTriggerRequirementCount(trigger);
+    
+                buildTriggerActionType(trigger);
+                buildTriggerActionId(trigger);
+                buildTriggerActionCount(trigger);
+                
+                updateSettingsFromState();
+            });
+
+            return;
+        }
+
+        if (trigger.type === "bld") {
+            // TODO: Building triggers
+        }
+    }
+
+    /**
+     * @param {Trigger} trigger
+     */
+    function buildTriggerRequirementCount(trigger) {
+        // let triggerElement = $('#script_trigger_' + trigger.seq);
+        // triggerElement = triggerElement.next().next().next();
+        //triggerElement.empty().off("*");
+    }
+
+    /**
+     * @param {Trigger} trigger
+     */
+    function buildTriggerActionType(trigger) {
+        let triggerElement = $('#script_trigger_' + trigger.seq);
+        triggerElement = triggerElement.next().next().next().next();
+        triggerElement.empty().off("*");
+
+        if (trigger.type === "tech") {
+            // Action Type
+            let typeSelectNode = $('<select></select>');
+            let selected = trigger.actionType === "research" ? ' selected="selected"' : "";
+            let typeOptionNode = $('<option value = "research"' + selected + '>Research</option>');
+            typeSelectNode.append(typeOptionNode);
+
+            // selected = trigger.type === "build" ? ' selected="selected"' : "";
+            // typeOptionNode = $('<option value = "build"' + selected + '>Build</option>');
+            // typeSelectNode.append(typeOptionNode);
+
+            triggerElement.append(typeSelectNode);
+
+            typeSelectNode.on('change', function() {
+                trigger.updateActionType(this.value);
+                state.triggerManager.resetTargetTriggers();
+    
+                buildTriggerActionId(trigger);
+                buildTriggerActionCount(trigger);
+                
+                updateSettingsFromState();
+            });
+
+            return;
+        }
+    }
+
+    /**
+     * @param {Trigger} trigger
+     */
+    function buildTriggerActionId(trigger) {
+        let triggerElement = $('#script_trigger_' + trigger.seq);
+        triggerElement = triggerElement.next().next().next().next().next();
+        triggerElement.empty().off("*");
+
+        if (trigger.actionType === "research") {
+            // Requirement Id
+            let typeSelectNode = $('<select style ="width:100%"></select>');
+
+            Object.keys(tech).forEach(technology => {
+                let title = typeof tech[technology].definition.title === 'string' ? tech[technology].definition.title : tech[technology].definition.title();
+                let selected = trigger.actionId === technology ? ' selected="selected"' : "";
+                let typeOptionNode = $('<option value = "' + technology + '"' + selected + '>' + title + '</option>');
+                typeSelectNode.append(typeOptionNode);
+            });
+
+            triggerElement.append(typeSelectNode);
+
+            typeSelectNode.on('change', function() {
+                trigger.updateActionId(this.value);
+                state.triggerManager.resetTargetTriggers();
+    
+                buildTriggerActionCount(trigger);
+                
+                updateSettingsFromState();
+            });
+
+            return;
+        }
+    }
+
+    /**
+     * @param {Trigger} trigger
+     */
+    function buildTriggerActionCount(trigger) {
+        //let triggerElement = $('#script_trigger_' + trigger.seq);
+        //triggerElement = triggerElement.next().next().next().next().next().next();
+        //triggerElement.empty().off("*");
+    }
+
+    /**
+     * @param {Trigger} trigger
+     */
+    function buildTriggerSettingsColumn(trigger) {
+        let triggerElement = $('#script_trigger_' + trigger.seq);
+        triggerElement = triggerElement.next().next().next().next().next().next().next();
+        triggerElement.empty().off("*");
+
+        let deleteTriggerButton = $('<a class="button is-dark is-small"><span>X</span></a>');
+        triggerElement.append(deleteTriggerButton);
+        deleteTriggerButton.on('click', function() {
+            state.triggerManager.RemoveTrigger(trigger.seq);
+            updateSettingsFromState();
+            updateTriggerSettingsContent();
+            state.triggerManager.resetTargetTriggers();
+        });
+        triggerElement.append($('<span class="scriptlastcolumn"></span>'));
     }
 
     function buildResearchSettings() {
@@ -9278,7 +10169,7 @@
     }
 
     function isLowPlasmidCount() {
-        return resources.plasmid.currentQuantity < 500 || isNoPlasmidChallenge()
+        return resources.Plasmid.currentQuantity < 500 || isNoPlasmidChallenge()
     }
 
     var numberSuffix = {
@@ -9322,7 +10213,7 @@
      * @param {string} research
      */
     function isResearchUnlocked(research) {
-        return document.querySelector("#tech-" + research + " .oldTech") !== null
+        return document.querySelector("#tech-" + research + " .oldTech") !== null;
     }
 
     /**
@@ -9341,7 +10232,7 @@
             return false;
         }
 
-        return resources.money.currentQuantity - buyValue < state.minimumMoneyAllowed;
+        return resources.Money.currentQuantity - buyValue < state.minimumMoneyAllowed;
     }
 
     /**
@@ -9441,29 +10332,36 @@
     window.addEventListener('loadAutoEvolveScript', mainAutoEvolveScript)
 
     $(document).ready(function() {
+        // let autoEvolveScriptText = `
+        // import { global, vues, keyMultiplier } from './vars.js';
+        // import { actions, checkAffordable, checkOldTech, f_rate } from './actions.js';
+        // import { craftingRatio, craftCost } from './resources.js';
+        // import { armyRating } from './civics.js';
+        // import { adjustCosts } from './functions.js';
+
+        // window.game =  {
+        //     global: global,
+        //     vues: vues,
+        //     actions: actions,
+
+        //     armyRating: armyRating,
+
+        //     keyMultiplier: keyMultiplier,
+
+        //     adjustCosts: adjustCosts,
+        //     checkAffordable: checkAffordable,
+        //     checkOldTech: checkOldTech,
+
+        //     craftCost: craftCost,
+        //     craftingRatio: craftingRatio,
+
+        //     f_rate: f_rate,
+        // };
+        // window.dispatchEvent(new CustomEvent('loadAutoEvolveScript'));
+        // `;
+
         let autoEvolveScriptText = `
-        import { global, vues, keyMultiplier } from './vars.js';
-        import { actions, checkAffordable, checkOldTech, f_rate } from './actions.js';
-        import { craftingRatio, craftCost } from './resources.js';
-        import { armyRating } from './civics.js';
-
-        window.game =  {
-            global: global,
-            vues: vues,
-            actions: actions,
-
-            armyRating: armyRating,
-
-            keyMultiplier: keyMultiplier,
-
-            checkAffordable: checkAffordable,
-            checkOldTech: checkOldTech,
-
-            craftCost: craftCost,
-            craftingRatio: craftingRatio,
-
-            f_rate: f_rate,
-        };
+        window.game = window.evolve;
         window.dispatchEvent(new CustomEvent('loadAutoEvolveScript'));
         `;
     
