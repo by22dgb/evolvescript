@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.2.0
+// @version      2.2.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
 // @author       TMVictor
-// @match        https://pmotschmann.github.io/Evolve/
-// @match        https://localhost/*
-// @match        http://localhost/*
+// @match        https://tmvictor.github.io/Evolve-Scripting-Edition/
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.3.1.min.js
 // @require      https://code.jquery.com/ui/1.12.1/jquery-ui.min.js
@@ -17,6 +15,9 @@
 // DIRECT LINK FOR GREASEMONKEY / TAMPERMONKEY: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // Just navigate to that link with one of the monkeys installed and it will load the script.
 // You can update to latest through the relevent UI for each extension.
+//
+// This script will NOT WORK WITH THE ORIGINAL VERSION OF THE GAME. It will only work with the scripting edition which can be found at:
+// https://tmvictor.github.io/Evolve-Scripting-Edition/
 //
 // Full release notes at: https://gist.github.com/TMVictor/e2a0634391002888469e79c13c62f60e
 // Massive thanks to NotOats for contributing how to access game code directly from GreaseMonkey / TamperMonkey.
@@ -3885,7 +3886,7 @@
             }
 
             if (resetTargets) {
-                state.triggerManager.resetTargetTriggers()
+                state.triggerManager.resetTargetTriggers();
             }
         }
 
@@ -7649,6 +7650,7 @@
         }
 
         state.triggerManager.updateCompleteTriggers();
+        state.triggerManager.resetTargetTriggers();
 
         if (state.loopCounter < Number.MAX_SAFE_INTEGER) {
             state.loopCounter++;
