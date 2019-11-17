@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.2.1
+// @version      2.2.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2657,7 +2657,7 @@
 
             if (this._managedPriorityList.length === 0) {
                 this._lastLoopCounter = state.loopCounter;
-                let evilRace = isEvilRace();
+                let evilRace = isEvilRace() && !isEvilUniverse();
 
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const job = this.priorityList[i];
@@ -2746,6 +2746,7 @@
             if (state.jobs.WroughtIron.isManaged()) managedCrafters++;
             if (state.jobs.SheetMetal.isManaged()) managedCrafters++;
             if (state.jobs.Mythril.isManaged()) managedCrafters++;
+            if (state.jobs.Aerogel.isManaged()) managedCrafters++;
             return managedCrafters;
         }
 
@@ -3533,32 +3534,35 @@
         /**
          * @param {number} [level]
          */
-        isAchievementUnlocked(level) {
-            // check if achievement exists and what star level
-            // Levels 1,2,3,4,5
-            let achievementTitles = document.querySelectorAll("#achievePanel .achievement > span:nth-child(1)");
-
-            if (achievementTitles === null || achievementTitles.length === 0) {
-                return false;
+        isMadAchievementUnlocked(level) {
+            // Can't get these in a micro universe - can only get micro specific achievements
+            if (game.global.race.universe === 'micro') {
+                return true;
             }
 
-            for (let i = 0; i < achievementTitles.length; i++) {
-                const node = achievementTitles[i];
-                if (node.textContent === this.achievementText) {
-                    if (level <= 1) {
-                        return true;
-                    }
+            // check if achievement exists and what star level
+            // Levels 1,2,3,4,5
+            let madAchievement = "extinct_" + this.id;
 
-                    let flairNode = node.nextElementSibling.nextElementSibling;
+            let universe = "l";
+            switch (game.global.race.universe){
+                case 'antimatter':
+                    universe = "a";
+                    break;
+                case 'heavy':
+                    universe = "h";
+                    break;
+                case 'evil':
+                    universe = "e";
+                    break;
+                case 'micro':
+                    universe = "m";
+                    break;
+            }
 
-                    if (flairNode === null) {
-                        return;
-                    }
-
-                    // @ts-ignore
-                    if (flairNode.firstElementChild.getAttribute("class") === "star" + level) {
-                        return true;
-                    }
+            if (game.global.stats.achieve[madAchievement] && game.global.stats.achieve[madAchievement][universe]) {
+                if (game.global.stats.achieve[madAchievement][universe] >= level) {
+                    return true;
                 }
             }
 
@@ -4103,8 +4107,6 @@
         Graphene: new Resource("Graphene", "res", "Graphene", true, false, 0.1, false, -1, false),
         Stanene: new Resource("Stanene", "res", "Stanene", true, false, 0.1, false, -1, false),
         Soul_Gem: new Resource("Soul Gem", "res", "Soul_Gem", false, false, -1, false, -1, false),
-
-        Aerogel: new Resource("Aerogel", "res", "Aerogel", false, false, -1, true, 0.5, false),
         
         // Craftable resources
         Plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5, false),
@@ -4112,6 +4114,7 @@
         Wrought_Iron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5, false),
         Sheet_Metal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5, false),
         Mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5, false),
+        Aerogel: new Resource("Aerogel", "res", "Aerogel", false, false, -1, true, 0.5, false),
     }
 
     var state = {
@@ -4809,6 +4812,7 @@
         state.jobManager.addJobToPriorityList(state.jobs.WroughtIron);
         state.jobManager.addJobToPriorityList(state.jobs.SheetMetal);
         state.jobManager.addJobToPriorityList(state.jobs.Mythril);
+        state.jobManager.addJobToPriorityList(state.jobs.Aerogel);
         state.jobManager.addJobToPriorityList(state.jobs.Entertainer);
         state.jobManager.addJobToPriorityList(state.jobs.Scientist);
         state.jobManager.addJobToPriorityList(state.jobs.Professor);
@@ -4830,6 +4834,7 @@
         state.jobs.Brick.breakpointMaxs = [2, 4, -1];
         state.jobs.WroughtIron.breakpointMaxs = [2, 4, -1];
         state.jobs.Mythril.breakpointMaxs = [2, 4, -1];
+        state.jobs.Aerogel.breakpointMaxs = [1, 1, 1];
 
         state.jobs.Scientist.breakpointMaxs = [3, 6, -1];
         state.jobs.Professor.breakpointMaxs = [6, 10, -1];
@@ -5587,7 +5592,7 @@
                     
                     for (let j = 0; j < raceGroup.length; j++) {
                         const race = raceGroup[j];
-                        if (!race.isAchievementUnlocked(achievementLevel) && !race.isEvolutionConditional) { // Just ignore conditional races for now
+                        if (!race.isMadAchievementUnlocked(achievementLevel) && !race.isEvolutionConditional) { // Just ignore conditional races for now
                             remainingRace = race;
                             remainingAchievements++;
                         }
@@ -5872,10 +5877,10 @@
         let lumberjackIndex = -1;
         let scavengerIndex = jobList.indexOf(state.jobs.Scavenger);
         
-        if (!isEvilRace()) {
-            lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
-        } else {
+        if (isEvilRace() && !isEvilUniverse()) {
             lumberjackIndex = jobList.indexOf(state.jobs.Farmer);
+        } else {
+            lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
         }
 
         let breakpoint0Max = 0;
@@ -5924,7 +5929,7 @@
             }
 
             log("autoJobs", "currentQuantity " + resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1, false) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0, false))
-            if (isEvilRace()) {
+            if (isEvilRace() && !isEvilUniverse()) {
                 if (resources.Population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1, false)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
                     requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(1, false);
@@ -6023,7 +6028,7 @@
             let minLumberjacks = 0;
             let totalWeighting = 0;
             
-            if (isEvilRace() && lumberjackIndex !== -1) {
+            if (isEvilRace() && !isEvilUniverse() && lumberjackIndex !== -1) {
                 // Evil races are a little bit different. Their "umemployed" workers act as both farmers and lumberjacks
                 // We need to keep a minimum number on farming.
                 minLumberjacks = requiredJobs[lumberjackIndex];
@@ -6071,7 +6076,7 @@
 
             if (availableEmployees > 0) {
                 // Split the remainder in accordance to the given weightings
-                if (isEvilRace() && lumberjackIndex !== -1) {
+                if (isEvilRace() && !isEvilUniverse() && lumberjackIndex !== -1) {
                     // Lumberjacks are special! for evil races they are also farmers so we need to keep a minimum even if the split doens't have that many
                     let lumberjacks = Math.ceil(availableEmployees * settings.jobLumberWeighting / totalWeighting);
                     lumberjacks = Math.max(minLumberjacks - requiredJobs[lumberjackIndex], lumberjacks);
@@ -6081,7 +6086,7 @@
                 }
                 
                 splitJobs.forEach(jobDetails => {
-                    if (availableEmployees <= 0 || (isEvilRace() && jobDetails.job === state.jobs.Lumberjack)) {
+                    if (availableEmployees <= 0 || (isEvilRace() && !isEvilUniverse() && jobDetails.job === state.jobs.Lumberjack)) {
                         // We've already dealt with evil lumberjacks above. Those dastardly lumberjacks!
                         return;
                     }
@@ -7617,7 +7622,7 @@
             resources.Crates.resourceRequirements[0].quantity = 200;
         }
 
-        if (isEvilRace() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
+        if (isEvilRace() && !isEvilUniverse() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
             state.jobs.Lumberjack.setJobOverride(state.jobManager.unemployedJob);
         }
 
@@ -10263,6 +10268,9 @@
         return game.global.race[racialTraitEvil];
     }
 
+    function isEvilUniverse() {
+        return game.global.race.universe === "evil";
+    }
 
     function isLumberRace() {
         return !game.global.race[racialTraitKindlingKindred];
