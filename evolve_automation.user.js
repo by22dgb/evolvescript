@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.2.2
+// @version      2.3.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -96,7 +96,7 @@
             // Private properties
             this._originalId = id;
             this._originalName = name;
-            this._vueName = "civ_+" + this._originalId;
+            this._vueBinding = "#civ-" + this._originalId;
             /** @type {{job: string, display: boolean, workers: number, max: number, impact: number}} job */
             this._definition = null;
             
@@ -287,7 +287,7 @@
                 count = this.max - this.count;
             }
 
-            let vue = game.vues[this._vueName];
+            let vue = getVue(this._vueBinding);
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
                     vue.add();            
@@ -319,7 +319,7 @@
                 count = this.count;
             }
 
-            let vue = game.vues[this._vueName];
+            let vue = getVue(this._vueBinding);
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
                     vue.sub();            
@@ -340,7 +340,7 @@
         constructor(id, name) {
             super(id, name);
 
-            this._vueName = "foundry";
+            this._vueBinding = "#foundry";
             this._max = Number.MAX_SAFE_INTEGER;
             this.resource = null;
         }
@@ -393,7 +393,7 @@
                 this.removeWorkers(-1 * count);
             }
 
-            let vue = game.vues[this._vueName];
+            let vue = getVue(this._vueBinding);
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
                     vue.add(this._originalId);            
@@ -421,7 +421,7 @@
                 count = this.count;
             }
 
-            let vue = game.vues[this._vueName];
+            let vue = getVue(this._vueBinding);
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
                     vue.sub(this._originalId);
@@ -493,7 +493,7 @@
             this.gameMax = Number.MAX_SAFE_INTEGER;
             this.specialId = null;
 
-            this._vueName = this._elementId;
+            this._vueBinding = "#" + this._elementId;
             this._definition = null;
             this._instance = null;
             
@@ -581,7 +581,7 @@
         }
         
         isUnlocked() {
-            return document.getElementById(this._elementId) !== null && game.vues[this._vueName] !== undefined;
+            return document.getElementById(this._elementId) !== null && getVue(this._vueBinding) !== undefined;
         }
 
         hasConsumption() {
@@ -650,7 +650,7 @@
 
             for (let i = 0; i < count; i++) {
                 if (retVal) {
-                    tempRetVal = game.vues[this._vueName].action();
+                    tempRetVal = getVue(this._vueBinding).action();
                     retVal = tempRetVal === undefined ? retVal : retVal && tempRetVal;
                 }
             }
@@ -1489,6 +1489,12 @@
         }
 
         cacheOptions() {
+            let vue = getVue("#iSmelter");
+            if (vue !== undefined) {
+                this._vue = vue;
+                return;
+            }
+
             if (!this.hasOptions() || state.windowManager.isOpen()) {
                 return;
             }
@@ -1499,8 +1505,7 @@
         }
 
         cacheOptionsCallback() {
-            state.cityBuildings.Smelter._vue = game.vues["specialModal"];
-            delete game.vues["specialModal"];
+            state.cityBuildings.Smelter._vue = getVue("#specialModal");
         }
 
         /**
@@ -1706,6 +1711,12 @@
         }
 
         cacheOptions() {
+            let vue = getVue("#iFactory");
+            if (vue !== undefined) {
+                this._vue = vue;
+                return;
+            }
+
             if (!this.hasOptions() || state.windowManager.isOpen()) {
                 return;
             }
@@ -1716,8 +1727,7 @@
         }
         
         cacheOptionsCallback() {
-            state.cityBuildings.Factory._vue = game.vues["specialModal"];
-            delete game.vues["specialModal"];
+            state.cityBuildings.Factory._vue = getVue("#specialModal");
         }
 
         get maxOperating() {
@@ -1906,6 +1916,12 @@
         }
 
         cacheOptions() {
+            let vue = getVue("#iDroid");
+            if (vue !== undefined) {
+                this._vue = vue;
+                return;
+            }
+
             if (!this.hasOptions() || state.windowManager.isOpen()) {
                 return;
             }
@@ -1916,8 +1932,7 @@
         }
         
         cacheOptionsCallback() {
-            state.spaceBuildings.AlphaMiningDroid._vue = game.vues["specialModal"];
-            delete game.vues["specialModal"];
+            state.spaceBuildings.AlphaMiningDroid._vue = getVue("#specialModal");
         }
 
         get maxOperating() {
@@ -2023,6 +2038,12 @@
         }
 
         cacheOptions() {
+            let vue = getVue("#iGraphene");
+            if (vue !== undefined) {
+                this._vue = vue;
+                return;
+            }
+
             if (!this.hasOptions() || state.windowManager.isOpen()) {
                 return;
             }
@@ -2033,8 +2054,7 @@
         }
 
         cacheOptionsCallback() {
-            state.spaceBuildings.AlphaFactory._vue = game.vues["specialModal"];
-            delete game.vues["specialModal"];
+            state.spaceBuildings.AlphaFactory._vue = getVue("#specialModal");
         }
 
         /**
@@ -2176,8 +2196,7 @@
         }
 
         cacheOptionsCallback() {
-            state.spaceBuildings.GasSpaceDock._vue = game.vues["specialModal"];
-            delete game.vues["specialModal"];
+            state.spaceBuildings.GasSpaceDock._vue = getVue("#specialModal");
         }
     }
 
@@ -2222,7 +2241,7 @@
 
         isUnlocked() {
             // We have to override this as there won't be an element unless the modal window is open
-            return game.vues[this._vueName] !== undefined;
+            return getVue(this._vueBinding) !== undefined;
         }
     }
 
@@ -2283,6 +2302,8 @@
             this.openedByScript = false;
             this._callbackWindowTitle = "";
             this._callbackFunction = null;
+
+            this._closingWindowName = "";
         }
 
         get currentModalWindowTitle() {
@@ -2328,13 +2349,13 @@
         }
 
         closeModalWindow() {
-            let modalCloseBtn = document.querySelector('.modal > .modal-close');
+            let modalCloseBtn = document.querySelector('.modal .modal-close');
             if (modalCloseBtn !== null) {
                 // @ts-ignore
                 modalCloseBtn.click();
+                this._closingWindowName = "";
+                this.openedByScript = false;
             }
-
-            this.openedByScript = false;
         }
 
         resetWindowManager() {
@@ -2344,6 +2365,15 @@
         }
 
         checkCallbacks() {
+            if (this._closingWindowName !== "") {
+                if (document.querySelector('.modal')) {
+                    this.closeModalWindow();
+                } else {
+                    this._closingWindowName = "";
+                    this.openedByScript = false;
+                }
+            }
+
             // We only care if the script itself opened the modal. If the user did it then ignore it.
             // There must be a call back function otherwise there is nothing to do.
             if (!this.openedByScript && this._callbackFunction !== null) {
@@ -2366,6 +2396,7 @@
                 this._callbackWindowTitle = "";
                 this._callbackFunction = null;
 
+                this._closingWindowName = windowName;
                 this.closeModalWindow();
             }
         }
@@ -2390,7 +2421,7 @@
         constructor() {
             /** @type {Campaign[]} */
             this.campaignList = [];
-            this._vueName = "civ_garrison";
+            this._vueBinding = "#garrison";
 
             this._textArmy = "army";
         }
@@ -2431,7 +2462,8 @@
                 return false;
             }
 
-            game.vues[this._vueName].campaign();
+            // launch against first external city for now
+            getVue(this._vueBinding).campaign(0);
             return true;
         }
 
@@ -2444,7 +2476,7 @@
                 return false;
             }
 
-            game.vues[this._vueName].hire();
+            getVue(this._vueBinding).hire();
             return true;
         }
 
@@ -2489,7 +2521,7 @@
                 return false;
             }
 
-            game.vues[this._vueName].next();
+            getVue(this._vueBinding).next();
             return true;
         }
 
@@ -2498,7 +2530,7 @@
                 return false;
             }
 
-            game.vues[this._vueName].last();
+            getVue(this._vueBinding).last();
             return true;
         }
 
@@ -2519,7 +2551,7 @@
             }
 
             for (let i = 0; i < count; i++) {
-                game.vues[this._vueName].aNext();
+                getVue(this._vueBinding).aNext();
             }
             
             return true;
@@ -2534,7 +2566,7 @@
             }
 
             for (let i = 0; i < count; i++) {
-                game.vues[this._vueName].aLast();
+                getVue(this._vueBinding).aLast();
             }
 
             return true;
@@ -2940,7 +2972,7 @@
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
 
-            this._vueName = "arpa" + this.id;
+            this._vueBinding = "#arpa" + this.id;
             this._instance = null;
             this._definition = null;
         }
@@ -3575,7 +3607,7 @@
             this._id = action.id.substring(5);
             this._action = action;
 
-            this._vueName = this._action.id;
+            this._vueBinding = "#" + this._action.id;
             this._definition = null;
 
             /** @type {ResourceRequirement[]} */
@@ -3587,7 +3619,7 @@
         }
 
         isUnlocked() {
-            return document.querySelector("#" + this._action.id + " > a") !== null && game.vues[this._vueName] !== undefined;
+            return document.querySelector("#" + this._action.id + " > a") !== null && getVue(this._vueBinding) !== undefined;
         }
 
         get definition() {
@@ -3616,7 +3648,7 @@
                 return false
             }
 
-            return game.vues[this._vueName].action();
+            return getVue(this._vueBinding).action();
         }
 
         isResearched() {
@@ -4120,6 +4152,9 @@
     var state = {
         loopCounter: 1,
 
+        lastPopulationCount: Number.MAX_SAFE_INTEGER,
+        lastFarmerCount: Number.MAX_SAFE_INTEGER,
+
         windowManager: new ModalWindowManager(),
         warManager: new WarManager(),
         jobManager: new JobManager(),
@@ -4439,6 +4474,7 @@
             SuperCollider: new Project("Supercollider", "lhc"),
             StockExchange: new Project("Stock Exchange", "stock_exchange"),
             Monument: new Project("Monument", "monument"),
+            Railway: new Project("Railway", "railway"),
             LaunchFacility: new Project("Launch Facility", "launch_facility"),
         },
 
@@ -5010,6 +5046,7 @@
         state.projectManager.addProjectToPriorityList(state.projects.SuperCollider);
         state.projectManager.addProjectToPriorityList(state.projects.StockExchange);
         state.projectManager.addProjectToPriorityList(state.projects.Monument);
+        state.projectManager.addProjectToPriorityList(state.projects.Railway);
         state.projectManager.addProjectToPriorityList(state.projects.LaunchFacility);
 
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
@@ -5910,6 +5947,16 @@
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs.push(availableEmployees);
                 log("autoJobs", "Pushing all farmers")
+            } else if (resources.Population.currentQuantity > state.lastPopulationCount) {
+                let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
+                let farmerChange = state.jobs.Farmer.count - state.lastFarmerCount;
+
+                if (populationChange === farmerChange && resources.Food.rateOfChange > 0) {
+                    requiredJobs.push(Math.max(state.jobs.Farmer.count - populationChange, 0));
+                    log("autoJobs", "Removing a farmer due to population growth")
+                } else {
+                    requiredJobs.push(state.jobs.Farmer.count);
+                }
             } else if (resources.Food.storageRatio < 0.2 && resources.Food.rateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.8 only. We only want to add one per loop until positive
                 requiredJobs.push(Math.min(state.jobs.Farmer.count + 1, availableEmployees));
@@ -6176,6 +6223,9 @@
                 //console.log("Adjusting job " + jobList[i]._job.job + " up by " + adjustment);
             }
         }
+
+        state.lastPopulationCount = resources.Population.currentQuantity;
+        state.lastFarmerCount = state.jobs.Farmer.count;
     }
 
     //#endregion Auto Jobs
@@ -6183,9 +6233,9 @@
     //#region Auto Tax
 
     function autoTax() {
-        let taxVue = game.vues["civ_taxes"];
+        let taxVue = getVue('#tax_rates');
 
-        if (game.vues === undefined) {
+        if (taxVue === undefined) {
             return;
         }
 
@@ -6264,7 +6314,7 @@
             fuel.adjustment = fuel.required - smelter.fueledCount(fuel.fuelIndex);
 
             if (fuel.adjustment < 0) {
-                smelter.decreaseFuel(fuel.fuelIndex, fuel.adjustment);
+                smelter.decreaseFuel(fuel.fuelIndex, -fuel.adjustment);
             }
         });
 
@@ -6623,7 +6673,7 @@
             return;
         }
         
-        let vue = game.vues["arpaSequence"];
+        let vue = getVue("#arpaSequence");
         if (vue !== undefined) {
             vue.novo();
         }
@@ -7632,6 +7682,10 @@
     }
 
     function automate() {
+        if (document.getElementById("queueColumn") === null) {
+            return;
+        }
+
         // Setup in the first loop only
         if (state.loopCounter === 1) {
             let tempTech = {};
@@ -7749,6 +7803,10 @@
 
     function shortLoop() {
         if (game === null) {
+            return;
+        }
+
+        if (document.getElementById("queueColumn") === null) {
             return;
         }
 
@@ -9729,10 +9787,6 @@
      * @param {Project} project
      */
     function buildProjectMaxSettingsInput(project) {
-        if (project === state.projects.LaunchFacility) {
-            return $('<span style="width:25%"/>');
-        }
-
         let projectMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
         projectMaxTextBox.val(settings["arpa_m_" + project.id]);
     
@@ -9969,6 +10023,7 @@
         createArpaToggle(state.projects.SuperCollider);
         createArpaToggle(state.projects.StockExchange);
         createArpaToggle(state.projects.Monument);
+        createArpaToggle(state.projects.Railway);
         
         if (state.projects.LaunchFacility.isUnlocked()) {
             createArpaToggle(state.projects.LaunchFacility);
@@ -10303,6 +10358,22 @@
         return game.keyMultiplier() !== 1;
     }
 
+    /**
+     * @param {string} binding Element that vue is bound to
+     */
+    function getVue(binding) {
+        let element = $(binding);
+        if (element.length <= 0) {
+            return undefined;
+        }
+
+        if (!element[0].__vue__) {
+            return undefined;
+        }
+
+        return element[0].__vue__;
+    }
+
     var showLogging = false;
     var loggingType = "autoJobs";
 
@@ -10342,34 +10413,6 @@
     window.addEventListener('loadAutoEvolveScript', mainAutoEvolveScript)
 
     $(document).ready(function() {
-        // let autoEvolveScriptText = `
-        // import { global, vues, keyMultiplier } from './vars.js';
-        // import { actions, checkAffordable, checkOldTech, f_rate } from './actions.js';
-        // import { craftingRatio, craftCost } from './resources.js';
-        // import { armyRating } from './civics.js';
-        // import { adjustCosts } from './functions.js';
-
-        // window.game =  {
-        //     global: global,
-        //     vues: vues,
-        //     actions: actions,
-
-        //     armyRating: armyRating,
-
-        //     keyMultiplier: keyMultiplier,
-
-        //     adjustCosts: adjustCosts,
-        //     checkAffordable: checkAffordable,
-        //     checkOldTech: checkOldTech,
-
-        //     craftCost: craftCost,
-        //     craftingRatio: craftingRatio,
-
-        //     f_rate: f_rate,
-        // };
-        // window.dispatchEvent(new CustomEvent('loadAutoEvolveScript'));
-        // `;
-
         let autoEvolveScriptText = `
         window.game = window.evolve;
         window.dispatchEvent(new CustomEvent('loadAutoEvolveScript'));
