@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.3.0
+// @version      2.3.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
 // @author       TMVictor
 // @match        https://tmvictor.github.io/Evolve-Scripting-Edition/
 // @grant        none
-// @require      https://code.jquery.com/jquery-3.3.1.min.js
+// @require      https://code.jquery.com/jquery-3.4.1.min.js
 // @require      https://code.jquery.com/ui/1.12.1/jquery-ui.min.js
 // ==/UserScript==
 //
@@ -7644,26 +7644,26 @@
         } else if (state.goal === "Evolution") {
             state.goal = "Standard";
         }
-
+        
         if (settings.minimumMoneyPercentage > 0) {
             state.minimumMoneyAllowed = resources.Money.maxQuantity * settings.minimumMoneyPercentage / 100;
         } else {
             state.minimumMoneyAllowed = settings.minimumMoney;
         }
-
+        
         // If our script opened a modal window but it is now closed (and the script didn't close it) then the user did so don't continue
         // with whatever our script was doing with the open modal window.
         if (state.windowManager.openedByScript && !state.windowManager.isOpenHtml()) {
             state.windowManager.resetWindowManager();
         }
-
+        
         state.buildingManager.updateResourceRequirements();
         state.projectManager.updateResourceRequirements();
-
+        
         if (resources.Population.cachedId !== resources.Population.id) {
             resources.Population.setupCache();
         }
-
+        
         if (isLumberRace()) {
             resources.Crates.resourceRequirements[0].resource = resources.Plywood;
             resources.Crates.resourceRequirements[0].quantity = 10;
@@ -7671,7 +7671,7 @@
             resources.Crates.resourceRequirements[0].resource = resources.Stone;
             resources.Crates.resourceRequirements[0].quantity = 200;
         }
-
+        
         if (isEvilRace() && !isEvilUniverse() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
             state.jobs.Lumberjack.setJobOverride(state.jobManager.unemployedJob);
         }
@@ -10362,16 +10362,16 @@
      * @param {string} binding Element that vue is bound to
      */
     function getVue(binding) {
-        let element = $(binding);
-        if (element.length <= 0) {
+        let element = game.document.querySelector(binding);
+        if (element === null) {
             return undefined;
         }
 
-        if (!element[0].__vue__) {
+        if (!element.__vue__) {
             return undefined;
         }
 
-        return element[0].__vue__;
+        return element.__vue__;
     }
 
     var showLogging = false;
