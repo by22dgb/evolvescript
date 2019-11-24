@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.3.1
+// @version      2.3.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3720,7 +3720,7 @@
         isActionPossible() {
             if (this.actionType === "research") {
                 // check against MAX as we want to know if it is possible...
-                return game.checkAffordable(tech[this.actionId].definition, true);
+                return tech[this.actionId].isUnlocked() && game.checkAffordable(tech[this.actionId].definition, true);
             }
         }
 
@@ -7040,7 +7040,6 @@
 
     function autoArpa() {
         let projectList = state.projectManager.managedPriorityList();
-
         // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build once MAD has been researched
         if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && isResearchUnlocked("mad")) {
             if (!state.triggerManager.projectConflicts(state.projects.LaunchFacility)) {
