@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.5.0
+// @version      2.5.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -602,15 +602,16 @@
             }
 
             let resourceIndex = 0;
+            let newCosts = game.adjustCosts(this.definition.cost);
 
-            Object.keys(this.definition.cost).forEach(resourceName => {
-                let testCost = game.adjustCosts(Number(this.definition.cost[resourceName]()) || 0);
+            Object.keys(newCosts).forEach(resourceName => {
+                let testCost = Number(newCosts[resourceName]()) || 0;
 
                 if (this.resourceRequirements.length > resourceIndex) {
                     this.resourceRequirements[resourceIndex].resource = resources[resourceName];
                     this.resourceRequirements[resourceIndex].quantity = testCost;
                 } else {
-                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], getRealNumber(testCost)));
+                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], testCost));
                 }
 
                 resourceIndex++;
@@ -887,7 +888,9 @@
             this._hashContainerRemoveElement = "#stack-" + this.id + " span:nth-of-type(2) .sub";
 			
 			this._craftAllId = "inc" + this.id + "A";
-			this._hashCraft5Element = "#inc" + this.id + "5 a";
+            this._hashCraft5Element = "#inc" + this.id + "5 a";
+            
+            this.marketVueBinding = "market-" + this.id;
         }
 
         //#region Standard resource
@@ -1209,9 +1212,14 @@
         /**
          * @param {string} name
          * @param {string} id
+         * @param {string} region
+         * @param {string} inRegionId
          */
-        constructor(name, id) {
+        constructor(name, id, region, inRegionId) {
             super(name, "", id, false, false, -1, false, -1, true);
+
+            this._region = region;
+            this._inRegionId = inRegionId;
         }
 
         //#region Standard resource
@@ -1229,8 +1237,15 @@
                 return 0;
             }
 
-            // "43/47"
-            return parseInt(document.querySelector("#" + this.id + " > span:nth-child(2)").textContent.split("/")[0]);
+            let supportId = game.actions[this._region][this._inRegionId].info.support;
+            if (supportId) {
+                let currentQuantity = game.global[this._region][supportId].support;
+                if (currentQuantity) {
+                    return currentQuantity;
+                }
+            }
+
+            return 0;
         }
 
         get maxQuantity() {
@@ -1238,8 +1253,15 @@
                 return 0;
             }
 
-            // "43/47"
-            return parseInt(document.querySelector("#" + this.id + " > span:nth-child(2)").textContent.split("/")[1]);
+            let supportId = game.actions[this._region][this._inRegionId].info.support;
+            if (supportId) {
+                let maxQuantity = game.global[this._region][supportId].s_max;
+                if (maxQuantity) {
+                    return maxQuantity;
+                }
+            }
+
+            return 0;
         }
 
         get rateOfChange() {
@@ -2350,6 +2372,7 @@
                 let evObj = document.createEvent("Events");
                 evObj.initEvent("mouseover", true, false);
                 button.dispatchEvent(evObj);
+                gameLogSuccess("Switching government to " + governmentTypes[state.governmentManager._governmentToSet].name())
                 logClick(button, "set government");
                 state.governmentManager._governmentToSet = null;
             }
@@ -2798,6 +2821,7 @@
         }
 
         isMercenaryUnlocked() {
+            //return game.global.civic.garrison.mercs;
             return document.querySelector("#garrison .first") !== null;
         }
 
@@ -3130,7 +3154,7 @@
 
         isFoundryUnlocked() {
             let containerNode = document.getElementById("foundry");
-            return containerNode !== null && containerNode.style.display !== "none";
+            return containerNode !== null && containerNode.style.display !== "none" && containerNode.children.length > 0 && this.maxCraftsmen > 0;
         }
 
         canManualCraft() {
@@ -3153,29 +3177,11 @@
         }
 
         get currentCraftsmen() {
-            if (!this.isFoundryUnlocked()) {
-                return 0;
-            }
-
-            let foundryCountNode = document.querySelector("#foundry .count");
-            if (foundryCountNode !== null) {
-                return getRealNumber(foundryCountNode.textContent.split(" / ")[0]);
-            }
-
-            return 0;
+            return game.global.city.foundry.crafting;
         }
 
         get maxCraftsmen() {
-            if (!this.isFoundryUnlocked()) {
-                return 0;
-            }
-
-            let foundryCountNode = document.querySelector("#foundry .count");
-            if (foundryCountNode !== null) {
-                return getRealNumber(foundryCountNode.textContent.split(" / ")[1]);
-            }
-
-            return 0;
+            return game.global.civic.craftsman.max;
         }
 
         calculateCraftingMaxs() {
@@ -3183,12 +3189,7 @@
                 return;
             }
 
-            let foundryCountNode = document.querySelector("#foundry .count");
-            if (foundryCountNode === null) {
-                return;
-            }
-
-            let max = getRealNumber(foundryCountNode.textContent.split(" / ")[1]);
+            let max = this.maxCraftsmen;
             let remainingJobs = [];
 
             for (let i = 0; i < this.craftingJobs.length; i++) {
@@ -3345,10 +3346,12 @@
             this._vueBinding = "arpa" + this.id;
             this._instance = null;
             this._definition = null;
+
+            this._x1ButtonSelector = `#arpa${this.id} > div.buy > button.button.x1`;
         }
 
         isUnlocked() {
-            return document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x1') !== null;
+            return document.querySelector(this._x1ButtonSelector) !== null;
         }
 
         get instance() {
@@ -3372,68 +3375,30 @@
         }
 
         updateResourceRequirements() {
-            let node = document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x1');
-
-            if (node === null) {
+            if (!this.isUnlocked()) {
                 return;
             }
 
-            let requirementText = node.getAttribute("aria-label");
+            let resourceIndex = 0;
+            let newCosts = game.adjustCosts(this.definition.cost);
 
-            if (requirementText === null) {
-                return;
-            }
+            Object.keys(newCosts).forEach(resourceName => {
+                let testCost = Number(newCosts[resourceName]()) || 0;
 
-            let requirements = requirementText.split(". ");
-            let currentIndex = 0;
-
-            // The number of project resource requirements doesn't change over time. The type of resource might (eg. Monument) but not the number
-            // So, just add them the first time and update them otherwise
-            requirements.forEach(requirement => {
-                // Don't proceed if there isn't a requirement, or if it is "Constract 1%", or if it is "Insufficient Brick"
-                // It must have a ":", eg.
-                // aria-label="Construct 1%. Costs: $ 12.85M. Plywood:  107K. Brick:  85.6K. Insufficient Brick. Wrought Iron:  42.8K."
-                if (requirement.trim().length === 0 || requirement.indexOf(":") === -1) {
-                    return;
-                }
-
-                if (requirement.indexOf("$") !== -1) {
-                    if (currentIndex < this.resourceRequirements.length) {
-                        this.resourceRequirements[currentIndex].resource = resources.Money;
-                        this.resourceRequirements[currentIndex].quantity = getRealNumber(requirement.split("$")[1]);
-                        currentIndex++;
-                    } else {
-                        this.resourceRequirements.push(new ResourceRequirement(resources.Money, getRealNumber(requirement.split("$")[1])));
-                    }
+                if (this.resourceRequirements.length > resourceIndex) {
+                    this.resourceRequirements[resourceIndex].resource = resources[resourceName];
+                    this.resourceRequirements[resourceIndex].quantity = testCost;
                 } else {
-                    let requirementArray = requirement.split(":");
-                    let indexAdjustment = requirementArray.length === 2 ? 0 : 1;
-                    let resourceName = requirement.split(":")[indexAdjustment].trim().replace(" ", "_");
-
-                    if (resourceName === "Souls") { resourceName = "Food" }
-                    else if (resourceName === "Bones") { resourceName = "Lumber" }
-                    else if (resourceName === "Flesh") { resourceName = "Furs" }
-                    else if (resourceName === "Boneweave") { resourceName = "Plywood" }
-
-                    // To account for: "42.8K." - note the period at the end there.
-                    let quantity = requirement.split(":")[1 + indexAdjustment];
-                    if (quantity.endsWith(".")) {
-                        quantity = quantity.substring(0, quantity.length - 1);
-                    }
-
-                    if (currentIndex < this.resourceRequirements.length) {
-                        this.resourceRequirements[currentIndex].resource = resources[resourceName];
-                        this.resourceRequirements[currentIndex].quantity = getRealNumber(quantity);
-                        currentIndex++;
-                    } else {
-                        this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], getRealNumber(quantity)));
-                    }
+                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], testCost));
                 }
+
+                resourceIndex++;
             });
 
-            // // let logText = this.id;
-            // // this.resourceRequirements.forEach(requirement => logText += " " + requirement.resource.id + " - " + requirement.quantity + ", ");
-            // // log("autoStorage", logText);
+            // Remove any extra elements that we have that are greater than the current number of requirements
+            while (this.resourceRequirements.length > resourceIndex) {
+                this.resourceRequirements.pop();
+            }
         }
 
         get autoBuildEnabled() {
@@ -3457,29 +3422,18 @@
         }
 
         get level() {
-            let rankNode = document.querySelector('#arpa' + this.id + ' .rank');
-            if (rankNode === null) {
-                return 0;
-            }
-
-            let match = rankNode.textContent.match(/\d+/);
-
-            if (match.length > 0) {
-                return getRealNumber(match[0]);
-            }
-
-            return 0;
+            return this.instance.rank;
         }
 
         get progress() {
-            return getRealNumber(document.querySelector('#arpa' + this.id + ' progress').getAttribute("value"))
+            return this.instance.complete;
         }
 
         /**
          * @param {boolean} checkBuildEnabled
          */
         tryBuild(checkBuildEnabled) {
-            if (checkBuildEnabled && !this.autoBuildEnabled) {
+            if ((checkBuildEnabled && !this.autoBuildEnabled) || !this.isUnlocked()) {
                 return false;
             }
 
@@ -3489,12 +3443,11 @@
                 moneyFloor = moneyRequirement.quantity;
             }
 
-            let btn = document.querySelector('#arpa' + this.id + ' > div.buy > button.button.x1');
-            if (btn === null || wouldBreakMoneyFloor(moneyFloor)) {
+            if (wouldBreakMoneyFloor(moneyFloor)) {
                 return false;
             }
 
-            logClick(btn, this.id + " build arpa");
+            getVueById(this._vueBinding).build(this.id, 1);
             return true;
         }
     }
@@ -3560,6 +3513,8 @@
 
             /** @type {Resource[]} */
             this._sortedTradeRouteSellList = [];
+
+            this._multiplierVueBinding = "market-qty";
         }
 
         isUnlocked() {
@@ -3621,7 +3576,8 @@
          * @param {number} multiplier
          */
         isMultiplierUnlocked(multiplier) {
-            return this.isUnlocked() && document.querySelector("#market-qty input[value='" + multiplier + "']") !== null;
+            let element = document.querySelector("#market-qty input");
+            return this.isUnlocked() && element !== null;
         }
 
         getMultiplier() {
@@ -3629,13 +3585,7 @@
                 return -1;
             }
 
-            let checked = document.querySelector("#market-qty input:checked");
-
-            if (checked !== null) {
-                return getRealNumber(checked["value"]);
-            }
-
-            return -1;
+            return game.global.city.market.qty;
         }
 
         /**
@@ -3646,12 +3596,8 @@
                 return false;
             }
 
-            let multiplierNode = document.querySelector("#market-qty input[value='" + multiplier + "']");
-
-            if (multiplierNode !== null) {
-                logClick(multiplierNode, "setting multiplier");
-                return true;
-            }
+            game.global.city.market.qty = multiplier;
+            getVueById(this._multiplierVueBinding).val();
 
             return false;
         }
@@ -3672,26 +3618,33 @@
          * @param {Resource} resource
          */
         getBuyPrice(resource) {
-            let priceNodes = document.querySelectorAll("#market-" + resource.id + " .order");
-
-            if (priceNodes !== null && priceNodes.length > 0) {
-                return getRealNumber(priceNodes[0].textContent);
+            if (!this.isUnlocked()) {
+                return -1;
             }
 
-            return -1;
+            let price = game.global.race['arrogant'] ? Math.round(game.global.resource[resource.id].value * 1.1) : game.global.resource[resource.id].value;
+            if (game.global.race['conniving']){
+                price *= 0.95;
+            }
+
+            return price;
         }
 
         /**
          * @param {Resource} resource
          */
         getSellPrice(resource) {
-            let priceNodes = document.querySelectorAll("#market-" + resource.id + " .order");
-
-            if (priceNodes !== null && priceNodes.length > 1) {
-                return getRealNumber(priceNodes[1].textContent);
+            if (!this.isUnlocked()) {
+                return -1;
             }
 
-            return -1;
+            let divide = game.global.race['merchant'] ? 3 : (game.global.race['asymmetrical'] ? 5 : 4);
+            if (game.global.race['conniving']){
+                divide -= 0.5;
+            } 
+            let price = Math.round(game.global.resource[resource.id].value / divide);
+
+            return price;
         }
 
         /**
@@ -3702,14 +3655,7 @@
                 return false;
             }
 
-            let buttons = document.querySelectorAll("#market-" + resource.id + " .order");
-
-            if (buttons !== null && buttons.length > 0) {
-                logClick(buttons[0], "buy " + resource.id);
-                return true;
-            }
-
-            return false;
+            getVueById(resource.marketVueBinding).purchase(resource.id);
         }
 
         /**
@@ -3720,50 +3666,58 @@
                 return false;
             }
 
-            let buttons = document.querySelectorAll("#market-" + resource.id + " .order");
-
-            if (buttons !== null && buttons.length > 1) {
-                logClick(buttons[1], "sell " + resource.id);
-                return true;
-            }
-
-            return false;
+            getVueById(resource.marketVueBinding).sell(resource.id);
         }
 
         getCurrentTradeRoutes() {
-            return parseFloat(document.querySelector("#tradeTotal .tradeTotal").textContent.split(" / ")[0].match(/\d+/)[0])
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+            
+            return game.global.city.market.trade;
         }
 
         getMaxTradeRoutes() {
-            return parseFloat(document.querySelector("#tradeTotal .tradeTotal").textContent.split(" / ")[1]);
+            if (!this.isUnlocked()) {
+                return 0;
+            }
+            
+            return game.global.city.market.mtrade;
         }
 
         /**
          * @param {Resource} resource
          */
         getTradeRoutes(resource) {
-            return parseFloat(document.querySelector("#market-" + resource.id + " .current").textContent);
+            return game.global.resource[resource.id].trade;
         }
 
         /**
          * @param {Resource} resource
          */
         getTradeRouteQuantity(resource) {
-            return parseFloat(document.querySelector("#market-" + resource.id + " .trade .is-primary").getAttribute("data-label").match(/\d+(?:\.\d+)?/g)[0]);
+            return game.tradeRatio[resource.id];
         }
 
         /**
          * @param {Resource} resource
          */
         getTradeRouteBuyPrice(resource) {
-            return parseFloat(document.querySelectorAll("#market-" + resource.id + " .trade .is-primary")[0].getAttribute("data-label").match(/\d+(?:\.\d+)?/g)[1]);
+            return game.tradeBuyPrice(resource.id);
         }
 
         /**
          * @param {Resource} resource
          */
         getTradeRouteSellPrice(resource) {
-            return parseFloat(document.querySelectorAll("#market-" + resource.id + " .trade .is-primary")[1].getAttribute("data-label").match(/\d+(?:\.\d+)?/g)[1]);
+            return game.tradeSellPrice(resource.id);
+        }
+
+        /**
+         * @param {Resource} resource
+         */
+        zeroTradeRoutes(resource) {
+            getVueById(resource.marketVueBinding).zero(resource.id);
         }
 
         /**
@@ -3775,11 +3729,10 @@
                 return false;
             }
 
-            let button = document.querySelector("#market-" + resource.id + " .sub");
-
-            if (button !== null) {
+            let vue = getVueById(resource.marketVueBinding);
+            if (vue !== null) {
                 for (let i = 0; i < count; i++) {
-                    logClick(button, "add trade route " + resource.id);
+                    vue.autoBuy(resource.id);
                 }
                 
                 return true;
@@ -3797,13 +3750,12 @@
                 return false;
             }
 
-            let button = document.querySelector("#market-" + resource.id + " .add");
-
-            if (button !== null) {
+            let vue = getVueById(resource.marketVueBinding);
+            if (vue !== null) {
                 for (let i = 0; i < count; i++) {
-                    logClick(button, "remove trade route " + resource.id);
+                    vue.autoSell(resource.id);
                 }
-
+                
                 return true;
             }
 
@@ -4028,15 +3980,16 @@
             }
 
             let resourceIndex = 0;
+            let newCosts = game.adjustCosts(this.definition.cost);
 
-            Object.keys(this.definition.cost).forEach(resourceName => {
-                let testCost = game.adjustCosts(Number(this.definition.cost[resourceName]()) || 0);
+            Object.keys(newCosts).forEach(resourceName => {
+                let testCost = Number(newCosts[resourceName]()) || 0;
 
                 if (this.resourceRequirements.length > resourceIndex) {
                     this.resourceRequirements[resourceIndex].resource = resources[resourceName];
                     this.resourceRequirements[resourceIndex].quantity = testCost;
                 } else {
-                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], getRealNumber(testCost)));
+                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], testCost));
                 }
 
                 resourceIndex++;
@@ -4480,12 +4433,12 @@
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
         Power: new Power(),
         Luxury_Goods: new LuxuryGoods(),
-        Moon_Support: new Support("Moon Support", "srspc_moon"),
-        Red_Support: new Support("Red Support", "srspc_red"),
-        Sun_Support: new Support("Sun Support", "srspc_sun"),
-        Belt_Support: new Support("Belt Support", "srspc_belt"),
-        Alpha_Support: new Support("Alpha Support", "srint_alpha"),
-        Nebula_Support: new Support("Nebula Support", "srint_nebula"),
+        Moon_Support: new Support("Moon Support", "srspc_moon", "space", "spc_moon"),
+        Red_Support: new Support("Red Support", "srspc_red", "space", "spc_red"),
+        Sun_Support: new Support("Sun Support", "srspc_sun", "space", "spc_sun"),
+        Belt_Support: new Support("Belt Support", "srspc_belt", "space", "spc_belt"),
+        Alpha_Support: new Support("Alpha Support", "srint_alpha", "interstellar", "int_alpha"),
+        Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
 
         // Basic resources (can trade for these)
         Food: new Resource("Food", "res", "Food", true, true, 2, false, -1, false),
@@ -6396,8 +6349,8 @@
 
     function autoBattle() {
         if (!settings.autoFight) { return; }
-        if (!state.warManager.isUnlocked()) { return; }
 
+        // mercenaries can still be hired once the "foreign" section is hidden by unification
         if (resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100 && state.warManager.currentSoldiers < state.warManager.maxSoldiers) {
             let cost = Math.round((1.24 ** game.global.civic.garrison.workers) * 75) - 50;
             if (cost > 25000){
@@ -6415,6 +6368,9 @@
                 state.warManager.hireMercenary();
             }
         }
+
+        // Now that we've hired mercenaries we can continue to check the rest of the autofight logic
+        if (!state.warManager.isUnlocked()) { return; }
 
         // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
         if (state.goal === "PreparingMAD") {
@@ -11424,7 +11380,11 @@
             return "foreign power " + (govIndex + 1);
         }
 
-        return game.loc(`civics_gov${game.global.civic.foreign[govProp].name.s0}`, [game.global.civic.foreign[govProp].name.s1]) + " (" + (govIndex + 1) + ")";
+        // Firefox has issues if we use loc(key, variables) directly with variables as the game script won't detect it as an array
+        // Something to do with firefox's sandbox for userscripts?
+        // Anyway, just perform the replacement ourselves
+        let namePart1 = game.loc(`civics_gov${game.global.civic.foreign[govProp].name.s0}`);
+        return namePart1.replace("%0", game.global.civic.foreign[govProp].name.s1) + " (" + (govIndex + 1) + ")";
     }
 
     function removePoppers() {
@@ -11471,7 +11431,7 @@
     }
 
     var showLogging = false;
-    var loggingType = "click";
+    var loggingType = "autoJobs";
 
     /**
      * @param {string} type
