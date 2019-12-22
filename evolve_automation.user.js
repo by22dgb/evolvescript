@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.3.2
+// @version      2.5.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -96,7 +96,7 @@
             // Private properties
             this._originalId = id;
             this._originalName = name;
-            this._vueBinding = "#civ-" + this._originalId;
+            this._vueBinding = "civ-" + this._originalId;
             /** @type {{job: string, display: boolean, workers: number, max: number, impact: number}} job */
             this._definition = null;
             
@@ -287,7 +287,7 @@
                 count = this.max - this.count;
             }
 
-            let vue = getVue(this._vueBinding);
+            let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
                     vue.add();            
@@ -319,7 +319,7 @@
                 count = this.count;
             }
 
-            let vue = getVue(this._vueBinding);
+            let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
                     vue.sub();            
@@ -340,7 +340,7 @@
         constructor(id, name) {
             super(id, name);
 
-            this._vueBinding = "#foundry";
+            this._vueBinding = "foundry";
             this._max = Number.MAX_SAFE_INTEGER;
             this.resource = null;
         }
@@ -393,7 +393,7 @@
                 this.removeWorkers(-1 * count);
             }
 
-            let vue = getVue(this._vueBinding);
+            let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
                     vue.add(this._originalId);            
@@ -421,7 +421,7 @@
                 count = this.count;
             }
 
-            let vue = getVue(this._vueBinding);
+            let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
                 for (let i = 0; i < count; i++) {
                     vue.sub(this._originalId);
@@ -493,7 +493,7 @@
             this.gameMax = Number.MAX_SAFE_INTEGER;
             this.specialId = null;
 
-            this._vueBinding = "#" + this._elementId;
+            this._vueBinding = this._elementId;
             this._definition = null;
             this._instance = null;
             
@@ -565,6 +565,10 @@
             return this._elementId;
         }
 
+        get vue() {
+            return getVueById(this._vueBinding);
+        }
+
         get autoMax() {
             // We can build unlimited. If there is an auto max set then return that, otherwise return unlimited
             if (this.gameMax === Number.MAX_SAFE_INTEGER) {
@@ -581,7 +585,7 @@
         }
         
         isUnlocked() {
-            return document.getElementById(this._elementId) !== null && getVue(this._vueBinding) !== undefined;
+            return document.getElementById(this._elementId) !== null && this.vue !== undefined;
         }
 
         hasConsumption() {
@@ -650,7 +654,7 @@
 
             for (let i = 0; i < count; i++) {
                 if (retVal) {
-                    tempRetVal = getVue(this._vueBinding).action();
+                    tempRetVal = this.vue.action();
                     retVal = tempRetVal === undefined ? retVal : retVal && tempRetVal;
                 }
             }
@@ -748,8 +752,7 @@
                 let onNode = containerNode.querySelector(' .on');
 
                 for (let i = 0; i < adjustCount; i++) {
-                    // @ts-ignore
-                    onNode.click();
+                    logClick(onNode, this.id + " adjust state on");
                 }
 
                 return;
@@ -760,8 +763,7 @@
                 adjustCount = adjustCount * -1;
 
                 for (let i = 0; i < adjustCount; i++) {
-                    // @ts-ignore
-                    offNode.click();
+                    logClick(offNode, this.id + " adjust state off");
                 }
 
                 return;
@@ -773,8 +775,7 @@
                 return false;
             }
             
-            // @ts-ignore
-            document.querySelector(this._hashOnElement).click();
+            logClick(document.querySelector(this._hashOnElement), this.id + " state on");
         }
         
         trySetStateOff() {
@@ -782,8 +783,7 @@
                 return false;
             }
             
-            // @ts-ignore
-            containerNode.querySelector(this._hashOffElement).click();
+            logClick(document.querySelector(this._hashOffElement), this.id + " state off");
         }
 
         //#endregion Buildings
@@ -1068,8 +1068,7 @@
             let node = document.querySelector(this._hashCrateAddElement);
             if (node !== null) {
                 for (let i = 0; i < count; i++) {
-                    //@ts-ignore
-                    node.click();
+                    logClick(node, this.id + " assign crate");
                 }
 
                 return true;
@@ -1086,8 +1085,7 @@
             if (node !== null) {
                 count = count * -1;
                 for (let i = 0; i < count; i++) {
-                    //@ts-ignore
-                    node.click();
+                    logClick(node, this.id + " unassign crate");
                 }
 
                 return true;
@@ -1103,8 +1101,7 @@
             let node = document.querySelector(this._hashContainerAddElement);
             if (node !== null) {
                 for (let i = 0; i < count; i++) {
-                    //@ts-ignore
-                    node.click();
+                    logClick(node, this.id + " assign container");
                 }
 
                 return true;
@@ -1121,8 +1118,7 @@
             if (node !== null) {
                 count = count * -1;
                 for (let i = 0; i < count; i++) {
-                    //@ts-ignore
-                    node.click();
+                    logClick(node, this.id + " unassign container");
                 }
 
                 return true;
@@ -1155,8 +1151,7 @@
 
             if (node !== null) {
                 for (let i = 0; i < count; i++) {
-                    // @ts-ignore
-                    node.click();
+                    logClick(node, this.id + " craft 5");
                 }
                 
                 return true;
@@ -1489,7 +1484,7 @@
         }
 
         cacheOptions() {
-            let vue = getVue("#iSmelter");
+            let vue = getVueById("iSmelter");
             if (vue !== undefined) {
                 this._vue = vue;
                 return;
@@ -1505,7 +1500,7 @@
         }
 
         cacheOptionsCallback() {
-            state.cityBuildings.Smelter._vue = getVue("#specialModal");
+            state.cityBuildings.Smelter._vue = getVueById("specialModal");
         }
 
         /**
@@ -1711,7 +1706,7 @@
         }
 
         cacheOptions() {
-            let vue = getVue("#iFactory");
+            let vue = getVueById("iFactory");
             if (vue !== undefined) {
                 this._vue = vue;
                 return;
@@ -1727,7 +1722,7 @@
         }
         
         cacheOptionsCallback() {
-            state.cityBuildings.Factory._vue = getVue("#specialModal");
+            state.cityBuildings.Factory._vue = getVueById("specialModal");
         }
 
         get maxOperating() {
@@ -1916,7 +1911,7 @@
         }
 
         cacheOptions() {
-            let vue = getVue("#iDroid");
+            let vue = getVueById("iDroid");
             if (vue !== undefined) {
                 this._vue = vue;
                 return;
@@ -1932,7 +1927,7 @@
         }
         
         cacheOptionsCallback() {
-            state.spaceBuildings.AlphaMiningDroid._vue = getVue("#specialModal");
+            state.spaceBuildings.AlphaMiningDroid._vue = getVueById("specialModal");
         }
 
         get maxOperating() {
@@ -2038,7 +2033,7 @@
         }
 
         cacheOptions() {
-            let vue = getVue("#iGraphene");
+            let vue = getVueById("iGraphene");
             if (vue !== undefined) {
                 this._vue = vue;
                 return;
@@ -2054,7 +2049,7 @@
         }
 
         cacheOptionsCallback() {
-            state.spaceBuildings.AlphaFactory._vue = getVue("#specialModal");
+            state.spaceBuildings.AlphaFactory._vue = getVueById("specialModal");
         }
 
         /**
@@ -2171,8 +2166,6 @@
     class SpaceDock extends Action {
         constructor() {
             super("Gas Space Dock", "space", "star_dock", "spc_gas");
-
-            this._vue = null;
         }
 
         hasOptions() {
@@ -2181,7 +2174,21 @@
         }
 
         isOptionsCached() {
-            return this._vue !== null;
+            if (!this.hasOptions() || game.global.tech['genesis'] < 4) {
+                // It doesn't have options yet so I guess all "none" of them are cached!
+                // Also return true if we don't have the required tech level yet
+                return true;
+            }
+
+            // If our tech is unlocked but we haven't cached the vue the the options aren't cached
+            if (!state.spaceBuildings.GasSpaceDockProbe.isOptionsCached()
+                || game.global.tech['genesis'] >= 5 && !state.spaceBuildings.GasSpaceDockShipSegment.isOptionsCached()
+                || game.global.tech['genesis'] === 6 && !state.spaceBuildings.GasSpaceDockPrepForLaunch.isOptionsCached()
+                || game.global.tech['genesis'] >= 7 && !state.spaceBuildings.GasSpaceDockLaunch.isOptionsCached()) {
+                return false;
+            }
+
+            return true;
         }
 
         cacheOptions() {
@@ -2196,7 +2203,10 @@
         }
 
         cacheOptionsCallback() {
-            state.spaceBuildings.GasSpaceDock._vue = getVue("#specialModal");
+            state.spaceBuildings.GasSpaceDockProbe.cacheOptions();
+            state.spaceBuildings.GasSpaceDockShipSegment.cacheOptions();
+            state.spaceBuildings.GasSpaceDockPrepForLaunch.cacheOptions();
+            state.spaceBuildings.GasSpaceDockLaunch.cacheOptions();
         }
     }
 
@@ -2212,6 +2222,11 @@
             super(name, tab, id, location);
 
             this._modalTab = modalTab;
+            this._vue = undefined;
+        }
+
+        get vue() {
+            return this._vue;
         }
 
         get definition() {
@@ -2239,9 +2254,269 @@
             return this._instance;
         }
 
+        isOptionsCached() {
+            return this.vue !== undefined;
+        }
+
+        cacheOptions() {
+            this._vue = getVueById(this._vueBinding);
+        }
+
         isUnlocked() {
             // We have to override this as there won't be an element unless the modal window is open
-            return getVue(this._vueBinding) !== undefined;
+            return this._vue !== undefined;
+        }
+    }
+
+    var governmentTypes =
+    {
+        anarchy: { id: "anarchy", name: function () { return game.loc("govern_anarchy") } }, // Special - should not be shown to player
+        autocracy: { id: "autocracy", name: function () { return game.loc("govern_autocracy") } },
+        democracy: { id: "democracy", name: function () { return game.loc("govern_democracy") } },
+        oligarchy: { id: "oligarchy", name: function () { return game.loc("govern_oligarchy") } },
+        theocracy: { id: "theocracy", name: function () { return game.loc("govern_theocracy") } },
+        republic: { id: "republic", name: function () { return game.loc("govern_republic") } },
+        socialist: { id: "socialist", name: function () { return game.loc("govern_socialist") } },
+        corpocracy: { id: "corpocracy", name: function () { return game.loc("govern_corpocracy") } },
+        technocracy: { id: "technocracy", name: function () { return game.loc("govern_technocracy") } },
+    };
+
+    class GovernmentManager {
+        constructor() {
+            this._governmentToSet = null;
+        }
+
+        isUnlocked() {
+            let node = document.getElementById("govType");
+            return node !== null && node.style.display !== "none";
+        }
+
+        isEnabled() {
+            let node = document.querySelector("#govType button");
+            return this.isUnlocked() && node !== null && node.getAttribute("disabled") !== "disabled";
+        }
+
+        get currentGovernment() {
+            return game.global.civic.govern.type;
+        }
+
+        /**
+         * @param {string} government
+         */
+        isGovernmentUnlocked(government) {
+            if (government === governmentTypes.theocracy.id && !game.global.tech['gov_theo']) {
+                return false;
+            }
+
+            if (government === governmentTypes.republic.id && game.global.tech['govern'] < 2) {
+                return false;
+            }
+
+            if (government === governmentTypes.socialist.id && !game.global.tech['gov_soc']) {
+                return false;
+            }
+
+            if (government === governmentTypes.corpocracy.id && !game.global.tech['gov_corp']) {
+                return false;
+            }
+
+            if (government === governmentTypes.technocracy.id && game.global.tech['govern'] < 3) {
+                return false;
+            }
+
+            return true;
+        }
+
+        /**
+         * @param {string} government
+         */
+        setGovernment(government) {
+            if (!this.isEnabled()) { return; }
+            if (!this.isGovernmentUnlocked(government)) { return; }
+            if (government === governmentTypes.anarchy.id) { return; }
+            if (state.windowManager.isOpen()) { return; } // Don't try anything if a window is already open
+
+            let optionsNode = document.querySelector("#govType button");
+            let title = game.loc('civics_government_type');
+            this._governmentToSet = government;
+            state.windowManager.openModalWindowWithCallback(title, this.setGovernmentCallback, optionsNode);
+        }
+
+        setGovernmentCallback() {
+            if (state.governmentManager._governmentToSet !== null) {
+                // The government modal window does some tricky stuff when selecting a government.
+                // It removes and destroys popups so we have to have a popup there for it to destroy!
+                let button = document.querySelector(`#govModal [data-gov="${state.governmentManager._governmentToSet}"]`);
+                let evObj = document.createEvent("Events");
+                evObj.initEvent("mouseover", true, false);
+                button.dispatchEvent(evObj);
+                logClick(button, "set government");
+                state.governmentManager._governmentToSet = null;
+            }
+        }
+    }
+
+    var espionageTypes =
+    {
+        none: { id: "none", name: function () { return "None"; } },
+        influence: { id: "influence", name: function () { return game.loc("civics_spy_influence"); } },
+        sabotage: { id: "sabotage", name: function () { return game.loc("civics_spy_sabotage"); } },
+        incite: { id: "incite", name: function () { return game.loc("civics_spy_incite"); } },
+        round_robin: { id: "rrobin", name: function () { return "Round Robin"; } },
+    };
+
+    class SpyManager {
+        constructor() {
+            this._espionageToPerform = null;
+            this._missions = [ "influence", "sabotage", "incite" ];
+            this._roundRobinIndex = [ this._missions.length - 1, this._missions.length - 1, this._missions.length - 1 ];
+
+            /** @type {number[]} */
+            this._lastAttackLoop = [ -1000, -1000, -1000 ]; // Last loop counter than we attacked. Don't want to run influence when we are attacking foreign powers
+        }
+
+        isUnlocked() {
+            let node = document.getElementById("foreign");
+            if (!game.global.tech['spy'] || node === null || node.style.display === "none") { return false; }
+
+            let foreignVue = getVueById("foreign");
+            if (foreignVue === undefined || !foreignVue.vis()) { return false; }
+
+            return true;
+        }
+
+        /**
+         * @param {number} govIndex
+         */
+        updateLastAttackLoop(govIndex) {
+            this._lastAttackLoop[govIndex] = state.loopCounter;
+        }
+
+        /**
+         * @param {any} govIndex
+         * @param {string} espionageId
+         */
+        performEspionage(govIndex, espionageId) {
+            if (!this.isUnlocked()) { return; }
+            if (espionageId === espionageTypes.none.id) { return; }
+            if (state.windowManager.isOpen()) { return; } // Don't try anything if a window is already open
+
+            let optionsSpan = document.querySelector(`#gov${govIndex} div span:nth-child(3)`);
+            // @ts-ignore
+            if (optionsSpan.style.display === "none") { return; }
+
+            let optionsNode = document.querySelector(`#gov${govIndex} div span:nth-child(3) button`);
+            if (optionsNode === null || optionsNode.getAttribute("disabled") === "disabled") { return; }
+
+            if (espionageId === espionageTypes.round_robin.id) {
+                // Round Robin our spy operations. Increment the current spy operation and check if it is useful to perform
+                // (It is useful if it will have any effect. If it is already at maximum effect then there is no point in performing it)
+                // Keep going until we find a useful operation or we don't have any useful operations to perform
+                let missionIndex = this._roundRobinIndex[govIndex];
+
+                // We're NOT looping througn the missions here. We are just looping through the number of missions that there are.
+                // Round Robin is keeping track of the current mission itself in this._govMissionIndex[]
+                for (let i = 0; i < this._missions.length; i++) {
+                    missionIndex++;
+                    if (missionIndex > this._missions.length - 1) { missionIndex = 0; }
+
+                    // If we've attacked this foreign power within the last 10 minutes then don't run influence
+                    if (this._missions[missionIndex] === espionageTypes.influence.id) {
+                        if (state.loopCounter - this._lastAttackLoop[govIndex] < 600) {
+                            continue;
+                        }
+                    }
+    
+                    if (this.isEspionageUseful(govIndex, this._missions[missionIndex])) {
+                        this._espionageToPerform = this._missions[missionIndex];
+                        this._roundRobinIndex[govIndex] = missionIndex;
+                        break;
+                    }
+                }
+            }
+
+            // User specified spy operation. If it is not already at miximum effect then proceed with it.
+            if (espionageId !== espionageTypes.round_robin.id) {
+                if (this.isEspionageUseful(govIndex, espionageId)) {
+                    this._espionageToPerform = espionageId;
+                }
+            }
+
+            if (this._espionageToPerform !== null) {
+                if (espionageId === espionageTypes.round_robin.id) {
+                    gameLogSuccess(`Performing ${this._missions[this._roundRobinIndex[govIndex]]} covert operation against ${getGovName(govIndex)}`)
+                } else {
+                    gameLogSuccess(`Performing "${espionageId}" covert operation against ${getGovName(govIndex)}`)
+                }
+                let title = game.loc('civics_espionage_actions');
+                state.windowManager.openModalWindowWithCallback(title, this.performEspionageCallback, optionsNode);
+            }
+        }
+
+        /**
+         * @param {string} govIndex
+         * @param {string} espionageId
+         */
+        isEspionageUseful(govIndex, espionageId) {
+            let govProp = "gov" + govIndex;
+
+            if (espionageId === espionageTypes.influence.id) {
+                // MINIMUM hstl (relation) is 0 so if we are already at 0 then don't perform this operation
+                if (game.global.civic.foreign[govProp].spy < 1 && game.global.civic.foreign[govProp].hstl > 10) {
+                    // With less than one spy we can only see general relations. If relations are worse than Good then operation is useful
+                    // Good relations is <= 10 hstl
+                    return true;
+                } else if (game.global.civic.foreign[govProp].hstl > 0) {
+                    // We have enough spies to know the exact value. 0 is minimum so only useful if > 0
+                    return true;
+                }
+            }
+
+            if (espionageId === espionageTypes.sabotage.id) {
+                // MINIMUM mil (military) is 50 so if we are already at 50 then don't perform this operation
+                if (game.global.civic.foreign[govProp].spy < 1) {
+                    // With less than one spy we don't have any indication of military strength so return that operation is useful
+                    return true;
+                } else if (game.global.civic.foreign[govProp].spy === 1 && game.global.civic.foreign[govProp].mil >= 75) {
+                    // With one spy we can only see general military strength. If military strength is better than Weak then operation is useful
+                    // Weak military is < 75 mil
+                    return true;
+                } else if (game.global.civic.foreign[govProp].mil > 50) {
+                    // We have enough spies to know the exact value. 50 is minimum so only useful if > 50
+                    return true;
+                }
+            }
+
+            if (espionageId === espionageTypes.incite.id) {
+                // MAXIMUM unrest (discontent) is 100 so if we are already at 100 then don't perform this operation
+                // Discontent requires at least 4 spies to see the value
+                if (game.global.civic.foreign[govProp].spy < 3) {
+                    // With less than three spies we don't have any indication of discontent so return that operation is useful
+                    return true;
+                } else if (game.global.civic.foreign[govProp].spy === 3 && game.global.civic.foreign[govProp].unrest <= 75) {
+                    // With three spies we can only see general discontent. If discontent is lower than High then operation is useful
+                    // High discontent is <= 75 mil
+                    return true;
+                } else if (game.global.civic.foreign[govProp].unrest < 100) {
+                    // We have enough spies to know the exact value. 100 is maximum so only useful if < 100
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        performEspionageCallback() {
+            if (state.spyManager._espionageToPerform !== null) {
+                // The espionage modal window does some tricky stuff when selecting a mission.
+                // It removes and destroys popups so we have to have a popup there for it to destroy!
+                let button = document.querySelector(`#espModal [data-esp="${state.spyManager._espionageToPerform}"]`);
+                let evObj = document.createEvent("Events");
+                evObj.initEvent("mouseover", true, false);
+                button.dispatchEvent(evObj);
+                logClick(button, "perform espionage");
+                state.spyManager._espionageToPerform = null;
+            }
         }
     }
 
@@ -2336,8 +2611,7 @@
             this.openedByScript = true;
             this._callbackWindowTitle = callbackWindowTitle;
             this._callbackFunction = callbackFunction;
-            // @ts-ignore
-            elementToClick.click();
+            logClick(elementToClick, "open modal " + callbackWindowTitle);
         }
 
         isOpenHtml() {
@@ -2345,14 +2619,16 @@
         }
 
         isOpen() {
-            return this.openedByScript || document.getElementById("modalBox") !== null;
+            // Checks both the game modal window and our script modal window
+            // game = modalBox
+            // script = scriptModal
+            return this.openedByScript || document.getElementById("modalBox") !== null || document.getElementById("scriptModal").style.display === "block";
         }
 
         closeModalWindow() {
             let modalCloseBtn = document.querySelector('.modal .modal-close');
             if (modalCloseBtn !== null) {
-                // @ts-ignore
-                modalCloseBtn.click();
+                logClick(modalCloseBtn, "closing modal");
                 this._closingWindowName = "";
                 this.openedByScript = false;
             }
@@ -2415,15 +2691,64 @@
             this.rating = rating;
             this.maxRating = maxRating;
         }
+
+        /**
+         * @param {number} govIndex
+         */
+        getRatingForGov(govIndex) {
+            if (govIndex < 0) { return this.rating; }
+            return this.rating * this.getMultiplierForGov(govIndex);
+        }
+
+        /**
+         * @param {number} govIndex
+         */
+        getMaxRatingForGov(govIndex) {
+            if (govIndex < 0) { return this.maxRating; }
+            return this.maxRating * this.getMultiplierForGov(govIndex);
+        }
+
+        getMultiplierForGov(govIndex) {
+            let govProp = "gov" + govIndex;
+            if (game.global.civic.foreign[govProp].spy >= 2) {
+                // We know the exact number
+                return game.global.civic.foreign[govProp].mil / 100;
+            } else if (game.global.civic.foreign[govProp].spy === 1) {
+                // We know the general range - be conservative and go for the top of the range
+                if (game.global.civic.foreign[govProp].mil < 50){
+                    return 0.5;
+                }
+                else if (game.global.civic.foreign[govProp].mil < 75){
+                    return 0.75;
+                }
+                else if (game.global.civic.foreign[govProp].mil > 200){
+                    return 2.2;
+                }
+                else if (game.global.civic.foreign[govProp].mil > 160){
+                    return 2;
+                }
+                else if (game.global.civic.foreign[govProp].mil > 125){
+                    return 1.6;
+                }
+                else {
+                    return 1.25;
+                }
+            } else {
+                // We know nothing - return the worst case scenario
+                return 2;
+            }
+        }
     }
 
     class WarManager {
         constructor() {
             /** @type {Campaign[]} */
             this.campaignList = [];
-            this._vueBinding = "#garrison";
+            this._vueBinding = "garrison";
 
             this._textArmy = "army";
+
+            this.selectedGovAttackIndex = -1;
         }
 
         clearCampaignList() {
@@ -2454,16 +2779,21 @@
         }
 
         isUnlocked() {
-            return document.getElementById("garrison").style.display !== "none" && document.querySelector("#garrison .campaign") !== null;
+            let node = document.getElementById("foreign");
+            return node !== null && node.style.display !== "none";
         }
 
-        launchCampaign() {
+        /**
+         * @param {number} govIndex
+         */
+        launchCampaign(govIndex) {
             if (!this.isUnlocked()) {
                 return false;
             }
 
             // launch against first external city for now
-            getVue(this._vueBinding).campaign(0);
+            state.spyManager.updateLastAttackLoop(govIndex);
+            getVueById(this._vueBinding).campaign(govIndex);
             return true;
         }
 
@@ -2476,7 +2806,7 @@
                 return false;
             }
 
-            getVue(this._vueBinding).hire();
+            getVueById(this._vueBinding).hire();
             return true;
         }
 
@@ -2521,7 +2851,7 @@
                 return false;
             }
 
-            getVue(this._vueBinding).next();
+            getVueById(this._vueBinding).next();
             return true;
         }
 
@@ -2530,7 +2860,7 @@
                 return false;
             }
 
-            getVue(this._vueBinding).last();
+            getVueById(this._vueBinding).last();
             return true;
         }
 
@@ -2551,7 +2881,7 @@
             }
 
             for (let i = 0; i < count; i++) {
-                getVue(this._vueBinding).aNext();
+                getVueById(this._vueBinding).aNext();
             }
             
             return true;
@@ -2566,13 +2896,16 @@
             }
 
             for (let i = 0; i < count; i++) {
-                getVue(this._vueBinding).aLast();
+                getVueById(this._vueBinding).aLast();
             }
 
             return true;
         }
 
-        get maxSoldiersForAttackType() {
+        /**
+         * @param {number} govIndex
+         */
+        getMaxSoldiersForAttackType(govIndex) {
             // armyRating is a Math.floor! We'll have to do some tinkering to get a more accurate rating
             let campaign = this.campaignList[findArrayIndex(this.campaignList, "name", this.attackType)];
             let singleSoldierAttackRating = 0;
@@ -2583,7 +2916,7 @@
                 let soldiers = this.currentSoldiers - this.woundedSoldiers;
                 singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy) / soldiers;
 
-                return Math.ceil(campaign.maxRating / singleSoldierAttackRating);
+                return Math.ceil(campaign.getMaxRatingForGov(govIndex) / singleSoldierAttackRating);
             }
 
             // Ok, we've done no hivemind. Hivemind is trickier because each soldier gives attack rating and a bonus to all other soldiers.
@@ -2591,10 +2924,10 @@
             // Just loop through and remove 2 at a time until we're under the max rating.
             let soldiers = Math.min(10, this.currentSoldiers - this.woundedSoldiers);
             singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy) / soldiers;
-            let maxSoldiers = Math.ceil(campaign.maxRating / singleSoldierAttackRating);
+            let maxSoldiers = Math.ceil(campaign.getMaxRatingForGov(govIndex) / singleSoldierAttackRating);
             let testMaxSoldiers = maxSoldiers - 2;
 
-            while (testMaxSoldiers > 3 && game.armyRating(testMaxSoldiers, this._textArmy) > campaign.maxRating) {
+            while (testMaxSoldiers > 3 && game.armyRating(testMaxSoldiers, this._textArmy) > campaign.getMaxRatingForGov(govIndex)) {
                 maxSoldiers = testMaxSoldiers;
                 testMaxSoldiers -= 2;
             }
@@ -2602,26 +2935,63 @@
             return maxSoldiers;
         }
 
-       /**
+        /**
+         * @param {number} govOccupyIndex
+         * @param {number} govAttackIndex
+         * @param {number} govUnoccupyIndex
          * @return {boolean}
          */
-        switchToBestAttackType() {
+        switchToBestAttackType(govOccupyIndex, govAttackIndex, govUnoccupyIndex) {
             let attackRating = game.armyRating(this.maxSoldiers, this._textArmy)
             let currentAttackTypeIndex = findArrayIndex(this.campaignList, "name", this.attackType);
+            this.selectedGovAttackIndex = -1;
 
             if (this.campaignList.length === 0 || currentAttackTypeIndex === -1) {
                 return false;
             }
 
-            for (let i = this.campaignList.length - 1; i >= 0; i--) {
+            let maxCampaignIndex = this.campaignList.length - 1;
+
+            if (govOccupyIndex >= 0) {
+                let siegeCampaign = this.campaignList[this.campaignList.length - 1];
+                if (attackRating > siegeCampaign.getRatingForGov(govOccupyIndex)) {
+                    //console.log("setting gov index to govOccupyIndex")
+                    this.selectedGovAttackIndex = govOccupyIndex;
+                }
+            }
+            
+            if (this.selectedGovAttackIndex === -1) {
+                // We can't siege our preferred target so keep looking
+                if (govAttackIndex >= 0) {
+                    maxCampaignIndex = this.campaignList.length - 2; // Limit attack to assault so that we don't occupy with a siege
+                    this.selectedGovAttackIndex = govAttackIndex;
+                    //console.log("setting gov index to govAttackIndex")
+                } else if (govUnoccupyIndex >= 0) {
+                    this.selectedGovAttackIndex = govUnoccupyIndex;
+                    //console.log("setting gov index to govUnoccupyIndex")
+                }
+            }
+
+            // There isn't anyone suitable to attack
+            if (this.selectedGovAttackIndex === -1) { return false; }
+
+            for (let i = maxCampaignIndex; i >= 0; i--) {
                 let campaign = this.campaignList[i];
+
+                //console.log(campaign.id + ": our attack " + attackRating + ", required rating " + campaign.getRatingForGov(this.selectedGovAttackIndex))
+
+                if (maxCampaignIndex < currentAttackTypeIndex) {
+                    // We are currently at a higher attack than we are allowed to be at
+                    this.decreaseCampaignDifficulty();
+                    return false;
+                }
                 
-                if (attackRating >= campaign.rating && currentAttackTypeIndex < i) {
+                if (attackRating >= campaign.getRatingForGov(this.selectedGovAttackIndex) && currentAttackTypeIndex < i) {
                     this.increaseCampaignDifficulty();
                     return false;
                 }
 
-                if (attackRating < campaign.rating && currentAttackTypeIndex >= i && i > 0) {
+                if (attackRating < campaign.getRatingForGov(this.selectedGovAttackIndex) && currentAttackTypeIndex >= i && i > 0) {
                     this.decreaseCampaignDifficulty();
                     return false;
                 }
@@ -2972,7 +3342,7 @@
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
 
-            this._vueBinding = "#arpa" + this.id;
+            this._vueBinding = "arpa" + this.id;
             this._instance = null;
             this._definition = null;
         }
@@ -3124,8 +3494,7 @@
                 return false;
             }
 
-            // @ts-ignore
-            btn.click();
+            logClick(btn, this.id + " build arpa");
             return true;
         }
     }
@@ -3280,8 +3649,7 @@
             let multiplierNode = document.querySelector("#market-qty input[value='" + multiplier + "']");
 
             if (multiplierNode !== null) {
-                //@ts-ignore
-                multiplierNode.click();
+                logClick(multiplierNode, "setting multiplier");
                 return true;
             }
 
@@ -3337,8 +3705,7 @@
             let buttons = document.querySelectorAll("#market-" + resource.id + " .order");
 
             if (buttons !== null && buttons.length > 0) {
-                //@ts-ignore
-                buttons[0].click();
+                logClick(buttons[0], "buy " + resource.id);
                 return true;
             }
 
@@ -3356,8 +3723,7 @@
             let buttons = document.querySelectorAll("#market-" + resource.id + " .order");
 
             if (buttons !== null && buttons.length > 1) {
-                //@ts-ignore
-                buttons[1].click();
+                logClick(buttons[1], "sell " + resource.id);
                 return true;
             }
 
@@ -3413,8 +3779,7 @@
 
             if (button !== null) {
                 for (let i = 0; i < count; i++) {
-                    // @ts-ignore
-                    button.click();
+                    logClick(button, "add trade route " + resource.id);
                 }
                 
                 return true;
@@ -3436,8 +3801,7 @@
 
             if (button !== null) {
                 for (let i = 0; i < count; i++) {
-                    // @ts-ignore
-                    button.click();
+                    logClick(button, "remove trade route " + resource.id);
                 }
 
                 return true;
@@ -3512,8 +3876,7 @@
             let node = document.querySelector("#createHead span:nth-of-type(1) .button");
             if (node !== null) {
                 for (let i = 0; i < count; i++) {
-                    // @ts-ignore
-                    node.click();
+                    logClick(node, "construct crate");
                 }
                 
                 return true;
@@ -3533,8 +3896,7 @@
             let node = document.querySelector("#createHead span:nth-of-type(2) .button");
             if (node !== null) {
                 for (let i = 0; i < count; i++) {
-                    // @ts-ignore
-                    node.click();
+                    logClick(node, "construct container");
                 }
                 
                 return true;
@@ -3607,7 +3969,7 @@
             this._id = action.id.substring(5);
             this._action = action;
 
-            this._vueBinding = "#" + this._action.id;
+            this._vueBinding = this._action.id;
             this._definition = null;
 
             /** @type {ResourceRequirement[]} */
@@ -3619,11 +3981,15 @@
         }
 
         isUnlocked() {
-            return document.querySelector("#" + this._action.id + " > a") !== null && getVue(this._vueBinding) !== undefined;
+            return document.querySelector("#" + this._action.id + " > a") !== null && getVueById(this._vueBinding) !== undefined;
         }
 
         get definition() {
             return this._action;
+        }
+
+        get title() {
+            return typeof this.definition.title === 'string' ? this.definition.title : this.definition.title();
         }
 
         // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
@@ -3648,7 +4014,8 @@
                 return false
             }
 
-            return getVue(this._vueBinding).action();
+            getVueById(this._vueBinding).action();
+            return true;
         }
 
         isResearched() {
@@ -3988,6 +4355,7 @@
             for (let i = 0; i < this._targetTriggers.length; i++) {
                 const targetTrigger = this._targetTriggers[i];
 
+                //@ts-ignore
                 if (Object.keys(targetTrigger.cost).some(cost => Object.keys(trigger.cost).includes(cost))) {
                     return true;
                 }
@@ -4003,6 +4371,7 @@
         buildingConflicts(building) {
             for (let i = 0; i < this.targetTriggers.length; i++) {
                 const targetTrigger = this.targetTriggers[i];
+                //@ts-ignore
                 if (Object.keys(targetTrigger.cost).some(resource => Object.keys(building.definition.cost).includes(resource))) {
 
                     //console.log("building " + building.id + " CONFLICTS with target")
@@ -4020,6 +4389,7 @@
        projectConflicts(project) {
         for (let i = 0; i < this.targetTriggers.length; i++) {
             const targetTrigger = this.targetTriggers[i];
+            //@ts-ignore
             if (Object.keys(targetTrigger.cost).some(resource => Object.keys(project.definition.cost).includes(resource))) {
 
                 //console.log("building " + building.id + " CONFLICTS with target")
@@ -4071,6 +4441,14 @@
         sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
         shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
         junker: new Race("junker", "Valdi", true, "Challenge genes unlocked", "Euthanasia"),
+        dryad: new Race("dryad", "Dryad", true, "Forest planet", "Ashes to Ashes"),
+        satyr: new Race("satyr", "Satyr", true, "Forest planet", "Stopped the music"),
+        phoenix: new Race("phoenix", "Phoenix", true, "Volcanic planet", "Snuffed"),
+        salamander: new Race("salamander", "Salamander", true, "Volcanic planet", "Cooled Off"),
+        yeti: new Race("yeti", "Yeti", true, "Tundra planet", "Captured"),
+        wendigo: new Race("wendigo", "Wendigo", true, "Tundra planet", "Soulless Abomination"),
+        tuskin: new Race("tuskin", "Tuskin", true, "Desert planet", "Startled"),
+        kamel: new Race("kamel", "Kamel", true, "Desert planet", "No Oasis"),
     }
 
     /** @type {Race[]} */
@@ -4078,7 +4456,8 @@
         races.antid, races.mantis, races.scorpid, races.human, races.orc, races.elven, races.troll, races.ogre, races.cyclops,
         races.kobold, races.goblin, races.gnome, races.cath, races.wolven, races.centaur, races.balorg, races.imp, races.seraph, races.unicorn,
         races.arraak, races.pterodacti, races.dracnid, races.tortoisan, races.gecko, races.slitheryn, races.sharkin, races.octigoran,
-        races.entish, races.cacti, races.sporgar, races.shroomi, races.junker
+        races.entish, races.cacti, races.sporgar, races.shroomi, races.junker, races.dryad, races.satyr, races.phoenix, races.salamander,
+        races.yeti, races.wendigo, races.tuskin, races.kamel,
     ];
 
     var resources = {
@@ -4163,6 +4542,8 @@
         marketManager: new MarketManager(),
         storageManager: new StorageManager(),
         triggerManager: new TriggerManager(),
+        governmentManager: new GovernmentManager(),
+        spyManager: new SpyManager(),
 
         minimumMoneyAllowed: 0,
         
@@ -4246,6 +4627,18 @@
                                 Celestial: new EvolutionAction("", "evo", "celestial", ""), // eden only
                                     Seraph: new EvolutionAction("", "evo", "seraph", ""),
                                     Unicorn: new EvolutionAction("", "evo", "unicorn", ""),
+                                Fey: new EvolutionAction("", "evo", "fey", ""), // forest only
+                                    Dryad: new EvolutionAction("", "evo", "dryad", ""),
+                                    Satyr: new EvolutionAction("", "evo", "satyr", ""),
+                                Heat: new EvolutionAction("", "evo", "heat", ""), // volcanic only
+                                    Phoenix: new EvolutionAction("", "evo", "phoenix", ""),
+                                    Salamander: new EvolutionAction("", "evo", "salamander", ""),
+                                Polar: new EvolutionAction("", "evo", "polar", ""), // tundra only
+                                    Yeti: new EvolutionAction("", "evo", "yeti", ""),
+                                    Wendigo: new EvolutionAction("", "evo", "wendigo", ""),
+                                Sand: new EvolutionAction("", "evo", "sand", ""), // desert only
+                                    Tuskin: new EvolutionAction("", "evo", "tuskin", ""),
+                                    Kamel: new EvolutionAction("", "evo", "kamel", ""),
 
                             Eggshell: new EvolutionAction("", "evo", "eggshell", ""),
                                 Endothermic: new EvolutionAction("", "evo", "endothermic", ""),
@@ -4455,6 +4848,7 @@
 
             NeutronMission: new Action("Neutron Mission", "interstellar", "neutron_mission", "int_neutron"),
             NeutronMiner: new Action("Neutron Miner", "interstellar", "neutron_miner", "int_neutron"),
+            NeutronCitadel: new Action("Neutron Citadel Station", "interstellar", "citadel", "int_neutron"),
 
             Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole"),
             BlackholeFarReach: new Action("Blackhole Far Reach", "interstellar", "far_reach", "int_blackhole"),
@@ -4681,6 +5075,26 @@
         races.unicorn.evolutionTree = [e.Unicorn].concat(celestial);
         state.raceGroupAchievementList.push([ races.seraph, races.unicorn ]);
 
+        let fey = [e.Sentience, e.Fey, e.Mammals].concat(bilateralSymmetry);
+        races.dryad.evolutionTree = [e.Dryad].concat(fey);
+        races.satyr.evolutionTree = [e.Satyr].concat(fey);
+        state.raceGroupAchievementList.push([ races.dryad, races.satyr ]);
+
+        let heat = [e.Sentience, e.Heat, e.Mammals].concat(bilateralSymmetry);
+        races.phoenix.evolutionTree = [e.Phoenix].concat(heat);
+        races.salamander.evolutionTree = [e.Salamander].concat(heat);
+        state.raceGroupAchievementList.push([ races.phoenix, races.salamander ]);
+
+        let polar = [e.Sentience, e.Polar, e.Mammals].concat(bilateralSymmetry);
+        races.yeti.evolutionTree = [e.Yeti].concat(polar);
+        races.wendigo.evolutionTree = [e.Wendigo].concat(polar);
+        state.raceGroupAchievementList.push([ races.yeti, races.wendigo ]);
+
+        let sand = [e.Sentience, e.Sand, e.Mammals].concat(bilateralSymmetry);
+        races.tuskin.evolutionTree = [e.Tuskin].concat(sand);
+        races.kamel.evolutionTree = [e.Kamel].concat(sand);
+        state.raceGroupAchievementList.push([ races.tuskin, races.kamel ]);
+
         let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
         races.arraak.evolutionTree = [e.Arraak].concat(endothermic);
         races.pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
@@ -4708,6 +5122,30 @@
         resetProductionState();
     }
 
+    function resetWarSettings() {
+        settings.foreignSpyManage = true;
+        settings.foreignHireMercMoneyStoragePercent = 90;
+        settings.foreignHireMercCostLowerThan = 50000;
+
+        settings.foreignAttack0 = true;
+        settings.foreignOccupy0 = true;
+        settings.foreignSpy0 = true;
+        settings.foreignSpyMax0 = 3;
+        settings.foreignSpyOp0 = "rrobin";
+
+        settings.foreignAttack1 = true;
+        settings.foreignOccupy1 = true;
+        settings.foreignSpy1 = true;
+        settings.foreignSpyMax1 = 3;
+        settings.foreignSpyOp1 = "rrobin";
+
+        settings.foreignAttack2 = true;
+        settings.foreignOccupy2 = true;
+        settings.foreignSpy2 = true;
+        settings.foreignSpyMax2 = 3;
+        settings.foreignSpyOp2 = "rrobin";
+    }
+
     function resetWarState() {
         state.warManager.clearCampaignList();
 
@@ -4719,9 +5157,16 @@
     }
 
     function resetGeneralSettings() {
+        // None at the moment - moved to government settings
+    }
+
+    function resetGovernmentSettings() {
         settings.generalMinimumTaxRate = 20;
         settings.generalMinimumMorale = 105;
         settings.generalMaximumMorale = 200;
+        settings.govManage = false;
+        settings.govInterim = governmentTypes.democracy.id;
+        settings.govFinal = governmentTypes.technocracy.id;
     }
 
     function resetEvolutionSettings() {
@@ -5018,6 +5463,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAttractor);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalCarport);
 
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronCitadel);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
@@ -5096,7 +5542,8 @@
     initialiseState();
 
     var settingsSections = ["generalSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
-                            "productionSettingsCollapsed", "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed"];
+                            "productionSettingsCollapsed", "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
+                            "governmentSettingsCollapsed"];
     
     function updateStateFromSettings() {
         updateStandAloneSettings();
@@ -5497,6 +5944,7 @@
         addSetting("jobQuarryWeighting", 50);
         addSetting("jobScavengerWeighting", 50);
 
+        addSetting("masterScriptToggle", true);
         addSetting("autoEvolution", defaultAllOptionsEnabled);
         addSetting("autoAchievements", false);
         addSetting("autoChallenge", false);
@@ -5536,6 +5984,31 @@
         addSetting("generalMinimumTaxRate", 20);
         addSetting("generalMinimumMorale", 105)
         addSetting("generalMaximumMorale", 200);
+        addSetting("govManage", false);
+        addSetting("govInterim", governmentTypes.democracy.id);
+        addSetting("govFinal", governmentTypes.technocracy.id);
+
+        addSetting("foreignSpyManage", true);
+        addSetting("foreignHireMercMoneyStoragePercent", 90);
+        addSetting("foreignHireMercCostLowerThan", 50000);
+
+        addSetting("foreignAttack0", true);
+        addSetting("foreignOccupy0", true);
+        addSetting("foreignSpy0", true);
+        addSetting("foreignSpyMax0", 3);
+        addSetting("foreignSpyOp0", "rrobin");
+
+        addSetting("foreignAttack1", true);
+        addSetting("foreignOccupy1", true);
+        addSetting("foreignSpy1", true);
+        addSetting("foreignSpyMax1", 3);
+        addSetting("foreignSpyOp1", "rrobin");
+
+        addSetting("foreignAttack2", true);
+        addSetting("foreignOccupy2", true);
+        addSetting("foreignSpy2", true);
+        addSetting("foreignSpyMax2", 3);
+        addSetting("foreignSpyOp2", "rrobin");
 
         addSetting("userEvolutionTargetName", "auto");
 
@@ -5602,7 +6075,7 @@
             state.evolutionTarget = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
             state.evolutionFallback = races.antid;
 
-            console.log("Targeting user specified race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
+            gameLogSuccess(`Attempting user chosen evolution of ${state.evolutionTarget.name}`);
         } else if (state.evolutionTarget === null) {
             // User has automatic race selection enabled - Antids or autoAchievements
             state.evolutionTarget = races.antid;
@@ -5657,7 +6130,7 @@
                 if (fallbackGroup.group != null) { state.evolutionFallback = fallbackGroup.race; }
             }
 
-            console.log("Script chosen race: " + state.evolutionTarget.name + " with fallback race of " + state.evolutionFallback.name);
+            gameLogSuccess(`Attempting evolution of ${state.evolutionTarget.name}`);
         }
 
         // Calculate the maximum RNA and DNA required to evolve and don't build more than that
@@ -5746,16 +6219,13 @@
             let evObj = document.createEvent("Events");
             evObj.initEvent("mouseover", true, false);
             document.getElementById(selectedPlanet).dispatchEvent(evObj);
-            // @ts-ignore
-            document.getElementById(selectedPlanet).children[0].click()
+            logClick(document.getElementById(selectedPlanet).children[0], "select planet");
         }
     }
 
     function evolutionPlanetSelection (potentialPlanets, planetType) {
         for (let i = 0; i < potentialPlanets.length; i++) {
             if (potentialPlanets[i].id.startsWith(planetType)) {
-                // @ts-ignore
-                //potentialPlanets[i].children[0].click();
                 return potentialPlanets[i].id;
             }
         }
@@ -5846,18 +6316,104 @@
 
     //#endregion Auto Crafting
 
+    //#region Manage Government
+
+    function manageGovernment() {
+        if (!settings.govManage) { return; }
+
+        let gm = state.governmentManager;
+        if (!gm.isEnabled()) { return; }
+
+        // Check and set final government if possible
+        if (gm.currentGovernment === settings.govFinal) { return; }
+
+        if (gm.currentGovernment !== settings.govFinal && gm.isGovernmentUnlocked(settings.govFinal)) {
+            gm.setGovernment(settings.govFinal);
+            return;
+        }
+
+        // Check and set interim government if possible
+        if (gm.currentGovernment === settings.govInterim) { return; }
+
+        if (gm.currentGovernment !== settings.govInterim && gm.isGovernmentUnlocked(settings.govInterim)) {
+            gm.setGovernment(settings.govInterim);
+            return;
+        }
+    }
+
+    //#endregion Manage Government
+
+    function manageSpies() {
+        if (!settings.foreignSpyManage) { return; }
+
+        let foreignVue = getVueById("foreign");
+        
+        if (foreignVue === undefined) { return; }
+        if (!game.global.tech['spy'] || !foreignVue.vis()) { return; }
+
+        buySpyWithMyLittleEye(foreignVue, 0);
+        buySpyWithMyLittleEye(foreignVue, 1);
+        buySpyWithMyLittleEye(foreignVue, 2);
+
+        if (!state.spyManager.isUnlocked()) { return; }
+
+        performEspionageOperation(0);
+        performEspionageOperation(1);
+        performEspionageOperation(2);
+    }
+
+    /**
+     * @param {{ spy_disabled: (arg0: any) => any; spy: (arg0: any) => void; }} foreignVue
+     * @param {number} govIndex
+     */
+    function buySpyWithMyLittleEye(foreignVue, govIndex) {
+        let govProp = "gov" + govIndex;
+        if (!settings[`foreignSpy${govIndex}`]) { return; } // Setting not enabled
+        if (game.global.civic.foreign[govProp].occ) { return; } // Government is occupied
+        if (foreignVue.spy_disabled(govIndex)) { return; } // We can't train a spy as the button is disabled (cost or already training)
+
+        // If we haven't reached the max number of spies allowed
+        if (settings[`foreignSpyMax${govIndex}`] < 0 || (game.global.civic.foreign[govProp].spy < settings[`foreignSpyMax${govIndex}`])) {
+            gameLogSuccess(`Training a spy to send against ${getGovName(govIndex)}`);
+            foreignVue.spy(govIndex);
+        }
+    }
+
+    /**
+     * @param {number} govIndex
+     */
+    function performEspionageOperation(govIndex) {
+        let govProp = "gov" + govIndex;
+        if (game.global.tech['spy'] < 2) { return; } // Is espionage unlocked?
+        if (game.global.civic.foreign[govProp].occ) { return; }
+
+        if (settings[`foreignSpyOp${govIndex}`] !== espionageTypes.none.id && game.global.civic.foreign[govProp].spy > 0) {
+            state.spyManager.performEspionage(govIndex, settings[`foreignSpyOp${govIndex}`]);
+        }
+    }
+
     //#region Auto Battle
 
     function autoBattle() {
+        if (!settings.autoFight) { return; }
+        if (!state.warManager.isUnlocked()) { return; }
 
+        if (resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100 && state.warManager.currentSoldiers < state.warManager.maxSoldiers) {
+            let cost = Math.round((1.24 ** game.global.civic.garrison.workers) * 75) - 50;
+            if (cost > 25000){
+                cost = 25000;
+            }
+            if (game.global.civic.garrison.m_use > 0){
+                cost *= 1.1 ** game.global.civic.garrison.m_use;
+            }
+            if (game.global.race['brute']){
+                cost = cost / 2;
+            }
 
-        // if (resources.money.storageRatio > 0.98 && state.warManager.currentSoldiers < state.warManager.maxSoldiers - 6) {
-        //     state.warManager.hireMercenary();
-        // }
-
-
-        if (!state.warManager.isUnlocked()) {
-            return;
+            if (cost < settings.foreignHireMercCostLowerThan) {
+                gameLogSuccess("Hiring a mercenary to join the garrison");
+                state.warManager.hireMercenary();
+            }
         }
 
         // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
@@ -5865,35 +6421,74 @@
             state.warManager.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
             return;
         }
+
+        let govOccupyIndex = -1;
+        let govAttackIndex = -1;
+        let govUnoccupyIndex = -1;
+
+        // Check if there is an unoccupied foreign power that we can occupy
+        if (settings.foreignOccupy2 && !game.global.civic.foreign[`gov2`].occ) {
+            govOccupyIndex = 2;
+        } else if (settings.foreignOccupy1 && !game.global.civic.foreign[`gov1`].occ) {
+            govOccupyIndex = 1;
+        } else if (settings.foreignOccupy0 && !game.global.civic.foreign[`gov0`].occ) {
+            govOccupyIndex = 0;
+        }
         
+        // Find someone that we are allowed to attack. Only check non-occupied foreign powers
+        if (settings.foreignAttack0 && !game.global.civic.foreign[`gov0`].occ) {
+            govAttackIndex = 0;
+        } else if (settings.foreignAttack1 && !game.global.civic.foreign[`gov1`].occ) {
+            govAttackIndex = 1;
+        } else if (settings.foreignAttack2 && !game.global.civic.foreign[`gov2`].occ) {
+            govAttackIndex = 2;
+        }
+
+        // Check if there is an already occupied foreign power that we can unoccupy, then attack to occupy again
+        if (settings.foreignOccupy0 && settings.foreignAttack0 && game.global.civic.foreign[`gov0`].occ) {
+            govUnoccupyIndex = 0;
+        } else if (settings.foreignOccupy1 && settings.foreignAttack1 && game.global.civic.foreign[`gov1`].occ) {
+            govUnoccupyIndex = 1;
+        } else if (settings.foreignOccupy2 && settings.foreignAttack2 && game.global.civic.foreign[`gov2`].occ) {
+            govUnoccupyIndex = 2;
+        }
+
+        // If there is no one to attack or occupy then return
+        if (govOccupyIndex === -1 && govAttackIndex === -1 && govUnoccupyIndex === -1) { return; }
+
         // If we're switching attack types this loop then don't launch an attack. Wait for the UI to catch up (returns true when we are at the right attack type)
-        if (!state.warManager.switchToBestAttackType()) {
-            return;
-        }
-
-        // Don't launch an attack until we are happy with our battalion size (returns true if we've added a battalion)
-        let maxSoldiers = state.warManager.maxSoldiersForAttackType;
-        if (state.warManager.currentBattalion < maxSoldiers && state.warManager.currentSoldiers > state.warManager.currentBattalion) {
-            let soldiersToAdd = Math.min(maxSoldiers - state.warManager.currentBattalion, state.warManager.currentSoldiers - state.warManager.currentBattalion);
-
-            if (soldiersToAdd > 0) {
-                if (state.warManager.addBattalion(soldiersToAdd)) {
-                    return;
-                }
-            }
-        } else if (state.warManager.currentBattalion > maxSoldiers) {
-            let soldiersToRemove = state.warManager.currentBattalion - maxSoldiers;
-
-            if (soldiersToRemove > 0) {
-                if (state.warManager.removeBattalion(soldiersToRemove)) {
-                    return;
-                }
-            }
-        }
+        // If we are allowed to occupy a foreign power then we can perform attacks up to seige; otherwise we can only go up to assault so that we don't occupy them
+        if (!state.warManager.switchToBestAttackType(govOccupyIndex, govAttackIndex, govUnoccupyIndex)) { return; }
+        if (state.warManager.selectedGovAttackIndex === -1) { return; }
 
         // If we have solders, they're not wounded and they're ready to go, then charge!
         if (state.warManager.maxSoldiers !== 0 && state.warManager.woundedSoldiers === 0 && state.warManager.currentSoldiers === state.warManager.maxSoldiers) {
-            state.warManager.launchCampaign();
+            // Adjust our battalion size. Using the vue this is instantanious so we don't need to return to give time for updates
+            let maxSoldiers = state.warManager.getMaxSoldiersForAttackType(state.warManager.selectedGovAttackIndex);
+            if (state.warManager.currentBattalion < maxSoldiers && state.warManager.currentSoldiers > state.warManager.currentBattalion) {
+                let soldiersToAdd = Math.min(maxSoldiers - state.warManager.currentBattalion, state.warManager.currentSoldiers - state.warManager.currentBattalion);
+
+                if (soldiersToAdd > 0) {
+                    state.warManager.addBattalion(soldiersToAdd);
+                }
+            } else if (state.warManager.currentBattalion > maxSoldiers) {
+                let soldiersToRemove = state.warManager.currentBattalion - maxSoldiers;
+
+                if (soldiersToRemove > 0) {
+                    state.warManager.removeBattalion(soldiersToRemove);
+                }
+            }
+
+            // Log the interaction
+            if (govOccupyIndex >= 0 && state.warManager.campaignList[game.global.civic.garrison.tactic].id === "Siege") {
+                gameLogSuccess(`Launching ${state.warManager.attackType} campaign for occupation against ${getGovName(govOccupyIndex)}`)
+            } else if (govAttackIndex >= 0) {
+                gameLogSuccess(`Launching ${state.warManager.attackType} campaign against ${getGovName(govAttackIndex)}`)
+            } else {
+                gameLogSuccess(`Unoccupying ${getGovName(govUnoccupyIndex)}`)
+            }
+
+            state.warManager.launchCampaign(state.warManager.selectedGovAttackIndex);
         }
     }
 
@@ -6233,7 +6828,7 @@
     //#region Auto Tax
 
     function autoTax() {
-        let taxVue = getVue('#tax_rates');
+        let taxVue = getVueById('tax_rates');
 
         if (taxVue === undefined) {
             return;
@@ -6250,7 +6845,7 @@
         let currentMorale = moraleInstance.current;
 
         let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.count
-            + (state.spaceBuildings.RedVrCenter.count * 2) + (state.projects.Monument.level * 2);
+            + (state.spaceBuildings.RedVrCenter.stateOnCount * 2) + (state.projects.Monument.level * 2);
         if (game.global.tech[techSuperstar]) {
             maxMorale += state.jobs.Entertainer.count;
         }
@@ -6261,14 +6856,38 @@
 
         maxMorale = Math.min(maxMorale, settings.generalMaximumMorale);
 
-        if (currentTaxRate < 50 &&
+        // Max tax rate calculation
+        let extreme = game.global.tech['currency'] && game.global.tech['currency'] >= 5 ? true : false;
+        let maxTaxRate = game.global.civic.govern.type === 'oligarchy' ? 40 : 30;
+        if (extreme || game.global.race['terrifying']) {
+            maxTaxRate += 20;
+        }
+
+        // Min tax rate calculation
+        let minTaxRate = 10;
+
+        if (extreme || game.global.race['terrifying']) {
+            minTaxRate = 0;
+        }
+
+        // Noble race adjustments to min and max tax rate calculations - can only set tax between 10 and 20 inclusive
+        if (game.global.race['noble']) {
+            if (maxTaxRate > 20) {
+                maxTaxRate = 20;
+            }
+            if (minTaxRate < 10) {
+                minTaxRate = 10;
+            }
+        }
+
+        if (currentTaxRate < maxTaxRate &&
                 ((currentTaxRate < settings.generalMinimumTaxRate && resources.Money.storageRatio < 0.98)
                 || (currentMorale > settings.generalMinimumMorale && currentMorale >= maxMorale)
                 || (currentMorale <= settings.generalMinimumMorale && currentTaxRate < 26))) {
             taxVue.add();
         }
 
-        if (currentTaxRate > 0
+        if (currentTaxRate > minTaxRate
                 && (currentTaxRate > settings.generalMinimumTaxRate || resources.Money.storageRatio >= 0.98)
                 && (currentMorale < maxMorale - 1 || (currentMorale < settings.generalMinimumMorale && currentTaxRate > 26))) {
             taxVue.sub();
@@ -6602,8 +7221,7 @@
         let launchMissilesBtn = document.querySelector('#mad > div > div:nth-child(3) .button');
         
         if (state.goal !== "PreparingMAD" || (state.goal === "PreparingMAD" && launchMissilesBtn["disabled"])) {
-            // @ts-ignore
-            armMissilesBtn.click();
+            logClick(armMissilesBtn, "arm missiles");
             state.goal = "PreparingMAD";
             return; // Give the UI time to update
         }
@@ -6612,8 +7230,7 @@
             // Push... the button
             console.log("Soft resetting game with MAD");
             state.goal = "GameOverMan";
-            // @ts-ignore
-            launchMissilesBtn.click();
+            logClick(launchMissilesBtn, "launch missiles");
         }
     }
 
@@ -6673,7 +7290,7 @@
             return;
         }
         
-        let vue = getVue("#arpaSequence");
+        let vue = getVueById("arpaSequence");
         if (vue !== undefined) {
             vue.novo();
         }
@@ -6729,7 +7346,7 @@
 
                     currentMoney += sellValue;
                     currentResourceQuantity -= tradeQuantity;
-                    sellBtn.click();
+                    logClick(sellBtn, "automarket sell " + resource.id);
                 }
             }
 
@@ -6751,7 +7368,7 @@
 
                     currentMoney -= buyValue;
                     currentResourceQuantity += tradeQuantity;
-                    buyBtn.click();
+                    logClick(buyBtn, "automarket buy " + resource.id);
                 }
             }
         }
@@ -6857,6 +7474,7 @@
 
             // We specifically want to build a target building. Don't build anything else that uses the same resources
             if (targetBuilding !== null) {
+                //@ts-ignore
                 if (targetBuilding.resourceRequirements.some(r => building.resourceRequirements.includes(r))) {
                     log("autoBuild", building.settingId + " DOES conflict with target building " + targetBuilding.settingId);
                     continue;
@@ -7000,16 +7618,20 @@
                 }
 
                 if (itemId === settings.userResearchUnification) {
-                    // use the user's override choice
-                    log("autoResearch", "Picking user's choice of unification: " + itemId);
-                    click = true;
+                    // use the user's override choice if it is "researchable"
+                    if (isUnificationPossible(itemId)) {
+                        log("autoResearch", "Picking user's choice of unification: " + itemId);
+                        click = true;
+                    }
                 }
 
                 if (settings.userResearchUnification === "auto") {
                     // Don't reject world unity. We want the +25% resource bonus
                     if (itemId === "tech-wc_money" || itemId === "tech-wc_morale"|| itemId === "tech-wc_conquest") {
-                        log("autoResearch", "Picking: " + itemId);
-                        click = true;
+                        if (isUnificationPossible(itemId)) {
+                            log("autoResearch", "Picking: " + itemId);
+                            click = true;
+                        }
                     }
                 }
 
@@ -7023,6 +7645,8 @@
             }
 
             if (click && techIds[itemId].click()) {
+                gameLogSuccess(`Researching ${techIds[itemId].title}`);
+
                 // The unification techs are special as they are always "clickable" even if they can't be afforded.
                 // We don't want to continually remove the poppers if the script is clicking one every second that
                 // it can't afford
@@ -7031,6 +7655,24 @@
                 }
                 return;
             }
+        }
+    }
+
+    /**
+     * @param {string} unificationTechId
+     */
+    function isUnificationPossible(unificationTechId) {
+        if (unificationTechId === "tech-wc_reject") {
+            // We can always reject unity
+            return true;
+        } else if (unificationTechId === "tech-wc_money") {
+            return resources.Money.currentQuantity >= techIds[unificationTechId].definition.cost.Money();
+        } else if (unificationTechId === "tech-wc_morale") {
+            let moraleInstance = game.global.city["morale"];
+            if (!moraleInstance) { return false; }
+            return moraleInstance.current >= techIds[unificationTechId].definition.cost.Morale();
+        } else if (unificationTechId === "tech-wc_conquest") {
+            return techIds[unificationTechId].definition.cost.Army();
         }
     }
 
@@ -7642,6 +8284,7 @@
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
             state.goal = "Standard";
+            updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
         }
         
         if (settings.minimumMoneyPercentage > 0) {
@@ -7681,6 +8324,8 @@
     }
 
     function automate() {
+        // This is a hack to check that the entire page has actually loaded. The queueColumn is one of the last bits of the DOM
+        // so if it is there then we are good to go. Otherwise, wait a little longer for the page to load.
         if (document.getElementById("queueColumn") === null) {
             return;
         }
@@ -7688,6 +8333,7 @@
         // Setup in the first loop only
         if (state.loopCounter === 1) {
             let tempTech = {};
+            //@ts-ignore
             let technologies = Object.entries(game.actions.tech);
             for (const [technology, action] of technologies) {
                 tempTech[technology] = new Technology(action);
@@ -7719,6 +8365,10 @@
         updateState();
         updateUI();
 
+        // The user has turned off the master toggle. Stop taking any actions on behalf of the player.
+        // We've still updated the UI etc. above; just not performing any actions.
+        if (!settings.masterScriptToggle) { return; }
+
         if (modifierKeyPressed()) {
             return;
         }
@@ -7733,9 +8383,9 @@
                 state.allResourceList[i].calculatedRateOfChange = state.allResourceList[i].rateOfChange;
             }
 
-            if (settings.autoFight) {
-                autoBattle();
-            }
+            manageGovernment();
+            autoBattle();
+
             if (settings.autoARPA) {
                 autoArpa();
             }
@@ -7784,6 +8434,8 @@
             if (settings.autoAssembleGene && !settings.genesAssembleGeneAlways) {
                 autoAssembleGene();
             }
+
+            manageSpies();
         }
     }
 
@@ -7826,12 +8478,12 @@
 
     function addScriptStyle() {
         let styles = `
-            .scriptlastcolumn:after { float: right; content: "\\21c5"; }
+            .script-lastcolumn:after { float: right; content: "\\21c5"; }
             .ui-sortable-helper { display: table; }
-            .scriptdraggable { cursor: move; cursor: grab; }
+            .script-draggable { cursor: move; cursor: grab; }
             tr:active, tr.ui-sortable-helper { cursor: grabbing !important; }
 
-            .scriptcollapsible {
+            .script-collapsible {
                 background-color: #444;
                 color: white;
                 cursor: pointer;
@@ -7843,11 +8495,11 @@
                 font-size: 15px;
             }
             
-            .scriptcontentactive, .scriptcollapsible:hover {
+            .script-contentactive, .script-collapsible:hover {
                 background-color: #333;
             }
             
-            .scriptcollapsible:after {
+            .script-collapsible:after {
                 content: '\\002B';
                 color: white;
                 font-weight: bold;
@@ -7855,11 +8507,11 @@
                 margin-left: 5px;
             }
             
-            .scriptcontentactive:after {
+            .script-contentactive:after {
                 content: "\\2212";
             }
             
-            .scriptcontent {
+            .script-content {
                 padding: 0 18px;
                 display: none;
                 //max-height: 0;
@@ -7868,10 +8520,74 @@
                 //background-color: #f1f1f1;
             }
             
-            .scriptsearchsettings {
+            .script-searchsettings {
                 width: 100%;
                 margin-top: 20px;
                 margin-bottom: 10px;
+            }
+
+            /* Open script options button */
+            .s-options-button {
+                padding-right: 2px;
+                cursor: pointer;
+            }
+
+            /* The Modal (background) */
+            .script-modal {
+              display: none; /* Hidden by default */
+              position: fixed; /* Stay in place */
+              z-index: 100; /* Sit on top */
+              left: 0;
+              top: 0;
+              width: 100%; /* Full width */
+              height: 100%; /* Full height */
+              background-color: rgb(0,0,0); /* Fallback color */
+              background-color: rgba(10,10,10,.86); /* Blackish w/ opacity */
+            }
+            
+            /* Modal Content/Box */
+            .script-modal-content {
+                position: relative;
+                background-color: #1f2424;
+                margin: auto;
+                margin-top: 50px;
+                margin-bottom: 50px;
+                //margin-left: 10%;
+                //margin-right: 10%;
+                padding: 0px;
+                //width: 80%;
+                width: 900px;
+                max-height: 90%;
+                border-radius: .5rem;
+                text-align: center;
+            }
+            
+            /* The Close Button */
+            .script-modal-close {
+              float: right;
+              font-size: 28px;
+              margin-top: 20px;
+              margin-right: 20px;
+            }
+            
+            .script-modal-close:hover,
+            .script-modal-close:focus {
+              cursor: pointer;
+            }
+
+            /* Modal Header */
+            .script-modal-header {
+              padding: 4px 16px;
+              margin-bottom: .5rem;
+              border-bottom: #ccc solid .0625rem;
+              text-align: center;
+            }
+            
+            /* Modal Body */
+            .script-modal-body {
+                padding: 2px 16px;
+                text-align: center;
+                overflow: auto;
             }
         `
 
@@ -7905,7 +8621,7 @@
         loadJQueryUI(() => {
             // Work to do after the library loads.
             buildScriptSettings();
-          });  
+          });
     }
 
     function buildScriptSettings() {
@@ -7913,13 +8629,15 @@
 
         let scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
         $("#localization").parent().append(scriptContentNode);
+        let parentNode = $('#script_settings');
 
         buildImportExport();
         buildGeneralSettings();
+        buildGovernmentSettings(parentNode, true);
         buildEvolutionSettings();
         buildTriggerSettings();
         buildResearchSettings();
-        buildWarSettings();
+        buildWarSettings(parentNode, true);
         buildMarketSettings();
         buildStorageSettings();
         buildProductionSettings();
@@ -7927,16 +8645,16 @@
         buildBuildingSettings();
         buildProjectSettings();
 
-        let collapsibles = document.getElementsByClassName("scriptcollapsible");
+        let collapsibles = document.getElementsByClassName("script-collapsible");
         for (let i = 0; i < collapsibles.length; i++) {
             collapsibles[i].addEventListener("click", function() {
-                this.classList.toggle("scriptcontentactive");
+                this.classList.toggle("script-contentactive");
                 let content = this.nextElementSibling;
                 if (content.style.display === "block") {
                     settings[collapsibles[i].id] = true; 
                     content.style.display = "none";
 
-                    let search = content.getElementsByClassName("scriptsearchsettings");
+                    let search = content.getElementsByClassName("script-searchsettings");
                     if (search.length > 0) {
                         search[0].value = "";
                         filterBuildingSettingsTable();
@@ -7969,6 +8687,7 @@
                 if (saveState && 'scriptName' in saveState && saveState.scriptName === "TMVictor") {
                     console.log("Importing script settings");
                     settings = saveState;
+                    state.triggerManager.clearPriorityList(); // Triggers are special. We save them directly onto the settings object.
                     updateStateFromSettings();
                     updateSettingsFromState();
                     $('#autoScriptContainer').remove();
@@ -7990,11 +8709,14 @@
     }
 
     function updateSettingsUI() {
+        let parentNode = $("#script_settings");
+
         updateGeneralSettingsContent();
+        updateGovernmentSettingsContent(true);
         updateEvolutionSettingsContent();
         updateTriggerSettingsContent();
         updateResearchSettingsContent();
-        updateWarSettingsContent();
+        updateWarSettingsContent(true);
         updateMarketSettingsContent();
         updateStorageSettingsContent();
         updateProductionSettingsContent();
@@ -8008,8 +8730,8 @@
 
         scriptContentNode.append(
             '<div id="script_' + sectionId + 'Settings" style="margin-top: 10px;">' +
-                '<h3 id="' + sectionId + 'SettingsCollapsed" class="scriptcollapsible text-center has-text-success">' + sectionName + ' Settings</h3>' +
-                '<div class="scriptcontent">' +
+                '<h3 id="' + sectionId + 'SettingsCollapsed" class="script-collapsible text-center has-text-success">' + sectionName + ' Settings</h3>' +
+                '<div class="script-content">' +
                     '<div style="margin-top: 10px;"><button id="script_reset' + sectionId + '" class="button">Reset ' + sectionName + ' Settings</button></div>' +
                     '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_' + sectionId + 'Content"></div>' +
                 '</div>' +
@@ -8019,13 +8741,57 @@
 
         if (!settings[sectionId + "SettingsCollapsed"]) {
             let element = document.getElementById(sectionId + "SettingsCollapsed");
-            element.classList.toggle("scriptcontentactive");
+            element.classList.toggle("script-contentactive");
             let content = element.nextElementSibling;
             //@ts-ignore
             content.style.display = "block";
         }
 
         $("#script_reset" + sectionId).on("click", function() {genericResetFunction(resetFunction, sectionName)});
+    }
+
+    function buildSettingsSection2(parentNode, isMainSettings, sectionId, sectionName, resetFunction, updateSettingsContentFunction) {
+        let mainSectionId = sectionId;
+        let computedSectionId = sectionId;
+        let contentContainerNode = parentNode;
+
+        if (!isMainSettings) {
+            computedSectionId = "c_" + sectionId;
+        }
+
+        if (isMainSettings) {
+            let headerNode = $(
+                '<div id="script_' + mainSectionId + 'Settings" style="margin-top: 2px;">' +
+                    '<h3 id="' + mainSectionId + 'SettingsCollapsed" class="script-collapsible text-center has-text-success">' + sectionName + ' Settings</h3>' +
+                '</div>'
+            );
+
+            contentContainerNode = $(
+                '<div class="script-content">' +
+                    '<div style="margin-top: 2px;"><button id="script_reset' + mainSectionId + '" class="button">Reset ' + sectionName + ' Settings</button></div>' +
+                '</div>'
+            );
+
+            headerNode.append(contentContainerNode);
+            parentNode.append(headerNode);
+
+            $("#script_reset" + mainSectionId).on("click", function() { genericResetFunction(resetFunction, sectionName) });
+        }
+
+        let contentNode = $('<div style="margin-top: 2px; margin-bottom: 2px;" id="script_' + computedSectionId + 'Content"></div>');
+        contentContainerNode.append(contentNode);
+
+        updateSettingsContentFunction(isMainSettings);
+
+        if (isMainSettings) {
+            if (!settings[sectionId + "SettingsCollapsed"]) {
+                let element = document.getElementById(mainSectionId + "SettingsCollapsed");
+                element.classList.toggle("script-contentactive");
+                let content = element.nextElementSibling;
+                //@ts-ignore
+                content.style.display = "block";
+            }
+        }
     }
 
     /**
@@ -8088,6 +8854,79 @@
         });
     }
 
+    /**
+     * @param {{ append: (arg0: string) => void; }} node
+     * @param {string} headerText
+     */
+    function addStandardSectionHeader1(node, headerText) {
+        node.append(`<div style="margin: 4px; width: 100%; display: inline-block; text-align: left;"><span class="has-text-success" style="font-weight: bold;">${headerText}</span></div>`)
+    }
+
+    /**
+     * @param {{ append: (arg0: string) => void; }} node
+     * @param {string} headerText
+     */
+    function addStandardSectionHeader2(node, headerText) {
+        node.append(`<div style="margin: 2px; width: 90%; display: inline-block; text-align: left;"><span class="has-text-caution">${headerText}</span></div>`)
+    }
+
+    /**
+     * @param {string} secondaryPrefix
+     * @param {{ append: (arg0: string) => void; }} node
+     * @param {string} settingName
+     * @param {string} labelText
+     * @param {string} hintText
+     */
+    function addStandardSectionSettingsToggle2(secondaryPrefix, node, settingName, labelText, hintText) {
+        let mainSettingName = "script_" + settingName;
+        let computedSettingName = "script_" + secondaryPrefix + settingName;
+        node.append(`<div style="margin-top: 5px; width: 80%; display: inline-block; text-align: left;"><label title="${hintText}" tabindex="0" class="switch" id="${computedSettingName}"><input type="checkbox"> <span class="check"></span><span style="margin-left: 10px;">${labelText}</span></label></div>`)
+
+        let toggleNode = $(`#${computedSettingName} > input`);
+        if (settings[settingName]) {
+            toggleNode.prop('checked', true);
+        }
+    
+        toggleNode.on('change', function(e) {
+            settings[settingName] = e.currentTarget.checked;
+            updateSettingsFromState();
+
+            if (secondaryPrefix !== "") {
+                // @ts-ignore
+                document.getElementById(mainSettingName).children[0].checked = e.currentTarget.checked;
+            }
+        });
+    }
+
+    /**
+     * @param {string} secondaryPrefix
+     * @param {{append: (arg0: string) => void;}} node
+     * @param {string} settingName
+     * @param {string} labelText
+     * @param {string} hintText
+     */
+    function addStandardSectionSettingsNumber2(secondaryPrefix, node, settingName, labelText, hintText) {
+        let mainSettingName = "script_" + settingName;
+        let computedSettingName = "script_" + secondaryPrefix + settingName;
+        node.append(`<div style="display: inline-block; width: 80%; text-align: left;"><label title="${hintText}" for="${computedSettingName}">${labelText}</label><input id="${computedSettingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;"></input></div>`);
+
+        let textBox = $('#' + computedSettingName);
+        textBox.val(settings[settingName]);
+    
+        textBox.on('change', function() {
+            let parsedValue = getRealNumber(textBox.val());
+            if (!isNaN(parsedValue)) {
+                settings[settingName] = parsedValue;
+                updateSettingsFromState();
+
+                if (secondaryPrefix !== "") {
+                    let mainSetting = $('#' + mainSettingName);
+                    mainSetting.val(settings[settingName]);
+                }
+            }
+        });
+    }
+
     function buildGeneralSettings() {
         let sectionId = "general";
         let sectionName = "General";
@@ -8121,10 +8960,83 @@
 
         // Add any pre table settings
         let preTableNode = $('#script_generalPreTable');
-        addStandardSectionSettingsNumber(preTableNode, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
-        addStandardSectionSettingsNumber(preTableNode, "generalMinimumMorale", "Minimum allowed morale", "Use this to set a minimum allowed morale. Remember that less than 100% can cause riots and weather can cause sudden swings");
-        addStandardSectionSettingsNumber(preTableNode, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
         addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
+    }
+
+    function buildGovernmentSettings(parentNode, isMainSettings) {
+        let sectionId = "government";
+        let sectionName = "Government";
+
+        let resetFunction = function() {
+            //resetGeneralState();
+            resetGovernmentSettings();
+            updateSettingsFromState();
+            updateGovernmentSettingsContent(isMainSettings);
+        };
+
+        buildSettingsSection2(parentNode, isMainSettings, sectionId, sectionName, resetFunction, updateGovernmentSettingsContent);
+    }
+
+    function updateGovernmentSettingsContent(isMainSettings) {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+        let secondaryPrefix = "c_";
+
+        if (isMainSettings) {
+            secondaryPrefix = "";
+        }
+
+        let currentNode = $(`#script_${secondaryPrefix}governmentContent`);
+        currentNode.empty().off("*");
+
+        // Add the pre table section
+        currentNode.append(`<div id="script_${secondaryPrefix}governmentPreTable"></div>`);
+
+        // Add any pre table settings
+        let preTableNode = $(`#script_${secondaryPrefix}governmentPreTable`);
+        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
+        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, "generalMinimumMorale", "Minimum allowed morale", "Use this to set a minimum allowed morale. Remember that less than 100% can cause riots and weather can cause sudden swings");
+        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
+
+        addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, "govManage", "Manage changes of government", "Manage changes of government when they become available");
+
+        // Government selector
+        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govInterim", "Interim Government", "Temporary low tier government until you research your final government choice");
+        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govFinal", "Final Government", "Final government choice. Can be the same as the interim government");
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function buildGovernmentSelectorSetting(secondaryPrefix, parentNode, settingName, displayName, hintText) {
+        let computedSelectId = `script_${secondaryPrefix}${settingName}`;
+        let mainSelectId = `script_${settingName}`;
+        let govNode = $(`<div style="margin-top: 5px; display: inline-block; width: 80%; text-align: left;"><label title="${hintText}" for="${computedSelectId}">${displayName}:</label><select id="${computedSelectId}" style="width: 150px; float: right;"></select></div>`);
+        parentNode.append(govNode);
+
+        let selectNode = $('#' + computedSelectId);
+
+        Object.keys(governmentTypes).forEach(governmentKey => {
+            // Anarchy is a starting government but not one that a player can choose
+            if (governmentKey === governmentTypes.anarchy.id) {
+                return;
+            }
+
+            let governmentType = governmentTypes[governmentKey];
+
+            let selected = settings[settingName] === governmentType.id ? 'selected="selected"' : "";
+            let optionNode = $(`<option value="${governmentType.id}" ${selected}>${governmentType.name()}</option>`);
+            selectNode.append(optionNode);
+        });
+
+        selectNode.on('change', function() {
+            let value = $(`#${computedSelectId} :selected`).val();
+            settings[settingName] = value;
+            updateSettingsFromState();
+            
+            if (secondaryPrefix !== "") {
+                // @ts-ignore
+                document.getElementById(mainSelectId).value = settings[settingName];
+            }
+        });
     }
 
     function buildEvolutionSettings() {
@@ -8183,7 +9095,7 @@
                 document.getElementById("script_race_warning").textContent = "";
             }
 
-            let content = document.querySelector('#script_evolutionSettings .scriptcontent');
+            let content = document.querySelector('#script_evolutionSettings .script-content');
             // @ts-ignore
             content.style.height = null;
             // @ts-ignore
@@ -8249,7 +9161,7 @@
         let tableBodyNode = $('#script_triggerTableBody');
         let newTableBodyText = "";
 
-        let classAttribute = ' class="scriptdraggable"';
+        let classAttribute = ' class="script-draggable"';
         newTableBodyText += '<tr value="' + trigger.seq + '"' + classAttribute + '><td id="script_trigger_' + trigger.seq + '" style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:10%"></td></tr>';
 
         tableBodyNode.append($(newTableBodyText));
@@ -8265,6 +9177,12 @@
 
         buildTriggerSettingsColumn(trigger);
 
+        let content = document.querySelector('#script_triggerSettings .script-content');
+        // @ts-ignore
+        content.style.height = null;
+        // @ts-ignore
+        content.style.height = content.offsetHeight + "px"
+
         state.triggerManager.resetTargetTriggers();
     }
 
@@ -8276,7 +9194,7 @@
             `<table style="width:100%">
                     <tr><th class="has-text-warning" colspan="1">Trigger</th><th class="has-text-warning" colspan="3">Requirement</th><th class="has-text-warning" colspan="4">Action</th></tr>
                     <tr><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Id</th><th class="has-text-warning" style="width:12.85%">Count</th><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Id</th><th class="has-text-warning" style="width:12.85%">Count</th><th class="has-text-warning" style="width:10%"></th></tr>
-                <tbody id="script_triggerTableBody" class="scriptcontenttbody"></tbody>
+                <tbody id="script_triggerTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
 
@@ -8285,7 +9203,7 @@
 
         for (let i = 0; i < state.triggerManager.priorityList.length; i++) {
             const trigger = state.triggerManager.priorityList[i];
-            let classAttribute = ' class="scriptdraggable"';
+            let classAttribute = ' class="script-draggable"';
             newTableBodyText += '<tr value="' + trigger.seq + '"' + classAttribute + '><td id="script_trigger_' + trigger.seq + '" style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:10%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
@@ -8420,7 +9338,10 @@
             let typeSelectNode = $('<select style ="width:100%"></select>');
 
             Object.keys(tech).forEach(technology => {
-                let title = typeof tech[technology].definition.title === 'string' ? tech[technology].definition.title : tech[technology].definition.title();
+                let title = tech[technology].definition.id;
+                if (game.global.race.species !== speciesProtoplasm) {
+                    title = typeof tech[technology].definition.title === 'string' ? tech[technology].definition.title : tech[technology].definition.title();
+                }
                 let selected = trigger.requirementId === technology ? ' selected="selected"' : "";
                 let typeOptionNode = $('<option value = "' + technology + '"' + selected + '>' + title + '</option>');
                 typeSelectNode.append(typeOptionNode);
@@ -8506,7 +9427,10 @@
             let typeSelectNode = $('<select style ="width:100%"></select>');
 
             Object.keys(tech).forEach(technology => {
-                let title = typeof tech[technology].definition.title === 'string' ? tech[technology].definition.title : tech[technology].definition.title();
+                let title = tech[technology].definition.id;
+                if (game.global.race.species !== speciesProtoplasm) {
+                    title = typeof tech[technology].definition.title === 'string' ? tech[technology].definition.title : tech[technology].definition.title();
+                }
                 let selected = trigger.actionId === technology ? ' selected="selected"' : "";
                 let typeOptionNode = $('<option value = "' + technology + '"' + selected + '>' + title + '</option>');
                 typeSelectNode.append(typeOptionNode);
@@ -8551,8 +9475,14 @@
             updateSettingsFromState();
             updateTriggerSettingsContent();
             state.triggerManager.resetTargetTriggers();
+
+            let content = document.querySelector('#script_triggerSettings .script-content');
+            // @ts-ignore
+            content.style.height = null;
+            // @ts-ignore
+            content.style.height = content.offsetHeight + "px"
         });
-        triggerElement.append($('<span class="scriptlastcolumn"></span>'));
+        triggerElement.append($('<span class="script-lastcolumn"></span>'));
     }
 
     function buildResearchSettings() {
@@ -8657,62 +9587,121 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function buildWarSettings() {
+    function buildWarSettings(parentNode, isMainSettings) {
         let sectionId = "war";
-        let sectionName = "War";
+        let sectionName = "Foreign Affairs";
 
         let resetFunction = function() {
+            resetWarSettings();
             resetWarState();
             updateSettingsFromState();
-            updateWarSettingsContent();
+            updateWarSettingsContent(isMainSettings);
         };
 
-        buildSettingsSection(sectionId, sectionName, resetFunction, updateWarSettingsContent);
+        buildSettingsSection2(parentNode, isMainSettings, sectionId, sectionName, resetFunction, updateWarSettingsContent);
     }
 
-    function updateWarSettingsContent() {
+    function updateWarSettingsContent(isMainSettings) {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+        let secondaryPrefix = "c_";
 
-        let currentNode = $('#script_warContent');
+        if (isMainSettings) {
+            secondaryPrefix = "";
+        }
+
+        let currentNode = $(`#script_${secondaryPrefix}warContent`);
         currentNode.empty().off("*");
+
+        // Foreign powers panel
+        let foreignPowerNode = $(`<div id="script_${secondaryPrefix}foreignPowers"></div>`);
+        currentNode.append(foreignPowerNode);
+
+        addStandardSectionHeader1(foreignPowerNode, "Foreign Powers");
+        updateForeignPowerPanel(secondaryPrefix, foreignPowerNode, 0);
+        updateForeignPowerPanel(secondaryPrefix, foreignPowerNode, 1);
+        updateForeignPowerPanel(secondaryPrefix, foreignPowerNode, 2);
+
+        // Campaign panel
+        addStandardSectionHeader1(currentNode, "Campaigns");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignHireMercMoneyStoragePercent", "Hire mercenary if money storage greater than percent", "Hire a mercenary if money storage is greater than this percent");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignHireMercCostLowerThan", "AND if cost lower than amount", "Combines with the money storage percent setting to determine when to hire mercenaries");
 
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Campaign</th><th class="has-text-warning" style="width:25%">Minimum Attack Rating</th><th class="has-text-warning" style="width:25%">Maximum Rating to Send</th><th class="has-text-warning" style="width:25%"></th></tr>
-                <tbody id="script_warTableBody" class="scriptcontenttbody"></tbody>
+                <tbody id="script_${secondaryPrefix}warTableBody" class="script-contenttbody"></tbody>
             </table>`);
         
-        let warTableBody = $('#script_warTableBody');
+        let warTableBody = $(`#script_${secondaryPrefix}warTableBody`);
         let newTableBodyText = "";
 
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             const campaign = state.warManager.campaignList[i];
-            newTableBodyText += '<tr value="' + campaign.id + '"><td id="script_' + campaign.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
+            newTableBodyText += `<tr value="${campaign.id}"><td id="script_${secondaryPrefix}${campaign.id}Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>`;
         }
         warTableBody.append($(newTableBodyText));
 
         // Build campaign settings rows
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             const campaign = state.warManager.campaignList[i];
-            let warElement = $('#script_' + campaign.id + 'Toggle');
+            let warElement = $(`#script_${secondaryPrefix}${campaign.id}Toggle`);
 
-            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + campaign.name + '</span>');
+            let toggle = $('<span class="has-text-info">' + campaign.name + '</span>');
             warElement.append(toggle);
 
             warElement = warElement.next();
-            warElement.append(buildCampaignRatingSettingsInput(campaign));
+            warElement.append(buildCampaignRatingSettingsInput(secondaryPrefix, campaign));
 
             warElement = warElement.next();
-            warElement.append(buildCampaignMaxRatingSettingsInput(campaign));
+            warElement.append(buildCampaignMaxRatingSettingsInput(secondaryPrefix, campaign));
         }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
+    function updateForeignPowerPanel(secondaryPrefix, parentNode, govIndex) {
+        addStandardSectionHeader2(parentNode, getGovName(govIndex))
+        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, "foreignAttack" + govIndex, "Attack", "Allow attacks against this foreign power. If occupied it will unoccupy just before attacking");
+        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, "foreignOccupy" + govIndex, "Occupy when possible", "Attempts to occupy this foreign power when available");
+        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, "foreignSpy" + govIndex, "Train spies", "Train spies to use against foreign powers");
+        addStandardSectionSettingsNumber2(secondaryPrefix, parentNode, "foreignSpyMax" + govIndex, "Maximum spies", "Maximum spies send against this foreign power");
+        buildSpyOperationSelectorSetting(secondaryPrefix, parentNode, "foreignSpyOp" + govIndex, "Espionage Mission", "Perform this espionage mission whenever available");
+    }
+
+    function buildSpyOperationSelectorSetting(secondaryPrefix, parentNode, settingName, displayName, hintText) {
+        let computedSelectId = `script_${secondaryPrefix}${settingName}`;
+        let mainSelectId = `script_${settingName}`;
+        let div = $(`<div style="margin-top: 5px; display: inline-block; width: 80%; text-align: left;"><label title="${hintText}" for="${computedSelectId}">${displayName}:</label><select id="${computedSelectId}" style="width: 150px; float: right;"></select></div>`);
+        parentNode.append(div);
+
+        let selectNode = $('#' + computedSelectId);
+
+        Object.keys(espionageTypes).forEach(espionageKey => {
+            let espionageType = espionageTypes[espionageKey];
+
+            let selected = settings[settingName] === espionageType.id ? 'selected="selected"' : "";
+            let optionNode = $(`<option value="${espionageType.id}" ${selected}>${espionageType.name()}</option>`);
+            selectNode.append(optionNode);
+        });
+
+        selectNode.on('change', function() {
+            let value = $(`#${computedSelectId} :selected`).val();
+            settings[settingName] = value;
+            updateSettingsFromState();
+            
+            if (secondaryPrefix !== "") {
+                // @ts-ignore
+                document.getElementById(mainSelectId).value = settings[settingName];
+            }
+        });
+    }
+
     /**
      * @param {Campaign} campaign
      */
-    function buildCampaignRatingSettingsInput(campaign) {
-        let campaignMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+    function buildCampaignRatingSettingsInput(secondaryPrefix, campaign) {
+        let mainSettingName = "script_" + campaign.id + "rating";
+        let computedSettingName = "script_" + secondaryPrefix + campaign.id + "rating";
+        let campaignMaxTextBox = $(`<input id="${computedSettingName}" type="text" style="text-align: right; height: 18px; width: 25%;"/>`);
         campaignMaxTextBox.val(settings["btl_" + campaign.id]);
     
         campaignMaxTextBox.on('change', function() {
@@ -8722,6 +9711,11 @@
                 //console.log('Setting max for war ' + war.name + ' to be ' + max);
                 campaign.rating = rating;
                 updateSettingsFromState();
+
+                if (secondaryPrefix !== "") {
+                    let mainSetting = $('#' + mainSettingName);
+                    mainSetting.val(rating);
+                }
             }
         });
 
@@ -8731,8 +9725,10 @@
     /**
      * @param {Campaign} campaign
      */
-    function buildCampaignMaxRatingSettingsInput(campaign) {
-        let campaignMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+    function buildCampaignMaxRatingSettingsInput(secondaryPrefix, campaign) {
+        let mainSettingName = "script_" + campaign.id + "maxRating";
+        let computedSettingName = "script_" + secondaryPrefix + campaign.id + "maxRating";
+        let campaignMaxTextBox = $(`<input id="${computedSettingName}" type="text" style="text-align: right; height: 18px; width: 25%;"/>`);
         campaignMaxTextBox.val(settings["btl_max_" + campaign.id]);
     
         campaignMaxTextBox.on('change', function() {
@@ -8742,6 +9738,11 @@
                 //console.log('Setting max for war ' + war.name + ' to be ' + max);
                 campaign.maxRating = rating;
                 updateSettingsFromState();
+
+                if (secondaryPrefix !== "") {
+                    let mainSetting = $('#' + mainSettingName);
+                    mainSetting.val(rating);
+                }
             }
         });
 
@@ -8789,7 +9790,7 @@
         let currentNode = $('#script_marketContent');
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:15%">Resource</th><th class="has-text-warning" style="width:10%">Buy</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Sell</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Trade For</th><th class="has-text-warning" style="width:10%">Routes</th><th class="has-text-warning" style="width:10%">Trade Away</th><th class="has-text-warning" style="width:10%">Min p/s</th><th style="width:5%"></th></tr>
-                <tbody id="script_marketTableBody" class="scriptcontenttbody"></tbody>
+                <tbody id="script_marketTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
 
@@ -8798,7 +9799,7 @@
 
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             const resource = state.marketManager.priorityList[i];
-            let classAttribute = ' class="scriptdraggable"';
+            let classAttribute = ' class="script-draggable"';
             newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_market_' + resource.id + 'Toggle" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
@@ -8836,7 +9837,7 @@
             marketElement.append(buildMarketSettingsInput(resource, "res_trade_sell_mps_" + resource.id, "autoTradeSellMinPerSecond"));
 
             marketElement = marketElement.next();
-            marketElement.append($('<span class="scriptlastcolumn"></span>'));
+            marketElement.append($('<span class="script-lastcolumn"></span>'));
         }
 
         $('#script_marketTableBody').sortable( {
@@ -8963,7 +9964,7 @@
         let currentNode = $('#script_storageContent');
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Max Crates</th><th class="has-text-warning" style="width:20%">Max Containers</th></tr>
-                <tbody id="script_storageTableBody" class="scriptcontenttbody"></tbody>
+                <tbody id="script_storageTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
 
@@ -8972,7 +9973,7 @@
 
         for (let i = 0; i < state.storageManager.priorityList.length; i++) {
             const resource = state.storageManager.priorityList[i];
-            let classAttribute = ' class="scriptdraggable"';
+            let classAttribute = ' class="script-draggable"';
             newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_storage_' + resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
@@ -8997,7 +9998,7 @@
             storageElement = storageElement.next();
             storageElement.append(buildStorageSettingsInput(resource, "res_containers_m_" + resource.id, "_autoContainersMax"));
 
-            storageElement.append($('<span class="scriptlastcolumn"></span>'));
+            storageElement.append($('<span class="script-lastcolumn"></span>'));
         }
 
         $('#script_storageTableBody').sortable( {
@@ -9106,7 +10107,7 @@
         let currentNode = $('#script_productionContent');
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Fuel</th><th class="has-text-warning" style="width:75%"></th></tr>
-                <tbody id="script_productionTableBodySmelter" class="scriptcontenttbody"></tbody>
+                <tbody id="script_productionTableBodySmelter" class="script-contenttbody"></tbody>
             </table>`
         );
 
@@ -9131,7 +10132,7 @@
             productionElement.append(toggle);
 
             productionElement = productionElement.next();
-            productionElement.append($('<span class="scriptlastcolumn"></span>'));
+            productionElement.append($('<span class="script-lastcolumn"></span>'));
         }
 
         $('#script_productionTableBodySmelter').sortable( {
@@ -9171,7 +10172,7 @@
         let currentNode = $('#script_productionContent');
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
-                <tbody id="script_productionTableBodyFactory" class="scriptcontenttbody"></tbody>
+                <tbody id="script_productionTableBodyFactory" class="script-contenttbody"></tbody>
             </table>`
         );
 
@@ -9289,7 +10290,7 @@
         let currentNode = $('#script_jobContent');
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Job</th><th class="has-text-warning" style="width:25%">1st Pass Max</th><th class="has-text-warning" style="width:25%">2nd Pass Max</th><th class="has-text-warning" style="width:25%">Final Max</th></tr>
-                <tbody id="script_jobTableBody" class="scriptcontenttbody"></tbody>
+                <tbody id="script_jobTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
 
@@ -9298,7 +10299,7 @@
 
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
             const job = state.jobManager.priorityList[i];
-            let classAttribute = job !== state.jobs.Farmer ? ' class="scriptdraggable"' : ' class="unsortable"';
+            let classAttribute = job !== state.jobs.Farmer ? ' class="script-draggable"' : ' class="unsortable"';
             newTableBodyText += '<tr value="' + job._originalId + '"' + classAttribute + '><td id="script_' + job._originalId + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
@@ -9365,7 +10366,7 @@
      * @param {number} breakpoint
      */
     function buildJobSettingsInput(job, breakpoint) {
-        let lastSpan = breakpoint === 3 && job !== state.jobs.Farmer ? '<span class="scriptlastcolumn"></span>' : "";
+        let lastSpan = breakpoint === 3 && job !== state.jobs.Farmer ? '<span class="script-lastcolumn"></span>' : "";
 
         if (job === state.jobs.Farmer || (breakpoint === 3 && (job === state.jobs.Lumberjack || job === state.jobs.QuarryWorker || job === state.jobs.Scavenger))) {
             let span = $('<span>Managed</span>' + lastSpan);
@@ -9438,9 +10439,9 @@
     function updateBuildingTable() {
         let currentNode = $('#script_buildingContent');
         currentNode.append(
-            `<div><input id="script_buildingSearch" class="scriptsearchsettings" type="text" placeholder="Search for buildings.."></div>
+            `<div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings.."></div>
             <table style="width:100%"><tr><th class="has-text-warning" style="width:40%">Building</th><th class="has-text-warning" style="width:20%">Auto Build</th><th class="has-text-warning" style="width:20%">Max Build</th><th class="has-text-warning" style="width:20%">Manage State</th></tr>
-                <tbody id="script_buildingTableBody" class="scriptcontenttbody"></tbody>
+                <tbody id="script_buildingTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
 
@@ -9454,7 +10455,7 @@
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
-            let classAttribute = ' class="scriptdraggable"';
+            let classAttribute = ' class="script-draggable"';
             newTableBodyText += '<tr value="' + building.settingId + '"' + classAttribute + '><td id="script_' + building.settingId + 'Toggle" style="width:40%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
@@ -9606,9 +10607,9 @@
         let checked = building.autoStateEnabled ? " checked" : "";
 
         if (building.hasConsumption()) {
-            toggle = $('<label id=script_bld_s_' + building.settingId + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="scriptlastcolumn"></span>');
+            toggle = $('<label id=script_bld_s_' + building.settingId + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="script-lastcolumn"></span>');
         } else {
-            toggle = $('<span class="scriptlastcolumn"></span>');
+            toggle = $('<span class="script-lastcolumn"></span>');
         }
 
         toggle.on('change', function(e) {
@@ -9715,7 +10716,7 @@
         let currentNode = $('#script_projectContent');
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:50%"></th></tr>
-                <tbody id="script_projectTableBody" class="scriptcontenttbody"></tbody>
+                <tbody id="script_projectTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
 
@@ -9724,7 +10725,7 @@
 
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
-            let classAttribute = ' class="scriptdraggable"';
+            let classAttribute = ' class="script-draggable"';
             newTableBodyText += '<tr value="' + project.id + '"' + classAttribute + '><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:50%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
@@ -9804,15 +10805,16 @@
 
     function createSettingToggle(name, enabledCallBack, disabledCallBack) {
         let elm = $('#autoScriptContainer');
-        let toggle = $('<label tabindex="0" class="switch" id="'+name+'" style=""><input type="checkbox" value=false> <span class="check"></span><span>'+name+'</span></label></br>');
+        let checked = settings[name] ? " checked" : "";
+        let toggle = $(`<label tabindex="0" class="switch" id="${name}" style=""><input type="checkbox" value=${settings[name]}${checked}/> <span class="check"></span><span>${name}</span></label></br>`);
         elm.append(toggle);
+
         if (settings[name]) {
-            toggle.click();
-            toggle.children('input').attr('value', true);
             if (enabledCallBack !== undefined) {
                 enabledCallBack();
             }
         }
+
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
@@ -9836,6 +10838,86 @@
         });
     }
 
+    function updateOptionsUI() {
+        // City district outskirts
+        // if (document.getElementById("s-city-dist-outskirts-options") === null) {
+        //     let sectionNode = $('#city-dist-outskirts h3');
+
+        // Build secondary options buttons if they don't currently exist
+        addOptionUI("s-government-options", "#government div h2", "Government", buildGovernmentSettings);
+        addOptionUI("s-foreign-options", "#foreign div h2", "Foreign Affairs", buildWarSettings);
+    }
+
+    /**
+     * @param {string} optionsId
+     * @param {string} querySelectorText
+     * @param {string} modalTitle
+     * @param {{ (parentNode: any, isMainSettings: any): void; (parentNode: any, isMainSettings: any): void; (arg0: any): void; }} buildContentFunction
+     */
+    function addOptionUI(optionsId, querySelectorText, modalTitle, buildContentFunction) {
+        if (document.getElementById(optionsId) === null) {
+            let sectionNode = $(querySelectorText);
+
+            if (sectionNode.length !== 0) {
+                let newOptionNode = $(`<span id="${optionsId}" class="s-options-button has-text-success">+</span>`);
+                sectionNode.prepend(newOptionNode);
+
+                newOptionNode.on('click', function() {
+                    // Build content
+                    let modalHeader = $('#scriptModalHeader');
+                    modalHeader.empty().off("*");
+                    modalHeader.append(`<span>${modalTitle}</span>`);
+
+                    let modalBody = $('#scriptModalBody');
+                    modalBody.empty().off("*");
+                    buildContentFunction(modalBody);
+
+                    // Show modal
+                    let modal = document.getElementById("scriptModal");
+                    $("html").css('overflow', 'hidden');
+                    modal.style.display = "block";
+                });
+            }
+        }
+    }
+
+    function createOptionsModal() {
+        if (document.getElementById("scriptModal") !== null) {
+            return;
+        }
+
+        let modal = $(`
+<div id="scriptModal" class="script-modal">
+    <span id="scriptModalClose" class="script-modal-close">&times;</span>
+    <div class="script-modal-content">
+        <div id="scriptModalHeader" class="script-modal-header has-text-warning">You should never see this modal header...</div>
+        <div id="scriptModalBody" class="script-modal-body">
+            <p>You should never see this modal body...</p>
+        </div>
+    </div>
+</div>
+`);
+
+        // Append the script modal to the document
+        $(document.body).append(modal);
+
+        // Add the script modal close button action
+        $('#scriptModalClose').on("click", function() {
+            let modal = document.getElementById("scriptModal");
+            modal.style.display = "none";
+            $("html").css('overflow-y', 'scroll');
+        });
+
+        // If the user clicks outside the modal then close it
+        $(window).on("click", function() {
+            let modal = document.getElementById("scriptModal");
+            if (event.target == modal) {
+                modal.style.display = "none";
+                $("html").css('overflow-y', 'scroll');
+            }
+        });
+    }
+
     function updateUI() {
         let resetScrollPositionRequired = false;
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
@@ -9850,6 +10932,9 @@
             createScriptSettings();
         }
         
+        createOptionsModal();
+        updateOptionsUI();
+        
         let autoScriptContainerNode = document.querySelector('#autoScriptContainer');
         if (autoScriptContainerNode.nextSibling !== null) {
             autoScriptContainerNode.parentNode.appendChild(autoScriptContainerNode);
@@ -9857,8 +10942,11 @@
         }
         if ($('#autoScriptInfo').length === 0) {
             let elm = $('#autoScriptContainer');
-            let span = $('<label id="autoScriptInfo">More options available in Settings tab</label></br>');
+            let span = $('<label id="autoScriptInfo">More script options available in Settings tab</label></br>');
             elm.append(span);
+        }
+        if ($('#masterScriptToggle').length === 0) {
+            createSettingToggle('masterScriptToggle');
         }
         if ($('#autoEvolution').length === 0) {
             createSettingToggle('autoEvolution');
@@ -10038,12 +11126,9 @@
      */
     function createCraftToggle(craftable) {
         let resourceSpan = $('#res' + craftable.id);
-        let toggle = $('<label tabindex="0" class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:8%;"><input type="checkbox" value=false> <span class="check" style="height:5px;"></span></label>');
+        let checked = craftable.autoCraftEnabled ? " checked" : "";
+        let toggle = $(`<label tabindex="0" class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:8%;"><input type="checkbox" value=${craftable.autoCraftEnabled}${checked}/> <span class="check" style="height:5px;"></span></label>`);
         resourceSpan.append(toggle);
-        if (craftable.autoCraftEnabled) {
-            toggle.click();
-            toggle.children('input').attr('value', true);
-        }
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
@@ -10071,7 +11156,7 @@
     function createBuildingToggle(building) {
         let checked = building.autoBuildEnabled ? " checked" : "";
         let buildingElement = $('#' + building.settingId);
-        let toggle = $('<label id=script_bat1_' + building.settingId + ' tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span></label>');
+        let toggle = $('<label id=script_bat1_' + building.settingId + ' tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox"' + checked + '/> <span class="check" style="height:5px; max-width:15px"></span></label>');
         buildingElement.append(toggle);
 
         toggle.on('change', function(e) {
@@ -10330,6 +11415,18 @@
         return !game.global.race[racialTraitKindlingKindred];
     }
 
+    /**
+     * @param {number} govIndex
+     */
+    function getGovName(govIndex) {
+        let govProp = "gov" + govIndex;
+        if (typeof game.global.civic.foreign[govProp]['name'] == "undefined") {
+            return "foreign power " + (govIndex + 1);
+        }
+
+        return game.loc(`civics_gov${game.global.civic.foreign[govProp].name.s0}`, [game.global.civic.foreign[govProp].name.s1]) + " (" + (govIndex + 1) + ")";
+    }
+
     function removePoppers() {
         let poppers = document.querySelectorAll('[id^="pop"]'); // popspace_ and // popspc
 
@@ -10358,10 +11455,10 @@
     }
 
     /**
-     * @param {string} binding Element that vue is bound to
+     * @param {string} elementId Id of the element that the vue is bound to
      */
-    function getVue(binding) {
-        let element = game.document.querySelector(binding);
+    function getVueById(elementId) {
+        let element = game.document.getElementById(elementId);
         if (element === null) {
             return undefined;
         }
@@ -10374,7 +11471,7 @@
     }
 
     var showLogging = false;
-    var loggingType = "autoJobs";
+    var loggingType = "click";
 
     /**
      * @param {string} type
@@ -10384,6 +11481,25 @@
         if (settings.autoLogging && type === loggingType) {
             console.log(text);
         }
+    }
+
+    function logClick(element, reason) {
+        log("click", "click " + reason);
+        element.click();
+    }
+
+    /**
+     * @param {string} text
+     */
+    function gameLogSuccess(text) {
+        game.messageQueue(text, 'success');
+    }
+
+    /**
+     * @param {string} text
+     */
+    function gameLogWarning(text) {
+        game.messageQueue(text, 'warning');
     }
 
     //#endregion Utility Functions
