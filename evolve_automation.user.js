@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.5.3
+// @version      2.5.5
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3207,13 +3207,13 @@
                 } else if (job === state.jobs.Brick && state.cityBuildings.CementPlant.count === 0) {
                     // We've got no cement plants so don't put any craftsmen on making Brick
                     job.max = 0;
-                } else if (job === state.jobs.Mythril && resources.Mythril.currentQuantity > 1000 && (resources.Mythril.currentQuantity > 10000 || resources.Iridium.currentQuantity < 10000)) {
-                    // Don't make Mythril if we have too much mythril or too little iridium
-                    job.max = 0;
                 } else if (!job.isManaged()) {
                     // The user has said to not manage this job
                     job.max = job.count;
                     max -= job.count;
+                } else if (job === state.jobs.Mythril && resources.Mythril.currentQuantity > 1000 && (resources.Mythril.currentQuantity > 10000 || resources.Iridium.currentQuantity < 10000)) {
+                    // Don't make Mythril if we have too much mythril or too little iridium
+                    job.max = 0;
                 } else {
                     let setting = parseInt(settings['job_b3_' + job._originalId]);
                     if (setting != -1) {
@@ -3345,6 +3345,7 @@
 
             this._autoBuildEnabled = false;
             this._autoMax = -1;
+            this.ignoreMinimumMoneySetting = false;
 
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
@@ -3443,14 +3444,16 @@
                 return false;
             }
 
-            let moneyFloor = 0;
-            let moneyRequirement = this.resourceRequirements.find(requirement => requirement.resource === resources.Money);
-            if (moneyRequirement !== undefined) {
-                moneyFloor = moneyRequirement.quantity;
-            }
+            if (!this.ignoreMinimumMoneySetting) {
+                let moneyFloor = 0;
+                let moneyRequirement = this.resourceRequirements.find(requirement => requirement.resource === resources.Money);
+                if (moneyRequirement !== undefined) {
+                    moneyFloor = moneyRequirement.quantity / 100; // We are building in steps of 1%
+                }
 
-            if (wouldBreakMoneyFloor(moneyFloor)) {
-                return false;
+                if (wouldBreakMoneyFloor(moneyFloor)) {
+                    return false;
+                }
             }
 
             getVueById(this._vueBinding).build(this.id, 1);
@@ -5770,6 +5773,13 @@
             } else {
                 settings[settingKey] = project._autoMax;
             }
+
+            settingKey = 'arpa_ignore_money_' + project.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                project.ignoreMinimumMoneySetting = settings[settingKey];
+            } else {
+                settings[settingKey] = project.ignoreMinimumMoneySetting;
+            }
         }
         state.projectManager.sortByPriority();
 
@@ -5893,6 +5903,7 @@
             settings.arpa[project.id] = project.autoBuildEnabled;
             settings['arpa_p_' + project.id] = project.priority;
             settings['arpa_m_' + project.id] = project._autoMax;
+            settings['arpa_ignore_money_' + project.id] = project.ignoreMinimumMoneySetting;
         }
 
         let productionSettings = state.cityBuildings.Factory.productionOptions;
@@ -6574,6 +6585,8 @@
                     requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(0, false);
                 }
             }
+
+            if (requiredJobs[0] < 0) { requiredJobs[0] = 0; }
 
             jobAdjustments.push(requiredJobs[0] - state.jobs.Farmer.count);
             availableEmployees -= requiredJobs[0];
@@ -7683,6 +7696,7 @@
 
     function autoArpa() {
         let projectList = state.projectManager.managedPriorityList();
+
         // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build once MAD has been researched
         if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && isResearchUnlocked("mad")) {
             if (!state.triggerManager.projectConflicts(state.projects.LaunchFacility)) {
@@ -10777,7 +10791,7 @@
     function updateProjectTable() {
         let currentNode = $('#script_projectContent');
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:50%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:25%">Ignore Min Money</th><th class="has-text-warning" style="width:25%"></th></tr>
                 <tbody id="script_projectTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -10788,7 +10802,7 @@
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
             let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + project.id + '"' + classAttribute + '><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:50%"></td></tr>';
+            newTableBodyText += '<tr value="' + project.id + '"' + classAttribute + '><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -10802,6 +10816,9 @@
 
             projectElement = projectElement.next();
             projectElement.append(buildProjectMaxSettingsInput(project));
+
+            projectElement = projectElement.next();
+            projectElement.append(buildProjectIgnoreMinMoneySettingsToggle(project));
         }
 
         $('#script_projectTableBody').sortable( {
@@ -10830,7 +10847,7 @@
      */
     function buildProjectSettingsToggle(project) {
         let checked = project.autoBuildEnabled ? " checked" : "";
-        let toggle = $('<label id=script_arpa2_' + project.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 4px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span class="has-text-info" style="margin-left: 20px;">' + project.name + '</span></label>');
+        let toggle = $('<label id="script_arpa2_' + project.id + '" tabindex="0" class="switch" style="position:absolute; margin-top: 4px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span class="has-text-info" style="margin-left: 20px;">' + project.name + '</span></label>');
 
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
@@ -10863,6 +10880,20 @@
         });
 
         return projectMaxTextBox;
+    }
+
+    function buildProjectIgnoreMinMoneySettingsToggle(project) {
+        let checked = project.ignoreMinimumMoneySetting ? " checked" : "";
+        let toggle = $('<label id="script_arpa_ignore_money_' + project.id + '" tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            project.ignoreMinimumMoneySetting = state;
+            updateSettingsFromState();
+        });
+
+        return toggle;
     }
 
     function createSettingToggle(name, enabledCallBack, disabledCallBack) {
@@ -11537,7 +11568,7 @@
     }
 
     var showLogging = false;
-    var loggingType = "autoBuild";
+    var loggingType = "autoJobs";
 
     /**
      * @param {string} type
