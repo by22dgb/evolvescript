@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.5.2
+// @version      2.5.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -90,8 +90,8 @@
          * @param {string} name
          */
         constructor(id, name) {
-            /** @type {{job: string, display: boolean, workers: number, max: number, impact: number}} job */
-            this._nullJob = { job: "nullJob", display: false, workers: 0, max: 0, impact: 0 };
+            /** @type {{job: string, display: boolean, workers: number, max: number, impact: number, name: string}} job */
+            this._nullJob = { job: "nullJob", display: false, workers: 0, max: 0, impact: 0, name: "None",  };
 
             // Private properties
             this._originalId = id;
@@ -160,7 +160,7 @@
                 return this._originalName;
             }
 
-            return races[game.global.race.species].name;
+            return game.global.civic[this.id].name;
         }
 
         /**
@@ -517,6 +517,8 @@
             this.resourceRequirements = [];
 
             this.setupCache();
+
+            this.overridePowered = undefined;
         }
 
         get definition() {
@@ -593,6 +595,10 @@
         }
 
         get powered() {
+            if (this.overridePowered !== undefined) {
+                return this.overridePowered;
+            }
+
             return this.definition.hasOwnProperty("powered") ? this.definition.powered() : 0;
         }
 
@@ -4276,8 +4282,12 @@
         }
 
         AddTriggerFromSetting(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
-            let trigger = new Trigger(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
-            this.priorityList.push(trigger);
+            let existingSequence = findArrayIndex(this.priorityList, "seq", seq);
+
+            if (existingSequence === -1) {
+                let trigger = new Trigger(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
+                this.priorityList.push(trigger);
+            }
         }
 
         /** @param {number} seq */
@@ -4957,9 +4967,36 @@
 
         state.spaceBuildings.NebulaNexus.addResourceConsumption(resources.Nebula_Support, -2);
         state.spaceBuildings.NebulaHarvestor.addResourceConsumption(resources.Nebula_Support, 1);
+
         state.spaceBuildings.NebulaEleriumProspector.addResourceConsumption(resources.Nebula_Support, 1);
 
         state.spaceBuildings.NeutronMiner.addResourceConsumption(resources.Helium_3, 3);
+
+        // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
+        ////////////////////
+		state.cityBuildings.TouristCenter.overridePowered = 0;
+        state.spaceBuildings.MoonIridiumMine.overridePowered = 0;
+        state.spaceBuildings.MoonHeliumMine.overridePowered = 0;
+        state.spaceBuildings.MoonObservatory.overridePowered = 0;
+        state.spaceBuildings.RedLivingQuarters.overridePowered = 0;
+        state.spaceBuildings.RedMine.overridePowered = 0;
+        state.spaceBuildings.RedFabrication.overridePowered = 0;
+        state.spaceBuildings.RedBiodome.overridePowered = 0;
+        state.spaceBuildings.RedExoticLab.overridePowered = 0;
+        state.spaceBuildings.RedSpaceBarracks.overridePowered = 0;
+        state.spaceBuildings.RedVrCenter.overridePowered = 0;
+        state.spaceBuildings.BeltEleriumShip.overridePowered = 0;
+        state.spaceBuildings.BeltIridiumShip.overridePowered = 0;
+		state.spaceBuildings.BeltIronShip.overridePowered = 0;
+        state.spaceBuildings.AlphaMiningDroid.overridePowered = 0;
+        state.spaceBuildings.AlphaProcessing.overridePowered = 0;
+        state.spaceBuildings.AlphaLaboratory.overridePowered = 0;
+        state.spaceBuildings.AlphaExchange.overridePowered = 0;
+        state.spaceBuildings.AlphaFactory.overridePowered = 0;
+        state.spaceBuildings.ProximaCruiser.overridePowered = 0;
+        state.spaceBuildings.NebulaHarvestor.overridePowered = 0;
+        state.spaceBuildings.NebulaEleriumProspector.overridePowered = 0;
+        ////////////////////
 
         // We aren't getting these ones yet...
         state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Money, 100000));
@@ -5505,6 +5542,7 @@
             settings.triggers = [];
         }
 
+        state.triggerManager.clearPriorityList();
         settings.triggers.forEach(trigger => {
             state.triggerManager.AddTriggerFromSetting(trigger.seq, trigger.priority, trigger.type, trigger.requirementType, trigger.requirementId, trigger.requirementCount, trigger.actionType, trigger.actionId, trigger.actionCount);
         });
@@ -6654,6 +6692,9 @@
                 });
             }
 
+            // Reset completed for next breakpoint
+            splitJobs.forEach(jobDetails => { jobDetails.completed = false; });
+
             // Bring them all up to breakpoint 1 one each at a time
             while (availableEmployees >= 1 && findArrayIndex(splitJobs, "completed", false) != -1) {
                 splitJobs.forEach(jobDetails => {
@@ -6671,6 +6712,7 @@
             // splitJobs.forEach(jobDetails => {
             //     console.log("3 " + jobDetails.job.name + " required " + requiredJobs[jobDetails.jobIndex] + ", adjustment " + jobAdjustments[jobDetails.jobIndex])
             // });
+            //console.log(availableEmployees)
 
             if (availableEmployees > 0) {
                 // Split the remainder in accordance to the given weightings
@@ -6683,13 +6725,16 @@
                     availableEmployees -= lumberjacks;
                 }
                 
+                // Perform weighting - need the current available employees to multiply by the weighting
+                let startingAvailableEmployees = availableEmployees;
+
                 splitJobs.forEach(jobDetails => {
                     if (availableEmployees <= 0 || (isEvilRace() && !isEvilUniverse() && jobDetails.job === state.jobs.Lumberjack)) {
                         // We've already dealt with evil lumberjacks above. Those dastardly lumberjacks!
                         return;
                     }
 
-                    let workers = Math.ceil(availableEmployees * jobDetails.weighting / totalWeighting);
+                    let workers = Math.ceil(startingAvailableEmployees * jobDetails.weighting / totalWeighting);
                     workers = Math.min(availableEmployees, workers);
                     requiredJobs[jobDetails.jobIndex] += workers;
                     jobAdjustments[jobDetails.jobIndex] += workers;
@@ -8271,6 +8316,69 @@
         }
     }
 
+    function verifyGameActions() {
+            // Check for fidelity of game actions code - a lot of buildings specify power when they don't use any...
+            // The following line of code is copied directly from the game code:
+            let p_structs = ['city:apartment','int_alpha:habitat','spc_red:spaceport','int_alpha:starport','int_neutron:citadel','city:coal_mine','spc_moon:moon_base','spc_red:red_tower','spc_home:nav_beacon','int_proxima:xfer_station','int_nebula:nexus','spc_dwarf:elerium_contain','spc_gas:gas_mining','spc_belt:space_station','spc_gas_moon:outpost','spc_gas_moon:oil_extractor','city:factory','spc_red:red_factory','spc_dwarf:world_controller','prtl_fortress:turret','prtl_badlands:war_drone','city:wardenclyffe','city:biolab','city:mine','city:rock_quarry','city:cement_plant','city:sawmill','city:mass_driver','int_neutron:neutron_miner','prtl_fortress:war_droid','int_blackhole:far_reach','prtl_badlands:sensor_drone','prtl_badlands:attractor','city:metal_refinery','int_blackhole:mass_ejector','city:casino'];
+
+            // Perform the check
+            state.buildingManager.priorityList.forEach(building => {
+                if (building.powered > 0) {
+                    let tempId = (building._location !== "" ? building._location : building._tab) + ":" + building.id
+                    let tempIndex = p_structs.indexOf(tempId);
+                    if (tempIndex === -1) {
+                        console.log("Found building that is specified in game actions code as powered but isn't included in powered calculations: " + tempId);
+                    }
+                }
+            });
+
+            // Check that actions that exist in game also exist in our script
+            verifyGameActionsExist(game.actions.evolution, state.evolutions, false);
+            verifyGameActionsExist(game.actions.city, state.cityBuildings, false);
+            verifyGameActionsExist(game.actions.space, state.spaceBuildings, true);
+            verifyGameActionsExist(game.actions.interstellar, state.spaceBuildings, true);
+            verifyGameActionsExist(game.actions.portal, state.spaceBuildings, true);
+    }
+
+    function verifyGameActionsExist(gameObject, scriptObject, hasSubLevels) {
+        let scriptKeys = Object.keys(scriptObject);
+        Object.keys(gameObject).forEach(gameActionKey => {
+            if (!hasSubLevels) {
+                verifyGameActionExists(scriptKeys, scriptObject, gameActionKey, gameObject);
+            } else {
+                // This object has sub levels - iterate through them
+                let gameSubObject = gameObject[gameActionKey];
+                Object.keys(gameSubObject).forEach(gameSubActionKey => {
+                    verifyGameActionExists(scriptKeys, scriptObject, gameSubActionKey, gameSubObject);
+                });
+            }
+        });
+    }
+
+    function verifyGameActionExists(scriptKeys, scriptObject, gameActionKey, gameObject) {
+        // We know that we don't have the info objects defined in our script
+        // basic_housing is special. The key doesn't match the object in the game code
+        // gift is a special santa gift. Leave it to the player.
+        if (gameActionKey === "info" || gameActionKey === "basic_housing" || gameActionKey === "gift") {
+            return;
+        }
+
+        let scriptActionFound = false;
+
+        for (let i = 0; i < scriptKeys.length; i++) {
+            const scriptAction = scriptObject[scriptKeys[i]];
+            if (scriptAction.id === gameActionKey) {
+                scriptActionFound = true;
+                break;
+            }
+        }
+
+        if (!scriptActionFound) {
+            console.log("Game action key not found in script: " + gameActionKey + " (" + gameObject[gameActionKey].id + ")");
+            console.log(gameObject[gameActionKey]);
+        }
+    }
+
     function automate() {
         // This is a hack to check that the entire page has actually loaded. The queueColumn is one of the last bits of the DOM
         // so if it is there then we are good to go. Otherwise, wait a little longer for the page to load.
@@ -8293,12 +8401,18 @@
             });
 
             resetBuildingState();
+
             updateStateFromSettings();
             updateSettingsFromState();
 
             state.triggerManager.priorityList.forEach(trigger => {
                 trigger.complete = false;
             });
+
+            // If debug logging is enabled then verify the game actions code is both correct and in sync with our script code
+            if (showLogging) {
+                verifyGameActions();
+            }
         }
 
         state.triggerManager.updateCompleteTriggers();
