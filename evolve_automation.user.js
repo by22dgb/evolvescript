@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.5.1
+// @version      2.5.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3422,11 +3422,11 @@
         }
 
         get level() {
-            return this.instance.rank;
+            return this.instance ? this.instance.rank : 0;
         }
 
         get progress() {
-            return this.instance.complete;
+            return this.instance ? this.instance.complete : 0;
         }
 
         /**
@@ -7820,6 +7820,7 @@
                     // If this is a power producing structure then only turn off one at a time!
                     if (building.powered < 0) {
                         requiredStateOn = building.stateOnCount - 1;
+                        availablePower += building.powered; // we're turning off a power producing building so remove it from available power
                     }
 
                     // We couldn't get the resources so skip the rest of this building type
@@ -7828,15 +7829,6 @@
             }
 
             let adjustment = requiredStateOn - building.stateOnCount;
-
-            // If the warning indicator is on then we don't know how many buildings are over-resourced
-            // Just take them all off and sort it out next loop
-            if (building.isStateOnWarning()) {
-                if (building.stateOnCount > 1) {
-                    adjustment = building.stateOnCount - 1;
-                }
-            }
-
             building.tryAdjustState(adjustment);
         }
     }
@@ -10865,7 +10857,7 @@
         });
 
         // If the user clicks outside the modal then close it
-        $(window).on("click", function() {
+        $(window).on("click", function(event) {
             let modal = document.getElementById("scriptModal");
             if (event.target == modal) {
                 modal.style.display = "none";
@@ -11431,7 +11423,7 @@
     }
 
     var showLogging = false;
-    var loggingType = "autoJobs";
+    var loggingType = "autoBuild";
 
     /**
      * @param {string} type
