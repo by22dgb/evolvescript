@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.5.5
+// @version      2.6.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -83,6 +83,122 @@
     // --------------------
 
     //#region Class Declarations
+
+    var loggingTypes = {
+        special: { id: "special", name: "Specials", settingKey: "log_special", },
+        construction: { id: "construction", name: "Construction", settingKey: "log_construction", },
+        multi_construction: { id: "multi_construction", name: "Multi-part Construction", settingKey: "log_multi_construction", },
+        research: { id: "research", name: "Research", settingKey: "log_research", },
+        spying: { id: "spying", name: "Spying", settingKey: "log_spying", },
+        attack: { id: "attack", name: "Attack", settingKey: "log_attack", },
+        mercenary: { id: "mercenary", name: "Mercenaries", settingKey: "log_mercenary", },
+    }
+
+    class GameLog {
+        constructor() {
+            this._logEnabledSettingKey = "logEnabled";
+            this._success = 'success';
+            this._warning = 'warning';
+        }
+
+        /**
+         * @param {{ id: string; name: string; settingKey: string; }} loggingType
+         * @param {string} text
+         */
+        logSuccess(loggingType, text) {
+            if (!settings[this._logEnabledSettingKey]) { return; }
+            if (!settings[loggingType.settingKey]) { return; }
+            
+            game.messageQueue(text, this._success);
+        }
+
+        /**
+         * @param {{ id: string; name: string; settingKey: string; }} loggingType
+         * @param {string} text
+         */
+        logWarning(loggingType, text) {
+            if (!settings[this._logEnabledSettingKey]) { return; }
+            if (!settings[loggingType.settingKey]) { return; }
+            
+            game.messageQueue(text, this._warning);
+        }
+    }
+
+    class Multiplier {
+        constructor() {
+            this._remainder = 0;
+        }
+
+        /**
+         * @param {number} value
+         */
+        reset(value) {
+            this._remainder = value;
+        }
+
+        get remainder() {
+            game.keyMap.x100 = false;
+            game.keyMap.x25 = false;
+            game.keyMap.x10 = false;
+            return this._remainder;
+        }
+
+        /**
+         * @return {boolean}
+         */
+        setMultiplier() {
+            if (this._remainder <= 0) {
+                game.keyMap.x100 = false;
+                game.keyMap.x25 = false;
+                game.keyMap.x10 = false;
+                return false;
+            }
+
+            if (this._remainder >= 25000) {
+                game.keyMap.x100 = true;
+                game.keyMap.x25 = true;
+                game.keyMap.x10 = true;
+                this._remainder -= 25000;
+            } else if (this._remainder >= 2500) {
+                game.keyMap.x100 = true;
+                game.keyMap.x25 = true;
+                game.keyMap.x10 = false;
+                this._remainder -= 2500;
+            } else if (this._remainder >= 1000) {
+                game.keyMap.x100 = true;
+                game.keyMap.x25 = false;
+                game.keyMap.x10 = true;
+                this._remainder -= 1000;
+            } else if (this._remainder >= 250) {
+                game.keyMap.x100 = false;
+                game.keyMap.x25 = true;
+                game.keyMap.x10 = true;
+                this._remainder -= 250;
+            } else if (this._remainder >= 100) {
+                game.keyMap.x100 = true;
+                game.keyMap.x25 = false;
+                game.keyMap.x10 = false;
+                this._remainder -= 100;
+            } else if (this._remainder >= 25) {
+                game.keyMap.x100 = false;
+                game.keyMap.x25 = true;
+                game.keyMap.x10 = false;
+                this._remainder -= 25;
+            } else if (this._remainder >= 10) {
+                game.keyMap.x100 = false;
+                game.keyMap.x25 = false;
+                game.keyMap.x10 = true;
+                this._remainder -= 10;
+            } else {
+                game.keyMap.x100 = false;
+                game.keyMap.x25 = false;
+                game.keyMap.x10 = false;
+                this._remainder -= 1;
+            }
+
+            return true;
+        }
+    }
 
     class Job {
         /**
@@ -289,8 +405,10 @@
 
             let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
-                for (let i = 0; i < count; i++) {
-                    vue.add();            
+                state.multiplier.reset(count);
+                while (state.multiplier.remainder > 0) {
+                    state.multiplier.setMultiplier();
+                    vue.add();
                 }
 
                 return true;
@@ -321,8 +439,10 @@
 
             let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
-                for (let i = 0; i < count; i++) {
-                    vue.sub();            
+                state.multiplier.reset(count);
+                while (state.multiplier.remainder > 0) {
+                    state.multiplier.setMultiplier();
+                    vue.sub();
                 }
 
                 return true;
@@ -395,8 +515,10 @@
 
             let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
-                for (let i = 0; i < count; i++) {
-                    vue.add(this._originalId);            
+                state.multiplier.reset(count);
+                while (state.multiplier.remainder > 0) {
+                    state.multiplier.setMultiplier();
+                    vue.add(this._originalId);
                 }
 
                 return true;
@@ -423,7 +545,9 @@
 
             let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
-                for (let i = 0; i < count; i++) {
+                state.multiplier.reset(count);
+                while (state.multiplier.remainder > 0) {
+                    state.multiplier.setMultiplier();
                     vue.sub(this._originalId);
                 }
 
@@ -563,6 +687,16 @@
             return this._id;
         }
 
+        get title() {
+            let definition = this.definition;
+            if (definition !== undefined) {
+                return typeof this.definition.title === 'string' ? this.definition.title : this.definition.title();
+            }
+
+            // There is no definition...
+            return this.name;
+        }
+
         get settingId() {
             return this._elementId;
         }
@@ -659,11 +793,31 @@
             let retVal = true;
             let tempRetVal = true;
 
+            // Not using state.multiplier here as there are affordability checks that are required before actioning
             for (let i = 0; i < count; i++) {
                 if (retVal) {
                     tempRetVal = this.vue.action();
                     retVal = tempRetVal === undefined ? retVal : retVal && tempRetVal;
                 }
+            }
+
+            if (game.global.race.species !== speciesProtoplasm
+                    && this !== state.cityBuildings.Food
+                    && this !== state.cityBuildings.Lumber
+                    && this !== state.cityBuildings.Stone
+                    && this !== state.cityBuildings.Slaughter
+                ) {
+
+                    if (this.id === state.spaceBuildings.GasSpaceDockShipSegment.id
+                            || this.id === state.spaceBuildings.GasSpaceDockProbe.id
+                            || this.id === state.spaceBuildings.DwarfWorldCollider.id
+                            || this.id === state.spaceBuildings.ProximaDyson.id
+                            || this.id === state.spaceBuildings.BlackholeStellerEngine.id
+                        ) {
+                            state.log.logSuccess(loggingTypes.multi_construction, `${this.title} (${this.count}) has been constructed.`);
+                    } else {
+                        state.log.logSuccess(loggingTypes.construction, `${this.title} has been constructed.`);
+                    }
             }
 
             return retVal;
@@ -722,15 +876,15 @@
                 return 0;
             }
             
-            return parseInt(document.querySelector(this._hashOnElement).textContent);
+            return this.instance.on;
         }
         
         get stateOffCount() {
             if (!this.hasState()) {
                 return 0;
             }
-            
-            return parseInt(document.querySelector(this._hashOffElement).textContent);
+
+            return this.instance.count - this.instance.on;
         }
 
         isStateOnWarning() {
@@ -752,45 +906,28 @@
             if (adjustCount === 0 || !this.hasState()) {
                 return false;
             }
-
-            let containerNode = document.getElementById(this._elementId);
             
             if (adjustCount > 0) {
-                let onNode = containerNode.querySelector(' .on');
-
-                for (let i = 0; i < adjustCount; i++) {
-                    logClick(onNode, this.id + " adjust state on");
+                state.multiplier.reset(adjustCount);
+                while (state.multiplier.remainder > 0) {
+                    state.multiplier.setMultiplier();
+                    this.vue.power_on();
                 }
 
                 return;
             }
 
             if (adjustCount < 0) {
-                let offNode = containerNode.querySelector(' .off');
-                adjustCount = adjustCount * -1;
+                adjustCount = adjustCount * -1; // We always want a positive number as we're calling an opposite function
 
-                for (let i = 0; i < adjustCount; i++) {
-                    logClick(offNode, this.id + " adjust state off");
+                state.multiplier.reset(adjustCount);
+                while (state.multiplier.remainder > 0) {
+                    state.multiplier.setMultiplier();
+                    this.vue.power_off();
                 }
 
                 return;
             }
-        }
-        
-        trySetStateOn() {
-            if (!this.hasState()) {
-                return false;
-            }
-            
-            logClick(document.querySelector(this._hashOnElement), this.id + " state on");
-        }
-        
-        trySetStateOff() {
-            if (!this.hasState()) {
-                return false;
-            }
-            
-            logClick(document.querySelector(this._hashOffElement), this.id + " state off");
         }
 
         //#endregion Buildings
@@ -883,20 +1020,12 @@
             this._elementId = this._prefix + this.id;
             this._extraStorageId = "stack-" + this.id;
             this._storageCountId = "cnt" + this.id;
-            this._hashStorageCount = "#" + this._prefix + this.id + " .count";
-
-			this._rateOfChangeId = "inc" + this.id
-            this._hashCrateCountElement = "#stack-" + this.id + " span:nth-of-type(1) .current";
-            this._hashContainerCountElement = "#stack-" + this.id + " span:nth-of-type(2) .current";
-            this._hashCrateAddElement = "#stack-" + this.id + " span:nth-of-type(1) .add";
-            this._hashCrateRemoveElement = "#stack-" + this.id + " span:nth-of-type(1) .sub";
-            this._hashContainerAddElement = "#stack-" + this.id + " span:nth-of-type(2) .add";
-            this._hashContainerRemoveElement = "#stack-" + this.id + " span:nth-of-type(2) .sub";
 			
 			this._craftAllId = "inc" + this.id + "A";
-            this._hashCraft5Element = "#inc" + this.id + "5 a";
             
-            this.marketVueBinding = "market-" + this.id;
+            this._vueBinding = "res" + this.id;
+            this._stackVueBinding = "stack-" + this.id;
+            this.marketVueBinding = "market-" + this.id; // Used by market manager
         }
 
         //#region Standard resource
@@ -1000,6 +1129,11 @@
                 return 0;
             }
 
+            if (this.instance !== undefined && this.instance.hasOwnProperty("max")) {
+                return this.instance.max >= 0 ? this.instance.max : Number.MAX_SAFE_INTEGER;
+            }
+
+            // Doesn't have max? Do some tinkering...
             let storageNode = document.getElementById(this._storageCountId);
 
             // 2 possibilities:
@@ -1059,81 +1193,77 @@
         }
 
         get currentCrates() {
-            let node = document.querySelector(this._hashCrateCountElement);
-            //@ts-ignore
-            return node === null || node.style.display === "none" ? 0 : parseInt(node.textContent);
+            let crates = this.instance.crates;
+            return crates !== undefined ? crates : 0;
         }
 
         get currentContainers() {
-            let node = document.querySelector(this._hashContainerCountElement);
-            //@ts-ignore
-            return node === null || node.style.display === "none" ? 0 : parseInt(node.textContent);
+            let containers = this.instance.containers;
+            return containers !== undefined ? containers : 0;
         }
 
         /**
          * @param {number} count
          */
         tryAssignCrate(count) {
-            let node = document.querySelector(this._hashCrateAddElement);
-            if (node !== null) {
-                for (let i = 0; i < count; i++) {
-                    logClick(node, this.id + " assign crate");
-                }
+            let vue = getVueById(this._stackVueBinding);
+            if (vue === undefined) { return false; }
 
-                return true;
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.addCrate(this.id);
             }
 
-            return false;
+            return true;
         }
 
         /**
          * @param {number} count
          */
         tryUnassignCrate(count) {
-            let node = document.querySelector(this._hashCrateRemoveElement);
-            if (node !== null) {
-                count = count * -1;
-                for (let i = 0; i < count; i++) {
-                    logClick(node, this.id + " unassign crate");
-                }
+            let vue = getVueById(this._stackVueBinding);
+            if (vue === undefined) { return false; }
 
-                return true;
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.subCrate(this.id);
             }
 
-            return false;
+            return true;
         }
 
         /**
          * @param {number} count
          */
         tryAssignContainer(count) {
-            let node = document.querySelector(this._hashContainerAddElement);
-            if (node !== null) {
-                for (let i = 0; i < count; i++) {
-                    logClick(node, this.id + " assign container");
-                }
+            let vue = getVueById(this._stackVueBinding);
+            if (vue === undefined) { return false; }
 
-                return true;
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.addCon(this.id);
             }
 
-            return false;
+            return true;
         }
 
         /**
          * @param {number} count
          */
         tryUnassignContainer(count) {
-            let node = document.querySelector(this._hashContainerRemoveElement);
-            if (node !== null) {
-                count = count * -1;
-                for (let i = 0; i < count; i++) {
-                    logClick(node, this.id + " unassign container");
-                }
+            let vue = getVueById(this._stackVueBinding);
+            if (vue === undefined) { return false; }
 
-                return true;
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.subCon(this.id);
             }
 
-            return false;
+            return true;
         }
 
         //#endregion Basic resource
@@ -1151,22 +1281,14 @@
         /**
          * @param {number} count
          */
-        tryCraft5(count) {
-            if (!this.isUnlocked()) {
-                return false
-            }
+        tryCraftX(count) {
+            if (!this.isUnlocked()) { return false; }
+            let vue = getVueById(this._vueBinding);
+            if (vue === undefined) { return false; }
 
-            let node = document.querySelector(this._hashCraft5Element);
-
-            if (node !== null) {
-                for (let i = 0; i < count; i++) {
-                    logClick(node, this.id + " craft 5");
-                }
-                
-                return true;
-            }
+            vue.craft(this.id, count);
             
-            return false;
+            return true;
         }
 
         //#endregion Craftable resource
@@ -1193,7 +1315,7 @@
                 return 0;
             }
 
-            return parseInt(document.getElementById("powerMeter").textContent);
+            return game.global.city.power; // game.global.city.power_total is the total of all power currently being generated
         }
 
         get maxQuantity() {
@@ -1612,15 +1734,15 @@
 
         /**
          * @param {number} fuelType
-         * @param {number} quantity
+         * @param {number} count
          */
-        increaseFuel(fuelType, quantity) {
-            if (quantity === 0 || !this.isFuelUnlocked(fuelType)) {
+        increaseFuel(fuelType, count) {
+            if (count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
-            if (quantity < 0) {
-                return this.decreaseFuel(fuelType, quantity * -1);
+            if (count < 0) {
+                return this.decreaseFuel(fuelType, count * -1);
             }
 
             let func = null;
@@ -1637,7 +1759,11 @@
                 func = this._vue.addOil;
             }
 
-            for (let i = 0; i < quantity; i++) {
+            if (func === null) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 func();
             }
 
@@ -1646,15 +1772,15 @@
 
         /**
          * @param {number} fuelType
-         * @param {number} quantity
+         * @param {number} count
          */
-        decreaseFuel(fuelType, quantity) {
-            if (quantity === 0 || !this.isFuelUnlocked(fuelType)) {
+        decreaseFuel(fuelType, count) {
+            if (count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
-            if (quantity < 0) {
-                return this.increaseFuel(fuelType, quantity * -1);
+            if (count < 0) {
+                return this.increaseFuel(fuelType, count * -1);
             }
 
             let func = null;
@@ -1671,7 +1797,11 @@
                 func = this._vue.subOil;
             }
 
-            for (let i = 0; i < quantity; i++) {
+            if (func === null) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 func();
             }
 
@@ -1680,11 +1810,11 @@
 
         /**
          * @param {number} smeltingType
-         * @param {number} quantity
+         * @param {number} count
          */
-        increaseSmelting(smeltingType, quantity) {
+        increaseSmelting(smeltingType, count) {
             // Increasing one decreases the other so no need for both an "increaseXXXX" and a "descreaseXXXX"
-            if (quantity === 0 || !this.isSmeltingUnlocked(smeltingType)) {
+            if (count === 0 || !this.isSmeltingUnlocked(smeltingType)) {
                 return false;
             }
 
@@ -1698,7 +1828,11 @@
                 func = this._vue.steelSmelting;
             }
 
-            for (let i = 0; i < quantity; i++) {
+            if (func === null) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 func();
             }
 
@@ -1876,18 +2010,20 @@
 
         /**
          * @param {string} production
-         * @param {number} quantity
+         * @param {number} count
          */
-        increaseProduction(production, quantity) {
-            if (quantity === 0 || !this.isProductionUnlocked(production)) {
+        increaseProduction(production, count) {
+            if (count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
-            if (quantity < 0) {
-                return this.decreaseProduction(production, quantity * -1);
+            if (count < 0) {
+                return this.decreaseProduction(production, count * -1);
             }
 
-            for (let i = 0; i < quantity; i++) {
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 this._vue.addItem(production);
             }
 
@@ -1896,18 +2032,20 @@
 
         /**
          * @param {string} production
-         * @param {number} quantity
+         * @param {number} count
          */
-        decreaseProduction(production, quantity) {
-            if (quantity === 0 || !this.isProductionUnlocked(production)) {
+        decreaseProduction(production, count) {
+            if (count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
-            if (quantity < 0) {
-                return this.increaseProduction(production, quantity * -1);
+            if (count < 0) {
+                return this.increaseProduction(production, count * -1);
             }
 
-            for (let i = 0; i < quantity; i++) {
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 this._vue.subItem(production);
             }
 
@@ -1958,6 +2096,14 @@
             state.spaceBuildings.AlphaMiningDroid._vue = getVueById("specialModal");
         }
 
+        get currentOperating() {
+            if (!this.isOptionsCached()) {
+                return 0;
+            }
+
+            return game.global.interstellar.mining_droid.adam + game.global.interstellar.mining_droid.uran + game.global.interstellar.mining_droid.coal + game.global.interstellar.mining_droid.alum;
+        }
+
         get maxOperating() {
             if (!this.isOptionsCached()) {
                 return 0;
@@ -1987,18 +2133,20 @@
 
         /**
          * @param {string} production
-         * @param {number} quantity
+         * @param {number} count
          */
-        increaseProduction(production, quantity) {
-            if (quantity === 0 || !this.isProductionUnlocked(production)) {
+        increaseProduction(production, count) {
+            if (count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
-            if (quantity < 0) {
-                return this.decreaseProduction(production, quantity * -1);
+            if (count < 0) {
+                return this.decreaseProduction(production, count * -1);
             }
 
-            for (let i = 0; i < quantity; i++) {
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 this._vue.addItem(production);
             }
 
@@ -2007,18 +2155,20 @@
 
         /**
          * @param {string} production
-         * @param {number} quantity
+         * @param {number} count
          */
-        decreaseProduction(production, quantity) {
-            if (quantity === 0 || !this.isProductionUnlocked(production)) {
+        decreaseProduction(production, count) {
+            if (count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
-            if (quantity < 0) {
-                return this.increaseProduction(production, quantity * -1);
+            if (count < 0) {
+                return this.increaseProduction(production, count * -1);
             }
 
-            for (let i = 0; i < quantity; i++) {
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 this._vue.subItem(production);
             }
 
@@ -2124,15 +2274,15 @@
 
         /**
          * @param {number} fuelType
-         * @param {number} quantity
+         * @param {number} count
          */
-        increaseFuel(fuelType, quantity) {
-            if (quantity === 0 || !this.isFuelUnlocked(fuelType)) {
+        increaseFuel(fuelType, count) {
+            if (count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
-            if (quantity < 0) {
-                return this.decreaseFuel(fuelType, quantity * -1);
+            if (count < 0) {
+                return this.decreaseFuel(fuelType, count * -1);
             }
 
             let func = null;
@@ -2149,7 +2299,11 @@
                 func = this._vue.addOil;
             }
 
-            for (let i = 0; i < quantity; i++) {
+            if (func === null) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 func();
             }
 
@@ -2158,15 +2312,15 @@
 
         /**
          * @param {number} fuelType
-         * @param {number} quantity
+         * @param {number} count
          */
-        decreaseFuel(fuelType, quantity) {
-            if (quantity === 0 || !this.isFuelUnlocked(fuelType)) {
+        decreaseFuel(fuelType, count) {
+            if (count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
-            if (quantity < 0) {
-                return this.increaseFuel(fuelType, quantity * -1);
+            if (count < 0) {
+                return this.increaseFuel(fuelType, count * -1);
             }
 
             let func = null;
@@ -2183,7 +2337,11 @@
                 func = this._vue.subOil;
             }
 
-            for (let i = 0; i < quantity; i++) {
+            if (func === null) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 func();
             }
 
@@ -2352,6 +2510,7 @@
                 return false;
             }
 
+            // all other governments are immediately unlocked
             return true;
         }
 
@@ -2378,7 +2537,7 @@
                 let evObj = document.createEvent("Events");
                 evObj.initEvent("mouseover", true, false);
                 button.dispatchEvent(evObj);
-                gameLogSuccess("Switching government to " + governmentTypes[state.governmentManager._governmentToSet].name())
+                state.log.logSuccess(loggingTypes.special, `Revolution! Government changed to ${governmentTypes[state.governmentManager._governmentToSet].name()}.`)
                 logClick(button, "set government");
                 state.governmentManager._governmentToSet = null;
             }
@@ -2473,9 +2632,9 @@
 
             if (this._espionageToPerform !== null) {
                 if (espionageId === espionageTypes.round_robin.id) {
-                    gameLogSuccess(`Performing ${this._missions[this._roundRobinIndex[govIndex]]} covert operation against ${getGovName(govIndex)}`)
+                    state.log.logSuccess(loggingTypes.spying, `Performing ${this._missions[this._roundRobinIndex[govIndex]]} covert operation against ${getGovName(govIndex)}.`)
                 } else {
-                    gameLogSuccess(`Performing "${espionageId}" covert operation against ${getGovName(govIndex)}`)
+                    state.log.logSuccess(loggingTypes.spying, `Performing "${espionageId}" covert operation against ${getGovName(govIndex)}.`)
                 }
                 let title = game.loc('civics_espionage_actions');
                 state.windowManager.openModalWindowWithCallback(title, this.performEspionageCallback, optionsNode);
@@ -2831,6 +2990,21 @@
             return document.querySelector("#garrison .first") !== null;
         }
 
+        getMercenaryCost() {
+            let cost = Math.round((1.24 ** game.global.civic.garrison.workers) * 75) - 50;
+            if (cost > 25000){
+                cost = 25000;
+            }
+            if (game.global.civic.garrison.m_use > 0){
+                cost *= 1.1 ** game.global.civic.garrison.m_use;
+            }
+            if (game.global.race['brute']){
+                cost = cost / 2;
+            }
+
+            return cost;
+        }
+
         hireMercenary() {
             if (!this.isMercenaryUnlocked()) {
                 return false;
@@ -2868,14 +3042,6 @@
             return game.global.civic.garrison.wounded;
         }
 
-        get attackType() {
-            if (!this.isUnlocked()) {
-                return "";
-            }
-
-            return document.querySelector("#tactics .current").textContent;
-        }
-
         increaseCampaignDifficulty() {
             if (!this.isUnlocked()) {
                 return false;
@@ -2910,7 +3076,9 @@
                 return false;
             }
 
-            for (let i = 0; i < count; i++) {
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 getVueById(this._vueBinding).aNext();
             }
             
@@ -2925,7 +3093,9 @@
                 return false;
             }
 
-            for (let i = 0; i < count; i++) {
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
                 getVueById(this._vueBinding).aLast();
             }
 
@@ -2937,7 +3107,7 @@
          */
         getMaxSoldiersForAttackType(govIndex) {
             // armyRating is a Math.floor! We'll have to do some tinkering to get a more accurate rating
-            let campaign = this.campaignList[findArrayIndex(this.campaignList, "name", this.attackType)];
+            let campaign = this.campaignList[game.global.civic.garrison.tactic];
             let singleSoldierAttackRating = 0;
 
             if (!game.global.race[racialTraitHiveMind]) {
@@ -2973,10 +3143,9 @@
          */
         switchToBestAttackType(govOccupyIndex, govAttackIndex, govUnoccupyIndex) {
             let attackRating = game.armyRating(this.maxSoldiers, this._textArmy)
-            let currentAttackTypeIndex = findArrayIndex(this.campaignList, "name", this.attackType);
             this.selectedGovAttackIndex = -1;
 
-            if (this.campaignList.length === 0 || currentAttackTypeIndex === -1) {
+            if (this.campaignList.length === 0 || game.global.civic.garrison.tactic === -1) {
                 return false;
             }
 
@@ -3005,26 +3174,39 @@
             // There isn't anyone suitable to attack
             if (this.selectedGovAttackIndex === -1) { return false; }
 
+            let requiredTactic = game.global.civic.garrison.tactic;
+
             for (let i = maxCampaignIndex; i >= 0; i--) {
                 let campaign = this.campaignList[i];
+                let campaignAttackRating = campaign.getRatingForGov(this.selectedGovAttackIndex);
+                let campaignMaxAttackRating = campaign.getMaxRatingForGov(this.selectedGovAttackIndex);
 
-                //console.log(campaign.id + ": our attack " + attackRating + ", required rating " + campaign.getRatingForGov(this.selectedGovAttackIndex))
-
-                if (maxCampaignIndex < currentAttackTypeIndex) {
-                    // We are currently at a higher attack than we are allowed to be at
-                    this.decreaseCampaignDifficulty();
-                    return false;
-                }
-                
-                if (attackRating >= campaign.getRatingForGov(this.selectedGovAttackIndex) && currentAttackTypeIndex < i) {
-                    this.increaseCampaignDifficulty();
-                    return false;
+                // We are within our ranges so this is the required tactic
+                if (attackRating >= campaignAttackRating && attackRating < campaignMaxAttackRating) {
+                    requiredTactic = i;
+                    break;
                 }
 
-                if (attackRating < campaign.getRatingForGov(this.selectedGovAttackIndex) && currentAttackTypeIndex >= i && i > 0) {
-                    this.decreaseCampaignDifficulty();
-                    return false;
+                // We have more than the maximum required for this attack. Since we are looping through backwards from highest to lowest
+                // we know that we have already ruled out any higher tier campaigns so set this as the required tactic
+                if (attackRating > campaignMaxAttackRating) {
+                    requiredTactic = i;
+                    break;
                 }
+
+                // There are no lower campaigns. So this is it. The absolute minimum. Good job.
+                if (i === 0) {
+                    requiredTactic = i;
+                    break;
+                }
+            }
+
+            while (requiredTactic > game.global.civic.garrison.tactic) {
+                this.increaseCampaignDifficulty();
+            }
+
+            while (requiredTactic < game.global.civic.garrison.tactic) {
+                this.decreaseCampaignDifficulty();
             }
 
             return true;
@@ -3211,7 +3393,7 @@
                     // The user has said to not manage this job
                     job.max = job.count;
                     max -= job.count;
-                } else if (job === state.jobs.Mythril && resources.Mythril.currentQuantity > 1000 && (resources.Mythril.currentQuantity > 10000 || resources.Iridium.currentQuantity < 10000)) {
+                } else if (job === state.jobs.Mythril && resources.Mythril.currentQuantity > 1100 && (resources.Mythril.currentQuantity > 11000 || resources.Iridium.currentQuantity < 10000)) {
                     // Don't make Mythril if we have too much mythril or too little iridium
                     job.max = 0;
                 } else {
@@ -3740,10 +3922,12 @@
 
             let vue = getVueById(resource.marketVueBinding);
             if (vue !== null) {
-                for (let i = 0; i < count; i++) {
+                state.multiplier.reset(count);
+                while (state.multiplier.remainder > 0) {
+                    state.multiplier.setMultiplier();
                     vue.autoBuy(resource.id);
                 }
-                
+
                 return true;
             }
 
@@ -3761,10 +3945,12 @@
 
             let vue = getVueById(resource.marketVueBinding);
             if (vue !== null) {
-                for (let i = 0; i < count; i++) {
+                state.multiplier.reset(count);
+                while (state.multiplier.remainder > 0) {
+                    state.multiplier.setMultiplier();
                     vue.autoSell(resource.id);
                 }
-                
+
                 return true;
             }
 
@@ -3780,6 +3966,8 @@
             this._lastLoopCounter = 0;
             /** @type {Resource[]} */
             this._managedPriorityList = [];
+
+            this._storageVueBinding = "createHead";
         }
 
         isUnlocked() {
@@ -3830,40 +4018,34 @@
          * @param {number} count
          */
         tryConstructCrate(count) {
-            if (count === 0) {
-                return true;
+            if (count === 0) { return true; }
+            let vue = getVueById(this._storageVueBinding);
+            if (vue === undefined) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.crate();
             }
 
-            let node = document.querySelector("#createHead span:nth-of-type(1) .button");
-            if (node !== null) {
-                for (let i = 0; i < count; i++) {
-                    logClick(node, "construct crate");
-                }
-                
-                return true;
-            }
-
-            return false;
+            return true;
         }
 		
         /**
          * @param {number} count
          */
         tryConstructContainer(count) {
-            if (count === 0) {
-                return true;
+            if (count === 0) { return true; }
+            let vue = getVueById(this._storageVueBinding);
+            if (vue === undefined) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.container();
             }
 
-            let node = document.querySelector("#createHead span:nth-of-type(2) .button");
-            if (node !== null) {
-                for (let i = 0; i < count; i++) {
-                    logClick(node, "construct container");
-                }
-                
-                return true;
-            }
-
-            return false;
+            return true;
         }
     }
 
@@ -3976,6 +4158,8 @@
             }
 
             getVueById(this._vueBinding).action();
+
+            state.log.logSuccess(loggingTypes.research, `${techIds[this._action.id].title} has been researched.`);
             return true;
         }
 
@@ -4500,6 +4684,8 @@
         lastPopulationCount: Number.MAX_SAFE_INTEGER,
         lastFarmerCount: Number.MAX_SAFE_INTEGER,
 
+        log: new GameLog(),
+        multiplier: new Multiplier(),
         windowManager: new ModalWindowManager(),
         warManager: new WarManager(),
         jobManager: new JobManager(),
@@ -5532,11 +5718,20 @@
         state.triggerManager.clearPriorityList();
     }
 
+    function resetLoggingSettings() {
+        settings["logEnabled"] = true;
+
+        Object.keys(loggingTypes).forEach(loggingTypeKey => {
+            let loggingType = loggingTypes[loggingTypeKey];
+            settings[loggingType.settingKey] = true;
+        });
+    }
+
     initialiseState();
 
     var settingsSections = ["generalSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "productionSettingsCollapsed", "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
-                            "governmentSettingsCollapsed"];
+                            "governmentSettingsCollapsed", "loggingSettingsCollapsed"];
     
     function updateStateFromSettings() {
         updateStandAloneSettings();
@@ -5962,6 +6157,12 @@
         addSetting("autoPower", defaultAllOptionsEnabled);
         addSetting("autoStorage", defaultAllOptionsEnabled);
 
+        addSetting("logEnabled", true);
+        Object.keys(loggingTypes).forEach(loggingTypeKey => {
+            let loggingType = loggingTypes[loggingTypeKey];
+            addSetting(loggingType.settingKey, true)
+        });
+
         // Move autoTradeSpecialResources to autoStorage and the delete the setting as it has been moved to autoMarket
         if (settings.hasOwnProperty("autoTradeSpecialResources")) {
             settings.autoStorage = settings.autoTradeSpecialResources;
@@ -6077,7 +6278,7 @@
             state.evolutionTarget = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
             state.evolutionFallback = races.antid;
 
-            gameLogSuccess(`Attempting user chosen evolution of ${state.evolutionTarget.name}`);
+            state.log.logSuccess(loggingTypes.special, `Attempting user chosen evolution of ${state.evolutionTarget.name}.`);
         } else if (state.evolutionTarget === null) {
             // User has automatic race selection enabled - Antids or autoAchievements
             state.evolutionTarget = races.antid;
@@ -6132,7 +6333,7 @@
                 if (fallbackGroup.group != null) { state.evolutionFallback = fallbackGroup.race; }
             }
 
-            gameLogSuccess(`Attempting evolution of ${state.evolutionTarget.name}`);
+            state.log.logSuccess(loggingTypes.special, `Attempting evolution of ${state.evolutionTarget.name}.`);
         }
 
         // Calculate the maximum RNA and DNA required to evolve and don't build more than that
@@ -6256,9 +6457,9 @@
                 let tryCraft = true;
 
                 if (craftable === resources.Mythril) {
-                    if (resources.Mythril.currentQuantity < 1000) {
+                    if (resources.Mythril.currentQuantity < 1100) {
                         tryCraft = true;
-                    } else if (resources.Mythril.currentQuantity > 10000 || resources.Iridium.currentQuantity < 10000) {
+                    } else if (resources.Mythril.currentQuantity > 11000 || resources.Iridium.currentQuantity < 10000) {
                         tryCraft = false;
                     }
                 }
@@ -6272,7 +6473,7 @@
                 }
 
                 if (tryCraft) {
-                    craftable.tryCraft5(1);
+                    craftable.tryCraftX(5);
                 }
             }
         }
@@ -6376,7 +6577,7 @@
 
         // If we haven't reached the max number of spies allowed
         if (settings[`foreignSpyMax${govIndex}`] < 0 || (game.global.civic.foreign[govProp].spy < settings[`foreignSpyMax${govIndex}`])) {
-            gameLogSuccess(`Training a spy to send against ${getGovName(govIndex)}`);
+            state.log.logSuccess(loggingTypes.spying, `Training a spy to send against ${getGovName(govIndex)}.`);
             foreignVue.spy(govIndex);
         }
     }
@@ -6399,23 +6600,23 @@
     function autoBattle() {
         if (!settings.autoFight) { return; }
 
-        // mercenaries can still be hired once the "foreign" section is hidden by unification
-        if (resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100 && state.warManager.currentSoldiers < state.warManager.maxSoldiers) {
-            let cost = Math.round((1.24 ** game.global.civic.garrison.workers) * 75) - 50;
-            if (cost > 25000){
-                cost = 25000;
-            }
-            if (game.global.civic.garrison.m_use > 0){
-                cost *= 1.1 ** game.global.civic.garrison.m_use;
-            }
-            if (game.global.race['brute']){
-                cost = cost / 2;
-            }
+        // mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
+        let mercenariesHired = 0;
+        let mercenaryCost = state.warManager.getMercenaryCost();
 
-            if (cost < settings.foreignHireMercCostLowerThan) {
-                gameLogSuccess("Hiring a mercenary to join the garrison");
-                state.warManager.hireMercenary();
-            }
+        while (state.warManager.currentSoldiers < state.warManager.maxSoldiers
+                && resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100
+                && mercenaryCost < settings.foreignHireMercCostLowerThan) {
+            state.warManager.hireMercenary();
+            mercenaryCost = state.warManager.getMercenaryCost();
+            mercenariesHired++;
+        }
+
+        // Log the interaction
+        if (mercenariesHired === 1) {
+            state.log.logSuccess(loggingTypes.mercenary, `Hired a mercenary to join the garrison.`);
+        } else if (mercenariesHired > 1) {
+            state.log.logSuccess(loggingTypes.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`);
         }
 
         // Now that we've hired mercenaries we can continue to check the rest of the autofight logic
@@ -6458,43 +6659,42 @@
             govUnoccupyIndex = 2;
         }
 
-        // If there is no one to attack or occupy then return
+        // If there is no one to attack or occupy or we are not fully ready then return
         if (govOccupyIndex === -1 && govAttackIndex === -1 && govUnoccupyIndex === -1) { return; }
+        if (state.warManager.maxSoldiers === 0 || state.warManager.woundedSoldiers > 0 || state.warManager.currentSoldiers < state.warManager.maxSoldiers) { return; }
 
-        // If we're switching attack types this loop then don't launch an attack. Wait for the UI to catch up (returns true when we are at the right attack type)
+        // We've got the soldiers, they're not wounded and they're ready to go, so charge!
+        // switchToBestAttackType returns true when the best attack type is set
         // If we are allowed to occupy a foreign power then we can perform attacks up to seige; otherwise we can only go up to assault so that we don't occupy them
         if (!state.warManager.switchToBestAttackType(govOccupyIndex, govAttackIndex, govUnoccupyIndex)) { return; }
         if (state.warManager.selectedGovAttackIndex === -1) { return; }
 
-        // If we have solders, they're not wounded and they're ready to go, then charge!
-        if (state.warManager.maxSoldiers !== 0 && state.warManager.woundedSoldiers === 0 && state.warManager.currentSoldiers === state.warManager.maxSoldiers) {
-            // Adjust our battalion size. Using the vue this is instantanious so we don't need to return to give time for updates
-            let maxSoldiers = state.warManager.getMaxSoldiersForAttackType(state.warManager.selectedGovAttackIndex);
-            if (state.warManager.currentBattalion < maxSoldiers && state.warManager.currentSoldiers > state.warManager.currentBattalion) {
-                let soldiersToAdd = Math.min(maxSoldiers - state.warManager.currentBattalion, state.warManager.currentSoldiers - state.warManager.currentBattalion);
+        // Best attack type is set. Now adjust our battalion size to fit between our campaign attack rating ranges
+        let maxSoldiers = state.warManager.getMaxSoldiersForAttackType(state.warManager.selectedGovAttackIndex);
+        if (state.warManager.currentBattalion < maxSoldiers && state.warManager.currentSoldiers > state.warManager.currentBattalion) {
+            let soldiersToAdd = Math.min(maxSoldiers - state.warManager.currentBattalion, state.warManager.currentSoldiers - state.warManager.currentBattalion);
 
-                if (soldiersToAdd > 0) {
-                    state.warManager.addBattalion(soldiersToAdd);
-                }
-            } else if (state.warManager.currentBattalion > maxSoldiers) {
-                let soldiersToRemove = state.warManager.currentBattalion - maxSoldiers;
-
-                if (soldiersToRemove > 0) {
-                    state.warManager.removeBattalion(soldiersToRemove);
-                }
+            if (soldiersToAdd > 0) {
+                state.warManager.addBattalion(soldiersToAdd);
             }
+        } else if (state.warManager.currentBattalion > maxSoldiers) {
+            let soldiersToRemove = state.warManager.currentBattalion - maxSoldiers;
 
-            // Log the interaction
-            if (govOccupyIndex >= 0 && state.warManager.campaignList[game.global.civic.garrison.tactic].id === "Siege") {
-                gameLogSuccess(`Launching ${state.warManager.attackType} campaign for occupation against ${getGovName(govOccupyIndex)}`)
-            } else if (govAttackIndex >= 0) {
-                gameLogSuccess(`Launching ${state.warManager.attackType} campaign against ${getGovName(govAttackIndex)}`)
-            } else {
-                gameLogSuccess(`Unoccupying ${getGovName(govUnoccupyIndex)}`)
+            if (soldiersToRemove > 0) {
+                state.warManager.removeBattalion(soldiersToRemove);
             }
-
-            state.warManager.launchCampaign(state.warManager.selectedGovAttackIndex);
         }
+
+        // Log the interaction
+        if (govOccupyIndex >= 0 && state.warManager.campaignList[game.global.civic.garrison.tactic].id === "Siege") {
+            state.log.logSuccess(loggingTypes.attack, `Launching ${state.warManager.campaignList[game.global.civic.garrison.tactic].name} campaign for occupation against ${getGovName(govOccupyIndex)}.`)
+        } else if (govAttackIndex >= 0) {
+            state.log.logSuccess(loggingTypes.attack, `Launching ${state.warManager.campaignList[game.global.civic.garrison.tactic].name} campaign against ${getGovName(govAttackIndex)}.`)
+        } else {
+            state.log.logSuccess(loggingTypes.attack, `Unoccupying ${getGovName(govUnoccupyIndex)}.`)
+        }
+
+        state.warManager.launchCampaign(state.warManager.selectedGovAttackIndex);
     }
 
     //#endregion Auto Battle
@@ -7162,7 +7362,9 @@
         }
 
         // We've already got our cached values so just check if there is any need to change our ratios
-        let deltaAdamantite = droid.maxOperating - droid.currentProduction(MiningDroidGoods.Adamantite);
+        // We're not changing any existing setup, just allocating any free to adamantite
+        // There aren't any settings around this currently
+        let deltaAdamantite = droid.maxOperating - droid.currentOperating;
         droid.increaseProduction(MiningDroidGoods.Adamantite, deltaAdamantite);
     }
 
@@ -7659,8 +7861,6 @@
             }
 
             if (click && techIds[itemId].click()) {
-                gameLogSuccess(`Researching ${techIds[itemId].title}`);
-
                 // The unification techs are special as they are always "clickable" even if they can't be afforded.
                 // We don't want to continually remove the poppers if the script is clicking one every second that
                 // it can't afford
@@ -7897,7 +8097,7 @@
     //#region Auto Trade Specials
 
     /**
-     * @param {{ cratesToBuild: number; containersToBuild: number; availableCrates: number, availableContainers: number, adjustments: any[]; }} storageChanges
+     * @param {{ cratesToBuild: number; containersToBuild: number; availableCrates: number; availableContainers: number; adjustments: {resource: Resource, cratesAdjustment: number, containersAdjustment: number}[]; }} storageChanges
      * @param {Resource} resource
      * @param {number} requiredCrates
      * @param {number} requiredContainers
@@ -7944,6 +8144,8 @@
             containersToBuild: Math.min(resources.Containers.maxQuantity - resources.Containers.currentQuantity, numberOfContainersWeCanBuild),
             availableCrates: resources.Crates.currentQuantity,
             availableContainers: resources.Containers.currentQuantity,
+
+            /** @type { {resource: Resource, cratesAdjustment: number, containersAdjustment: number}[] } */
             adjustments: []
         };
 
@@ -8097,14 +8299,14 @@
                     adjustment.resource.tryAssignCrate(adjustment.cratesAdjustment);
                 }
                 if (adjustment.cratesAdjustment < 0) {
-                    adjustment.resource.tryUnassignCrate(adjustment.cratesAdjustment);
+                    adjustment.resource.tryUnassignCrate(adjustment.cratesAdjustment * -1);
                 }
 
                 if (adjustment.containersAdjustment > 0) {
                     adjustment.resource.tryAssignContainer(adjustment.containersAdjustment);
                 }
                 if (adjustment.containersAdjustment < 0) {
-                    adjustment.resource.tryUnassignContainer(adjustment.containersAdjustment);
+                    adjustment.resource.tryUnassignContainer(adjustment.containersAdjustment * -1);
                 }
             });
         }
@@ -8448,7 +8650,7 @@
         if (modifierKeyPressed()) {
             return;
         }
-        
+
         if (state.goal === "Evolution") {
             if (settings.autoEvolution) {
                 autoEvolution();
@@ -8720,6 +8922,7 @@
         buildJobSettings();
         buildBuildingSettings();
         buildProjectSettings();
+        buildLoggingSettings(parentNode, true);
 
         let collapsibles = document.getElementsByClassName("script-collapsible");
         for (let i = 0; i < collapsibles.length; i++) {
@@ -8799,6 +9002,7 @@
         updateJobSettingsContent();
         updateBuildingSettingsContent();
         updateProjectSettingsContent();
+        updateLoggingSettingsContent(true);
     }
 
     function buildSettingsSection(sectionId, sectionName, resetFunction, updateSettingsContentFunction) {
@@ -8949,14 +9153,16 @@
     /**
      * @param {string} secondaryPrefix
      * @param {{ append: (arg0: string) => void; }} node
+     * @param {number} indent Indent level of this toggle - 0, 1, 2, etc.
      * @param {string} settingName
      * @param {string} labelText
      * @param {string} hintText
      */
-    function addStandardSectionSettingsToggle2(secondaryPrefix, node, settingName, labelText, hintText) {
+    function addStandardSectionSettingsToggle2(secondaryPrefix, node, indent, settingName, labelText, hintText) {
         let mainSettingName = "script_" + settingName;
         let computedSettingName = "script_" + secondaryPrefix + settingName;
-        node.append(`<div style="margin-top: 5px; width: 80%; display: inline-block; text-align: left;"><label title="${hintText}" tabindex="0" class="switch" id="${computedSettingName}"><input type="checkbox"> <span class="check"></span><span style="margin-left: 10px;">${labelText}</span></label></div>`)
+        let marginLeft = indent === 0 ? "" : `margin-left: ${indent * 20}px; `;
+        node.append(`<div style="${marginLeft}margin-top: 5px; width: 80%; display: inline-block; text-align: left;"><label title="${hintText}" tabindex="0" class="switch" id="${computedSettingName}"><input type="checkbox"> <span class="check"></span><span style="margin-left: 10px;">${labelText}</span></label></div>`)
 
         let toggleNode = $(`#${computedSettingName} > input`);
         if (settings[settingName]) {
@@ -9073,7 +9279,7 @@
         addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, "generalMinimumMorale", "Minimum allowed morale", "Use this to set a minimum allowed morale. Remember that less than 100% can cause riots and weather can cause sudden swings");
         addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
 
-        addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, "govManage", "Manage changes of government", "Manage changes of government when they become available");
+        addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, 0, "govManage", "Manage changes of government", "Manage changes of government when they become available");
 
         // Government selector
         buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govInterim", "Interim Government", "Temporary low tier government until you research your final government choice");
@@ -9736,9 +9942,9 @@
 
     function updateForeignPowerPanel(secondaryPrefix, parentNode, govIndex) {
         addStandardSectionHeader2(parentNode, getGovName(govIndex))
-        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, "foreignAttack" + govIndex, "Attack", "Allow attacks against this foreign power. If occupied it will unoccupy just before attacking");
-        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, "foreignOccupy" + govIndex, "Occupy when possible", "Attempts to occupy this foreign power when available");
-        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, "foreignSpy" + govIndex, "Train spies", "Train spies to use against foreign powers");
+        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignAttack" + govIndex, "Attack", "Allow attacks against this foreign power. If occupied it will unoccupy just before attacking");
+        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignOccupy" + govIndex, "Occupy when possible", "Attempts to occupy this foreign power when available");
+        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignSpy" + govIndex, "Train spies", "Train spies to use against foreign powers");
         addStandardSectionSettingsNumber2(secondaryPrefix, parentNode, "foreignSpyMax" + govIndex, "Maximum spies", "Maximum spies send against this foreign power");
         buildSpyOperationSelectorSetting(secondaryPrefix, parentNode, "foreignSpyOp" + govIndex, "Espionage Mission", "Perform this espionage mission whenever available");
     }
@@ -10896,6 +11102,46 @@
         return toggle;
     }
 
+    function buildLoggingSettings(parentNode, isMainSettings) {
+        let sectionId = "logging";
+        let sectionName = "Logging";
+
+        let resetFunction = function() {
+            //resetGeneralState();
+            resetLoggingSettings();
+            updateSettingsFromState();
+            updateLoggingSettingsContent(isMainSettings);
+        };
+
+        buildSettingsSection2(parentNode, isMainSettings, sectionId, sectionName, resetFunction, updateLoggingSettingsContent);
+    }
+
+    function updateLoggingSettingsContent(isMainSettings) {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+        let secondaryPrefix = "c_";
+
+        if (isMainSettings) {
+            secondaryPrefix = "";
+        }
+
+        let currentNode = $(`#script_${secondaryPrefix}loggingContent`);
+        currentNode.empty().off("*");
+
+        // Add the pre table section
+        currentNode.append(`<div id="script_${secondaryPrefix}loggingPreTable"></div>`);
+
+        // Add any pre table settings
+        let preTableNode = $(`#script_${secondaryPrefix}loggingPreTable`);
+        addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, 0, "logEnabled", "Enable logging", "Master switch to enable logging of script actions in the game message queue");
+
+        Object.keys(loggingTypes).forEach(loggingTypeKey => {
+            let loggingType = loggingTypes[loggingTypeKey];
+            addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, 1, loggingType.settingKey, loggingType.name, `If logging is enabled then logs ${loggingType.name} actions`);
+        });
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
     function createSettingToggle(name, enabledCallBack, disabledCallBack) {
         let elm = $('#autoScriptContainer');
         let checked = settings[name] ? " checked" : "";
@@ -11583,20 +11829,6 @@
     function logClick(element, reason) {
         log("click", "click " + reason);
         element.click();
-    }
-
-    /**
-     * @param {string} text
-     */
-    function gameLogSuccess(text) {
-        game.messageQueue(text, 'success');
-    }
-
-    /**
-     * @param {string} text
-     */
-    function gameLogWarning(text) {
-        game.messageQueue(text, 'warning');
     }
 
     //#endregion Utility Functions
