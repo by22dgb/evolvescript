@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.6.0
+// @version      2.6.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3563,6 +3563,7 @@
             return this._definition;
         }
 
+        // This is the resource requirements for 100% of the project
         updateResourceRequirements() {
             if (!this.isUnlocked()) {
                 return;
@@ -7936,12 +7937,12 @@
 
             for (let j = 0; j < project.resourceRequirements.length; j++) {
                 const requirement = project.resourceRequirements[j];
+                let onePercentOfRequirementQuantity = requirement.quantity / 100;
 
-                if (requirement.resource === resources.Money) {
-                    continue;
-                }
+                if (onePercentOfRequirementQuantity === 0) { continue; } // Monument can be made of different things. Sometimes these requirements will be zero.
+                if (requirement.resource === resources.Money) { continue; } // Don't check if money is full. We can build if we are above our minimum money setting (which is checked in tryBuild)
 
-                if (requirement.resource.currentQuantity < requirement.quantity) {
+                if (requirement.resource.currentQuantity < onePercentOfRequirementQuantity) {
                     allowBuild = false;
                     break;
                 }
@@ -7951,12 +7952,12 @@
                     break;
                 }
 
-                if (requirement.quantity / requirement.resource.currentQuantity > (settings.arpaBuildIfStorageFullResourceMaxPercent / 100)) {
+                if (onePercentOfRequirementQuantity / requirement.resource.currentQuantity > (settings.arpaBuildIfStorageFullResourceMaxPercent / 100)) {
                     allowBuild = false;
                     break;
                 }
 
-                if (requirement.resource.isCraftable && requirement.resource.currentQuantity - requirement.quantity < settings.arpaBuildIfStorageFullCraftableMin) {
+                if (requirement.resource.isCraftable && requirement.resource.currentQuantity - onePercentOfRequirementQuantity < settings.arpaBuildIfStorageFullCraftableMin) {
                     allowBuild = false;
                     break;
                 }
