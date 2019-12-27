@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.6.1
+// @version      2.7.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -763,6 +763,21 @@
             }
         }
 
+        /**
+         * @param {Action} testAction
+         */
+        isResourceRequirementConflict(testAction) {
+            for (let i = 0; i < this.resourceRequirements.length; i++) {
+                for (let j = 0; j < testAction.resourceRequirements.length; j++) {
+                    if (this.resourceRequirements[i].resource === testAction.resourceRequirements[j].resource) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
         isClickable() {
             if (!this.isUnlocked()) {
@@ -812,7 +827,7 @@
                             || this.id === state.spaceBuildings.GasSpaceDockProbe.id
                             || this.id === state.spaceBuildings.DwarfWorldCollider.id
                             || this.id === state.spaceBuildings.ProximaDyson.id
-                            || this.id === state.spaceBuildings.BlackholeStellerEngine.id
+                            || this.id === state.spaceBuildings.BlackholeStellarEngine.id
                         ) {
                             state.log.logSuccess(loggingTypes.multi_construction, `${this.title} (${this.count}) has been constructed.`);
                     } else {
@@ -1025,6 +1040,7 @@
             
             this._vueBinding = "res" + this.id;
             this._stackVueBinding = "stack-" + this.id;
+            this._ejectorVueBinding = "eject" + this.id;
             this.marketVueBinding = "market-" + this.id; // Used by market manager
         }
 
@@ -1054,6 +1070,47 @@
 
         isManagedStorage() {
             return this.autoStorageEnabled && this.isUnlocked() && this.hasOptions();
+        }
+
+        isEjectable() {
+            return game.global.interstellar.mass_ejector.hasOwnProperty(this.id);
+        }
+
+        /** @return {number} */
+        get atomicMass() {
+            if (!game.atomic_mass.hasOwnProperty(this.id)) {
+                return 0;
+            }
+
+            return game.atomic_mass[this.id];
+        }
+
+        /**
+         * @param {number} count
+         */
+        increaseEjection(count) {
+            let vue = getVueById(this._ejectorVueBinding);
+            if (vue === undefined) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.ejectMore(this.id);
+            }
+        }
+
+        /**
+         * @param {number} count
+         */
+        decreaseEjection(count) {
+            let vue = getVueById(this._ejectorVueBinding);
+            if (vue === undefined) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.ejectLess(this.id);
+            }
         }
 
         /**
@@ -4168,6 +4225,14 @@
             return game.checkOldTech(this.id);
         }
 
+        /**
+         * @param {string} resourceId
+         */
+        resourceCost(resourceId) {
+            if (!this.definition.cost[resourceId]) { return 0; }
+            return this.definition.cost[resourceId]();
+        }
+
         updateResourceRequirements() {
             if (!this.isUnlocked()) {
                 return;
@@ -5005,7 +5070,7 @@
 
             Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole"),
             BlackholeFarReach: new Action("Blackhole Far Reach", "interstellar", "far_reach", "int_blackhole"),
-            BlackholeStellerEngine: new Action("Blackhole Steller Engine", "interstellar", "stellar_engine", "int_blackhole"),
+            BlackholeStellarEngine: new Action("Blackhole Stellar Engine", "interstellar", "stellar_engine", "int_blackhole"),
             BlackholeMassEjector: new Action("Mass Ejector", "interstellar", "mass_ejector", "int_blackhole"),
 
             PortalTurret: new Action("Portal Laser Turret", "portal", "turret", "prtl_fortress"),
@@ -5095,7 +5160,7 @@
         state.spaceBuildings.DwarfWorldController.gameMax = 1;
         state.spaceBuildings.GasSpaceDockShipSegment.gameMax = 100;
         state.spaceBuildings.ProximaDyson.gameMax = 100;
-        state.spaceBuildings.BlackholeStellerEngine.gameMax = 100;
+        state.spaceBuildings.BlackholeStellarEngine.gameMax = 100;
         state.spaceBuildings.DwarfWorldCollider.gameMax = 1859;
 
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Coal, 0.25, 1.25);
@@ -5338,6 +5403,21 @@
 
     function resetGeneralSettings() {
         // None at the moment - moved to government settings
+    }
+
+    function resetPrestigeSettings() {
+        settings.autoMAD = false;
+
+        settings.autoSpace = false;
+        settings.prestigeBioseedConstruct = false;
+        settings.autoSeeder = false;
+        settings.prestigeBioseedProbes = 3;
+
+        settings.prestigeWhiteholeReset = false;
+        settings.prestigeWhiteholeMinMass = 8;
+        settings.prestigeWhiteholeStabiliseMass = true;
+        settings.prestigeWhiteholeEjectEnabled = true;
+        settings.prestigeWhiteholeEjectAllCount = 5;
     }
 
     function resetGovernmentSettings() {
@@ -5633,7 +5713,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMiner);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Blackhole);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeFarReach);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStellerEngine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStellarEngine);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeMassEjector);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalTurret);
@@ -5730,7 +5810,7 @@
 
     initialiseState();
 
-    var settingsSections = ["generalSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
+    var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "productionSettingsCollapsed", "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
                             "governmentSettingsCollapsed", "loggingSettingsCollapsed"];
     
@@ -6177,8 +6257,16 @@
         addSetting("autoMiningDroid", defaultAllOptionsEnabled);
         addSetting("autoGraphenePlant", defaultAllOptionsEnabled);
         addSetting("autoMAD", false);
-        addSetting("autoSpace", false); // Space currently equals less plasmids so off by default. Also kind of conflicts with MAD don't you think?
+        addSetting("autoSpace", false);
+        addSetting("prestigeBioseedConstruct", false);
         addSetting("autoSeeder", false);
+        addSetting("prestigeBioseedProbes", 3);
+        addSetting("prestigeWhiteholeReset", false);
+        addSetting("prestigeWhiteholeMinMass", 8);
+        addSetting("prestigeWhiteholeStabiliseMass", true);
+        addSetting("prestigeWhiteholeEjectEnabled", true);
+        addSetting("prestigeWhiteholeEjectAllCount", 5);
+
         addSetting("autoAssembleGene", false);
         addSetting("genesAssembleGeneAlways", false);
 
@@ -7417,9 +7505,167 @@
 
     //#endregion Auto Graphene Plant
     
+    //#region Mass Ejector
+
+    /** @type { { resource: Resource, requirement: number }[] } */
+    var resourcesByAtomicMass = null;
+
+    function autoMassEjector() {
+        if (!settings.prestigeWhiteholeEjectEnabled) { return; }
+        if (state.spaceBuildings.BlackholeMassEjector.stateOnCount === 0) { return; }
+
+        // Now that we have a mass ejector then set up our sorted resource atomic mass array
+        if (resourcesByAtomicMass === null) {
+            resourcesByAtomicMass = [];
+
+            Object.keys(resources).forEach(resourceKey => {
+                let resource = resources[resourceKey];
+                if (resource.isEjectable()) {
+                    resourcesByAtomicMass.push({ resource: resource, requirement: 0, });
+                }
+            });
+
+            resourcesByAtomicMass.sort((a, b) => b.resource.atomicMass - a.resource.atomicMass );
+        }
+
+        let adjustMassEjector = false;
+
+        // Eject everything!
+        if (state.spaceBuildings.BlackholeMassEjector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
+            let remaining = state.spaceBuildings.BlackholeMassEjector.stateOnCount * 1000;
+            adjustMassEjector = true;
+
+            resourcesByAtomicMass.forEach(resourceRequirement => {
+                let resource = resourceRequirement.resource;
+                let roundedRateOfChange = Math.floor(resource.rateOfChange);
+
+                if (remaining <= 0) {
+                    resourceRequirement.requirement = 0;
+                    return;
+                }
+
+                // These are from the autoBuildingPriority(). If we reduce below these figures then buildings start being turned off...
+                // Leave enough neutronium to stabilise the blackhole if required
+                let allowedRatio = 0.06;
+                if (resource === resources.Food) { allowedRatio = 0.11; }
+                if (resource === resources.Uranium) { allowedRatio = 0.2; } // Uranium powers buildings which add to storage cap (proxima transfer station) so this flickers if it gets too low
+                if (resource === resources.Neutronium) { Math.max(allowedRatio, (techIds["tech-stabilize_blackhole"].resourceCost(resource.id) / resource.maxQuantity) + 0.01); }
+
+                if (resource.storageRatio > allowedRatio) {
+                    let allowedQuantity = allowedRatio * resource.maxQuantity;
+
+                    // If we've got greater than X% left then eject away!
+                    if (allowedQuantity > remaining) {
+                        // Our current quantity is greater than our remining ejection capability so just eject what we can
+                        resourceRequirement.requirement = remaining;
+                    } else {
+                        resourceRequirement.requirement = allowedQuantity;
+                    }
+                } else {
+                    if ((resource === resources.Food || resource === resources.Uranium || resource === resources.Neutronium)
+                            && resource.currentQuantity / resource.maxQuantity < allowedRatio - 0.01) {
+                        resourceRequirement.requirement = 0
+                    } else if (resource.storageRatio > 0.01 && roundedRateOfChange === 0) {
+                        resourceRequirement.requirement = game.global.interstellar.mass_ejector[resource.id];
+                    } else if (resource.storageRatio > 0.01 && roundedRateOfChange < 0) {
+                        resourceRequirement.requirement = Math.max(0, game.global.interstellar.mass_ejector[resource.id] + roundedRateOfChange);
+                    } else if (resource.storageRatio > 0.01 && roundedRateOfChange > 0) {
+                        resourceRequirement.requirement = Math.min(remaining, game.global.interstellar.mass_ejector[resource.id] + roundedRateOfChange);
+                    } else {
+                        resourceRequirement.requirement = 0;
+                    }
+                }
+
+                remaining -= resourceRequirement.requirement;
+            });
+        }
+
+        // Only eject if storage cap reached for resource
+        if (state.spaceBuildings.BlackholeMassEjector.stateOnCount < settings.prestigeWhiteholeEjectAllCount) {
+            let remaining = state.spaceBuildings.BlackholeMassEjector.stateOnCount * 1000;
+            adjustMassEjector = true;
+
+            resourcesByAtomicMass.forEach(resourceRequirement => {
+                let resource = resourceRequirement.resource;
+                let roundedRateOfChange = Math.floor(resource.rateOfChange);
+
+                if (remaining <= 0 || resource.storageRatio < 0.99) {
+                    resourceRequirement.requirement = 0;
+                    return;
+                }
+
+                if (resource.storageRatio > 0.01 && roundedRateOfChange === 0) {
+                    resourceRequirement.requirement = game.global.interstellar.mass_ejector[resource.id];
+                } else if (resource.storageRatio > 0.01 && roundedRateOfChange < 0) {
+                    resourceRequirement.requirement = Math.max(0, game.global.interstellar.mass_ejector[resource.id] + roundedRateOfChange);
+                } else if (resource.storageRatio > 0.01 && roundedRateOfChange > 0) {
+                    resourceRequirement.requirement = Math.min(remaining, game.global.interstellar.mass_ejector[resource.id] + roundedRateOfChange);
+                } else {
+                    resourceRequirement.requirement = 0;
+                }
+
+                remaining -= resourceRequirement.requirement;
+            });
+        }
+
+        if (!adjustMassEjector) { return; }
+
+        // Decrement first to free up space
+        resourcesByAtomicMass.forEach(resourceRequirement => {
+            let resource = resourceRequirement.resource;
+            let adjustment = resourceRequirement.requirement - game.global.interstellar.mass_ejector[resource.id];
+            if (adjustment < 0) {
+                resource.decreaseEjection(adjustment * -1);
+            }
+        });
+
+        // Increment any remaining items
+        resourcesByAtomicMass.forEach(resourceRequirement => {
+            let resource = resourceRequirement.resource;
+            let adjustment = resourceRequirement.requirement - game.global.interstellar.mass_ejector[resource.id];
+            if (adjustment > 0) {
+                resource.increaseEjection(adjustment);
+            }
+        });
+    }
+
+    //#endregion Mass Ejector
+
+    //#region Auto Whitehole
+
+    function autoWhiteholePrestige() {
+        if (!settings.prestigeWhiteholeReset) { return; }
+        if (!isWhiteholePrestigeAvailable()) {return; } // Solar mass requirements met and research available
+
+        let tech = techIds["tech-infusion_confirm"];
+        if (tech.isUnlocked()) { tech.click(); }
+
+        tech = techIds["tech-infusion_check"];
+        if (tech.isUnlocked()) { tech.click(); }
+
+        tech = techIds["tech-exotic_infusion"];
+        if (tech.isUnlocked()) { tech.click(); }
+    }
+
+    function isWhiteholePrestigeAvailable() {
+        if (getBlackholeMass() < settings.prestigeWhiteholeMinMass) { return false;}
+        if (!techIds["tech-exotic_infusion"].isUnlocked() && !techIds["tech-infusion_check"].isUnlocked() && !techIds["tech-infusion_confirm"].isUnlocked()) { return false; }
+
+        return true;
+    }
+
+    function getBlackholeMass() {
+        if (game.global.interstellar.stellar_engine.mass === undefined || game.global.interstellar.stellar_engine.exotic === undefined) { return 0; }
+        return +(game.global.interstellar.stellar_engine.mass + game.global.interstellar.stellar_engine.exotic).toFixed(10);
+    }
+
+    //#endregion Auto Whitehole
+
     //#region Auto MAD
 
-    function autoMAD() {
+    function autoMadPrestige() {
+        if (!settings.autoMAD) { return; }
+
         // Don't MAD if it isn't unlocked
         if (!isResearchUnlocked("mad") || document.getElementById("mad").style.display === "none") {
             return;
@@ -7455,18 +7701,13 @@
 
     //#region Auto Seeder Ship
 
-    function autoSeeder() {
+    function autoSeederPrestige() {
         let spaceDock = state.spaceBuildings.GasSpaceDock;
 
-        if (!spaceDock.isUnlocked() || spaceDock.count < 1) {
-            return;
-        }
-
-        // We want at least 4 probes and a completed ship
-        let requiredProbes = state.spaceBuildings.GasSpaceDockProbe.autoMax === Number.MAX_SAFE_INTEGER ? 4 : state.spaceBuildings.GasSpaceDockProbe.autoMax;
-        if (state.spaceBuildings.GasSpaceDockProbe.count < requiredProbes || state.spaceBuildings.GasSpaceDockShipSegment.count < 100) {
-            return;
-        }
+        if (!settings.autoSeeder) { return; }
+        if (!spaceDock.isUnlocked()) { return; }
+        if (spaceDock.count < 1) { return; }
+        if (!isBioseederPrestigeAvailable()) { return; } // ship completed and probe requirements met
 
         if (state.goal === "Standard") {
             if (state.spaceBuildings.GasSpaceDockPrepForLaunch.isUnlocked()) {
@@ -7491,6 +7732,16 @@
                 return;
             }
         }
+    }
+
+    function isBioseederPrestigeAvailable() {
+        let spaceDock = state.spaceBuildings.GasSpaceDock;
+        if (!spaceDock.isUnlocked) { return false; }
+        if (spaceDock.count < 1) { return false; }
+        if (state.spaceBuildings.GasSpaceDockShipSegment.count < 100) { return false; }
+        if (state.spaceBuildings.GasSpaceDockProbe.count < settings.prestigeBioseedProbes) { return false; }
+
+        return true;
     }
 
     //#endregion Auto Seeder Ship
@@ -7681,6 +7932,14 @@
             }
         }
 
+        // building = state.spaceBuildings.DwarfEleriumContainer;
+        // if (building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 2 && state.spaceBuildings.GasMoonOutpost.count >= 2) {
+        //     if (building.count < 2 && !state.triggerManager.buildingConflicts(building)) {
+        //         log("autoBuild", "Target building: elerium storage");
+        //         targetBuilding = building;
+        //     }
+        // }
+
         // Loop through the auto build list and try to buy them
         for (let i = 0; i < buildingList.length; i++) {
             const building = buildingList[i];
@@ -7690,9 +7949,8 @@
             }
 
             // We specifically want to build a target building. Don't build anything else that uses the same resources
-            if (targetBuilding !== null) {
-                //@ts-ignore
-                if (targetBuilding.resourceRequirements.some(r => building.resourceRequirements.includes(r))) {
+            if (targetBuilding !== null && targetBuilding !== building) {
+                if (targetBuilding.isResourceRequirementConflict(building)) {
                     log("autoBuild", building.settingId + " DOES conflict with target building " + targetBuilding.settingId);
                     continue;
                 } else {
@@ -7740,10 +7998,9 @@
                 }
             }
 
-            if (building === state.spaceBuildings.GasMoonOutpost && building.autoBuildEnabled && building.count >= 2) {
-                let eleriumBuilding = state.spaceBuildings.DwarfEleriumContainer;
-                if (eleriumBuilding.autoBuildEnabled && eleriumBuilding.autoMax >= 3 && state.spaceBuildings.DwarfEleriumContainer.count < 2) {
-                    // Don't build outposts until we have enough elerium storage to do our researches
+            // Don't build bioseeder if the user doesn't want it built
+            if (building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe) {
+                if (!settings.prestigeBioseedConstruct) {
                     continue;
                 }
             }
@@ -7791,8 +8048,12 @@
                 continue;
             }
 
-            // Don't click any of the whitehole reset options without user consent... that would be a dick move, man.
-            if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole") {
+            // Whitehole researches
+            if (itemId === "tech-stabilize_blackhole" && settings.prestigeWhiteholeStabiliseMass && getBlackholeMass() < settings.prestigeWhiteholeMinMass) {
+                // If user wants to stabilise blackhole when under minimum solar mass then do it
+                click = true;
+            } else if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole") {
+                // Don't click any of the whitehole reset options without user consent... that would be a dick move, man.
                 continue;
             }
 
@@ -8662,6 +8923,11 @@
                 state.allResourceList[i].calculatedRateOfChange = state.allResourceList[i].rateOfChange;
             }
 
+            let massEjectorProcessed = false;
+            if (state.spaceBuildings.BlackholeMassEjector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
+                autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
+                massEjectorProcessed = true;
+            }
             manageGovernment();
             autoBattle();
 
@@ -8704,17 +8970,18 @@
             if (settings.autoSmelter) {
                 autoSmelter();
             }
-            if (settings.autoMAD) {
-                autoMAD();
-            }
-            if (settings.autoSeeder) {
-                autoSeeder();
-            }
             if (settings.autoAssembleGene && !settings.genesAssembleGeneAlways) {
                 autoAssembleGene();
             }
 
+            autoWhiteholePrestige();
+            autoSeederPrestige();
+            autoMadPrestige();
+
             manageSpies();
+            if (!massEjectorProcessed) {
+                autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
+            }
         }
     }
 
@@ -8911,6 +9178,7 @@
         let parentNode = $('#script_settings');
 
         buildImportExport();
+        buildPrestigeSettings(parentNode, true);
         buildGeneralSettings();
         buildGovernmentSettings(parentNode, true);
         buildEvolutionSettings();
@@ -9162,7 +9430,7 @@
     function addStandardSectionSettingsToggle2(secondaryPrefix, node, indent, settingName, labelText, hintText) {
         let mainSettingName = "script_" + settingName;
         let computedSettingName = "script_" + secondaryPrefix + settingName;
-        let marginLeft = indent === 0 ? "" : `margin-left: ${indent * 20}px; `;
+        let marginLeft = indent === 0 ? "" : `margin-left: ${indent * 30}px; `;
         node.append(`<div style="${marginLeft}margin-top: 5px; width: 80%; display: inline-block; text-align: left;"><label title="${hintText}" tabindex="0" class="switch" id="${computedSettingName}"><input type="checkbox"> <span class="check"></span><span style="margin-left: 10px;">${labelText}</span></label></div>`)
 
         let toggleNode = $(`#${computedSettingName} > input`);
@@ -9171,6 +9439,23 @@
         }
     
         toggleNode.on('change', function(e) {
+            // Special processing for prestige options. If they are ready to prestige then warn the user about enabling them.
+            let confirmationText = "";
+            if (settingName === "autoMAD" && e.currentTarget.checked && isResearchUnlocked("mad")) {
+                confirmationText = "MAD has already been researched. This may MAD immediately. Are you sure you want to enable MAD prestige?";
+            } else if (settingName === "autoSeeder" && isBioseederPrestigeAvailable()) {
+                confirmationText = "Bioseeder ship is ready to launch and may launch immediately. Are you sure you want to enable bioseeder prestige?";
+            } else if (settingName === "" && isWhiteholePrestigeAvailable()) {
+                confirmationText = "Whitehole exotic infusion is ready and may prestige immediately. Are you sure you want to enable whitehole prestige?";
+            }
+
+            if (confirmationText !== "") {
+                if (!confirm(confirmationText)) {
+                    e.currentTarget.checked = false;
+                    return;
+                }
+            }
+
             settings[settingName] = e.currentTarget.checked;
             updateSettingsFromState();
 
@@ -9184,14 +9469,16 @@
     /**
      * @param {string} secondaryPrefix
      * @param {{append: (arg0: string) => void;}} node
+     * @param {number} indent Indent level of this toggle - 0, 1, 2, etc.
      * @param {string} settingName
      * @param {string} labelText
      * @param {string} hintText
      */
-    function addStandardSectionSettingsNumber2(secondaryPrefix, node, settingName, labelText, hintText) {
+    function addStandardSectionSettingsNumber2(secondaryPrefix, node, indent, settingName, labelText, hintText) {
         let mainSettingName = "script_" + settingName;
         let computedSettingName = "script_" + secondaryPrefix + settingName;
-        node.append(`<div style="display: inline-block; width: 80%; text-align: left;"><label title="${hintText}" for="${computedSettingName}">${labelText}</label><input id="${computedSettingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;"></input></div>`);
+        let marginLeft = indent === 0 ? "" : `margin-left: ${indent * 30}px; padding-right: 14px; `;
+        node.append(`<div style="${marginLeft}display: inline-block; width: 80%; text-align: left;"><label title="${hintText}" for="${computedSettingName}">${labelText}</label><input id="${computedSettingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;"></input></div>`);
 
         let textBox = $('#' + computedSettingName);
         textBox.val(settings[settingName]);
@@ -9246,6 +9533,55 @@
         addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
     }
 
+    function buildPrestigeSettings(parentNode, isMainSettings) {
+        let sectionId = "prestige";
+        let sectionName = "Prestige";
+
+        let resetFunction = function() {
+            resetPrestigeSettings();
+            updatePrestigeSettingsContent(isMainSettings);
+        };
+
+        buildSettingsSection2(parentNode, isMainSettings, sectionId, sectionName, resetFunction, updatePrestigeSettingsContent);
+    }
+
+    function updatePrestigeSettingsContent(isMainSettings) {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+        let secondaryPrefix = "c_";
+
+        if (isMainSettings) {
+            secondaryPrefix = "";
+        }
+
+        let currentNode = $(`#script_${secondaryPrefix}prestigeContent`);
+        currentNode.empty().off("*");
+
+        // Foreign powers panel
+        let prestigeHeaderNode = $(`<div id="script_${secondaryPrefix}prestige"></div>`);
+        currentNode.append(prestigeHeaderNode);
+
+        // MAD
+        addStandardSectionHeader1(prestigeHeaderNode, "Mutual Assured Destruction");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "autoMAD", "Perform MAD prestige", "MAD prestige once MAD has been researched and all soldiers are home");
+
+        // Bioseed
+        addStandardSectionHeader1(prestigeHeaderNode, "Bioseed");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "autoSpace", "Construct Launch Facility", "Constructs the Launch Facility when it becomes available regardless of other settings");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Constructs Bioseeder Ship Segments and Probes", "Construct the bioseeder ship segments and probes in preparation for bioseeding");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "autoSeeder", "Perform bioseeder ship prestige", "Launches the bioseeder ship to perform prestige when required probes have been constructed");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 1, "prestigeBioseedProbes", "Required probes", "Required number of probes before launching bioseeder ship");
+
+        // Whitehole
+        addStandardSectionHeader1(prestigeHeaderNode, "Whitehole");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeReset", "Perform whitehole prestige", "Infuses the blackhole with exotic materials to perform prestige");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 1, "prestigeWhiteholeMinMass", "Required minimum solar mass", "Required minimum solar mass of blackhole before prestiging");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 1, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole until minimum solar mass reached", "Stabilises the blackhole with exotic materials until minimum solar mass is reached");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectEnabled", "Enable mass ejector", "If not enabled the mass ejector will not be managed by the script");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
     function buildGovernmentSettings(parentNode, isMainSettings) {
         let sectionId = "government";
         let sectionName = "Government";
@@ -9276,9 +9612,9 @@
 
         // Add any pre table settings
         let preTableNode = $(`#script_${secondaryPrefix}governmentPreTable`);
-        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
-        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, "generalMinimumMorale", "Minimum allowed morale", "Use this to set a minimum allowed morale. Remember that less than 100% can cause riots and weather can cause sudden swings");
-        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
+        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, 0, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
+        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, 0, "generalMinimumMorale", "Minimum allowed morale", "Use this to set a minimum allowed morale. Remember that less than 100% can cause riots and weather can cause sudden swings");
+        addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, 0, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
 
         addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, 0, "govManage", "Manage changes of government", "Manage changes of government when they become available");
 
@@ -9906,8 +10242,8 @@
 
         // Campaign panel
         addStandardSectionHeader1(currentNode, "Campaigns");
-        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignHireMercMoneyStoragePercent", "Hire mercenary if money storage greater than percent", "Hire a mercenary if money storage is greater than this percent");
-        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignHireMercCostLowerThan", "AND if cost lower than amount", "Combines with the money storage percent setting to determine when to hire mercenaries");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercMoneyStoragePercent", "Hire mercenary if money storage greater than percent", "Hire a mercenary if money storage is greater than this percent");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercCostLowerThan", "AND if cost lower than amount", "Combines with the money storage percent setting to determine when to hire mercenaries");
 
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Campaign</th><th class="has-text-warning" style="width:25%">Minimum Attack Rating</th><th class="has-text-warning" style="width:25%">Maximum Rating to Send</th><th class="has-text-warning" style="width:25%"></th></tr>
@@ -9946,7 +10282,7 @@
         addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignAttack" + govIndex, "Attack", "Allow attacks against this foreign power. If occupied it will unoccupy just before attacking");
         addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignOccupy" + govIndex, "Occupy when possible", "Attempts to occupy this foreign power when available");
         addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignSpy" + govIndex, "Train spies", "Train spies to use against foreign powers");
-        addStandardSectionSettingsNumber2(secondaryPrefix, parentNode, "foreignSpyMax" + govIndex, "Maximum spies", "Maximum spies send against this foreign power");
+        addStandardSectionSettingsNumber2(secondaryPrefix, parentNode, 0, "foreignSpyMax" + govIndex, "Maximum spies", "Maximum spies send against this foreign power");
         buildSpyOperationSelectorSetting(secondaryPrefix, parentNode, "foreignSpyOp" + govIndex, "Espionage Mission", "Perform this espionage mission whenever available");
     }
 
@@ -11143,6 +11479,15 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
+    function createQuickOptions(optionsElementId, optionsDisplayName, buildOptionsFunction) {
+        let container = $('#autoScriptContainer');
+        let optionsDiv = $(`<div style="cursor: pointer;" id="${optionsElementId}">${optionsDisplayName} Options</div>`);
+        container.append(optionsDiv);
+
+        addOptionUI(optionsElementId + "_btn", `#${optionsElementId}`, optionsDisplayName, buildOptionsFunction);
+        addOptionUiClickHandler(optionsDiv, optionsDisplayName, buildOptionsFunction);
+    }
+
     function createSettingToggle(name, enabledCallBack, disabledCallBack) {
         let elm = $('#autoScriptContainer');
         let checked = settings[name] ? " checked" : "";
@@ -11192,33 +11537,41 @@
      * @param {string} optionsId
      * @param {string} querySelectorText
      * @param {string} modalTitle
-     * @param {{ (parentNode: any, isMainSettings: any): void; (parentNode: any, isMainSettings: any): void; (arg0: any): void; }} buildContentFunction
+     * @param {{ (parentNode: any, isMainSettings: boolean): void; (parentNode: any, isMainSettings: boolean): void; (arg0: any): void; }} buildOptionsFunction
      */
-    function addOptionUI(optionsId, querySelectorText, modalTitle, buildContentFunction) {
-        if (document.getElementById(optionsId) === null) {
-            let sectionNode = $(querySelectorText);
+    function addOptionUI(optionsId, querySelectorText, modalTitle, buildOptionsFunction) {
+        if (document.getElementById(optionsId) !== null) { return; } // We've already built the options UI
 
-            if (sectionNode.length !== 0) {
-                let newOptionNode = $(`<span id="${optionsId}" class="s-options-button has-text-success">+</span>`);
-                sectionNode.prepend(newOptionNode);
+        let sectionNode = $(querySelectorText);
 
-                newOptionNode.on('click', function() {
-                    // Build content
-                    let modalHeader = $('#scriptModalHeader');
-                    modalHeader.empty().off("*");
-                    modalHeader.append(`<span>${modalTitle}</span>`);
+        if (sectionNode.length === 0) { return; } // The node that we want to add it to doesn't exist yet
 
-                    let modalBody = $('#scriptModalBody');
-                    modalBody.empty().off("*");
-                    buildContentFunction(modalBody);
+        let newOptionNode = $(`<span id="${optionsId}" class="s-options-button has-text-success">+</span>`);
+        sectionNode.prepend(newOptionNode);
+        addOptionUiClickHandler(newOptionNode, modalTitle, buildOptionsFunction);
+    }
 
-                    // Show modal
-                    let modal = document.getElementById("scriptModal");
-                    $("html").css('overflow', 'hidden');
-                    modal.style.display = "block";
-                });
-            }
-        }
+    /**
+     * @param {{ on: (arg0: string, arg1: () => void) => void; }} optionNode
+     * @param {string} modalTitle
+     * @param {{ (parentNode: any, isMainSettings: boolean): void; (parentNode: any, isMainSettings: boolean): void; (arg0: any): void; (arg0: any): void; }} buildOptionsFunction
+     */
+    function addOptionUiClickHandler(optionNode, modalTitle, buildOptionsFunction) {
+        optionNode.on('click', function() {
+            // Build content
+            let modalHeader = $('#scriptModalHeader');
+            modalHeader.empty().off("*");
+            modalHeader.append(`<span>${modalTitle}</span>`);
+
+            let modalBody = $('#scriptModalBody');
+            modalBody.empty().off("*");
+            buildOptionsFunction(modalBody);
+
+            // Show modal
+            let modal = document.getElementById("scriptModal");
+            $("html").css('overflow', 'hidden');
+            modal.style.display = "block";
+        });
     }
 
     function createOptionsModal() {
@@ -11352,19 +11705,12 @@
         if ($('#autoGraphenePlant').length === 0) {
             createSettingToggle('autoGraphenePlant');
         }
-
-        if ($('#autoMAD').length === 0) {
-            createSettingToggle('autoMAD');
-        }
-        if ($('#autoSpace').length === 0) {
-            createSettingToggle('autoSpace');
-        }
-        if ($('#autoSeeder').length === 0) {
-            createSettingToggle('autoSeeder');
-        }
         if ($('#autoAssembleGene').length === 0) {
             createSettingToggle('autoAssembleGene');
         }
+
+        if (document.getElementById("s-quick-prestige-options") === null) { createQuickOptions("s-quick-prestige-options", "Prestige", buildPrestigeSettings); }
+
         if (showLogging && $('#autoLogging').length === 0) {
            createSettingToggle('autoLogging');
 
