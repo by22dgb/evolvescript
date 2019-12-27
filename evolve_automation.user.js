@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.7.0
+// @version      2.7.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -6692,13 +6692,22 @@
         // mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
         let mercenariesHired = 0;
         let mercenaryCost = state.warManager.getMercenaryCost();
+        let previousSoldiersCount = state.warManager.currentSoldiers;
 
         while (state.warManager.currentSoldiers < state.warManager.maxSoldiers
                 && resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100
-                && mercenaryCost < settings.foreignHireMercCostLowerThan) {
+                && mercenaryCost < settings.foreignHireMercCostLowerThan
+                && resources.Money.currentQuantity > mercenaryCost) {
             state.warManager.hireMercenary();
             mercenaryCost = state.warManager.getMercenaryCost();
             mercenariesHired++;
+
+            // Just a bit of saftey to ensure that we did actually hire a mercenary
+            if (previousSoldiersCount === state.warManager.currentSoldiers) {
+                break;
+            }
+
+            previousSoldiersCount = state.warManager.currentSoldiers;
         }
 
         // Log the interaction
