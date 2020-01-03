@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.7.1
+// @version      2.7.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3590,7 +3590,6 @@
             this.resourceRequirements = [];
 
             this._vueBinding = "arpa" + this.id;
-            this._instance = null;
             this._definition = null;
 
             this._x1ButtonSelector = `#arpa${this.id} > div.buy > button.button.x1`;
@@ -3601,13 +3600,7 @@
         }
 
         get instance() {
-            if (this._instance !== null) {
-                return this._instance;
-            }
-
-            this._instance = game.global.arpa[this.id];
-
-            return this._instance;
+            return game.global.arpa[this.id];
         }
 
         get definition() {
@@ -3669,11 +3662,19 @@
         }
 
         get level() {
-            return this.instance ? this.instance.rank : 0;
+            if (this.instance === undefined || !this.instance.hasOwnProperty("rank")) {
+                return 0;
+            }
+
+            return this.instance.rank;
         }
 
         get progress() {
-            return this.instance ? this.instance.complete : 0;
+            if (this.instance === undefined || !this.instance.hasOwnProperty("complete")) {
+                return 0;
+            }
+
+            return this.instance.complete;
         }
 
         /**
@@ -3851,6 +3852,19 @@
             return false;
         }
 
+        getMaxMultiplier(){
+            // COPIED DIRECTLY FROM GAME CODE
+            if (game.global.tech['currency'] >= 6){
+                return 1000000;
+            }
+            else if (game.global.tech['currency'] >= 4){
+                return 5000;
+            }
+            else {
+                return 100;
+            }
+        }
+
         /**
          * @param {Resource} resource
          */
@@ -3866,12 +3880,12 @@
         /**
          * @param {Resource} resource
          */
-        getBuyPrice(resource) {
+        getUnitBuyPrice(resource) {
             if (!this.isUnlocked()) {
                 return -1;
             }
 
-            let price = game.global.race['arrogant'] ? Math.round(game.global.resource[resource.id].value * 1.1) : game.global.resource[resource.id].value;
+            let price = game.global.race['arrogant'] ? game.global.resource[resource.id].value * 1.1 : game.global.resource[resource.id].value;
             if (game.global.race['conniving']){
                 price *= 0.95;
             }
@@ -3882,7 +3896,7 @@
         /**
          * @param {Resource} resource
          */
-        getSellPrice(resource) {
+        getUnitSellPrice(resource) {
             if (!this.isUnlocked()) {
                 return -1;
             }
@@ -3891,7 +3905,7 @@
             if (game.global.race['conniving']){
                 divide -= 0.5;
             } 
-            let price = Math.round(game.global.resource[resource.id].value / divide);
+            let price = game.global.resource[resource.id].value / divide;
 
             return price;
         }
@@ -7529,12 +7543,18 @@
 
             Object.keys(resources).forEach(resourceKey => {
                 let resource = resources[resourceKey];
+                if (resource === resources.Elerium || resource === resource.Infernite) { return; } // We'll add these exotic resources to the front of the list after sorting as these should always come first
+
                 if (resource.isEjectable()) {
                     resourcesByAtomicMass.push({ resource: resource, requirement: 0, });
                 }
             });
 
             resourcesByAtomicMass.sort((a, b) => b.resource.atomicMass - a.resource.atomicMass );
+
+            // Elerium and infernite are always first as they are the exotic resources which are worth the most DE
+            resourcesByAtomicMass.unshift({ resource: resources.Infernite, requirement: 0, });
+            resourcesByAtomicMass.unshift({ resource: resources.Elerium, requirement: 0, });
         }
 
         let adjustMassEjector = false;
@@ -7784,46 +7804,46 @@
     function autoMarket(bulkSell, ignoreSellRatio) {
         adjustTradeRoutes();
 
-        let currentMoney = resources.Money.currentQuantity;
-        let tradeQuantity = 1000;
+        let m = state.marketManager;
 
         // Market has not been unlocked in game yet (tech not researched)
-        if (!state.marketManager.isUnlocked()) {
-            return;
-        }
-
-        if (state.marketManager.isMultiplierUnlocked(1000) && state.marketManager.getMultiplier() != 1000) {
-            state.marketManager.setMultiplier(1000);
-            return;
-        } else if (!state.marketManager.isMultiplierUnlocked(1000) && state.marketManager.isMultiplierUnlocked(100) && state.marketManager.getMultiplier() != 100) {
-            state.marketManager.setMultiplier(100);
-            tradeQuantity = 100;
+        if (!m.isUnlocked()) {
             return;
         }
         
-        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
-            let resource = state.marketManager.priorityList[i];
-            let currentResourceQuantity = resource.currentQuantity;
+        let currentMultiplier = m.getMultiplier(); // Save the current multiplier so we can reset it at the end of the function
+        let maxMultiplier = m.getMaxMultiplier();
+        
+        for (let i = 0; i < m.priorityList.length; i++) {
+            let resource = m.priorityList[i];
 
-            if (!resource.isTradable || !resource.isUnlocked() || !state.marketManager.isBuySellUnlocked(resource)) {
+            if (!resource.isTradable || !resource.isUnlocked() || !m.isBuySellUnlocked(resource)) {
                 continue;
             }
             
-            if (resource.autoSellEnabled === true && (ignoreSellRatio ? true : resource.storageRatio > resource.autoSellRatio)) {
-                let sellBtn = $('#market-' + resource.id + ' .order')[1];
-                let value = sellBtn.textContent.substr(1);
-                let sellValue = getRealNumber(value);
-                let counter = 0;
+            if ((resource.autoSellEnabled && (ignoreSellRatio || resource.storageRatio > resource.autoSellRatio)) || resource.storageRatio === 1) {
+                let maxAllowedTotalSellPrice = resources.Money.maxQuantity - resources.Money.currentQuantity;
+                let unitSellPrice = m.getUnitSellPrice(resource);
+                let maxAllowedUnits = Math.floor(maxAllowedTotalSellPrice / unitSellPrice); // only sell up to our maximum money
 
-                while(true) {
-                    // break if not enough resource or not enough money storage
-                    if (currentMoney + sellValue >= resources.Money.maxQuantity || currentResourceQuantity - tradeQuantity <= 0 || counter++ > 10) {
-                        break;
+                if (resource.storageRatio < 0.99) {
+                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.currentQuantity - (resource.autoSellRatio * resource.maxQuantity))); // If not full sell up to our sell ratio
+                } else {
+                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.rateOfChange * 2)); // If resource is full then sell up to 2 seconds worth of production
+                }
+
+                if (maxAllowedUnits <= maxMultiplier) {
+                    // Our current max multiplier covers the full amount that we want to sell
+                    m.setMultiplier(maxAllowedUnits);
+                    m.sell(resource)
+                } else {
+                    // Our current max multiplier doesn't cover the full amount that we want to sell. Sell up to 10 batches.
+                    let counter = Math.min(5, Math.floor(maxAllowedUnits / maxMultiplier)); // Allow up to 10 sales per script loop
+                    m.setMultiplier(maxMultiplier);
+
+                    for (let j = 0; j < counter; j++) {
+                        m.sell(resource);
                     }
-
-                    currentMoney += sellValue;
-                    currentResourceQuantity -= tradeQuantity;
-                    logClick(sellBtn, "automarket sell " + resource.id);
                 }
             }
 
@@ -7832,23 +7852,23 @@
             }
 
             if (resource.autoBuyEnabled === true && resource.storageRatio < resource.autoBuyRatio) {
-                let buyBtn = $('#market-' + resource.id + ' .order')[0];
-                let value = buyBtn.textContent.substr(1);
-                let buyValue = getRealNumber(value);
+                m.setMultiplier(1000);
+                let tradeQuantity = m.getMultiplier();
+                let buyValue = tradeQuantity * m.getUnitBuyPrice(resource);
                 let counter = 0;
 
                 while(true) {
                     // break if not enough money or not enough resource storage
-                    if (currentMoney - buyValue <= state.minimumMoneyAllowed || resource.currentQuantity + tradeQuantity > resource.maxQuantity - 3 * tradeQuantity || counter++ > 2) {
+                    if (resources.Money.currentQuantity - buyValue <= state.minimumMoneyAllowed || resource.currentQuantity + tradeQuantity > resource.maxQuantity - 3 * tradeQuantity || counter++ > 2) {
                         break;
                     }
 
-                    currentMoney -= buyValue;
-                    currentResourceQuantity += tradeQuantity;
-                    logClick(buyBtn, "automarket buy " + resource.id);
+                    m.buy(resource);
                 }
             }
         }
+
+        m.setMultiplier(currentMultiplier); // Reset multiplier
     }
 
     //#endregion Auto Market
@@ -7943,7 +7963,7 @@
 
         // building = state.spaceBuildings.DwarfEleriumContainer;
         // if (building.autoBuildEnabled && building.isUnlocked() && building.autoMax >= 2 && state.spaceBuildings.GasMoonOutpost.count >= 2) {
-        //     if (building.count < 2 && !state.triggerManager.buildingConflicts(building)) {
+        //     if (resources.Elerium.maxQuantity < 280 && building.count < 2 && !state.triggerManager.buildingConflicts(building)) {
         //         log("autoBuild", "Target building: elerium storage");
         //         targetBuilding = building;
         //     }
@@ -8171,6 +8191,7 @@
         // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build once MAD has been researched
         if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && isResearchUnlocked("mad")) {
             if (!state.triggerManager.projectConflicts(state.projects.LaunchFacility)) {
+                log("autoARPA", "override build launch facility")
                 state.projects.LaunchFacility.tryBuild(false);
             }
         }
@@ -8185,6 +8206,7 @@
             }
 
             if (!state.triggerManager.projectConflicts(project)) {
+                log("autoARPA", "standard build " + project.id)
                 project.tryBuild(true);
             }
         }
@@ -8209,31 +8231,38 @@
                 const requirement = project.resourceRequirements[j];
                 let onePercentOfRequirementQuantity = requirement.quantity / 100;
 
-                if (onePercentOfRequirementQuantity === 0) { continue; } // Monument can be made of different things. Sometimes these requirements will be zero.
-                if (requirement.resource === resources.Money) { continue; } // Don't check if money is full. We can build if we are above our minimum money setting (which is checked in tryBuild)
+                log("autoARPA", "project " + project.id + ", resource " + requirement.resource.id + ", one percent, " + onePercentOfRequirementQuantity);
+
+                if (onePercentOfRequirementQuantity === 0) { log("autoARPA", "continue: cost is zero"); continue; } // Monument can be made of different things. Sometimes these requirements will be zero.
+                if (requirement.resource === resources.Money) { log("autoARPA", "continue: resource is money"); continue; } // Don't check if money is full. We can build if we are above our minimum money setting (which is checked in tryBuild)
 
                 if (requirement.resource.currentQuantity < onePercentOfRequirementQuantity) {
+                    log("autoARPA", "break: current < requirement");
                     allowBuild = false;
                     break;
                 }
 
                 if (!requirement.resource.isCraftable && requirement.resource.storageRatio <= 0.98) {
+                    log("autoARPA", "break: storage < 98%");
                     allowBuild = false;
                     break;
                 }
 
                 if (onePercentOfRequirementQuantity / requirement.resource.currentQuantity > (settings.arpaBuildIfStorageFullResourceMaxPercent / 100)) {
+                    log("autoARPA", "break: storage ratio < setting");
                     allowBuild = false;
                     break;
                 }
 
                 if (requirement.resource.isCraftable && requirement.resource.currentQuantity - onePercentOfRequirementQuantity < settings.arpaBuildIfStorageFullCraftableMin) {
+                    log("autoARPA", "break: craftables < setting");
                     allowBuild = false;
                     break;
                 }
             }
 
             if (allowBuild && !state.triggerManager.projectConflicts(project)) {
+                log("autoARPA", "full resources build " + project.id)
                 project.tryBuild(false);
             }
         }
@@ -12170,7 +12199,7 @@
     }
 
     var showLogging = false;
-    var loggingType = "autoJobs";
+    var loggingType = "autoARPA";
 
     /**
      * @param {string} type
