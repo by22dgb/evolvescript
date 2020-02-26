@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.7.2
+// @version      2.7.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1340,6 +1340,8 @@
          */
         tryCraftX(count) {
             if (!this.isUnlocked()) { return false; }
+            if (game.global.race[challengeNoCraft]) { return false; }
+
             let vue = getVueById(this._vueBinding);
             if (vue === undefined) { return false; }
 
@@ -6544,9 +6546,8 @@
     //#region Auto Crafting
 
     function autoCraft() {
-        if (!resources.Population.isUnlocked()) {
-            return;
-        }
+        if (!resources.Population.isUnlocked()) { return; }
+        if (game.global.race[challengeNoCraft]) { return; }
         
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
@@ -7890,7 +7891,7 @@
     
     function autoGatherResources() {
         // Don't spam click once we've got a bit of population going
-        if (resources.Population.currentQuantity > 15) {
+        if (state.cityBuildings.RockQuarry.count > 0 && resources.Population.currentQuantity > 15) {
             return;
         }
 
