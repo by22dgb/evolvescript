@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.7.3
+// @version      2.7.4
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -7853,7 +7853,7 @@
             }
 
             if (resource.autoBuyEnabled === true && resource.storageRatio < resource.autoBuyRatio) {
-                m.setMultiplier(1000);
+                m.setMultiplier(currentMultiplier);
                 let tradeQuantity = m.getMultiplier();
                 let buyValue = tradeQuantity * m.getUnitBuyPrice(resource);
                 let counter = 0;
