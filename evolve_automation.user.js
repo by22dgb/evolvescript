@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.8.0
+// @version      2.8.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1064,6 +1064,10 @@
         }
         
         isUnlocked() {
+            if (this._isPopulation) {
+                return game.global.resource[this.id].display;
+            }
+
             let containerNode = document.getElementById(this._elementId);
             return containerNode !== null && containerNode.style.display !== "none";
         }
@@ -4893,6 +4897,7 @@
             CoalMiner: new Job("coal_miner", "Coal Miner"),
             CementWorker: new Job("cement_worker", "Cement Worker"),
             Entertainer: new Job("entertainer", "Entertainer"),
+            Priest: new Job("priest", "Priest"),
             Professor: new Job("professor", "Professor"),
             Scientist: new Job("scientist", "Scientist"),
             Banker: new Job("banker", "Banker"),
@@ -5812,6 +5817,7 @@
         state.jobManager.addJobToPriorityList(state.jobs.Colonist);
         state.jobManager.addJobToPriorityList(state.jobs.SpaceMiner);
         state.jobManager.addJobToPriorityList(state.jobs.HellSurveyor);
+        state.jobManager.addJobToPriorityList(state.jobs.Priest);
 
         state.jobs.Farmer.breakpointMaxs = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
         state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
@@ -5836,6 +5842,7 @@
         state.jobs.Colonist.breakpointMaxs = [0, 0, -1];
         state.jobs.SpaceMiner.breakpointMaxs = [0, 0, -1];
         state.jobs.HellSurveyor.breakpointMaxs = [0, 0, -1];
+        state.jobs.Priest.breakpointMaxs = [0, 0, 0];
     }
 
     function resetBuildingState() {
@@ -7983,7 +7990,7 @@
         if (!isResearchUnlocked("mad") || document.getElementById("mad").style.display === "none") {
             return;
         }
-
+        
         if (!resources.Population.isUnlocked()) {
             return;
         }
@@ -12339,6 +12346,7 @@
      * @return {string}
      */
     function getRaceId() {
+        
         let raceNameNode = document.querySelector('#race .column > span');
         if (raceNameNode === null) {
             return "";
@@ -12347,7 +12355,11 @@
         let index = findArrayIndex(raceAchievementList, "name", raceNameNode.textContent);
 
         if (index === -1) {
-            return "";
+            if (game !== null) {
+                return game.global.race.species;
+            } else {
+                return "custom";
+            }
         }
 
         return raceAchievementList[index].id;
