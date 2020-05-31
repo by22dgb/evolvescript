@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.8.1
+// @version      2.9.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4659,12 +4659,62 @@
                 trigger.seq = i;
             }
         }
-
+        
         /**
-         * @param {Trigger} trigger
+		 * Helper function that checks if the costs of a trigger and an action conflict.
+		 * Multiplier is applied to actionCosts, this is needed for ARPA
+         * @param {Object} origTriggerCosts
+		 * @param {Object} origActionCosts
+		 * @param {Number} multiplier
          * @return {boolean}
         */
-       actionConflicts(trigger) {
+        costsConflict(origTriggerCosts, origActionCosts, multiplier = 1) {
+            if (!origTriggerCosts || !origActionCosts) {
+                return false;
+            }
+            
+            const triggerCosts = game.adjustCosts(origTriggerCosts);
+            const actionCosts = game.adjustCosts(origActionCosts);
+            // console.log("triggerCosts");
+            // Object.keys(triggerCosts).forEach(ele => (console.log(ele + ' ' + triggerCosts[ele]())));
+            // console.log("actionCosts");
+            // Object.keys(actionCosts).forEach(ele => (console.log(ele + ' ' + actionCosts[ele]() * multiplier)));
+            
+            // Only block Knowledge spending if there is a Knowledge cost to the Trigger and all other resource demands are already met
+            let triggerBlocksKnowledge = false;
+            // @ts-ignore
+            if (Object.keys(triggerCosts).includes("Knowledge")) {
+                // Check if all other costs can be paid out of storage
+                if (Object.keys(triggerCosts).every(res => res === "Knowledge" || triggerCosts[res]() <= game.global.resource[res].amount)) {
+                    triggerBlocksKnowledge = true;
+                }
+            }
+            // console.log("triggerBlocksKnowledge " + triggerBlocksKnowledge)
+            
+            // Log the checks of the next if for each resource
+            // Object.keys(triggerCosts).forEach(res => (console.log(res + ' ' + (triggerBlocksKnowledge || res != "Knowledge") + ' '
+            //                                          + Object.keys(actionCosts).includes(res) + ' '
+            //                                          + (Object.keys(actionCosts).includes(res) &&
+            //                                              (triggerCosts[res]() >= game.global.resource[res].amount - actionCosts[res]() * multiplier)))));
+            
+            if (Object.keys(triggerCosts).some(res => (triggerBlocksKnowledge || res != "Knowledge")       // Only block Knowledge if we need to
+                                                    // @ts-ignore
+                                                    && Object.keys(actionCosts).includes(res)           // Check if the Trigger resource is required by the action
+                                                    && (!game.global.resource[res]                      // The next check is only done for "normal" resources, other ones are always blocked if needed by both
+                                                        || (game.global.resource[res]                   // Only block if we can't afford the trigger after doing the action
+                                                            && triggerCosts[res]() > game.global.resource[res].amount - actionCosts[res]() * multiplier)))) {
+                return true;
+            }
+
+            return false;
+        }
+        
+        /**
+         * This function only checks if two triggers use the same resource, it does not check storage
+         * @param {Trigger} trigger
+         * @return {boolean}
+         */
+        actionConflicts(trigger) {
             if (this._targetTriggers === null) {
                 return false;
             }
@@ -4684,13 +4734,12 @@
         /**
          * @param {Action} building
          * @return {boolean}
-        */
+         */
         buildingConflicts(building) {
             for (let i = 0; i < this.targetTriggers.length; i++) {
                 const targetTrigger = this.targetTriggers[i];
-                //@ts-ignore
-                if (Object.keys(targetTrigger.cost).some(resource => Object.keys(building.definition.cost).includes(resource))) {
 
+                if (this.costsConflict(targetTrigger.cost, building.definition.cost)) {
                     //console.log("building " + building.id + " CONFLICTS with target")
                     return true;
                 }
@@ -4702,20 +4751,40 @@
         /**
          * @param {Project} project
          * @return {boolean}
-        */
-       projectConflicts(project) {
-        for (let i = 0; i < this.targetTriggers.length; i++) {
-            const targetTrigger = this.targetTriggers[i];
-            //@ts-ignore
-            if (Object.keys(targetTrigger.cost).some(resource => Object.keys(project.definition.cost).includes(resource))) {
+         */
+        projectConflicts(project) {
+            for (let i = 0; i < this.targetTriggers.length; i++) {
+                const targetTrigger = this.targetTriggers[i];
 
-                //console.log("building " + building.id + " CONFLICTS with target")
-                return true;
+                //@ts-ignore
+                // Divide costs by 100 to get the cost for a single segment and subtract the creative flat bonus
+                if (this.costsConflict(targetTrigger.cost, project.definition.cost, 0.01 * (game.global.race[racialTraitCreative] ? 0.8 : 1))) {
+
+                    //console.log("project " + project.id + " CONFLICTS with target")
+                    return true;
+                }
             }
+
+            return false;
         }
 
-        return false;
-    }
+        /**
+         * @param {Action} research
+         * @return {boolean}
+         */
+        researchConflicts(research) {
+            for (let i = 0; i < this.targetTriggers.length; i++) {
+                const targetTrigger = this.targetTriggers[i];
+                //@ts-ignore
+                if (this.costsConflict(targetTrigger.cost, research.definition.cost)) {
+
+                    //console.log("research " + research.id + " CONFLICTS with target")
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
     
     //#endregion Class Declarations
@@ -4757,6 +4826,7 @@
         cacti: new Race("cacti", "Cacti", false, "", "Desert Deserted"),
         sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
         shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
+        moldling: new Race("moldling", "Moldling", false, "", "Digested"),
         junker: new Race("junker", "Valdi", true, "Challenge genes unlocked", "Euthanasia"),
         dryad: new Race("dryad", "Dryad", true, "Forest planet", "Ashes to Ashes"),
         satyr: new Race("satyr", "Satyr", true, "Forest planet", "Stopped the music"),
@@ -4774,7 +4844,7 @@
         races.antid, races.mantis, races.scorpid, races.human, races.orc, races.elven, races.troll, races.ogre, races.cyclops,
         races.kobold, races.goblin, races.gnome, races.cath, races.wolven, races.centaur, races.balorg, races.imp, races.seraph, races.unicorn,
         races.arraak, races.pterodacti, races.dracnid, races.tortoisan, races.gecko, races.slitheryn, races.sharkin, races.octigoran,
-        races.entish, races.cacti, races.sporgar, races.shroomi, races.junker, races.dryad, races.satyr, races.phoenix, races.salamander,
+        races.entish, races.cacti, races.sporgar, races.shroomi, races.moldling, races.junker, races.dryad, races.satyr, races.phoenix, races.salamander,
         races.yeti, races.wendigo, races.tuskin, races.kamel, races.custom
     ];
 
@@ -5002,6 +5072,7 @@
                             //Bryophyte: new EvolutionAction("", "evo", "bryophyte", ""),
                                 Sporgar: new EvolutionAction("", "evo", "sporgar", ""),
                                 Shroomi: new EvolutionAction("", "evo", "shroomi", ""),
+                                Moldling: new EvolutionAction("", "evo", "moldling", ""),
 
 
             //Bunker: new EvolutionAction("", "evo", "bunker", ""),
@@ -5085,6 +5156,7 @@
             SlaveMarket: new SlaveMarket(),
             Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
             Shrine: new Action ("Shrine", "city", "shrine", ""),
+            CompostHeap: new Action ("Compost Heap", "city", "compost_heap", ""),
         },
         
         spaceBuildings: {
@@ -5206,6 +5278,37 @@
             SiriusAscend: new Action("Sirius Ascend", "interstellar", "ascend", "int_sirius"),
             SiriusThermalCollector: new Action("Sirius ThermalCollector", "interstellar", "thermal_collector", "int_sirius"),
 
+            // GatewayMission: new Action("Gateway Mission", "galaxy", "gateway_mission", "gxy_gateway"),
+            // GatewayStarbase: new Action("Gateway Starbase", "galaxy", "starbase", "gxy_gateway"),
+            // GatewayShipDock: new Action("Gateway Ship Dock", "galaxy", "ship_dock", "gxy_gateway"),
+
+            // StargateStation: new Action("Stargate Station", "galaxy", "gateway_station", "gxy_stargate"),
+            // StargateTelemetryBeacon: new Action("Stargate Telemetry Beacon", "galaxy", "telemetry_beacon", "gxy_stargate"),
+            // StargateDepot: new Action("Stargate Depot", "galaxy", "gateway_depot", "gxy_stargate"),
+            // StargateDefensePlatform: new Action("Stargate Defense Platform", "galaxy", "defense_platform", "gxy_stargate"),
+
+            // GorddonMission: new Action("Gorddon Mission", "galaxy", "demaus_mission", "gxy_gorddon"),
+            // GorddonEmbassy: new Action("Gorddon Embassy", "galaxy", "embassy", "gxy_gorddon"),
+            // GorddonDormitory: new Action("Gorddon Dormitory", "galaxy", "dormitory", "gxy_gorddon"),
+            // GorddonSymposium: new Action("Gorddon Symposium", "galaxy", "symposium", "gxy_gorddon"),
+            // GorddonFreighter: new Action("Gorddon Freighter", "galaxy", "freighter", "gxy_gorddon"),
+
+            // Alien1Consulate: new Action("Alien 1 Consulate", "galaxy", "consulate", "gxy_alien1"),
+            Alien1Resort: new Action("Alien 1 Resort", "galaxy", "resort", "gxy_alien1"),
+            // Alien1VitreloyPlant: new Action("Alien 1 Vitreloy Plant", "galaxy", "vitreloy_plant", "gxy_alien1"),
+            // Alien1SuperFreighter: new Action("Alien 1 Super Freighter", "galaxy", "super_freighter", "gxy_alien1"),
+
+            // Alien2Mission: new Action("Alien 2 Mission", "galaxy", "alien2_mission", "gxy_alien2"),
+            // Alien2Foothold: new Action("Alien 2 Foothold", "galaxy", "foothold", "gxy_alien2"),
+            // Alien2ArmedMiner: new Action("Alien 2 Armed Miner", "galaxy", "armed_miner", "gxy_alien2"),
+            // Alien2OreProcessor: new Action("Alien 2 Ore Processor", "galaxy", "ore_processor", "gxy_alien2"),
+            // Alien2Scavenger: new Action("Alien 2 Scavenger", "galaxy", "scavenger", "gxy_alien2"),
+
+            // ChthonianMission: new Action("Chthonian Mission", "galaxy", "chthonian_mission", "gxy_chthonian"),
+            // ChthonianMineLayer: new Action("Chthonian Mine Layer", "galaxy", "minelayer", "gxy_chthonian"),
+            // ChthonianExcavator: new Action("Chthonian Excavator", "galaxy", "excavator", "gxy_chthonian"),
+            // ChthonianRaider: new Action("Chthonian Raider", "galaxy", "raider", "gxy_chthonian"),
+
             PortalTurret: new Action("Portal Laser Turret", "portal", "turret", "prtl_fortress"),
             PortalCarport: new Action("Portal Surveyor Carport", "portal", "carport", "prtl_fortress"),
             PortalWarDroid: new Action("Portal War Droid", "portal", "war_droid", "prtl_fortress"),
@@ -5300,6 +5403,7 @@
         
         // Construct city builds list
         state.cityBuildings.House.specialId = "basic_housing";
+        state.cityBuildings.CompostHeap.specialId = "compost";
 
         state.cityBuildings.SacrificialAltar.gameMax = 1;
         state.spaceBuildings.GasSpaceDock.gameMax = 1;
@@ -5601,7 +5705,8 @@
         let chitin = [e.Sentience, e.Bryophyte, e.Spores, e.Multicellular, e.Chitin, e.SexualReproduction];
         races.sporgar.evolutionTree = [e.Sporgar].concat(chitin);
         races.shroomi.evolutionTree = [e.Shroomi].concat(chitin);
-        raceGroup = [ races.sporgar, races.shroomi ];
+        races.moldling.evolutionTree = [e.Moldling].concat(chitin);
+        raceGroup = [ races.sporgar, races.shroomi, races.moldling ];
         if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'fungi') {
             races.custom.evolutionTree = [e.Custom].concat(chitin)
             raceGroup.push(races.custom);
@@ -5927,6 +6032,7 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlaveMarket); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Graveyard); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shrine); // Celestial only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CompostHeap); // Moldling only
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
@@ -7456,7 +7562,9 @@
         let currentMorale = moraleInstance.current;
 
         let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.count
-            + (state.spaceBuildings.RedVrCenter.stateOnCount * 2) + (state.projects.Monument.level * 2);
+            + (state.spaceBuildings.RedVrCenter.stateOnCount * 2) + (state.spaceBuildings.Alien1Resort.stateOnCount * 2)
+            + (state.projects.Monument.level * 2);
+
         if (game.global.tech[techSuperstar]) {
             maxMorale += state.jobs.Entertainer.count;
         }
@@ -7465,11 +7573,15 @@
             maxMorale += 10 - Math.floor(currentTaxRate / 2);
         }
 
+        if (game.global.stats.achieve['joyless']){
+            maxMorale += game.global.stats.achieve['joyless'].l * 2;
+        }
+
         maxMorale = Math.min(maxMorale, settings.generalMaximumMorale);
 
         // Max tax rate calculation
         let extreme = game.global.tech['currency'] && game.global.tech['currency'] >= 5 ? true : false;
-        let maxTaxRate = game.global.civic.govern.type === 'oligarchy' ? 40 : 30;
+        let maxTaxRate = game.global.civic.govern.type === 'oligarchy' ? 50 : 30;
         if (extreme || game.global.race['terrifying']) {
             maxTaxRate += 20;
         }
@@ -7481,10 +7593,11 @@
             minTaxRate = 0;
         }
 
-        // Noble race adjustments to min and max tax rate calculations - can only set tax between 10 and 20 inclusive
+        // Noble race adjustments to min and max tax rate calculations - can only set tax between 10 and 20 inclusive unless in oligarchy
+        let nobleMaxTaxRate = game.global.civic.govern.type === 'oligarchy' ? 40 : 20;
         if (game.global.race['noble']) {
-            if (maxTaxRate > 20) {
-                maxTaxRate = 20;
+            if (maxTaxRate > nobleMaxTaxRate) {
+                maxTaxRate = nobleMaxTaxRate;
             }
             if (minTaxRate < 10) {
                 minTaxRate = 10;
@@ -8283,7 +8396,8 @@
     function autoResearch() {
         let items = document.querySelectorAll('#tech .action');
 
-        let targetResearch = "";
+        // Check for active research triggers
+        let targetResearch = [];
         for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
             const trigger = state.triggerManager.targetTriggers[i];
             
@@ -8292,7 +8406,7 @@
                     const itemId = items[j].id;
                     
                     if (tech[trigger.actionId].definition.id === itemId) {
-                        targetResearch = itemId;
+                        targetResearch.push(itemId);
                     }
                 }
             }
@@ -8302,7 +8416,9 @@
             const itemId = items[i].id;
             let click = false;
 
-            if (targetResearch !== "" && itemId !== targetResearch) {
+            // Block research that conflics with active triggers, but never block research that is wanted by an active trigger
+            // @ts-ignore
+            if (!targetResearch.includes(itemId) && state.triggerManager.researchConflicts(tech[techIds[itemId].id])) {
                 continue;
             }
 
@@ -9501,6 +9617,10 @@
     function buildImportExport() {
         let importExportNode = $(".importExport");
         if (importExportNode === null) {
+            return;
+        }
+
+        if (document.getElementById("script_settingsImport") !== null) {
             return;
         }
 
