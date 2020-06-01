@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.9.0
+// @version      2.9.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -78,7 +78,8 @@
     var racialTraitForge = 'forge';
     var racialTraitHiveMind = "hivemind";
     var racialTraitEvil = "evil";
-    var racialTraitSlaver = "slaver"
+    var racialTraitSlaver = "slaver";
+    var racialTraitCreative = "creative";
     var techFactory = "factory";
     var techSuperstar = "superstar";
 
