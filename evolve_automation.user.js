@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.9.1
+// @version      2.9.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5126,7 +5126,7 @@
             Barracks: new Action("Barracks", "city", "garrison", ""),
             Hospital: new Action("Hospital", "city", "hospital", ""),
             BootCamp: new Action("Boot Camp", "city", "boot_camp", ""),
-            House: new Action("Cabin", "city", "house", ""),
+            House: new Action("Cabin", "city", "basic_housing", ""),
             Cottage: new Action("Cottage", "city", "cottage", ""),
             Apartment: new Action("Apartment", "city", "apartment", ""),
             Farm: new Action("Farm", "city", "farm", ""),
@@ -5403,7 +5403,6 @@
         resetJobState();
         
         // Construct city builds list
-        state.cityBuildings.House.specialId = "basic_housing";
         state.cityBuildings.CompostHeap.specialId = "compost";
 
         state.cityBuildings.SacrificialAltar.gameMax = 1;
@@ -9228,9 +9227,9 @@
 
     function verifyGameActionExists(scriptKeys, scriptObject, gameActionKey, gameObject) {
         // We know that we don't have the info objects defined in our script
-        // basic_housing is special. The key doesn't match the object in the game code
+        // compost is special. The key doesn't match the object in the game code
         // gift is a special santa gift. Leave it to the player.
-        if (gameActionKey === "info" || gameActionKey === "basic_housing" || gameActionKey === "gift") {
+        if (gameActionKey === "info" || gameActionKey === "compost" || gameActionKey === "gift") {
             return;
         }
 
