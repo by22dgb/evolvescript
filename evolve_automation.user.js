@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.9.3
+// @version      2.9.4
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1624,7 +1624,7 @@
                 // and we are a slaver with the slave pen unlocked...
                 if (game.global.race[racialTraitSlaver] && state.cityBuildings.SlavePen.isUnlocked()){
                     // and we are less than max slaves then we can click!
-                    if (state.cityBuildings.SlavePen.count * 5 > game.global.city.slave_pen.slaves) {
+                    if (state.cityBuildings.SlavePen.count * 4 > game.global.city.slave_pen.slaves) {
                         return true;
                     }
                 }
