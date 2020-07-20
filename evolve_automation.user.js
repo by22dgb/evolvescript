@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.9.2
+// @version      2.9.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5157,7 +5157,7 @@
             SlaveMarket: new SlaveMarket(),
             Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
             Shrine: new Action ("Shrine", "city", "shrine", ""),
-            CompostHeap: new Action ("Compost Heap", "city", "compost_heap", ""),
+            CompostHeap: new Action ("Compost Heap", "city", "compost", ""),
         },
         
         spaceBuildings: {
@@ -5205,10 +5205,10 @@
             GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas"),
             GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", "spc_gas"),
             GasSpaceDock: new SpaceDock(), // has options
-            GasSpaceDockProbe: new ModalAction("Gas Space Probe", "spcdock", "probes", "", "starDock"),
-            GasSpaceDockShipSegment: new ModalAction("Gas Bioseeder Ship Segment", "spcdock", "seeder", "", "starDock"),
-            GasSpaceDockPrepForLaunch: new ModalAction("Gas Prep Ship", "spcdock", "prep_ship", "", "starDock"),
-            GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "spcdock", "launch_ship", "", "starDock"),
+            GasSpaceDockProbe: new ModalAction("Gas Space Probe", "starDock", "probes", "", "starDock"),
+            GasSpaceDockShipSegment: new ModalAction("Gas Bioseeder Ship Segment", "starDock", "seeder", "", "starDock"),
+            GasSpaceDockPrepForLaunch: new ModalAction("Gas Prep Ship", "starDock", "prep_ship", "", "starDock"),
+            GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "starDock", "launch_ship", "", "starDock"),
             
             // Gas moon
             GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon"),
@@ -5403,8 +5403,6 @@
         resetJobState();
         
         // Construct city builds list
-        state.cityBuildings.CompostHeap.specialId = "compost";
-
         state.cityBuildings.SacrificialAltar.gameMax = 1;
         state.spaceBuildings.GasSpaceDock.gameMax = 1;
         state.spaceBuildings.DwarfWorldController.gameMax = 1;
@@ -9227,9 +9225,9 @@
 
     function verifyGameActionExists(scriptKeys, scriptObject, gameActionKey, gameObject) {
         // We know that we don't have the info objects defined in our script
-        // compost is special. The key doesn't match the object in the game code
+        // XXXX is special. The key doesn't match the object in the game code
         // gift is a special santa gift. Leave it to the player.
-        if (gameActionKey === "info" || gameActionKey === "compost" || gameActionKey === "gift") {
+        if (gameActionKey === "info" || gameActionKey === "gift") {
             return;
         }
 
