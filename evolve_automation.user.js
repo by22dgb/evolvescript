@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.9.4
+// @version      2.9.5
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1961,6 +1961,7 @@
 
     const FactoryGoods = {
         LuxuryGoods: "Lux",
+        Furs: "Furs",
         Alloy: "Alloy",
         Polymer: "Polymer",
         NanoTube: "Nano",
@@ -2021,10 +2022,11 @@
             if (this._productionOptions === null) {
                 this._productionOptions = [];
                 this._productionOptions.push({ seq: 1, goods: FactoryGoods.LuxuryGoods, resource: resources.Money, enabled: false, weighting: 1, requiredFactories: 0, factoryAdjustment: 0, completed: false });
-                this._productionOptions.push({ seq: 2, goods: FactoryGoods.Alloy, resource: resources.Alloy, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 3, goods: FactoryGoods.Polymer, resource: resources.Polymer, enabled: false, weighting: 2, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 4, goods: FactoryGoods.NanoTube, resource: resources.Nano_Tube, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
-                this._productionOptions.push({ seq: 5, goods: FactoryGoods.Stanene, resource: resources.Stanene, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 2, goods: FactoryGoods.Furs, resource: resources.Furs, enabled: false, weighting: 0, requiredFactories: 0, factoryAdjustment: 0, completed: false });
+                this._productionOptions.push({ seq: 3, goods: FactoryGoods.Alloy, resource: resources.Alloy, enabled: true, weighting: 2, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 4, goods: FactoryGoods.Polymer, resource: resources.Polymer, enabled: false, weighting: 2, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 5, goods: FactoryGoods.NanoTube, resource: resources.Nano_Tube, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
+                this._productionOptions.push({ seq: 6, goods: FactoryGoods.Stanene, resource: resources.Stanene, enabled: true, weighting: 8, requiredFactories: 0, completed: false });
             }
 
             this._productionOptions.forEach(production => {
@@ -2047,6 +2049,10 @@
 
             if (production === FactoryGoods.LuxuryGoods || production === FactoryGoods.Alloy) {
                 return true;
+            }
+
+            if (production === FactoryGoods.Furs) {
+                return game.global.tech['synthetic_fur'];
             }
 
             if (production === FactoryGoods.Polymer) {
@@ -2072,6 +2078,10 @@
                 this._productionCosts = {};
                 this._productionCosts[FactoryGoods.LuxuryGoods] = [];
                 this._productionCosts[FactoryGoods.LuxuryGoods].push(new ResourceProductionCost(resources.Furs, 1, 5));
+
+                this._productionCosts[FactoryGoods.Furs] = [];
+                this._productionCosts[FactoryGoods.Furs].push(new ResourceProductionCost(resources.Money, 1, 1000));
+                this._productionCosts[FactoryGoods.Furs].push(new ResourceProductionCost(resources.Polymer, 1, 10));
                 
                 this._productionCosts[FactoryGoods.Alloy] = [];
                 this._productionCosts[FactoryGoods.Alloy].push(new ResourceProductionCost(resources.Copper, 1, 5));
@@ -2094,6 +2104,11 @@
 
             if (production === FactoryGoods.LuxuryGoods) {
                 this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Lux.fur[game.global.tech[techFactory]] : game.f_rate.Lux.fur[0]);
+            }
+
+            if (production === FactoryGoods.Furs) {
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Furs.money[game.global.tech[techFactory]] : game.f_rate.Furs.money[0]);
+                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Furs.polymer[game.global.tech[techFactory]] : game.f_rate.Furs.polymer[0]);
             }
             
             if (production === FactoryGoods.Alloy) {
@@ -4803,7 +4818,7 @@
         orc: new Race("orc", "Orc", false, "", "Outlander"),
         elven: new Race("elven", "Elf", false, "", "The few, the proud, the dead"),
         troll: new Race("troll", "Troll", false, "", "Bad Juju"),
-        ogre: new Race("orge", "Ogre", false, "", "Too stupid to live"),
+        ogre: new Race("ogre", "Ogre", false, "", "Too stupid to live"),
         cyclops: new Race("cyclops", "Cyclops", false, "", "Blind Ambition"),
         kobold: new Race("kobold", "Kobold", false, "", "Took their candle"),
         goblin: new Race("goblin", "Goblin", false, "", "Greed before Need"),
@@ -5013,7 +5028,7 @@
                                     Valdi: new EvolutionAction("", "evo", "junker", ""), // junker challenge
                                 Gigantism: new EvolutionAction("", "evo", "gigantism", ""),
                                     Troll: new EvolutionAction("", "evo", "troll", ""),
-                                    Ogre: new EvolutionAction("", "evo", "orge", ""),
+                                    Ogre: new EvolutionAction("", "evo", "ogre", ""),
                                     Cyclops: new EvolutionAction("", "evo", "cyclops", ""),
                                 Dwarfism: new EvolutionAction("", "evo", "dwarfism", ""),
                                     Kobold: new EvolutionAction("", "evo", "kobold", ""),
@@ -6165,6 +6180,10 @@
             production.enabled = true;
             if (production.goods === FactoryGoods.LuxuryGoods) {
                 production.weighting = 1;
+                production.enabled = false;
+            }
+            if (production.goods === FactoryGoods.Furs) {
+                production.weighting = 0;
                 production.enabled = false;
             }
             if (production.goods === FactoryGoods.Alloy) production.weighting = 2;
