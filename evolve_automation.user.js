@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      2.9.5
+// @version      3.0.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -28,6 +28,7 @@
 //  ** autoChallenge - Chooses ALL challenge options during evolution
 // * autoFight - Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attach type when offensive
 //          rating is greater than the rating cutoff for that attack type.
+// * autoHell - Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.
 // * autoCraft - Craft when a specified crafting ratio is met. This changes throughout the game (lower in the beginning and rising as the game progresses)
 // * autoBuild - Builds city and space building when it can an production allows (eg. Won't build a Fission Reactor if you don't have enough uranium production).
 //          Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker. eg. If you don't have enough libraries / 
@@ -1036,8 +1037,8 @@
             this._elementId = this._prefix + this.id;
             this._extraStorageId = "stack-" + this.id;
             this._storageCountId = "cnt" + this.id;
-			
-			this._craftAllId = "inc" + this.id + "A";
+            
+            this._craftAllId = "inc" + this.id + "A";
             
             this._vueBinding = "res" + this.id;
             this._stackVueBinding = "stack-" + this.id;
@@ -3075,10 +3076,12 @@
             /** @type {Campaign[]} */
             this.campaignList = [];
             this._vueBinding = "garrison";
+            this._hellVueBinding = "gFort";
 
             this._textArmy = "army";
 
             this.selectedGovAttackIndex = -1;
+            this.hellAttractorMax = 0;
         }
 
         clearCampaignList() {
@@ -3173,36 +3176,74 @@
         }
 
         get currentSoldiers() {
-            return game.global.civic.garrison.workers;
+            return game.global.civic.garrison.workers - game.global.civic.garrison.crew;
         }
 
         get maxSoldiers() {
-            return game.global.civic.garrison.max;
+            return game.global.civic.garrison.max - game.global.civic.garrison.crew;
         }
 
         get woundedSoldiers() {
             return game.global.civic.garrison.wounded;
         }
+        
+        get availableSoldiers() {
+            return game.global.civic.garrison.workers - game.global.civic.garrison.crew;
+        }
+        
+        get hellSoldiers() {
+            if (game.global.portal.fortress) {
+                return game.global.portal.fortress.garrison;
+            } else {
+                return 0;
+            }
+        }
+        
+        get hellPatrols() {
+            if (game.global.portal.fortress) {
+                return game.global.portal.fortress.patrols;
+            } else {
+                return 0;
+            }
+        }
+        
+        get hellPatrolSize() {
+            if (game.global.portal.fortress) {
+                return game.global.portal.fortress.patrol_size;
+            } else {
+                return 0;
+            }
+        }
+        
+        get hellSoulForgeSoldiers(){
+            if (!game.global.portal.soul_forge || !game.global.portal.soul_forge.on) return 0;
+            
+            // Taken from the game code, so should give the same result
+            let soldiers = Math.round(650 / game.armyRating(1,this._textArmy));
+            if (game.global.portal.gun_emplacement) {
+                soldiers -= game.global.portal.gun_emplacement.on * (game.global.tech.hell_gun >= 2 ? 2 : 1);
+                if (soldiers < 0){
+                    soldiers = 0;
+                }
+            }
+            return soldiers;
+        }
+        
+        get hellGarrison()  {
+            if (game.global.portal.fortress) {
+                return game.global.portal.fortress.garrison - game.global.portal.fortress.patrol_size * game.global.portal.fortress.patrols - this.hellSoulForgeSoldiers;
+            } else {
+                return 0;
+            }
+        }
+        
+        get currentCityGarrison() {
+            return this.availableSoldiers - this.hellSoldiers;
+        }
 
-		get currentCityGarrison() {
-			let soldiers = game.global.civic.garrison.workers - game.global.civic.garrison.crew;
-		    if (game.global.portal.fortress) {
-			    return soldiers - game.global.portal.fortress.garrison;
-			}
-			else {
-			    return soldiers;
-			}
-		}
-
-		get maxCityGarrison() {
-			let soldiers = game.global.civic.garrison.max - game.global.civic.garrison.crew;
-		    if (game.global.portal.fortress) {
-			    return soldiers - game.global.portal.fortress.garrison;
-			}
-			else {
-			    return soldiers;
-			}
-		}
+        get maxCityGarrison() {
+            return this.maxSoldiers - this.hellSoldiers;
+        }
 
         increaseCampaignDifficulty() {
             if (!this.isUnlocked()) {
@@ -3265,36 +3306,48 @@
         }
 
         /**
-         * @param {number} govIndex
+         * @param {number} targetRating
+         * Calculates the required soldiers to reach the given attack rating, assuming everyone is healthy.
          */
-        getMaxSoldiersForAttackType(govIndex) {
-            // armyRating is a Math.floor! We'll have to do some tinkering to get a more accurate rating
-            let campaign = this.campaignList[game.global.civic.garrison.tactic];
+        getSoldiersForAttackRating(targetRating) {
+            if (!targetRating || targetRating <= 0) {
+                return 0;
+            }
             let singleSoldierAttackRating = 0;
 
             if (!game.global.race[racialTraitHiveMind]) {
-                // No hivemind so take the army rating to 2 decimal places by getting the rating for all soldiers and dividing it by number of soldiers
+                // No hivemind so take the army rating to 1 decimal place by getting the rating for 10 soldiers and dividing it by number of soldiers
                 // eg. single soldier = 3.8657. armyRating(1) = floor(3.8657) = 3. armyRating(100) / 100 = 386 / 100 = 3.86
-                let soldiers = this.currentCityGarrison - this.woundedSoldiers;
-                singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy) / soldiers;
+                let soldiers = 10;
+                singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy, 0) / soldiers;
 
-                return Math.ceil(campaign.getMaxRatingForGov(govIndex) / singleSoldierAttackRating);
+                return Math.ceil(targetRating / singleSoldierAttackRating);
             }
 
             // Ok, we've done no hivemind. Hivemind is trickier because each soldier gives attack rating and a bonus to all other soldiers.
             // I'm sure there is an exact mathematical calculation for this but...
-            // Just loop through and remove 2 at a time until we're under the max rating.
-            let soldiers = Math.min(10, this.currentCityGarrison - this.woundedSoldiers);
-            singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy) / soldiers;
-            let maxSoldiers = Math.ceil(campaign.getMaxRatingForGov(govIndex) / singleSoldierAttackRating);
-            let testMaxSoldiers = maxSoldiers - 2;
+            // Just loop through and remove 1 at a time until we're under the max rating.
+            let soldiers = 10;
+            singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy, 0) / soldiers;
+            let maxSoldiers = Math.ceil(targetRating / singleSoldierAttackRating);
+            // At 10 soldiers there's no hivemind bonus or malus, and the malus gets up to 50%, so start with up to 2x soldiers below 10
+            if (maxSoldiers < 10) maxSoldiers = Math.min(10, 2 * maxSoldiers);
+            let testMaxSoldiers = maxSoldiers - 1;
 
-            while (testMaxSoldiers > 3 && game.armyRating(testMaxSoldiers, this._textArmy) > campaign.getMaxRatingForGov(govIndex)) {
+            while (testMaxSoldiers > 0 && game.armyRating(testMaxSoldiers, this._textArmy, 0) > targetRating) {
                 maxSoldiers = testMaxSoldiers;
-                testMaxSoldiers -= 2;
+                testMaxSoldiers -= 1;
             }
 
             return maxSoldiers;
+        }
+
+        /**
+         * @param {number} govIndex
+         */
+        getMaxSoldiersForAttackType(govIndex) {
+            let campaign = this.campaignList[game.global.civic.garrison.tactic];
+            return this.getSoldiersForAttackRating(campaign.getMaxRatingForGov(govIndex));
         }
 
         /**
@@ -3372,6 +3425,240 @@
             }
 
             return true;
+        }
+        
+        // Autohell functions start here
+        isHellUnlocked() {
+            let node = document.getElementById("gFort");
+            return node !== null && node.style.display !== "none";
+        }
+        
+        /**
+         * @param {number} count
+         */
+        addHellGarrison(count) {
+            if (!this.isHellUnlocked()) {
+                return false;
+            }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                getVueById(this._hellVueBinding).aNext();
+            }
+            
+            return true;
+        }
+
+        /**
+         * @param {number} count
+         */
+        removeHellGarrison(count) {
+            if (!this.isHellUnlocked()) {
+                return false;
+            }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                getVueById(this._hellVueBinding).aLast();
+            }
+
+            return true;
+        }
+        
+        /**
+         * @param {number} count
+         */
+        addHellPatrol(count) {
+            if (!this.isHellUnlocked()) {
+                return false;
+            }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                getVueById(this._hellVueBinding).patInc();
+            }
+            
+            return true;
+        }
+
+        /**
+         * @param {number} count
+         */
+        removeHellPatrol(count) {
+            if (!this.isHellUnlocked()) {
+                return false;
+            }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                getVueById(this._hellVueBinding).patDec();
+            }
+
+            return true;
+        }
+        
+        /**
+         * @param {number} count
+         */
+        addHellPatrolSize(count) {
+            if (!this.isHellUnlocked()) {
+                return false;
+            }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                getVueById(this._hellVueBinding).patSizeInc();
+            }
+            
+            return true;
+        }
+
+        /**
+         * @param {number} count
+         */
+        removeHellPatrolSize(count) {
+            if (!this.isHellUnlocked()) {
+                return false;
+            }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                getVueById(this._hellVueBinding).patSizeDec();
+            }
+
+            return true;
+        }
+        
+        updateHell() {
+            if (!this.isHellUnlocked()) return;
+            
+            // Determine the number of powered attractors
+            // The goal is to keep threat in the desired range
+            // If threat is larger than the configured top value, turn all attractors off
+            // If threat is lower than the bottom value, turn all attractors on
+            // Linear in between
+            this.hellAttractorMax = 0;
+            if (settings.hellHandleAttractors && game.global.portal.attractor && game.global.portal.fortress.threat < settings.hellAttractorTopThreat && game.global.portal.fortress.assigned > 0) {
+                this.hellAttractorMax = game.global.portal.attractor.count;
+                if (game.global.portal.fortress.threat > settings.hellAttractorBottomThreat && settings.hellAttractorTopThreat > settings.hellAttractorBottomThreat) {
+                    this.hellAttractorMax = Math.floor(this.hellAttractorMax * (settings.hellAttractorTopThreat - game.global.portal.fortress.threat)
+                                                        / (settings.hellAttractorTopThreat - settings.hellAttractorBottomThreat));
+                }
+            }
+            
+            // Determine Patrol size and count
+            let hellGarrison = 0;
+            let targetHellSoldiers = 0;
+            let targetHellPatrols = 0;
+            let targetHellPatrolSize = 0;
+            // First handle not having enough soldiers, then handle patrols
+            // Only go into hell at all if walls are maxed and soldiers are close to full, or we are already there
+            if (settings.hellHandlePatrolCount && this.maxSoldiers > settings.hellHomeGarrison + settings.hellMinSoldiers
+                 && (this.hellSoldiers > settings.hellMinSoldiers
+                     || (this.availableSoldiers >= this.maxSoldiers * settings.hellMinSoldiersPercent / 100 && game.global.portal.fortress.walls === 100))) {
+                targetHellSoldiers = Math.min(this.availableSoldiers, this.maxSoldiers - settings.hellHomeGarrison); // Leftovers from an incomplete patrol go to hell garrison
+                let availableHellSoldiers = targetHellSoldiers - this.hellSoulForgeSoldiers;
+                
+                // Determine target hell garrison size
+                // Estimated average damage is roughly 35 * threat / defense, so required defense = 35 * threat / targetDamage
+                // But the threat hitting the fortress is only an intermediate result in the bloodwar calculation, it happens after predators and patrols but before repopulation,
+                // So siege threat is actually lower than what we can see. Patrol and drone damage is wildly swingy and hard to estimate, so don't try to estimate the post-fight threat.
+                // Instead base the defense on the displayed threat, and provide an option to bolster defenses when the walls get low. The threat used in the calculation
+                // ranges from 1 * threat for 100% walls to the multiplier entered in the settings at 0% walls.
+                let hellGarrison = this.getSoldiersForAttackRating(Math.max(0, // don't go below 0
+                                                                   (1 + (settings.hellLowWallsMulti - 1) * (1 - game.global.portal.fortress.walls / 100)) // threat modifier from damaged walls = 1 to lowWallsMulti
+                                                                   * game.global.portal.fortress.threat * 35 / settings.hellTargetFortressDamage // required defense to meet target average damage based on current threat
+                                                                   - (game.global.portal.turret ? game.global.portal.turret.on : 0) // turret count
+                                                                      * (game.global.tech['turret'] ? (game.global.tech['turret'] >= 2 ? 70 : 50) : 35))); // turret power
+                
+                // Always have at least half our hell contingent available for patrols, and if we cant defend properly just send everyone
+                if (availableHellSoldiers < hellGarrison) {
+                    hellGarrison = 0; // If we cant defend adequately, send everyone out on patrol
+                } else if (availableHellSoldiers < hellGarrison * 2) {
+                    hellGarrison = Math.floor(availableHellSoldiers / 2); // Always try to send out at least half our people
+                }
+                
+                // Determine the patrol attack rating
+                // let tempRating1 = 0;
+                // let tempRating2 = 0;
+                if (settings.hellHandlePatrolSize) {
+                    let patrolRating = game.global.portal.fortress.threat * settings.hellPatrolThreatPercent / 100;
+                    //tempRating1 = patrolRating;
+                    
+                    // Now reduce rating based on drones, droids and bootcamps
+                    if (game.global.portal.war_drone) {
+                        patrolRating -= settings.hellPatrolDroneMod * game.global.portal.war_drone.on * (game.global.tech['portal'] >= 7 ? 1.5 : 1);
+                    }
+                    if (game.global.portal.war_droid) {
+                        patrolRating -= settings.hellPatrolDroidMod * game.global.portal.war_droid.on * (game.global.tech['hdroid'] ? 2 : 1);
+                    }
+                    if (game.global.city.boot_camp) {
+                        patrolRating -= settings.hellPatrolBootcampMod * game.global.city.boot_camp.count;
+                    }
+                    //tempRating2 = patrolRating;
+                    
+                    // In the end, don't go lower than the minimum...
+                    patrolRating = Math.max(patrolRating, settings.hellPatrolMinRating);
+                    
+                    // Increase patrol attack rating if alive soldier count is low to reduce patrol losses
+                    if (settings.hellBolsterPatrolRating > 0 && settings.hellBolsterPatrolPercentTop > 0) { // Check if settings are on
+                        const homeGarrisonFillRatio = this.currentCityGarrison / this.maxCityGarrison;
+                        if (homeGarrisonFillRatio <= settings.hellBolsterPatrolPercentTop / 100) { // If less than top
+                            if (homeGarrisonFillRatio <= settings.hellBolsterPatrolPercentBottom / 100) { // and less than bottom
+                                patrolRating += settings.hellBolsterPatrolRating; // add full rating
+                            } else if (settings.hellBolsterPatrolPercentBottom < settings.hellBolsterPatrolPercentTop) { // If between bottom and top
+                                patrolRating += settings.hellBolsterPatrolRating * (settings.hellBolsterPatrolPercentTop / 100 - homeGarrisonFillRatio) // add rating proportional to where in the range we are
+                                                  / (settings.hellBolsterPatrolPercentTop - settings.hellBolsterPatrolPercentBottom) * 100;
+                            }
+                        }
+                    }
+                    
+                    // Patrol size
+                    targetHellPatrolSize = this.getSoldiersForAttackRating(patrolRating);
+                
+                    // If patrol size is larger than available soldiers, send everyone available instead of 0
+                    targetHellPatrolSize = Math.min(targetHellPatrolSize, availableHellSoldiers - hellGarrison);
+                } else {
+                    targetHellPatrolSize = this.hellPatrolSize;
+                }
+                
+                // Determine patrol count
+                targetHellPatrols = Math.floor((availableHellSoldiers - hellGarrison) / targetHellPatrolSize);
+                
+                // Special logic for small number of patrols
+                if (settings.hellHandlePatrolSize && targetHellPatrols === 1) {
+                    // If we could send 1.5 patrols, send 3 half-size ones instead
+                    if ((availableHellSoldiers - hellGarrison) >= 1.5 * targetHellPatrolSize) {
+                        targetHellPatrolSize = Math.floor((availableHellSoldiers - hellGarrison) / 3);
+                        targetHellPatrols = Math.floor((availableHellSoldiers - hellGarrison) / targetHellPatrolSize);
+                    }
+                }
+                
+                //console.log("availableHellSoldiers: "+availableHellSoldiers+"  hellGarrison: "+hellGarrison+" patrolSize: "+targetHellPatrolSize+"  Patrols: "+targetHellPatrols+"  Patrol Rating threat/buildings/final: "
+                //             +tempRating1+"/"+tempRating2+"/"+patrolRating);
+            } else {
+                // Try to leave hell if any soldiers are still assigned so the game doesn't put miniscule amounts of soldiers back
+                if (settings.hellHandlePatrolCount && game.global.portal.fortress.assigned > 0) {
+                    this.removeHellPatrolSize(1000);
+                    this.removeHellPatrol(1000);
+                    this.removeHellGarrison(1000);
+                }
+            }
+            
+            // Adjust values ingame
+            // First decrease patrols, then put hell soldiers to the right amount, then increase patrols, to make sure all actions go through
+            if (settings.hellHandlePatrolCount && settings.hellHandlePatrolSize && this.hellPatrolSize > targetHellPatrolSize) this.removeHellPatrolSize(this.hellPatrolSize - targetHellPatrolSize);
+            if (settings.hellHandlePatrolCount && this.hellPatrols > targetHellPatrols) this.removeHellPatrol(this.hellPatrols - targetHellPatrols);
+            if (settings.hellHandlePatrolCount && this.hellSoldiers > targetHellSoldiers) this.removeHellGarrison(this.hellSoldiers - targetHellSoldiers);
+            if (settings.hellHandlePatrolCount && this.hellSoldiers < targetHellSoldiers) this.addHellGarrison(targetHellSoldiers - this.hellSoldiers);
+            if (settings.hellHandlePatrolCount && settings.hellHandlePatrolSize && this.hellPatrolSize < targetHellPatrolSize) this.addHellPatrolSize(targetHellPatrolSize - this.hellPatrolSize);
+            if (settings.hellHandlePatrolCount && this.hellPatrols < targetHellPatrols) this.addHellPatrol(targetHellPatrols - this.hellPatrols);
         }
     }
 
@@ -3665,7 +3952,7 @@
                     const building = this._statePriorityList[i];
 
                     // If the building doesn't yet have state then it doesn't need to be managed (either not unlocked or tech for state not unlocked)
-                    if (building.hasState() && building.autoStateEnabled) {
+                    if (building.hasState() && building.autoStateEnabled || (settings.autoHell && settings.hellHandleAttractors && building === state.spaceBuildings.PortalAttractor)) {
                         this._managedStatePriorityList.push(building);
                     }
                 }
@@ -4205,7 +4492,7 @@
 
             return true;
         }
-		
+        
         /**
          * @param {number} count
          */
@@ -4677,11 +4964,11 @@
         }
         
         /**
-		 * Helper function that checks if the costs of a trigger and an action conflict.
-		 * Multiplier is applied to actionCosts, this is needed for ARPA
+         * Helper function that checks if the costs of a trigger and an action conflict.
+         * Multiplier is applied to actionCosts, this is needed for ARPA
          * @param {Object} origTriggerCosts
-		 * @param {Object} origActionCosts
-		 * @param {Number} multiplier
+         * @param {Object} origActionCosts
+         * @param {Number} multiplier
          * @return {boolean}
         */
         costsConflict(origTriggerCosts, origActionCosts, multiplier = 1) {
@@ -5504,7 +5791,7 @@
 
         // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
         ////////////////////
-		state.cityBuildings.TouristCenter.overridePowered = 0;
+        state.cityBuildings.TouristCenter.overridePowered = 0;
         state.spaceBuildings.MoonIridiumMine.overridePowered = 0;
         state.spaceBuildings.MoonHeliumMine.overridePowered = 0;
         state.spaceBuildings.MoonObservatory.overridePowered = 0;
@@ -5517,7 +5804,7 @@
         state.spaceBuildings.RedVrCenter.overridePowered = 0;
         state.spaceBuildings.BeltEleriumShip.overridePowered = 0;
         state.spaceBuildings.BeltIridiumShip.overridePowered = 0;
-		state.spaceBuildings.BeltIronShip.overridePowered = 0;
+        state.spaceBuildings.BeltIronShip.overridePowered = 0;
         state.spaceBuildings.AlphaMiningDroid.overridePowered = 0;
         state.spaceBuildings.AlphaProcessing.overridePowered = 0;
         state.spaceBuildings.AlphaLaboratory.overridePowered = 0;
@@ -5761,6 +6048,30 @@
         state.warManager.addToCampaignList("Pillage", 100, 180);
         state.warManager.addToCampaignList("Assault", 200, 360);
         state.warManager.addToCampaignList("Siege", 500, 800);
+    }
+
+    function resetHellSettings() {
+        settings.hellHandlePatrolCount = true;
+        settings.hellHomeGarrison = 20;
+        settings.hellMinSoldiers = 20;
+        settings.hellMinSoldiersPercent = 90;
+        
+        settings.hellTargetFortressDamage = 100;
+        settings.hellLowWallsMulti = 3;
+        
+        settings.hellHandlePatrolSize = true;
+        settings.hellPatrolMinRating = 80;
+        settings.hellPatrolThreatPercent = 8;
+        settings.hellPatrolDroneMod = 5;
+        settings.hellPatrolDroidMod = 5;
+        settings.hellPatrolBootcampMod = 0;
+        settings.hellBolsterPatrolPercentTop = 80;
+        settings.hellBolsterPatrolPercentBottom = 40;
+        settings.hellBolsterPatrolRating = 300;
+        
+        settings.hellHandleAttractors = true;
+        settings.hellAttractorTopThreat = 3000;
+        settings.hellAttractorBottomThreat = 1300;
     }
 
     function resetGeneralSettings() {
@@ -6216,7 +6527,7 @@
     initialiseState();
 
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
-                            "productionSettingsCollapsed", "warSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
+                            "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
                             "governmentSettingsCollapsed", "loggingSettingsCollapsed"];
     
     function updateStateFromSettings() {
@@ -6642,6 +6953,7 @@
         addSetting("autoCraftsmen", defaultAllOptionsEnabled);
         addSetting("autoPower", defaultAllOptionsEnabled);
         addSetting("autoStorage", defaultAllOptionsEnabled);
+        addSetting("autoHell", defaultAllOptionsEnabled);
 
         addSetting("logEnabled", true);
         Object.keys(loggingTypes).forEach(loggingTypeKey => {
@@ -6708,6 +7020,28 @@
         addSetting("foreignSpy2", true);
         addSetting("foreignSpyMax2", 3);
         addSetting("foreignSpyOp2", "rrobin");
+
+        addSetting("hellHandlePatrolCount", true);
+        addSetting("hellHomeGarrison", 20);
+        addSetting("hellMinSoldiers", 20);
+        addSetting("hellMinSoldiersPercent", 90);
+
+        addSetting("hellTargetFortressDamage", 100);
+        addSetting("hellLowWallsMulti", 3);
+
+        addSetting("hellHandlePatrolSize", true);
+        addSetting("hellPatrolMinRating", 80);
+        addSetting("hellPatrolThreatPercent", 8);
+        addSetting("hellPatrolDroneMod", 5);
+        addSetting("hellPatrolDroidMod", 5);
+        addSetting("hellPatrolBootcampMod", 0);
+        addSetting("hellBolsterPatrolPercentTop", 80);
+        addSetting("hellBolsterPatrolPercentBottom", 40);
+        addSetting("hellBolsterPatrolRating", 300);
+
+        addSetting("hellHandleAttractors", true);
+        addSetting("hellAttractorTopThreat", 3000);
+        addSetting("hellAttractorBottomThreat", 1300);
 
         addSetting("userEvolutionTargetName", "auto");
 
@@ -7178,9 +7512,9 @@
         }
 
         for (let i = 0; i < 10; i++) {
-		    // Don't attack if we don't have at least the target battalion size of healthy soldiers available
-		    if (Math.min(maxSoldiers, state.warManager.maxCityGarrison) > state.warManager.currentCityGarrison - state.warManager.woundedSoldiers) { return; }
-		    
+            // Don't attack if we don't have at least the target battalion size of healthy soldiers available
+            if (Math.min(maxSoldiers, state.warManager.maxCityGarrison) > state.warManager.currentCityGarrison - state.warManager.woundedSoldiers) { return; }
+            
             // Log the interaction
             if (govOccupyIndex >= 0 && state.warManager.campaignList[game.global.civic.garrison.tactic].id === "Siege") {
                 state.log.logSuccess(loggingTypes.attack, `Launching ${state.warManager.campaignList[game.global.civic.garrison.tactic].name} campaign for occupation against ${getGovName(govOccupyIndex)}.`)
@@ -7189,17 +7523,26 @@
             } else {
                 state.log.logSuccess(loggingTypes.attack, `Unoccupying ${getGovName(govUnoccupyIndex)}.`)
             }
-		    
+            
             state.warManager.launchCampaign(state.warManager.selectedGovAttackIndex);
-			
-			if (state.warManager.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * state.warManager.maxCityGarrison
-			     || state.warManager.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * state.warManager.maxCityGarrison) {
-			    	 return;
-			}
-		}
+            
+            if (state.warManager.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * state.warManager.maxCityGarrison
+                 || state.warManager.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * state.warManager.maxCityGarrison) {
+                     return;
+            }
+        }
     }
 
     //#endregion Auto Battle
+    
+    //#region Auto Hell
+    
+    function autoHell() {
+        if (!state.warManager.isHellUnlocked()) { return; }
+        state.warManager.updateHell();
+    }
+    
+    //#endregion Auto Hell
     
     //#region Auto Jobs
 
@@ -8694,6 +9037,10 @@
                         }
                     }
                 }
+                
+                if (settings.autoHell && settings.hellHandleAttractors && building === state.spaceBuildings.PortalAttractor && requiredStateOn >= state.warManager.hellAttractorMax) {
+                    continue;
+                }
 
                 let resourcesToTake = 0;
 
@@ -9366,6 +9713,9 @@
             if (settings.autoTax) {
                 autoTax();
             }
+            if (settings.autoHell) {
+                autoHell();
+            }
             if (settings.autoPower) {
                 autoBuildingPriority();
             }
@@ -9596,6 +9946,7 @@
         buildTriggerSettings();
         buildResearchSettings();
         buildWarSettings(parentNode, true);
+        buildHellSettings(parentNode, true);
         buildMarketSettings();
         buildStorageSettings();
         buildProductionSettings();
@@ -9680,6 +10031,7 @@
         updateTriggerSettingsContent();
         updateResearchSettingsContent();
         updateWarSettingsContent(true);
+        updateHellSettingsContent(true);
         updateMarketSettingsContent();
         updateStorageSettingsContent();
         updateProductionSettingsContent();
@@ -10785,6 +11137,66 @@
         });
 
         return campaignMaxTextBox;
+    }
+    
+    function buildHellSettings(parentNode, isMainSettings) {
+        let sectionId = "hell";
+        let sectionName = "Hell";
+
+        let resetFunction = function() {
+            resetHellSettings();
+            updateHellSettingsContent(isMainSettings);
+        };
+
+        buildSettingsSection2(parentNode, isMainSettings, sectionId, sectionName, resetFunction, updateHellSettingsContent);
+    }
+
+    function updateHellSettingsContent(isMainSettings) {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+        let secondaryPrefix = "c_";
+
+        if (isMainSettings) {
+            secondaryPrefix = "";
+        }
+
+        let currentNode = $(`#script_${secondaryPrefix}hellContent`);
+        currentNode.empty().off("*");
+
+        // Hell panel
+        let hellHeaderNode = $(`<div id="script_${secondaryPrefix}hell"></div>`);
+        currentNode.append(hellHeaderNode);
+
+        // Entering Hell
+        addStandardSectionHeader1(hellHeaderNode, "Entering Hell");
+        addStandardSectionSettingsToggle2(secondaryPrefix, hellHeaderNode, 0, "hellHandlePatrolCount", "Automatically enter hell and adjust patrol count and hell garrison size", "Sets patrol count according to required garrison and patrol size");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellHomeGarrison", "Soldiers to stay out of hell", "Home garrison maximum");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellMinSoldiers", "Minimum soldiers to be available for hell (pull out if below)", "Don't enter hell if not enough soldiers, or get out if already in");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellMinSoldiersPercent", "Alive soldier percentage for entering hell (only prevents entering, walls also have to be 100%)", "Don't enter hell if too many soldiers are dead, but don't get out");
+
+        // Hell Garrison
+        addStandardSectionHeader1(hellHeaderNode, "Hell Garrison");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellTargetFortressDamage", "Target wall damage per siege (overestimates threat)", "Actual damage will usually be lower due to patrols and drones");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellLowWallsMulti", "Garrison bolster factor for damaged walls", "Multiplies target defense rating by this when close to 0 wall integrity, half as much increase at half integrity");
+
+        // Patrol size
+        addStandardSectionHeader1(hellHeaderNode, "Patrol Size");
+        addStandardSectionSettingsToggle2(secondaryPrefix, hellHeaderNode, 0, "hellHandlePatrolSize", "Automatically adjust patrol size", "Sets patrol attack rating based on current threat, lowers it depending on buildings, increases it to the minimum rating, and finally increases it based on dead soldiers. Handling patrol count has to be turned on.");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellPatrolMinRating", "Minimum patrol attack rating", "Will never go below this");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellPatrolThreatPercent", "Percent of current threat as base patrol rating", "Demon encounters have a rating of 2 to 10 percent of current threat");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 1, "hellPatrolDroneMod", "Lower Rating for each active Predator Drone by", "Predators reduce threat before patrols fight");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 1, "hellPatrolDroidMod", "Lower Rating for each active War Droid by", "War Droids boost patrol attack rating by 1 or 2 soldiers depending on tech");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 1, "hellPatrolBootcampMod", "Lower Rating for each Bootcamp by", "Bootcamps help regenerate soldiers faster");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellBolsterPatrolRating", "Increase patrol rating by up to this when soldiers die", "Larger patrols are less effective, but also have fewer deaths");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 1, "hellBolsterPatrolPercentTop", "Start increasing patrol rating at this home garrison fill percent", "This is the higher number");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 1, "hellBolsterPatrolPercentBottom", "Full patrol rating increase below this home garrison fill percent", "This is the lower number");
+        
+        // Attractors
+        addStandardSectionHeader1(hellHeaderNode, "Attractors");
+        addStandardSectionSettingsToggle2(secondaryPrefix, hellHeaderNode, 0, "hellHandleAttractors", "Adapt how many Attractors Auto Power can turn on based on threat", "Auto Power needs to be on for this to work");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 1, "hellAttractorBottomThreat", "All Attractors on below this threat", "Turn more and more attractors off when getting nearer to the top threat");
+        addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 1, "hellAttractorTopThreat", "All Attractors off above this threat", "Turn more and more attractors off when getting nearer to the top threat");
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     function buildMarketSettings() {
@@ -11950,6 +12362,8 @@
         // Build secondary options buttons if they don't currently exist
         addOptionUI("s-government-options", "#government div h2", "Government", buildGovernmentSettings);
         addOptionUI("s-foreign-options", "#foreign div h2", "Foreign Affairs", buildWarSettings);
+        addOptionUI("s-hell-options", "#gFort div h3", "Hell", buildHellSettings);
+        addOptionUI("s-hell-options2", "#prtl_fortress div h3", "Hell", buildHellSettings);
     }
 
     /**
@@ -12071,6 +12485,9 @@
         }
         if ($('#autoFight').length === 0) {
             createSettingToggle('autoFight');
+        }
+        if ($('#autoHell').length === 0) {
+            createSettingToggle('autoHell');
         }
         if ($('#autoTax').length === 0) {
             createSettingToggle('autoTax');
