@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.0.0
+// @version      3.1.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -55,6 +55,7 @@
 // * autoSeeder - Will send out the seeder ship once at least 4 (or user entered max) probes are constructed. Currently tries to find a forest world, then grassland, then the others.
 //          Not currently user configurable.
 // * autoAssembleGene - Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.
+// * autoMinorTraits - Purchase minor traits using genes according to their weighting settings. Settings available in Settings tab.
 // 
 
 //@ts-check
@@ -454,6 +455,28 @@
 
             return false;
         }
+
+        isDefault() {
+            if (game.global.civic['d_job']) {
+                return game.global.civic.d_job === this.id;
+            }
+
+            return false;
+        }
+
+        setAsDefault() {
+            if (this.id !== 'farmer' && this.id !== 'lumberjack' && this.id !== 'quarry_worker' && this.id !== 'scavenger') {
+                return false; // Only these jobs can be set as default
+            }
+
+            let vue = getVueById(this._vueBinding);
+            if (vue !== undefined) {
+                vue.setDefault(this.id);
+                return true;
+            }
+
+            return false;
+        }
     }
 
     class CraftingJob extends Job {
@@ -818,6 +841,15 @@
                 if (retVal) {
                     tempRetVal = this.vue.action();
                     retVal = tempRetVal === undefined ? retVal : retVal && tempRetVal;
+
+                    if (this === state.evolutions.Rna) { retVal = retVal && resources.RNA.currentQuantity < resources.RNA.maxQuantity; }
+                    else if (this === state.evolutions.Dna) { retVal = retVal && resources.DNA.currentQuantity < resources.DNA.maxQuantity; }
+                    else if (this === state.cityBuildings.Food) { retVal = retVal && resources.Food.currentQuantity < resources.Food.maxQuantity; }
+                    else if (this === state.cityBuildings.Lumber) { retVal = retVal && resources.Lumber.currentQuantity < resources.Lumber.maxQuantity; }
+                    else if (this === state.cityBuildings.Stone) { retVal = retVal && resources.Stone.currentQuantity < resources.Stone.maxQuantity; }
+                    else if (this === state.cityBuildings.Slaughter) {
+                        retVal = retVal && (resources.Lumber.currentQuantity < resources.Lumber.maxQuantity || resources.Food.currentQuantity < resources.Food.maxQuantity);
+                    }
                 }
             }
 
@@ -948,6 +980,161 @@
         }
 
         //#endregion Buildings
+    }
+
+    const Fibonacci = [
+        5,
+        8,
+        13,
+        21,
+        34,
+        55,
+        89,
+        144,
+        233,
+        377,
+        610,
+        987,
+        1597,
+        2584,
+        4181,
+        6765,
+        10946,
+        17711,
+        28657,
+        46368,
+        75025,
+        121393,
+        196418,
+        317811,
+        514229,
+    ];
+
+    class MinorTrait {
+        /**
+         * @param {string} traitName
+         */
+        constructor(traitName) {
+            this.traitName = traitName;
+
+            this.priority = 0;
+            this.autoMinorTraitEnabled = true;
+            this.autoMinorTraitWeighting = 0;
+        }
+
+        isUnlocked() {
+            return game.global.race.hasOwnProperty(this.traitName);
+        }
+
+        get geneCount() {
+            if (game.global.race['minor'] && game.global.race.minor[this.traitName]) {
+                return game.global.race.minor[this.traitName];
+            }
+
+            return 0;
+        }
+
+        get phageCount() {
+            if (game.global.genes['minor'] && game.global.genes.minor[this.traitName]) {
+                return game.global.genes.minor[this.traitName];
+            }
+
+            return 0;
+        }
+
+        get totalCount() {
+            if (game.global.race[this.traitName]) {
+                return game.global.race[this.traitName];
+            }
+
+            return 0;
+        }
+
+        get geneCost() {
+            let count = this.geneCount;
+
+            if (count < 0 || count >= Fibonacci.length) {
+                return Number.MAX_SAFE_INTEGER;
+            }
+
+            return this.traitName === 'mastery' ? Fibonacci[count] * 5 : Fibonacci[count];
+        }
+    }
+
+    class MinorTraitManager {
+        constructor() {
+            /** @type {MinorTrait[]} */
+            this.priorityList = [];
+
+            this._lastLoopCounter = 0;
+            /** @type {MinorTrait[]} */
+            this._managedPriorityList = [];
+
+            this._traitVueBinding = "geneticBreakdown";
+        }
+
+        isUnlocked() {
+            return game.global.tech['genetics'] > 2;
+        }
+
+        clearPriorityList() {
+            this.priorityList.length = 0;
+            this._managedPriorityList.length = 0;
+        }
+
+        /**
+         * @param {MinorTrait} minorTrait
+         */
+        addMinorTraitToPriorityList(minorTrait) {
+            minorTrait.priority = this.priorityList.length;
+            this.priorityList.push(minorTrait);
+        }
+
+        sortByPriority() {
+            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+        }
+
+        managedPriorityList() {
+            if (this._lastLoopCounter != state.loopCounter) {
+                this._managedPriorityList.length = 0; // clear array
+            }
+
+            if (!this.isUnlocked()) return this._managedPriorityList;
+
+            if (this._managedPriorityList.length === 0) {
+                this._lastLoopCounter = state.loopCounter;
+
+                for (let i = 0; i < this.priorityList.length; i++) {
+                    const minorTrait = this.priorityList[i];
+    
+                    if (minorTrait.isUnlocked()) {
+                        this._managedPriorityList.push(minorTrait);
+                    }
+                }
+            }
+
+            return this._managedPriorityList;
+        }
+
+        /**
+         * @param {string} traitName
+         * @param {number} count
+         */
+        tryBuyWithGenes(traitName, count) {
+            if (count === 0) { return true; }
+            if (!this.isUnlocked()) { return false; }
+            let vue = getVueById(this._traitVueBinding);
+            if (vue === undefined) { return false; }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.gene(traitName);
+            }
+
+            return true;
+        }
     }
 
     class ResourceProductionCost {
@@ -1614,14 +1801,14 @@
         }
         
         // Whether the action is clickable is determined by whether it is unlocked and affordable
-        // The slave market can always be clicked so lets only do it when we have 90%+ money
+        // The slave market can always be clicked so lets only do it when we have 90%+ money (or over 10mil in which case the cost is pretty irrelevent)
         isClickable() {
             if (!this.isUnlocked()) {
                 return false;
             }
 
-            // If we have over 90% money...
-            if (resources.Money.storageRatio > 0.9 && game.checkAffordable(this.definition, false)) {
+            // If we have over 90% money... or we've got over 10mil
+            if ((resources.Money.storageRatio > 0.9 || resources.Money.currentQuantity > 10000000) && game.checkAffordable(this.definition, false)) {
                 // and we are a slaver with the slave pen unlocked...
                 if (game.global.race[racialTraitSlaver] && state.cityBuildings.SlavePen.isUnlocked()){
                     // and we are less than max slaves then we can click!
@@ -5151,6 +5338,8 @@
         races.yeti, races.wendigo, races.tuskin, races.kamel, races.custom
     ];
 
+    var universes = ['standard','heavy','antimatter','evil','micro'];
+
     var resources = {
         // Evolution resources
         RNA: new Resource("RNA", "res", "RNA", false, false, -1, false, -1, false),
@@ -5243,6 +5432,7 @@
         projectManager: new ProjectManager(),
         marketManager: new MarketManager(),
         storageManager: new StorageManager(),
+        minorTraitManager: new MinorTraitManager(),
         triggerManager: new TriggerManager(),
         governmentManager: new GovernmentManager(),
         spyManager: new SpyManager(),
@@ -5403,6 +5593,7 @@
         resetEvolutionTarget: false,
         /** @type {Race} */
         evolutionFallback: null,
+        universeTarget: 'none',
         
         cityBuildings: {
             Food: new Action("Food", "city", "food", ""),
@@ -6051,6 +6242,7 @@
     }
 
     function resetHellSettings() {
+        settings.hellTurnOffLogMessages = true;
         settings.hellHandlePatrolCount = true;
         settings.hellHomeGarrison = 20;
         settings.hellMinSoldiers = 20;
@@ -6103,6 +6295,7 @@
     }
 
     function resetEvolutionSettings() {
+        settings.userUniverseTargetName = "none";
         settings.userEvolutionTargetName = "auto";
         settings.challenge_plasmid = false;
         settings.challenge_trade = false;
@@ -6163,7 +6356,8 @@
     }
 
     function resetMarketSettings() {
-        settings.tradeRouteMinimumMoneyPerSecond = 200
+        settings.tradeRouteMinimumMoneyPerSecond = 300
+        settings.tradeRouteMinimumMoneyPercentage = 5
     }
 
     function resetStorageState() {
@@ -6216,7 +6410,27 @@
         settings.storageLimitPreMad = true;
     }
 
+    function resetMinorTraitState() {
+        state.minorTraitManager.clearPriorityList();
+
+        Object.keys(game.traits).forEach(traitName => {
+            // All minor traits and the currently two special traits
+            if (traitName === "fortify" || traitName === "mastery" || (game.traits[traitName] && game.traits[traitName].type === 'minor')) {
+                let trait = new MinorTrait(traitName);
+                trait.autoMinorTraitEnabled = true;
+                trait.autoMinorTraitWeighting = 1;
+
+                state.minorTraitManager.addMinorTraitToPriorityList(trait);
+            }
+        });
+    }
+
+    function resetMinorTraitSettings() {
+        // None currently
+    }
+
     function resetJobSettings() {
+        settings.jobSetDefault = false;
         settings.jobLumberWeighting = 50;
         settings.jobQuarryWeighting = 50;
         settings.jobScavengerWeighting = 50;
@@ -6528,7 +6742,7 @@
 
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
-                            "governmentSettingsCollapsed", "loggingSettingsCollapsed"];
+                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed"];
     
     function updateStateFromSettings() {
         updateStandAloneSettings();
@@ -6647,6 +6861,23 @@
             else { settings[settingKey] = resource._autoContainersMax; }
         }
         state.storageManager.sortByPriority();
+
+        for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
+            let trait = state.minorTraitManager.priorityList[i];
+
+            let settingKey = 'mTrait_' + trait.traitName;
+            if (settings.hasOwnProperty(settingKey)) { trait.autoMinorTraitEnabled = settings[settingKey]; }
+            else { settings[settingKey] = trait.autoMinorTraitEnabled; }
+
+            settingKey = 'mTrait_w_' + trait.traitName;
+            if (settings.hasOwnProperty(settingKey)) { trait.autoMinorTraitWeighting = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = trait.autoMinorTraitWeighting; }
+
+            settingKey = 'mTrait_p_' + trait.traitName;
+            if (settings.hasOwnProperty(settingKey)) { trait.priority = parseFloat(settings[settingKey]); }
+            else { settings[settingKey] = trait.priority; }
+        }
+        state.minorTraitManager.sortByPriority();
 
         // Retrieve settings for crafting resources
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -6881,6 +7112,13 @@
             settings['res_containers_m_' + resource.id] = resource._autoContainersMax;
         }
 
+        for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
+            const trait = state.minorTraitManager.priorityList[i];
+            settings['mTrait_' + trait.traitName] = trait.autoMinorTraitEnabled;
+            settings['mTrait_w_' + trait.traitName] = trait.autoMinorTraitWeighting;
+            settings['mTrait_p_' + trait.traitName] = trait.priority;
+        }
+
         if (!settings.hasOwnProperty('arpa')) {
             settings.arpa = {
                 //lhc: false,
@@ -6934,6 +7172,7 @@
 
         addSetting("productionMoneyIfOnly", true);
 
+        addSetting("jobSetDefault", false);
         addSetting("jobLumberWeighting", 50);
         addSetting("jobQuarryWeighting", 50);
         addSetting("jobScavengerWeighting", 50);
@@ -6953,6 +7192,7 @@
         addSetting("autoCraftsmen", defaultAllOptionsEnabled);
         addSetting("autoPower", defaultAllOptionsEnabled);
         addSetting("autoStorage", defaultAllOptionsEnabled);
+        addSetting("autoMinorTrait", defaultAllOptionsEnabled);
         addSetting("autoHell", defaultAllOptionsEnabled);
 
         addSetting("logEnabled", true);
@@ -6990,6 +7230,7 @@
         addSetting("minimumMoney", 0);
         addSetting("minimumMoneyPercentage", 0);
         addSetting("tradeRouteMinimumMoneyPerSecond", 300);
+        addSetting("tradeRouteMinimumMoneyPercentage", 5);
         addSetting("generalMinimumTaxRate", 20);
         addSetting("generalMinimumMorale", 105)
         addSetting("generalMaximumMorale", 200);
@@ -7021,6 +7262,7 @@
         addSetting("foreignSpyMax2", 3);
         addSetting("foreignSpyOp2", "rrobin");
 
+        addSetting("hellTurnOffLogMessages", true);
         addSetting("hellHandlePatrolCount", true);
         addSetting("hellHomeGarrison", 20);
         addSetting("hellMinSoldiers", 20);
@@ -7043,6 +7285,7 @@
         addSetting("hellAttractorTopThreat", 3000);
         addSetting("hellAttractorBottomThreat", 1300);
 
+        addSetting("userUniverseTargetName", "none")
         addSetting("userEvolutionTargetName", "auto");
 
         for (let i = 0; i < state.evolutionChallengeList.length; i++) {
@@ -7074,6 +7317,8 @@
         if (game.global.race.species !== speciesProtoplasm) {
             return;
         }
+
+        autoUniverseSelection();
 
         // If we have performed a soft reset with a bioseeded ship then we get to choose our planet
         autoPlanetSelection();
@@ -7226,6 +7471,23 @@
         }
     }
 
+    function autoUniverseSelection() {
+        if (!game.global.race['bigbang']) { return; }
+        if (game.global.race.universe !== 'bigbang') { return; }
+        if (settings.userUniverseTargetName === 'none') { return; }
+
+        var action = document.getElementById(`uni-${settings.userUniverseTargetName}`);
+        //standard
+        //heavy
+        //antimatter
+        //evil
+        //micro
+
+        if (action !== null) {
+            logClick(action.children[0], `Select universe: ${settings.userUniverseTargetName}`);
+        }
+    }
+
     function autoPlanetSelection() {
         // This section is for if we bioseeded life and we get to choose our path a little bit
         let potentialPlanets = document.querySelectorAll('#evolution .action');
@@ -7237,6 +7499,8 @@
         if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Desert"); }
         if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Volcanic"); }
         if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Tundra"); }
+        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Hellscape"); }
+        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Eden"); }
 
         // This one is a little bit special. We need to trigger the "mouseover" first as it creates a global javascript varaible
         // that is then destroyed in the "click"
@@ -7539,6 +7803,17 @@
     
     function autoHell() {
         if (!state.warManager.isHellUnlocked()) { return; }
+
+        if (settings.hellTurnOffLogMessages) {
+            if (game.global['portal']['fortress']['notify']) {
+                game.global.portal.fortress.notify = "No";
+            }
+
+            if (game.global['portal']['fortress']['s_ntfy']) {
+                game.global.portal.fortress.s_ntfy = "No";
+            }
+        }
+
         state.warManager.updateHell();
     }
     
@@ -7588,7 +7863,20 @@
 
         // First figure out how many farmers are required
         if (state.jobs.Farmer.isManaged()) {
-            if (!state.jobs.Lumberjack.isUnlocked() && !state.jobs.QuarryWorker.isUnlocked()) {
+            if (!state.jobs.Lumberjack.isUnlocked()
+                    && !state.jobs.QuarryWorker.isUnlocked()
+                    && !state.jobs.Scavenger.isUnlocked()
+                    && !state.jobs.Miner.isUnlocked()
+                    && !state.jobs.CoalMiner.isUnlocked()
+                    && !state.jobs.CementWorker.isUnlocked()
+                    && !state.jobs.Entertainer.isUnlocked()
+                    && !state.jobs.Priest.isUnlocked()
+                    && !state.jobs.Professor.isUnlocked()
+                    && !state.jobs.Scientist.isUnlocked()
+                    && !state.jobs.Banker.isUnlocked()
+                    && !state.jobs.Colonist.isUnlocked()
+                    && !state.jobs.SpaceMiner.isUnlocked()
+                    && !state.jobs.HellSurveyor.isUnlocked()) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs.push(availableEmployees);
                 log("autoJobs", "Pushing all farmers")
@@ -7603,15 +7891,19 @@
                     requiredJobs.push(state.jobs.Farmer.count);
                 }
             } else if (resources.Food.storageRatio < 0.2 && resources.Food.rateOfChange < 0) {
-                // We want food to fluctuate between 0.2 and 0.8 only. We only want to add one per loop until positive
+                // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
                 requiredJobs.push(Math.min(state.jobs.Farmer.count + 1, availableEmployees));
                 log("autoJobs", "Adding one farmer")
-            } else if (resources.Food.storageRatio > 0.8 && resources.Food.rateOfChange > 0) {
-                // We want food to fluctuate between 0.2 and 0.8 only. We only want to remove one per loop until negative
+            } else if (resources.Food.storageRatio > 0.6 && resources.Food.rateOfChange > 0) {
+                // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
                 log("autoJobs", "Removing one farmer")
+            } else if (resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > 100) {
+                // If we have over 30% storage and have > 100 food per second then remove a farmer
+                requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
+                log("autoJobs", "Removing one farmer - 100 food per second")
             } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > resources.Population.currentQuantity / 10) {
-                // Carnivore race. Put We've got some food so put them to work!
+                // Carnivore race. We've got some food so put them to work!
                 requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
                 log("autoJobs", "Removing one farmer - Carnivore")
             } else {
@@ -7776,7 +8068,7 @@
                 splitJobs.forEach(jobDetails => {
                     if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(1, true)) {
                         jobDetails.completed = true;
-                        return;
+                        return; // forEach return
                     }
 
                     requiredJobs[jobDetails.jobIndex]++;
@@ -7807,7 +8099,7 @@
                 splitJobs.forEach(jobDetails => {
                     if (availableEmployees <= 0 || (isEvilRace() && !isEvilUniverse() && jobDetails.job === state.jobs.Lumberjack)) {
                         // We've already dealt with evil lumberjacks above. Those dastardly lumberjacks!
-                        return;
+                        return; // forEach return
                     }
 
                     let workers = Math.ceil(startingAvailableEmployees * jobDetails.weighting / totalWeighting);
@@ -7822,6 +8114,13 @@
                 requiredJobs[jobIndex] += availableEmployees;
                 jobAdjustments[jobIndex] += availableEmployees;
                 availableEmployees -= availableEmployees;
+            }
+        } else {
+            // No lumberjacks, quarry workers or scavengers...
+            if (state.jobs.Farmer.isManaged()) {
+                requiredJobs[0] += availableEmployees;
+                jobAdjustments[0] += availableEmployees;
+                availableEmployees = 0;
             }
         }
 
@@ -7898,6 +8197,18 @@
 
         state.lastPopulationCount = resources.Population.currentQuantity;
         state.lastFarmerCount = state.jobs.Farmer.count;
+
+        if (settings.jobSetDefault) {
+            if (state.jobs.QuarryWorker.isUnlocked() && state.jobs.QuarryWorker.count > 0 && !state.jobs.QuarryWorker.isDefault()) {
+                state.jobs.QuarryWorker.setAsDefault();
+            } else if (state.jobs.Lumberjack.isUnlocked() && state.jobs.Lumberjack.count > 0 && !state.jobs.Lumberjack.isDefault()) {
+                state.jobs.Lumberjack.setAsDefault();
+            } else if (state.jobs.Scavenger.isUnlocked() && state.jobs.Scavenger.count > 0 && !state.jobs.Scavenger.isDefault()) {
+                state.jobs.Scavenger.setAsDefault();
+            } else if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0 && !state.jobs.Farmer.isDefault()) {
+                state.jobs.Farmer.setAsDefault();
+            }
+        }
     }
 
     //#endregion Auto Jobs
@@ -8097,10 +8408,10 @@
         let desiredSteelCount = state.cityBuildings.Smelter.maxOperating;
 
         if (state.cityBuildings.Cottage.count < 15) {
-            // half to steel with any remainder going to steel
+            // half to steel with any remainder going to iron
             desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.maxOperating / 2);
         } else if (state.cityBuildings.CoalMine.count < 10) {
-            // two thirds to steel with any remainder going to steel
+            // two thirds to steel with any remainder going to iron
             desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.maxOperating * 2 / 3);
         } else if (resources.Iron.rateOfChange > 100 || resources.Iron.storageRatio > 0.99) {
             desiredSteelCount = state.cityBuildings.Smelter.maxOperating;
@@ -8448,7 +8759,7 @@
     }
 
     function getBlackholeMass() {
-        if (game.global.interstellar.stellar_engine.mass === undefined || game.global.interstellar.stellar_engine.exotic === undefined) { return 0; }
+        if (!game.global['interstellar'] || !game.global.interstellar['stellar_engine'] || !game.global.interstellar.stellar_engine['mass'] || !game.global.interstellar.stellar_engine['exotic']) { return 0 };
         return +(game.global.interstellar.stellar_engine.mass + game.global.interstellar.stellar_engine.exotic).toFixed(10);
     }
 
@@ -8654,8 +8965,14 @@
     
     function autoGatherResources() {
         // Don't spam click once we've got a bit of population going
-        if (state.cityBuildings.RockQuarry.count > 0 && resources.Population.currentQuantity > 15) {
-            return;
+        if (resources.Population.currentQuantity > 15) {
+            if (!state.cityBuildings.RockQuarry.isUnlocked()) {
+                return;
+            }
+
+            if (state.cityBuildings.RockQuarry.count > 0) {
+                return;
+            }
         }
 
         state.cityBuildings.Food.click(50);
@@ -9321,6 +9638,32 @@
         }
     }
 
+    function autoMinorTrait() {
+        let traitList = state.minorTraitManager.managedPriorityList();
+
+        if (traitList.length === 0) {
+            return;
+        }
+
+        let totalWeighting = 0;
+        let totalGeneCost = 0;
+
+        traitList.forEach(trait => {
+            //console.log(`trait ${trait.traitName} weighting ${trait.autoMinorTraitWeighting} cost ${trait.geneCost} unlocked ${trait.isUnlocked()}`)
+            totalWeighting += trait.autoMinorTraitWeighting;
+            totalGeneCost += trait.geneCost;
+        });
+        
+        traitList.forEach(trait => {
+            if (trait.autoMinorTraitWeighting / totalWeighting >= trait.geneCost / totalGeneCost) {
+                if (resources.Genes.currentQuantity > trait.geneCost) {
+                    //console.log("trying to buy " + trait.traitName + " at cost " + trait.geneCost)
+                    state.minorTraitManager.tryBuyWithGenes(trait.traitName, 1);
+                }
+            }
+        });
+    }
+
     /**
      * @param {any[] | { resource: any; requiredTradeRoutes: any; completed: boolean; index: number; }[]} requiredTradeRouteResources
      * @param {Resource[]} marketResources
@@ -9381,6 +9724,8 @@
         }
 
         //console.log("current money per second: " + currentMoneyPerSecond);
+        let minimumAllowedMoneyPerSecond = Math.max(settings.tradeRouteMinimumMoneyPerSecond, settings.tradeRouteMinimumMoneyPercentage / 100 * currentMoneyPerSecond);
+        //console.log("minimum money per second: " + minimumAllowedMoneyPerSecond + " based on current money per second of " + currentMoneyPerSecond)
 
         while (findArrayIndex(resourcesToTrade, "completed", false) != -1) {
             for (let i = 0; i < resourcesToTrade.length; i++) {
@@ -9398,7 +9743,7 @@
                 if (!resourceToTrade.completed
                             && tradeRoutesUsed < maxTradeRoutes
                             && resourceToTrade.requiredTradeRoutes > requiredTradeRoutes[resourceToTrade.index]
-                            && currentMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > settings.tradeRouteMinimumMoneyPerSecond) {
+                            && currentMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > minimumAllowedMoneyPerSecond) {
                     currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
                     tradeRoutesUsed++;
                     requiredTradeRoutes[resourceToTrade.index]++;
@@ -9408,7 +9753,7 @@
 
                 // We're buying enough resources now or we don't have enough money to buy more anyway
                 if (resourceToTrade.requiredTradeRoutes === requiredTradeRoutes[resourceToTrade.index]
-                            || currentMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice < settings.tradeRouteMinimumMoneyPerSecond) {
+                            || currentMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice < minimumAllowedMoneyPerSecond) {
                     //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 2")
                     resourceToTrade.completed = true;
                     continue;
@@ -9436,7 +9781,7 @@
                             currentRequired++;
                             reducedMoneyPerSecond += resource.currentTradeRouteSellPrice;
 
-                            if (currentMoneyPerSecond - reducedMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > settings.tradeRouteMinimumMoneyPerSecond) {
+                            if (currentMoneyPerSecond - reducedMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > minimumAllowedMoneyPerSecond) {
                                 currentMoneyPerSecond -= reducedMoneyPerSecond;
                                 currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
                                 //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " current money per second: " + currentMoneyPerSecond);
@@ -9637,6 +9982,7 @@
             });
 
             resetBuildingState();
+            resetMinorTraitState();
 
             updateStateFromSettings();
             updateSettingsFromState();
@@ -9733,6 +10079,9 @@
             }
             if (settings.autoAssembleGene && !settings.genesAssembleGeneAlways) {
                 autoAssembleGene();
+            }
+            if (settings.autoMinorTrait) {
+                autoMinorTrait();
             }
 
             autoWhiteholePrestige();
@@ -9943,6 +10292,7 @@
         buildGeneralSettings();
         buildGovernmentSettings(parentNode, true);
         buildEvolutionSettings();
+        buildMinorTraitSettings();
         buildTriggerSettings();
         buildResearchSettings();
         buildWarSettings(parentNode, true);
@@ -10028,6 +10378,7 @@
         updateGeneralSettingsContent();
         updateGovernmentSettingsContent(true);
         updateEvolutionSettingsContent();
+        updateMinorTraitSettingsContent();
         updateTriggerSettingsContent();
         updateResearchSettingsContent();
         updateWarSettingsContent(true);
@@ -10444,14 +10795,49 @@
         let currentNode = $('#script_evolutionContent');
         currentNode.empty().off("*");
 
+        // Target universe
+        let targetUniverseNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userUniverseTargetName">Target Universe:</label><select id="script_userUniverseTargetName" style="width: 150px; float: right;"></select></div>');
+        currentNode.append(targetUniverseNode);
+
+        let selectNode = $('#script_userUniverseTargetName');
+
+        let selected = settings.userUniverseTargetName === "none" ? ' selected="selected"' : "";
+        let node = $('<option value = "none"' + selected + '>None</option>');
+        selectNode.append(node);
+
+        // TODO: Add in auto when script manages this
+        // selected = settings.userUniverseTargetName === "auto" ? ' selected="selected"' : "";
+        // node = $('<option value = "auto"' + selected + '>Script Managed</option>');
+        // selectNode.append(node);
+
+        universes.forEach(universeName => {
+            let selected = settings.userUniverseTargetName === universeName ? ' selected="selected"' : "";
+
+            let universeNode = $('<option value = "' + universeName + '"' + selected + '>' + universeName.charAt(0).toUpperCase() + universeName.slice(1) + '</option>');
+            selectNode.append(universeNode);
+        });
+
+        selectNode.on('change', function() {
+            let value = $("#script_userUniverseTargetName :selected").val();
+            settings.userUniverseTargetName = value;
+            updateSettingsFromState();
+            //console.log("Chosen universe target of " + value);
+
+            let content = document.querySelector('#script_evolutionSettings .script-content');
+            // @ts-ignore
+            content.style.height = null;
+            // @ts-ignore
+            content.style.height = content.offsetHeight + "px"
+        });
+
         // Target evolution
         let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div><div><span id="script_race_warning" class="has-text-danger"></span></div>');
         currentNode.append(targetEvolutionNode);
 
-        let selectNode = $('#script_userEvolutionTargetName');
+        selectNode = $('#script_userEvolutionTargetName');
 
-        let selected = settings.userEvolutionTargetName === "auto" ? ' selected="selected"' : "";
-        let node = $('<option value = "auto"' + selected + '>Script Managed</option>');
+        selected = settings.userEvolutionTargetName === "auto" ? ' selected="selected"' : "";
+        node = $('<option value = "auto"' + selected + '>Script Managed</option>');
         selectNode.append(node);
 
         for (let i = 0; i < raceAchievementList.length; i++) {
@@ -11168,6 +11554,7 @@
 
         // Entering Hell
         addStandardSectionHeader1(hellHeaderNode, "Entering Hell");
+        addStandardSectionSettingsToggle2(secondaryPrefix, hellHeaderNode, 0, "hellTurnOffLogMessages", "Turn off patrol and surveyor log messages", "Automatically turns off the hell patrol and surveyor log messages");
         addStandardSectionSettingsToggle2(secondaryPrefix, hellHeaderNode, 0, "hellHandlePatrolCount", "Automatically enter hell and adjust patrol count and hell garrison size", "Sets patrol count according to required garrison and patrol size");
         addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellHomeGarrison", "Soldiers to stay out of hell", "Home garrison maximum");
         addStandardSectionSettingsNumber2(secondaryPrefix, hellHeaderNode, 0, "hellMinSoldiers", "Minimum soldiers to be available for hell (pull out if below)", "Don't enter hell if not enough soldiers, or get out if already in");
@@ -11233,7 +11620,8 @@
 
         // Add any pre table settings
         let preTableNode = $('#script_marketPreTable');
-        addStandardSectionSettingsNumber(preTableNode, "tradeRouteMinimumMoneyPerSecond", "Trade minimum money /s", "Will trade for resources until this minimum money per second amount is hit");
+        addStandardSectionSettingsNumber(preTableNode, "tradeRouteMinimumMoneyPerSecond", "Trade minimum money /s", "Uses the highest per second amount of these two values. Will trade for resources until this minimum money per second amount is hit");
+        addStandardSectionSettingsNumber(preTableNode, "tradeRouteMinimumMoneyPercentage", "Trade minimum money percentage /s", "Uses the highest per second amount of these two values. Will trade for resources until this percentage of your money per second amount is hit");
     }
 
     function updateMarketTable() {
@@ -11512,6 +11900,126 @@
         return textBox;
     }
 
+    function buildMinorTraitSettings() {
+        let sectionId = "minorTrait";
+        let sectionName = "Minor Trait";
+
+        let resetFunction = function() {
+            resetMinorTraitState();
+            resetMinorTraitSettings();
+            updateSettingsFromState();
+            updateMinorTraitSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateMinorTraitSettingsContent);
+    }
+
+    function updateMinorTraitSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_minorTraitContent');
+        currentNode.empty().off("*");
+
+        updateMinorTraitTable();
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function updateMinorTraitTable() {
+        let currentNode = $('#script_minorTraitContent');
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Minor Trait</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
+                <tbody id="script_minorTraitTableBody" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_minorTraitTableBody');
+        let newTableBodyText = "";
+
+        for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
+            const trait = state.minorTraitManager.priorityList[i];
+            let classAttribute = ' class="script-draggable"';
+            newTableBodyText += '<tr value="' + trait.traitName + '"' + classAttribute + '><td id="script_minorTrait_' + trait.traitName + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other minorTraits settings rows
+        for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
+            const trait = state.minorTraitManager.priorityList[i];
+            let minorTraitElement = $('#script_minorTrait_' + trait.traitName + 'Toggle');
+
+            let toggle = $(`<span title="${game.traits[trait.traitName].desc}" class="has-text-info" style="margin-left: 20px;">${game.traits[trait.traitName].name}</span>`);
+            minorTraitElement.append(toggle);
+
+            minorTraitElement = minorTraitElement.next();
+            minorTraitElement.append(buildMinorTraitSettingsEnabledToggle(trait));
+
+            minorTraitElement = minorTraitElement.next();
+            minorTraitElement.append(buildMinorTraitSettingsInput(trait, "mTrait_w_" + trait.traitName, "autoMinorTraitWeighting"));
+
+            minorTraitElement = minorTraitElement.next();
+            minorTraitElement.append($('<span class="script-lastcolumn"></span>'));
+        }
+
+        $('#script_minorTraitTableBody').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let minorTraitNames = $('#script_minorTraitTableBody').sortable('toArray', {attribute: 'value'});
+
+                for (let i = 0; i < minorTraitNames.length; i++) {
+                    // MinorTrait has been dragged... Update all minorTrait priorities
+                    state.minorTraitManager.priorityList[findArrayIndex(state.minorTraitManager.priorityList, "traitName", minorTraitNames[i])].priority = i;
+                }
+
+                state.minorTraitManager.sortByPriority();
+                updateSettingsFromState();
+            },
+        } );
+    }
+
+    /**
+     * @param {MinorTrait} minorTrait
+     */
+    function buildMinorTraitSettingsEnabledToggle(minorTrait) {
+        let checked = minorTrait.autoMinorTraitEnabled ? " checked" : "";
+        let toggle = $('<label id=script_mTrait_' + minorTrait.traitName + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            minorTrait.autoMinorTraitEnabled = state;
+            updateSettingsFromState();
+        });
+
+        return toggle;
+    }
+
+    /**
+     * @param {MinorTrait} minorTrait
+     * @param {string} settingKey
+     * @param {string} property
+     */
+    function buildMinorTraitSettingsInput(minorTrait, settingKey, property) {
+        let textBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        textBox.val(settings[settingKey]);
+    
+        textBox.on('change', function() {
+            let val = textBox.val();
+            let parsedValue = getRealNumber(val);
+            if (!isNaN(parsedValue)) {
+                minorTrait[property] = parsedValue;
+                updateSettingsFromState();
+            }
+        });
+
+        return textBox;
+    }
+
     function buildProductionSettings() {
         let sectionId = "production";
         let sectionName = "Production";
@@ -11729,6 +12237,7 @@
 
         // Add any pre table settings
         let preTableNode = $('#script_jobPreTable');
+        addStandardSectionSettingsToggle(preTableNode, "jobSetDefault", "Set default job", "Automatically sets the default job in order of Quarry Worker -> Lumberjack -> Scavenger -> Farmer");
         addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
         addStandardSectionSettingsNumber(preTableNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
         addStandardSectionSettingsNumber(preTableNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
@@ -12543,6 +13052,9 @@
         }
         if ($('#autoAssembleGene').length === 0) {
             createSettingToggle('autoAssembleGene');
+        }
+        if ($('#autoMinorTrait').length === 0) {
+            createSettingToggle('autoMinorTrait');
         }
 
         if (document.getElementById("s-quick-prestige-options") === null) { createQuickOptions("s-quick-prestige-options", "Prestige", buildPrestigeSettings); }
