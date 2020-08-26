@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.1.0
+// @version      3.1.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1108,7 +1108,7 @@
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const minorTrait = this.priorityList[i];
     
-                    if (minorTrait.isUnlocked()) {
+                    if (minorTrait.autoMinorTraitEnabled && minorTrait.isUnlocked()) {
                         this._managedPriorityList.push(minorTrait);
                     }
                 }
