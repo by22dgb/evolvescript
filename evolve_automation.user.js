@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.1.1
+// @version      3.1.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -8199,14 +8199,14 @@
         state.lastFarmerCount = state.jobs.Farmer.count;
 
         if (settings.jobSetDefault) {
-            if (state.jobs.QuarryWorker.isUnlocked() && state.jobs.QuarryWorker.count > 0 && !state.jobs.QuarryWorker.isDefault()) {
-                state.jobs.QuarryWorker.setAsDefault();
-            } else if (state.jobs.Lumberjack.isUnlocked() && state.jobs.Lumberjack.count > 0 && !state.jobs.Lumberjack.isDefault()) {
-                state.jobs.Lumberjack.setAsDefault();
-            } else if (state.jobs.Scavenger.isUnlocked() && state.jobs.Scavenger.count > 0 && !state.jobs.Scavenger.isDefault()) {
-                state.jobs.Scavenger.setAsDefault();
-            } else if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0 && !state.jobs.Farmer.isDefault()) {
-                state.jobs.Farmer.setAsDefault();
+            if (state.jobs.QuarryWorker.isUnlocked() && state.jobs.QuarryWorker.count > 0) {
+                if (!state.jobs.QuarryWorker.isDefault()) { state.jobs.QuarryWorker.setAsDefault() };
+            } else if (state.jobs.Lumberjack.isUnlocked() && state.jobs.Lumberjack.count > 0) {
+                if (!state.jobs.Lumberjack.isDefault()) { state.jobs.Lumberjack.setAsDefault() };
+            } else if (state.jobs.Scavenger.isUnlocked() && state.jobs.Scavenger.count > 0) {
+                if (!state.jobs.Scavenger.isDefault()) { state.jobs.Scavenger.setAsDefault() };
+            } else if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0) {
+                if (!state.jobs.Farmer.isDefault()) { state.jobs.Farmer.setAsDefault() };
             }
         }
     }
