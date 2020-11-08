@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.0
+// @version      3.2.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3998,6 +3998,7 @@
             if (state.jobs.Mythril.isManaged()) managedCrafters++;
             if (state.jobs.Aerogel.isManaged()) managedCrafters++;
             if (state.jobs.Nanoweave.isManaged()) managedCrafters++;
+            if (state.jobs.Scarletite.isManaged()) managedCrafters++;
             return managedCrafters;
         }
 
@@ -5350,6 +5351,7 @@
         Money: new Resource("Money", "res", "Money", false, false, -1, false, -1, false),
         Population: new Resource("Population", "res", "Population", false, false, -1, false, -1, false), // The population node is special and its id will change to the race name
         Slave: new Resource("Slave", "res", "Slave", false, false, -1, false, -1, false),
+        Mana: new Resource("Mana", "res", "Mana", false, false, -1, false, -1, false),
         Knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1, false),
         Crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1, false),
         Containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1, false),
@@ -5375,6 +5377,7 @@
         Food: new Resource("Food", "res", "Food", true, true, 2, false, -1, false),
         Lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1, false),
         Stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1, false),
+        Crystal: new Resource("Crystal", "res", "Crystal", true, true, 1, false, -1, false),
         Furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1, false),
         Copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1, false),
         Iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1, false),
@@ -5416,6 +5419,14 @@
         Mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5, false),
         Aerogel: new Resource("Aerogel", "res", "Aerogel", false, false, -1, true, 0.5, false),
         Nanoweave: new Resource("Nanoweave", "res", "Nanoweave", false, false, -1, true, 0.5, false),
+        Scarletite: new Resource("Scarletite", "res", "Scarletite", false, false, -1, true, 0.5, false),
+
+        // Magic universe update
+        Corrupt_Gem: new Resource("Corrupt Gem", "res", "Corrupt_Gem", false, false, -1, false, -1, false),
+        Codex: new Resource("Codex", "res", "Codex", false, false, -1, false, -1, false),
+        Demonic_Essence: new Resource("Demonic Essence", "res", "Demonic_Essence", false, false, -1, false, -1, false),
+        Blood_Stone: new Resource("Blood Stone", "res", "Blood_Stone", false, false, -1, false, -1, false),
+        Artifact: new Resource("Artifact", "res", "Artifact", false, false, -1, false, -1, false),
     }
 
     var state = {
@@ -5477,6 +5488,7 @@
             Mythril: new CraftingJob("Mythril", "Mythril Crafter"),
             Aerogel: new CraftingJob("Aerogel", "Aerogel Crafter"),
             Nanoweave: new CraftingJob("Nanoweave", "Nanoweave Crafter"),
+            Scarletite: new CraftingJob("Scarletite", "Scarletite Crafter"),
         },
 
         evolutions: {
@@ -5857,6 +5869,10 @@
         state.craftableResourceList.push(resources.Nanoweave);
         resources.Nanoweave.resourceRequirements.push(new ResourceRequirement(resources.Nano_Tube, 1000));
         resources.Nanoweave.resourceRequirements.push(new ResourceRequirement(resources.Vitreloy, 40));
+        state.craftableResourceList.push(resources.Scarletite);
+        resources.Scarletite.resourceRequirements.push(new ResourceRequirement(resources.Iron, 250000));
+        resources.Scarletite.resourceRequirements.push(new ResourceRequirement(resources.Adamantite, 7500));
+        resources.Scarletite.resourceRequirements.push(new ResourceRequirement(resources.Orichalcum, 500));
 
         // Lets set our crate / container resource requirements
         resources.Crates.resourceRequirements.push(new ResourceRequirement(resources.Plywood, 10));
@@ -5897,6 +5913,8 @@
         state.jobManager.addCraftingJob(state.jobs.Aerogel);
         state.jobs.Nanoweave.resource = resources.Nanoweave;
         state.jobManager.addCraftingJob(state.jobs.Nanoweave);
+        state.jobs.Scarletite.resource = resources.Scarletite;
+        state.jobManager.addCraftingJob(state.jobs.Scarletite);
 
         resetJobState();
         
@@ -6341,6 +6359,7 @@
         state.marketManager.addResourceToPriorityList(resources.Iron);
         state.marketManager.addResourceToPriorityList(resources.Copper);
         state.marketManager.addResourceToPriorityList(resources.Furs);
+        state.marketManager.addResourceToPriorityList(resources.Crystal);
         state.marketManager.addResourceToPriorityList(resources.Stone);
         state.marketManager.addResourceToPriorityList(resources.Lumber);
         state.marketManager.addResourceToPriorityList(resources.Food);
@@ -6348,6 +6367,7 @@
         resources.Food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
         resources.Lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
         resources.Stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
+        resources.Crystal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
         resources.Furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
         resources.Copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
         resources.Iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
@@ -6459,6 +6479,7 @@
         state.jobManager.addJobToPriorityList(state.jobs.Mythril);
         state.jobManager.addJobToPriorityList(state.jobs.Aerogel);
         state.jobManager.addJobToPriorityList(state.jobs.Nanoweave);
+        state.jobManager.addJobToPriorityList(state.jobs.Scarletite);
         state.jobManager.addJobToPriorityList(state.jobs.Entertainer);
         state.jobManager.addJobToPriorityList(state.jobs.Scientist);
         state.jobManager.addJobToPriorityList(state.jobs.Professor);
@@ -6483,6 +6504,7 @@
         state.jobs.Mythril.breakpointMaxs = [2, 4, -1];
         state.jobs.Aerogel.breakpointMaxs = [1, 1, 1];
         state.jobs.Nanoweave.breakpointMaxs = [1, 1, 1];
+        state.jobs.Scarletite.breakpointMaxs = [1, 1, 1];
 
         state.jobs.Scientist.breakpointMaxs = [3, 6, -1];
         state.jobs.Professor.breakpointMaxs = [6, 10, -1];
