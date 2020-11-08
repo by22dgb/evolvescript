@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.1.2
+// @version      3.2.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1761,7 +1761,7 @@
         
         // Whether the action is clickable is determined by whether it is unlocked and affordable
         // The sacrifical alter can be used to sacrifice population to it for a bonues
-        // Only allow this when population is full, is greater than 19 and we have less than a day of each bonus
+        // Only allow this when population is full, is greater than 19 and we have less than an hour of each bonus
         isClickable() {
             if (!this.isUnlocked()) {
                 return false;
@@ -1775,8 +1775,8 @@
                 if (resources.Population.currentQuantity < 20 || resources.Population.currentQuantity !== resources.Population.maxQuantity) {
                     return false;
                 } else {
-                    return game.global.city.s_alter.rage < 86400 || game.global.city.s_alter.regen < 86400 || game.global.city.s_alter.mind < 86400
-                        || game.global.city.s_alter.mine < 86400 || game.global.city.s_alter.harvest < 86400;
+                    return game.global.city.s_alter.rage < 3600 || game.global.city.s_alter.regen < 3600 || game.global.city.s_alter.mind < 3600
+                        || game.global.city.s_alter.mine < 3600 || game.global.city.s_alter.harvest < 3600;
                 }
             }
             
@@ -2042,26 +2042,26 @@
                 return this.decreaseFuel(fuelType, count * -1);
             }
 
-            let func = null;
+            let type = null;
 
             if (fuelType === SmelterFuelTypes.Wood) {
-                func = this._vue.addWood;
+                type = "Wood";
             }
 
             if (fuelType === SmelterFuelTypes.Coal) {
-                func = this._vue.addCoal;
+                type = "Coal";
             }
 
             if (fuelType === SmelterFuelTypes.Oil) {
-                func = this._vue.addOil;
+                type = "Oil";
             }
 
-            if (func === null) { return false; }
+            if (type === null) { return false; }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                func();
+                this._vue.addFuel(type);
             }
 
             return true;
@@ -2080,26 +2080,26 @@
                 return this.increaseFuel(fuelType, count * -1);
             }
 
-            let func = null;
+            let type = null;
 
             if (fuelType === SmelterFuelTypes.Wood) {
-                func = this._vue.subWood;
+                type = "Wood";
             }
 
             if (fuelType === SmelterFuelTypes.Coal) {
-                func = this._vue.subCoal;
+                type = "Coal";
             }
 
             if (fuelType === SmelterFuelTypes.Oil) {
-                func = this._vue.subOil;
+                type = "Oil";
             }
 
-            if (func === null) { return false; }
+            if (type === null) { return false; }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                func();
+                this._vue.subFuel(type);
             }
 
             return true;
@@ -4197,7 +4197,7 @@
             }
 
             let resourceIndex = 0;
-            let newCosts = game.adjustCosts(this.definition.cost);
+            let newCosts = game.arpaAdjustCosts(this.definition.cost);
 
             Object.keys(newCosts).forEach(resourceName => {
                 let testCost = Number(newCosts[resourceName]()) || 0;
@@ -5314,6 +5314,7 @@
         octigoran: new Race("octigoran", "Octigoran", true, "Oceanic planet", "Calamari"),
         entish: new Race("entish", "Ent", false, "", "Saruman's Revenge"),
         cacti: new Race("cacti", "Cacti", false, "", "Desert Deserted"),
+        pinguicula: new Race("pinguicula", "Pinguicula", false, "", "Weed Whacker"),
         sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
         shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
         moldling: new Race("moldling", "Moldling", false, "", "Digested"),
@@ -5334,7 +5335,7 @@
         races.antid, races.mantis, races.scorpid, races.human, races.orc, races.elven, races.troll, races.ogre, races.cyclops,
         races.kobold, races.goblin, races.gnome, races.cath, races.wolven, races.centaur, races.balorg, races.imp, races.seraph, races.unicorn,
         races.arraak, races.pterodacti, races.dracnid, races.tortoisan, races.gecko, races.slitheryn, races.sharkin, races.octigoran,
-        races.entish, races.cacti, races.sporgar, races.shroomi, races.moldling, races.junker, races.dryad, races.satyr, races.phoenix, races.salamander,
+        races.entish, races.cacti, races.pinguicula, races.sporgar, races.shroomi, races.moldling, races.junker, races.dryad, races.satyr, races.phoenix, races.salamander,
         races.yeti, races.wendigo, races.tuskin, races.kamel, races.custom
     ];
 
@@ -5557,6 +5558,7 @@
                             Bryophyte: new EvolutionAction("", "evo", "bryophyte", ""),
                                 Entish: new EvolutionAction("", "evo", "entish", ""),
                                 Cacti: new EvolutionAction("", "evo", "cacti", ""),
+                                Pinguicula: new EvolutionAction("", "evo", "pinguicula", ""),
 
 
                 Chitin: new EvolutionAction("", "evo", "chitin", ""),
@@ -5580,6 +5582,7 @@
             Junker: new ChallengeEvolutionAction("Junker", "evo", "junker", "", ""),
             Steelen: new ChallengeEvolutionAction("Steelen", "evo", "steelen", "", "steelen"),
             EmField: new ChallengeEvolutionAction("EM Field", "evo", "emfield", "", "emfield"),
+            Cataclysm: new ChallengeEvolutionAction("Cataclysm", "evo", "cataclysm", "", "cataclysm"),
 
         },// weak_mastery
 
@@ -5686,6 +5689,7 @@
             // Hell
             HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
             HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
+            HellSpaceCasino: new Action("Hell Space Casino", "space", "spc_casino", "spc_hell"),
             HellSwarmPlant: new Action("Hell Swarm Plant", "space", "swarm_plant", "spc_hell"),
             
             // Sun
@@ -5742,6 +5746,7 @@
             ProximaCruiser: new Action("Proxima Cruiser", "interstellar", "cruiser", "int_proxima"),
             ProximaDyson: new Action("Proxima Dyson", "interstellar", "dyson", "int_proxima"),
             ProximaDysonSphere: new Action("Proxima Dyson Sphere", "interstellar", "dyson_sphere", "int_proxima"),
+            ProximaOrichalcumSphere: new Action("Proxima Orichalcum Sphere", "interstellar", "orichalcum_sphere", "int_proxima"),
 
             NebulaMission: new Action("Nebula Mission", "interstellar", "nebula_mission", "int_nebula"),
             NebulaNexus: new Action("Nebula Nexus", "interstellar", "nexus", "int_nebula"),
@@ -5905,6 +5910,7 @@
         state.spaceBuildings.DwarfWorldCollider.gameMax = 1859;
 
         state.spaceBuildings.ProximaDysonSphere.gameMax = 100;
+        state.spaceBuildings.ProximaOrichalcumSphere.gameMax = 100;
         state.spaceBuildings.BlackholeStargate.gameMax = 200;
         state.spaceBuildings.BlackholeCompletedStargate.gameMax = 1;
         state.spaceBuildings.SiriusSpaceElevator.gameMax = 100;
@@ -6024,6 +6030,7 @@
         state.evolutionChallengeList.push(state.evolutions.Junker);
         state.evolutionChallengeList.push(state.evolutions.Steelen);
         state.evolutionChallengeList.push(state.evolutions.EmField);
+        state.evolutionChallengeList.push(state.evolutions.Cataclysm);
 
         resetProjectState();
         resetWarState();
@@ -6073,7 +6080,7 @@
         races.ogre.evolutionTree = [e.Ogre].concat(gigantism);
         races.cyclops.evolutionTree = [e.Cyclops].concat(gigantism);
         raceGroup = [ races.troll, races.ogre, races.cyclops ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'gigantism') {
+        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'giant') {
             races.custom.evolutionTree = [e.Custom].concat(gigantism)
             raceGroup.push(races.custom);
         }
@@ -6186,7 +6193,8 @@
         let chloroplasts = [e.Sentience, e.Bryophyte, e.Poikilohydric, e.Multicellular, e.Chloroplasts, e.SexualReproduction];
         races.entish.evolutionTree = [e.Entish].concat(chloroplasts);
         races.cacti.evolutionTree = [e.Cacti].concat(chloroplasts);
-        raceGroup = [ races.entish, races.cacti ];
+        races.pinguicula.evolutionTree = [e.Pinguicula].concat(chloroplasts);
+        raceGroup = [ races.entish, races.cacti, races.pinguicula ];
         if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'plant') {
             races.custom.evolutionTree = [e.Custom].concat(chloroplasts)
             raceGroup.push(races.custom);
@@ -6307,6 +6315,7 @@
         settings.challenge_junker = false;
         settings.challenge_steelen = false;
         settings.challenge_emfield = false;
+        settings.challenge_cataclysm = false;
     }
 
     function resetResearchSettings() {
@@ -6607,6 +6616,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCruiser);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaDyson);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaDysonSphere);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaOrichalcumSphere);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaNexus);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaHarvestor);
@@ -6648,6 +6658,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusThermalCollector);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronCitadel);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSpaceCasino);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
@@ -8200,13 +8211,13 @@
 
         if (settings.jobSetDefault) {
             if (state.jobs.QuarryWorker.isUnlocked() && state.jobs.QuarryWorker.count > 0) {
-                if (!state.jobs.QuarryWorker.isDefault()) { state.jobs.QuarryWorker.setAsDefault() };
+                if (!state.jobs.QuarryWorker.isDefault()) { state.jobs.QuarryWorker.setAsDefault(); }
             } else if (state.jobs.Lumberjack.isUnlocked() && state.jobs.Lumberjack.count > 0) {
-                if (!state.jobs.Lumberjack.isDefault()) { state.jobs.Lumberjack.setAsDefault() };
+                if (!state.jobs.Lumberjack.isDefault()) { state.jobs.Lumberjack.setAsDefault(); }
             } else if (state.jobs.Scavenger.isUnlocked() && state.jobs.Scavenger.count > 0) {
-                if (!state.jobs.Scavenger.isDefault()) { state.jobs.Scavenger.setAsDefault() };
+                if (!state.jobs.Scavenger.isDefault()) { state.jobs.Scavenger.setAsDefault(); }
             } else if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0) {
-                if (!state.jobs.Farmer.isDefault()) { state.jobs.Farmer.setAsDefault() };
+                if (!state.jobs.Farmer.isDefault()) { state.jobs.Farmer.setAsDefault(); }
             }
         }
     }
@@ -8232,7 +8243,7 @@
         let currentTaxRate = taxInstance.tax_rate;
         let currentMorale = moraleInstance.current;
 
-        let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.count
+        let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.stateOnCount + state.spaceBuildings.HellSpaceCasino.stateOnCount
             + (state.spaceBuildings.RedVrCenter.stateOnCount * 2) + (state.spaceBuildings.Alien1Resort.stateOnCount * 2)
             + (state.projects.Monument.level * 2);
 
@@ -9103,8 +9114,9 @@
             if (itemId === "tech-stabilize_blackhole" && settings.prestigeWhiteholeStabiliseMass && getBlackholeMass() < settings.prestigeWhiteholeMinMass) {
                 // If user wants to stabilise blackhole when under minimum solar mass then do it
                 click = true;
-            } else if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole") {
-                // Don't click any of the whitehole reset options without user consent... that would be a dick move, man.
+            } else if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole"
+                || itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider") {
+                // Don't click any of the whitehole / cataclysm reset options without user consent... that would be a dick move, man.
                 continue;
             }
 
@@ -9897,7 +9909,7 @@
                 'prtl_fortress:turret','prtl_badlands:war_drone','city:wardenclyffe','city:biolab','city:mine','city:rock_quarry','city:cement_plant','city:sawmill','city:mass_driver',
                 'int_neutron:neutron_miner','prtl_fortress:war_droid','prtl_pit:soul_forge','gxy_chthonian:excavator','int_blackhole:far_reach','prtl_badlands:sensor_drone',
                 'prtl_badlands:attractor','city:metal_refinery','gxy_stargate:gateway_station','gxy_alien1:vitreloy_plant','gxy_alien2:foothold','gxy_gorddon:symposium',
-                'int_blackhole:mass_ejector','city:casino','prtl_fortress:repair_droid','gxy_stargate:defense_platform','prtl_pit:gun_emplacement','prtl_pit:soul_attractor','int_sirius:ascension_trigger'];
+                'int_blackhole:mass_ejector','city:casino','spc_hell:spc_casino','prtl_fortress:repair_droid','gxy_stargate:defense_platform','prtl_pit:gun_emplacement','prtl_pit:soul_attractor','int_sirius:ascension_trigger'];
 
             // Perform the check
             state.buildingManager.priorityList.forEach(building => {
@@ -10884,6 +10896,7 @@
         addStandardSectionSettingsToggle(currentNode, "challenge_decay", "Decay", "Challenge mode - decay");
         addStandardSectionSettingsToggle(currentNode, "challenge_steelen", "Steelen", "Challenge mode - steelen");
         addStandardSectionSettingsToggle(currentNode, "challenge_emfield", "EM Field", "Challenge mode - electromagnetic field disruption");
+        addStandardSectionSettingsToggle(currentNode, "challenge_cataclysm", "Cataclysm", "Challenge mode - shattered world (no homeworld)");
         addStandardSectionSettingsToggle(currentNode, "challenge_junker", "Junker", "Challenge mode - junker");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -13161,7 +13174,7 @@
     function createCraftToggle(craftable) {
         let resourceSpan = $('#res' + craftable.id);
         let checked = craftable.autoCraftEnabled ? " checked" : "";
-        let toggle = $(`<label tabindex="0" class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:8%;"><input type="checkbox" value=${craftable.autoCraftEnabled}${checked}/> <span class="check" style="height:5px;"></span></label>`);
+        let toggle = $(`<label tabindex="0" class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:30%;"><input type="checkbox" value=${craftable.autoCraftEnabled}${checked}/> <span class="check" style="height:5px;"></span></label>`);
         resourceSpan.append(toggle);
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
