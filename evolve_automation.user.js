@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.11
+// @version      3.2.12
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -9049,39 +9049,37 @@
                 continue;
             }
 
-            // Weighting checks.
-            // If we don't have a single instance of building - assume its weight as 5x, and rush toward it - it'll probably unlock something good :)
-            let thisWeighting = building.count === 0 ? building.weighting * 3 : building.weighting;
-            loop2:
-            for (let j = 0; j < buildingList.length; j++) {
-              let other = buildingList[j];
-              // Do same trick for other building
-              let otherWeighting = other.count === 0 ? other.weighting * 3 : other.weighting;
-              // If we have some other building with highter weight
-              if (otherWeighting > thisWeighting){
-                // And that building can be build right now, then no need to bother with this one
-                if (other.isClickable()) {
-                  continue loop1;
-                }
-                // Otherwise, let's compare cost of buildings
-                for (let k = 0; k < building.resourceRequirements.length; k++) {
-                  let thisRequirement = building.resourceRequirements[k];
-                  // If this building uses some overflowing resources - let's build it.
-                  if (thisRequirement.resource.storageRatio > 0.99){
-                    break loop2;
+            // Checks weights if this building doesn't demands any overflowing resources
+            if (!building.resourceRequirements.find(requirement => requirement.resource.storageRatio > 0.98)) {
+              // If we don't have a single instance of building - assume its weight as 3x, and rush toward it - it'll probably unlock something good :)
+              let thisWeighting = building.count === 0 ? building.weighting * 3 : building.weighting;
+              loop2:
+              for (let j = 0; j < buildingList.length; j++) {
+                let other = buildingList[j];
+                // Do same trick for other building
+                let otherWeighting = other.count === 0 ? other.weighting * 3 : other.weighting;
+                // If we have some other building with highter weight
+                if (otherWeighting > thisWeighting){
+                  // And that building can be build right now, then no need to bother with this one
+                  if (other.isClickable()) {
+                    continue loop1;
                   }
-                  // We're not overflowing, let's compare costs and decide what to do next
-                  let weightScale = otherWeighting / thisWeighting;
-                  for (let l = 0; l < other.resourceRequirements.length; l++){
-                    let otherRequirement = other.resourceRequirements[l];
-                    // Found conflicting resource
-                    if (otherRequirement.resource === thisRequirement.resource){
-                      if (otherRequirement.quantity / thisRequirement.quantity < weightScale && otherRequirement.resource.currentQuantity < otherRequirement.quantity) {
-                        // We're conflicting on resource which is missed by priritized building, and differents is not too big for our weights. Not building anything, waiting for more resources.
-                        continue loop1;
-                      } else {
-                        // Found conflicting resource, but it didn't passed weighting check. Break out of this loop, and check next resource.
-                        break;
+                  // Otherwise, let's compare cost of buildings
+                  for (let k = 0; k < building.resourceRequirements.length; k++) {
+                    let thisRequirement = building.resourceRequirements[k];
+                    let weightScale = otherWeighting / thisWeighting;
+                    for (let l = 0; l < other.resourceRequirements.length; l++){
+                      let otherRequirement = other.resourceRequirements[l];
+                      // Found conflicting resource
+                      if (otherRequirement.resource === thisRequirement.resource){
+                        if (otherRequirement.quantity / thisRequirement.quantity < weightScale && otherRequirement.resource.currentQuantity < otherRequirement.quantity) {
+                          // We're conflicting on resource which is missed by priritized building, and differents is not too big for our weights. Not building anything, waiting for more resources.
+                          //console.log(building.name + " conflicts with " + other.name + " for " + otherRequirement.resource.name);
+                          continue loop1;
+                        } else {
+                          // Found conflicting resource, but it didn't passed weighting check. Break out of this loop, and check next resource.
+                          break;
+                        }
                       }
                     }
                   }
