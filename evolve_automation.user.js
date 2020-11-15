@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1
+// @version      3.2.11
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -657,6 +657,7 @@
                 this._autoMax = -1;
             }
 
+            this.weighting = 100;
             this.priority = 0;
 
             this.consumption = {
@@ -6691,12 +6692,13 @@
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
-            
+
             if (building.settingId === "spcdock-probes") {
                 building._autoMax = 4;
             } else {
                 building._autoMax = -1;
             }
+            building.weighting = 100;
         }
     }
 
@@ -6953,6 +6955,13 @@
             } else {
                 settings[settingKey] = building._autoMax;
             }
+            
+            settingKey = 'bld_w_' + building.settingId;
+            if (settings.hasOwnProperty(settingKey)) {
+                building.weighting = parseInt(settings[settingKey]);
+            } else {
+                settings[settingKey] = building.weighting;
+            }
         }
         state.buildingManager.sortByPriority();
 
@@ -7090,10 +7099,12 @@
             if (settings.hasOwnProperty('bld_p_' + building.id)) { delete settings['bld_p_' + building.id]; }
             if (settings.hasOwnProperty('bld_s_' + building.id)) { delete settings['bld_s_' + building.id]; }
             if (settings.hasOwnProperty('bld_m_' + building.id)) { delete settings['bld_m_' + building.id]; }
+            if (settings.hasOwnProperty('bld_w_' + building.id)) { delete settings['bld_w_' + building.id]; }
             
             delete settings['bld_p_' + building.id];
             delete settings['bld_s_' + building.id];
             delete settings['bld_m_' + building.id];
+            delete settings['bld_w_' + building.id];
         }
 
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
@@ -7108,6 +7119,7 @@
             settings['bld_p_' + building.settingId] = building.priority;
             settings['bld_s_' + building.settingId] = building.autoStateEnabled;
             settings['bld_m_' + building.settingId] = building._autoMax;
+            settings['bld_w_' + building.settingId] = building.weighting;
         }
         
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -7589,41 +7601,34 @@
         }
     }
 
+    function missResourceForBuilding(building, count, resource) {
+      if (building.count < count) {
+        let resourceRequirement = building.resourceRequirements.find(requirement => requirement.resource === resource);
+        if (resourceRequirement !== undefined && resource.currentQuantity < resourceRequirement.quantity) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     /**
      * @param {Resource} craftable
      */
     function updateCraftRatio(craftable) {
+        craftable.craftRatio = 0.9;
         // We want to get to a healthy number of buildings that require craftable materials so leaving crafting ratio low early
-        if (craftable === resources.Plywood) {
-            craftable.craftRatio = 0.9;
-            
-            if (state.cityBuildings.Library.count < 20 || state.cityBuildings.Cottage.count < 20) {
-                craftable.craftRatio = 0.5;
-            }
+        if (missResourceForBuilding(state.cityBuildings.Library, 20, craftable)) {
+            craftable.craftRatio = 0.5;
         }
-        
-        if (craftable === resources.Brick) {
-            craftable.craftRatio = 0.9;
-            
-            if (state.cityBuildings.Library.count < 20 || state.cityBuildings.Cottage.count < 20) {
-                craftable.craftRatio = 0.5;
-            }
+        if (missResourceForBuilding(state.cityBuildings.Cottage, 20, craftable)) {
+            craftable.craftRatio = 0.5;
         }
-        
-        if (craftable === resources.Wrought_Iron) {
-            craftable.craftRatio = 0.9;
-            
-            if (state.cityBuildings.Cottage.count < 20) {
-                craftable.craftRatio = 0.5;
-            }
+        if (missResourceForBuilding(state.cityBuildings.Wardenclyffe, 20, craftable)) {
+            craftable.craftRatio = 0.5;
         }
-        
-        if (craftable === resources.Sheet_Metal) {
-            craftable.craftRatio = 0.9;
-            
-            if (state.cityBuildings.Wardenclyffe.count < 20) {
-                craftable.craftRatio = 0.5;
-            }
+        // Iron tends to be in high demand, make sure we have enought wrought for at least one coal mine, to start collecting coal for researches as soon as possible
+        if (missResourceForBuilding(state.cityBuildings.CoalMine, 1, craftable)) {
+            craftable.craftRatio = 0;
         }
     }
 
@@ -9026,19 +9031,75 @@
 
         let buildingList = state.buildingManager.managedPriorityList();
 
-        // No buildings unlocked yet
+        // Filter out disabled, already constructed, and unaffordable(red) buildings
+        buildingList = buildingList.filter(building => building.autoBuildEnabled && building.count < building.autoMax && game.checkAffordable(building.definition, true))
+
+        // No buildings unlocked yet, or we can't build anything
         if (buildingList.length === 0) {
             return;
         }
 
         // Loop through the auto build list and try to buy them
+        loop1:
         for (let i = 0; i < buildingList.length; i++) {
             const building = buildingList[i];
 
-            if (!building.autoBuildEnabled || state.triggerManager.buildingConflicts(building)) {
+            // Only go further if we can(and allowed by triggers) build it right now
+            if (!building.isClickable() || state.triggerManager.buildingConflicts(building)) {
                 continue;
             }
 
+            // Weighting checks.
+            // If we don't have a single instance of building - assume its weight as 5x, and rush toward it - it'll probably unlock something good :)
+            let thisWeighting = building.count === 0 ? building.weighting * 3 : building.weighting;
+            loop2:
+            for (let j = 0; j < buildingList.length; j++) {
+              let other = buildingList[j];
+              // Do same trick for other building
+              let otherWeighting = other.count === 0 ? other.weighting * 3 : other.weighting;
+              // If we have some other building with highter weight
+              if (otherWeighting > thisWeighting){
+                // And that building can be build right now, then no need to bother with this one
+                if (other.isClickable()) {
+                  continue loop1;
+                }
+                // Otherwise, let's compare cost of buildings
+                for (let k = 0; k < building.resourceRequirements.length; k++) {
+                  let thisRequirement = building.resourceRequirements[k];
+                  // If this building uses some overflowing resources - let's build it.
+                  if (thisRequirement.resource.storageRatio > 0.99){
+                    break loop2;
+                  }
+                  // We're not overflowing, let's compare costs and decide what to do next
+                  let weightScale = otherWeighting / thisWeighting;
+                  for (let l = 0; l < other.resourceRequirements.length; l++){
+                    let otherRequirement = other.resourceRequirements[l];
+                    // Found conflicting resource
+                    if (otherRequirement.resource === thisRequirement.resource){
+                      if (otherRequirement.quantity / thisRequirement.quantity < weightScale && otherRequirement.resource.currentQuantity < otherRequirement.quantity) {
+                        // We're conflicting on resource which is missed by priritized building, and differents is not too big for our weights. Not building anything, waiting for more resources.
+                        continue loop1;
+                      } else {
+                        // Found conflicting resource, but it didn't passed weighting check. Break out of this loop, and check next resource.
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            // We don't need too many crates and containers if we're not going to use it
+            if (settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
+              if(building === state.cityBuildings.StorageYard && resources.Crates.maxQuantity > 0) {
+                continue;
+              }
+              if(building === state.cityBuildings.Warehouse && resources.Containers.maxQuantity > 0) {
+                continue;
+              }
+            }
+
+            
             // Only build the following buildings if we have enough production to cover what they use
             if (building === state.cityBuildings.Smelter && isLumberRace()) {
                 if (buildIfEnoughProduction(building, resources.Lumber, 12)) {
@@ -9059,17 +9120,19 @@
                 }
             }
 
-            if (!settings.autoSpace && resources.Plasmid.currentQuantity > 2000 && building === state.cityBuildings.OilPower && state.jobManager.canManualCraft()) {
-                if (building.clickIfCountLessThan(5)) {
-                    return;
-                }
-            } else if (isLowPlasmidCount() && building === state.cityBuildings.OilPower) {
-                if (buildIfEnoughProduction(building, resources.Oil, 1)) {
-                    return;
-                }
-            } else if (building === state.cityBuildings.OilPower) {
-                if (buildIfEnoughProduction(building, resources.Oil, 2.65)) {
-                    return;
+            if (building === state.cityBuildings.OilPower) {
+                if (!settings.autoSpace && resources.Plasmid.currentQuantity > 2000 && state.jobManager.canManualCraft()) {
+                    if (building.clickIfCountLessThan(5)) {
+                        return;
+                    }
+                } else if (isLowPlasmidCount()) {
+                    if (buildIfEnoughProduction(building, resources.Oil, 1)) {
+                        return;
+                    }
+                } else {
+                    if (buildIfEnoughProduction(building, resources.Oil, 2.65)) {
+                        return;
+                    }
                 }
             }
 
@@ -9086,15 +9149,13 @@
                 }
             }
 
-            // Build building if less than our max
-            if (building.count < building.autoMax) {
-                if (building.click(1)) {
-                    if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
-                        removePoppers();
-                    }
-
-                    return;
+            // Build building 
+            if (building.click(1)) {
+                if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
+                    removePoppers();
                 }
+
+                return;
             }
         }
     }
@@ -11630,6 +11691,9 @@
             resetMarketSettings();
             updateSettingsFromState();
             updateMarketSettingsContent();
+            if ( $('.ea-market-toggle').length !== 0 ) {
+              createMarketToggles();
+            }
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateMarketSettingsContent);
@@ -12434,7 +12498,7 @@
         let currentNode = $('#script_buildingContent');
         currentNode.append(
             `<div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings.."></div>
-            <table style="width:100%"><tr><th class="has-text-warning" style="width:40%">Building</th><th class="has-text-warning" style="width:20%">Auto Build</th><th class="has-text-warning" style="width:20%">Max Build</th><th class="has-text-warning" style="width:20%">Manage State</th></tr>
+            <table style="width:100%"><tr><th class="has-text-warning" style="width:40%">Building</th><th class="has-text-warning" style="width:15%">Auto Build</th><th class="has-text-warning" style="width:15%">Max Build</th><th class="has-text-warning" style="width:15%">Weight</th><th class="has-text-warning" style="width:15%">Manage State</th></tr>
                 <tbody id="script_buildingTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12445,12 +12509,12 @@
         $("#script_buildingSearch").on("keyup", filterBuildingSettingsTable); // Add building filter
 
         // Add in a first row for switching "All"
-        newTableBodyText += '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:40%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+        newTableBodyText += '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:40%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td></tr>';
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
             let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + building.settingId + '"' + classAttribute + '><td id="script_' + building.settingId + 'Toggle" style="width:40%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+            newTableBodyText += '<tr value="' + building.settingId + '"' + classAttribute + '><td id="script_' + building.settingId + 'Toggle" style="width:40%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12465,6 +12529,10 @@
         buildingElement.append(toggle);
 
         // max column
+        buildingElement = buildingElement.next();
+        buildingElement.append($('<span></span>'));
+        
+        // weight column
         buildingElement = buildingElement.next();
         buildingElement.append($('<span></span>'));
 
@@ -12488,6 +12556,9 @@
 
             buildingElement = buildingElement.next();
             buildingElement.append(buildBuildingMaxSettingsInput(building));
+            
+            buildingElement = buildingElement.next();
+            buildingElement.append(buildBuildingWeightSettingsInput(building));
 
             buildingElement = buildingElement.next();
             toggle = buildBuildingStateSettingsToggle(building);
@@ -12651,7 +12722,7 @@
      * @param {Action} building
      */
     function buildBuildingMaxSettingsInput(building) {
-        let buildingMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        let buildingMaxTextBox = $('<input type="text" class="input is-small" style="width:35%"/>');
         buildingMaxTextBox.val(settings["bld_m_" + building.settingId]);
     
         buildingMaxTextBox.on('change', function() {
@@ -12665,6 +12736,23 @@
         });
 
         return buildingMaxTextBox;
+    }
+
+    function buildBuildingWeightSettingsInput(building) {
+        let buildingWeightTextBox = $('<input type="text" class="input is-small" style="width:35%"/>');
+        buildingWeightTextBox.val(settings["bld_w_" + building.settingId]);
+    
+        buildingWeightTextBox.on('change', function() {
+            let val = buildingWeightTextBox.val();
+            let weighting = Math.max(1, getRealNumber(val));
+            if (!isNaN(weighting)) {
+                //console.log('Setting building weighting for building ' + building.name + ' to be ' + weighting);
+                building.weighting = weighting;
+                updateSettingsFromState();
+            }
+        });
+
+        return buildingWeightTextBox;
     }
 
     function buildProjectSettings() {
@@ -13055,7 +13143,7 @@
         if ($('#autoMarket').length === 0) {
             createSettingToggle('autoMarket', createMarketToggles, removeMarketToggles);
         } else if (settings.autoMarket > 0 && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
-            createMarketToggles()
+            createMarketToggles();
         }
         if ($('#autoResearch').length === 0) {
             createSettingToggle('autoResearch');
