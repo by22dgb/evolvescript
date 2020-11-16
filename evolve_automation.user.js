@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.14
+// @version      3.2.15
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -6520,6 +6520,10 @@
         state.jobs.Priest.breakpointMaxs = [0, 0, 0];
     }
 
+    function resetBuildingSettings() {
+        settings.buildingBuildIfStorageFull = true;
+    }
+
     function resetBuildingState() {
         state.buildingManager.clearPriorityList();
 
@@ -7252,8 +7256,6 @@
             delete settings.autoTradeSpecialResources;
         }
 
-        addSetting("buildingStateAll", defaultAllOptionsEnabled);
-        addSetting("buildingStateAll", defaultAllOptionsEnabled);
         addSetting("autoSmelter", defaultAllOptionsEnabled);
         addSetting("autoFactory", defaultAllOptionsEnabled);
         addSetting("autoMiningDroid", defaultAllOptionsEnabled);
@@ -7345,6 +7347,7 @@
         addSetting("userResearchTheology_2", "auto");
         addSetting("userResearchUnification", "auto");
         
+        addSetting("buildingBuildIfStorageFull", true);
         addSetting("buildingEnabledAll", false);
         addSetting("buildingStateAll", false);
 
@@ -9050,7 +9053,7 @@
             }
 
             // Checks weights if this building doesn't demands any overflowing resources
-            if (!building.resourceRequirements.find(requirement => requirement.resource.storageRatio > 0.98)) {
+            if (!settings.buildingBuildIfStorageFull || !building.resourceRequirements.find(requirement => requirement.resource.storageRatio > 0.98)) {
               // If we don't have a single instance of building - assume its weight as 3x, and rush toward it - it'll probably unlock something good :)
               let thisWeighting = building.count === 0 ? building.weighting * 3 : building.weighting;
               loop2:
@@ -9072,7 +9075,7 @@
                       let otherRequirement = other.resourceRequirements[l];
                       // Found conflicting resource
                       if (otherRequirement.resource === thisRequirement.resource){
-                        if (otherRequirement.quantity / thisRequirement.quantity < weightScale && otherRequirement.resource.currentQuantity < otherRequirement.quantity) {
+                        if (otherRequirement.quantity / thisRequirement.quantity < weightScale && otherRequirement.resource.currentQuantity < (otherRequirement.quantity + thisRequirement.quantity)) {
                           // We're conflicting on resource which is missed by priritized building, and differents is not too big for our weights. Not building anything, waiting for more resources.
                           //console.log(building.name + " conflicts with " + other.name + " for " + otherRequirement.resource.name);
                           continue loop1;
@@ -12448,6 +12451,7 @@
         let sectionName = "Building";
 
         let resetFunction = function() {
+            resetBuildingSettings();
             resetBuildingState();
             updateSettingsFromState();
             updateBuildingSettingsContent();
@@ -12469,25 +12473,14 @@
     }
 
     function updateBuildingPreTable() {
-        // let currentNode = $('#script_marketContent');
-        // currentNode.append(
-        //     `<div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreTable">
-        //         <div style="margin-top: 5px; width: 400px"><label for="script_market_minmoneypersecond">Trade minimum money /s</label><input id="script_market_minmoneypersecond" type="text" class="input is-small" style="width: 150px; float: right;"></input></div>
-        //     </div>`
-        // );
+        let currentNode = $('#script_buildingContent');
 
-        // let textBox = $('#script_market_minmoneypersecond');
-        // textBox.val(settings.tradeRouteMinimumMoneyPerSecond);
-    
-        // textBox.on('change', function() {
-        //     let val = textBox.val();
-        //     let parsedValue = getRealNumber(val);
-        //     if (!isNaN(parsedValue)) {
-        //         //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
-        //         settings.tradeRouteMinimumMoneyPerSecond = parsedValue;
-        //         updateSettingsFromState();
-        //     }
-        // });
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_buildingPreTable');
+        addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides the below settings to still build if resources are full");
     }
 
     function updateBuildingTable() {
