@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.13
+// @version      3.2.14
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3915,7 +3915,7 @@
     
                     if (job.isManaged() && (!evilRace || job !== state.jobs.Lumberjack)) {
                         // Only add craftsmen if the user has enabled the autocraftsman setting
-                        if (!job.isCraftsman() || (job.isCraftsman() && settings.autoCraftsmen)) {
+                        if (!job.isCraftsman() || settings.autoCraftsmen) {
                             this._managedPriorityList.push(job);
                         }
                     }
@@ -9819,6 +9819,17 @@
         //console.log("current money per second: " + currentMoneyPerSecond);
         let minimumAllowedMoneyPerSecond = Math.max(settings.tradeRouteMinimumMoneyPerSecond, settings.tradeRouteMinimumMoneyPercentage / 100 * currentMoneyPerSecond);
         //console.log("minimum money per second: " + minimumAllowedMoneyPerSecond + " based on current money per second of " + currentMoneyPerSecond)
+
+        //Force buying steel up to crucible research cost, if we got just one piece
+        if (!isResearchUnlocked("steel") && resources.Steel.isUnlocked() && resources.Steel.currentQuantity < 25){
+          resourcesToTrade.push( {
+              resource: resources.Steel,
+              requiredTradeRoutes: 100,
+              completed: false,
+              index: findArrayIndex(tradableResources, "id", resources.Steel.id),
+          } );
+          minimumAllowedMoneyPerSecond = 0;
+        }
 
         while (findArrayIndex(resourcesToTrade, "completed", false) != -1) {
             for (let i = 0; i < resourcesToTrade.length; i++) {
