@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.12
+// @version      3.2.13
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -9031,8 +9031,8 @@
 
         let buildingList = state.buildingManager.managedPriorityList();
 
-        // Filter out disabled, already constructed, and unaffordable(red) buildings
-        buildingList = buildingList.filter(building => building.autoBuildEnabled && building.count < building.autoMax && game.checkAffordable(building.definition, true))
+        // Filter out disabled, already constructed, unaffordable(red), and banned by triggers buildings
+        buildingList = buildingList.filter(building => building.autoBuildEnabled && building.count < building.autoMax && game.checkAffordable(building.definition, true) && !state.triggerManager.buildingConflicts(building))
 
         // No buildings unlocked yet, or we can't build anything
         if (buildingList.length === 0) {
@@ -9044,8 +9044,8 @@
         for (let i = 0; i < buildingList.length; i++) {
             const building = buildingList[i];
 
-            // Only go further if we can(and allowed by triggers) build it right now
-            if (!building.isClickable() || state.triggerManager.buildingConflicts(building)) {
+            // Only go further if we can build it right now
+            if (!building.isClickable()) {
                 continue;
             }
 
@@ -10052,12 +10052,6 @@
     }
 
     function automate() {
-        // This is a hack to check that the entire page has actually loaded. The queueColumn is one of the last bits of the DOM
-        // so if it is there then we are good to go. Otherwise, wait a little longer for the page to load.
-        if (document.getElementById("queueColumn") === null) {
-            return;
-        }
-
         // Setup in the first loop only
         if (state.loopCounter === 1) {
             initialiseRaces();
@@ -10170,7 +10164,7 @@
             if (settings.autoSmelter) {
                 autoSmelter();
             }
-            if (settings.autoAssembleGene && !settings.genesAssembleGeneAlways) {
+            if (settings.autoAssembleGene) {
                 autoAssembleGene();
             }
             if (settings.autoMinorTrait) {
@@ -10189,6 +10183,12 @@
     }
 
     function mainAutoEvolveScript() {
+        // This is a hack to check that the entire page has actually loaded. The queueColumn is one of the last bits of the DOM
+        // so if it is there then we are good to go. Otherwise, wait a little longer for the page to load.
+        if (document.getElementById("queueColumn") === null) {
+            setTimeout(mainAutoEvolveScript, 100);
+            return;
+        }
         // @ts-ignore
         if (typeof unsafeWindow !== 'undefined') {
             // @ts-ignore
@@ -10199,25 +10199,12 @@
         }
 
         setInterval(automate, 1000);
+        setInterval(shortLoop, 50);
     }
 
     function shortLoop() {
-        if (game === null) {
-            return;
-        }
-
-        if (document.getElementById("queueColumn") === null) {
-            return;
-        }
-
         state.windowManager.checkCallbacks();
-
-        if (settings.autoAssembleGene && settings.genesAssembleGeneAlways) {
-            autoAssembleGene();
-        }
     }
-
-    setInterval(shortLoop, 50);
 
     //#endregion Main Loop
 
