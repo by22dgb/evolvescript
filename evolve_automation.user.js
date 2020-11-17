@@ -9068,14 +9068,14 @@
                     continue loop1;
                   }
                   // Otherwise, let's compare cost of buildings
+                  let weightScale = otherWeighting / thisWeighting;
                   for (let k = 0; k < building.resourceRequirements.length; k++) {
                     let thisRequirement = building.resourceRequirements[k];
-                    let weightScale = otherWeighting / thisWeighting;
                     for (let l = 0; l < other.resourceRequirements.length; l++){
                       let otherRequirement = other.resourceRequirements[l];
                       // Found conflicting resource
                       if (otherRequirement.resource === thisRequirement.resource){
-                        if (otherRequirement.quantity / thisRequirement.quantity < weightScale && otherRequirement.resource.currentQuantity < (otherRequirement.quantity + thisRequirement.quantity)) {
+                        if (otherRequirement.quantity / thisRequirement.quantity < weightScale && otherRequirement.resource.currentQuantity < otherRequirement.quantity) {
                           // We're conflicting on resource which is missed by priritized building, and differents is not too big for our weights. Not building anything, waiting for more resources.
                           //console.log(building.name + " conflicts with " + other.name + " for " + otherRequirement.resource.name);
                           continue loop1;
