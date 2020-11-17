@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.15
+// @version      3.2.16
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3098,6 +3098,7 @@
             this._callbackFunction = null;
 
             this._closingWindowName = "";
+            this._intervalID = 0;
         }
 
         get currentModalWindowTitle() {
@@ -3130,6 +3131,9 @@
             this.openedByScript = true;
             this._callbackWindowTitle = callbackWindowTitle;
             this._callbackFunction = callbackFunction;
+            if (this._intervalID === 0) {
+              this._intervalID = setInterval(this.checkCallbacks.bind(this), 50);
+            }
             logClick(elementToClick, "open modal " + callbackWindowTitle);
         }
 
@@ -3150,6 +3154,10 @@
                 logClick(modalCloseBtn, "closing modal");
                 this._closingWindowName = "";
                 this.openedByScript = false;
+                if (this._intervalID !== 0) {
+                  clearInterval(this._intervalID);
+                  this._intervalID = 0;
+                }
             }
         }
 
@@ -3157,21 +3165,30 @@
             this.openedByScript = false;
             this._callbackWindowTitle = "";
             this._callbackFunction = null;
+            if (this._intervalID !== 0) {
+              clearInterval(this._intervalID);
+              this._intervalID = 0;
+            }
         }
 
         checkCallbacks() {
+            //console.log("_callbackWindowTitle: " + this._callbackWindowTitle + ", _closingWindowName: " + this._closingWindowName);
             if (this._closingWindowName !== "") {
                 if (document.querySelector('.modal')) {
                     this.closeModalWindow();
                 } else {
                     this._closingWindowName = "";
                     this.openedByScript = false;
+                    if (this._intervalID !== 0) {
+                      clearInterval(this._intervalID);
+                      this._intervalID = 0;
+                    }
                 }
             }
 
             // We only care if the script itself opened the modal. If the user did it then ignore it.
             // There must be a call back function otherwise there is nothing to do.
-            if (!this.openedByScript && this._callbackFunction !== null) {
+            if (!this.openedByScript || this._callbackFunction === null) {
                 return;
             }
 
@@ -7227,6 +7244,7 @@
         addSetting("jobScavengerWeighting", 50);
 
         addSetting("masterScriptToggle", true);
+        addSetting("showSettings", true);
         addSetting("autoEvolution", defaultAllOptionsEnabled);
         addSetting("autoAchievements", false);
         addSetting("autoChallenge", false);
@@ -10213,11 +10231,6 @@
         }
 
         setInterval(automate, 1000);
-        setInterval(shortLoop, 50);
-    }
-
-    function shortLoop() {
-        state.windowManager.checkCallbacks();
     }
 
     //#endregion Main Loop
@@ -10367,6 +10380,9 @@
         if (existingScript && callback) callback();
     };
 
+    function removeScriptSettings() {
+        $("#script_settings").remove();
+    }
     function createScriptSettings() {
         loadJQueryUI(() => {
             // Work to do after the library loads.
@@ -13075,10 +13091,6 @@
             resetScrollPositionRequired = true;
         }
 
-        if ($("#script_settings").length === 0) {
-            createScriptSettings();
-        }
-        
         createOptionsModal();
         updateOptionsUI();
         
@@ -13095,6 +13107,16 @@
         if ($('#masterScriptToggle').length === 0) {
             createSettingToggle('masterScriptToggle');
         }
+
+        // Dirty performance patch. Settings have a lot of elements, and they stress JQuery selectors way too much. This toggle allow to remove them from DOM completely, when they aren't needed.
+        // And this code https://github.com/pmotschmann/Evolve/blob/a8647ab7647822206c8d079f8c96800e9a79168d/src/main.js#L6987 magically speeds up in almost 10 times. And that thing is *slow*, so 10x of that it's a lot.
+        // There must be a better solutions, like drawing settings in modal on demand, or whatever. But i'm satisfied with this simple toggle for now.
+        if ($('#showSettings').length === 0) {
+            createSettingToggle('showSettings', createScriptSettings, removeScriptSettings);
+        } else if (settings.showSettings && $("#script_settings").length === 0) {
+            createScriptSettings();
+        }
+
         if ($('#autoEvolution').length === 0) {
             createSettingToggle('autoEvolution');
         }
