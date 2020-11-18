@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.16
+// @version      3.2.17
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -10352,6 +10352,10 @@
                 text-align: center;
                 overflow: auto;
             }
+            
+            .ui-autocomplete {
+                background-color: #000;
+            }
         `
 
         // Create style document
@@ -11220,32 +11224,67 @@
 
         if (trigger.type === "tech") {
             // Requirement Id
-            let typeSelectNode = $('<select style ="width:100%"></select>');
+            let typeSelectNode = $('<input style ="width:100%"></input>');
 
-            Object.keys(tech).forEach(technology => {
-                let title = tech[technology].definition.id;
-                if (game.global.race.species !== speciesProtoplasm) {
-                    title = typeof tech[technology].definition.title === 'string' ? tech[technology].definition.title : tech[technology].definition.title();
+            // Event handler
+            let onChange = function(event, ui) {
+              event.preventDefault();
+
+              // If it wasn't selected from list
+              if(ui.item === null){
+                let typedTech = Object.values(tech).find(technology => this.value === technology.title);
+                if (typedTech !== undefined){
+                  ui.item = {label: this.value, value: typedTech};
                 }
-                let selected = trigger.requirementId === technology ? ' selected="selected"' : "";
-                let typeOptionNode = $('<option value = "' + technology + '"' + selected + '>' + title + '</option>');
-                typeSelectNode.append(typeOptionNode);
-            });
+              }
 
-            triggerElement.append(typeSelectNode);
-
-            typeSelectNode.on('change', function() {
-                trigger.updateRequirementId(this.value);
+              // We have a tech to switch
+              if (ui.item !== null && tech.hasOwnProperty(ui.item.value)) {
+                trigger.updateRequirementId(ui.item.value);
                 state.triggerManager.resetTargetTriggers();
-    
+
                 buildTriggerRequirementCount(trigger);
-    
+
                 buildTriggerActionType(trigger);
                 buildTriggerActionId(trigger);
                 buildTriggerActionCount(trigger);
-                
+
                 updateSettingsFromState();
+
+                this.value = ui.item.label;
+                return;
+              } 
+
+              // No tech selected, don't change trigger, just restore old title in text field
+              if (tech.hasOwnProperty(trigger.requirementId)) {
+                this.value = tech[trigger.requirementId].title;
+                return;
+              }
+            };
+            
+            typeSelectNode.autocomplete({
+              delay: 0,
+              source: function(request, response) {
+              let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
+              let techList = [];
+              Object.values(tech).forEach(technology => {
+                let title = technology.title;
+                if(matcher.test(title)){
+                  techList.push({label: title, value: technology.id});
+                }
+              });
+              response(techList);
+              },
+              select: onChange, // Dropdown list click
+              focus: onChange, // Arrow keys press
+              change: onChange // Type
             });
+
+            if (tech.hasOwnProperty(trigger.requirementId)) {
+              typeSelectNode.val(tech[trigger.requirementId].title);
+            }
+
+            triggerElement.append(typeSelectNode);
 
             return;
         }
@@ -11308,29 +11347,64 @@
         triggerElement.empty().off("*");
 
         if (trigger.actionType === "research") {
-            // Requirement Id
-            let typeSelectNode = $('<select style ="width:100%"></select>');
+            // Action Id
+            let typeSelectNode = $('<input style ="width:100%"></input>');
 
-            Object.keys(tech).forEach(technology => {
-                let title = tech[technology].definition.id;
-                if (game.global.race.species !== speciesProtoplasm) {
-                    title = typeof tech[technology].definition.title === 'string' ? tech[technology].definition.title : tech[technology].definition.title();
+            // Event handler
+            let onChange = function(event, ui) {
+              event.preventDefault();
+
+              // If it wasn't selected from list
+              if(ui.item === null){
+                let typedTech = Object.values(tech).find(technology => this.value === technology.title);
+                if (typedTech !== undefined){
+                  ui.item = {label: this.value, value: typedTech};
                 }
-                let selected = trigger.actionId === technology ? ' selected="selected"' : "";
-                let typeOptionNode = $('<option value = "' + technology + '"' + selected + '>' + title + '</option>');
-                typeSelectNode.append(typeOptionNode);
+              }
+
+              // We have a tech to switch
+              if (ui.item !== null && tech.hasOwnProperty(ui.item.value)) {
+                trigger.updateActionId(ui.item.value);
+                state.triggerManager.resetTargetTriggers();
+
+                buildTriggerActionCount(trigger);
+
+                updateSettingsFromState();
+
+                this.value = ui.item.label;
+                return;
+              } 
+
+              // No tech selected, don't change trigger, just restore old title in text field
+              if (tech.hasOwnProperty(trigger.actionId)) {
+                this.value = tech[trigger.actionId].title;
+                return;
+              }
+            };
+            
+            typeSelectNode.autocomplete({
+              delay: 0,
+              source: function(request, response) {
+              let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
+              let techList = [];
+              Object.values(tech).forEach(technology => {
+                let title = technology.title;
+                if(matcher.test(title)){
+                  techList.push({label: title, value: technology.id});
+                }
+              });
+              response(techList);
+              },
+              select: onChange, // Dropdown list click
+              focus: onChange, // Arrow keys press
+              change: onChange // Type
             });
+
+            if (tech.hasOwnProperty(trigger.actionId)) {
+              typeSelectNode.val(tech[trigger.actionId].title);
+            }
 
             triggerElement.append(typeSelectNode);
-
-            typeSelectNode.on('change', function() {
-                trigger.updateActionId(this.value);
-                state.triggerManager.resetTargetTriggers();
-    
-                buildTriggerActionCount(trigger);
-                
-                updateSettingsFromState();
-            });
 
             return;
         }
@@ -13109,8 +13183,7 @@
         }
 
         // Dirty performance patch. Settings have a lot of elements, and they stress JQuery selectors way too much. This toggle allow to remove them from DOM completely, when they aren't needed.
-        // And this code https://github.com/pmotschmann/Evolve/blob/a8647ab7647822206c8d079f8c96800e9a79168d/src/main.js#L6987 magically speeds up in almost 10 times. And that thing is *slow*, so 10x of that it's a lot.
-        // There must be a better solutions, like drawing settings in modal on demand, or whatever. But i'm satisfied with this simple toggle for now.
+        // It doesn't have such huge impact anymore, as used to before rewriting trigger's tech selectors, but still won't hurt to have an option to increase performance a bit more
         if ($('#showSettings').length === 0) {
             createSettingToggle('showSettings', createScriptSettings, removeScriptSettings);
         } else if (settings.showSettings && $("#script_settings").length === 0) {
