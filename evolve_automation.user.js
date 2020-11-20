@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.17
+// @version      3.2.18
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4364,8 +4364,7 @@
         }
 
         isUnlocked() {
-            let marketTest = document.getElementById("market-qty");
-            return marketTest !== null && marketTest.style.display !== "none";
+            return isResearchUnlocked("market");
         }
 
         clearPriorityList() {
@@ -4639,7 +4638,7 @@
         }
 
         isUnlocked() {
-            isResearchUnlocked("containerization");
+            return isResearchUnlocked("containerization");
         }
 
         clearPriorityList() {
@@ -6539,6 +6538,8 @@
 
     function resetBuildingSettings() {
         settings.buildingBuildIfStorageFull = true;
+        settings.buildingAlwaysClick = false;
+        settings.buildingClickPerTick = 50;
     }
 
     function resetBuildingState() {
@@ -7366,6 +7367,9 @@
         addSetting("userResearchUnification", "auto");
         
         addSetting("buildingBuildIfStorageFull", true);
+        addSetting("buildingAlwaysClick", false);
+        addSetting("buildingClickPerTick", 50);
+
         addSetting("buildingEnabledAll", false);
         addSetting("buildingStateAll", false);
 
@@ -8040,15 +8044,19 @@
                 }
 
                 if (job === state.jobs.CementWorker) {
+                    let stoneRateOfChange = resources.Stone.rateOfChange;
+                    if (settings.buildingAlwaysClick) {
+                      stoneRateOfChange += (getResourcesPerClick() * settings.buildingClickPerTick);
+                    }
                     let currentCementWorkers = job.count;
                     log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.Stone.rateOfChange);
 
                     if (jobsToAssign < currentCementWorkers) {
                         // great, remove workers as we want less than we have
-                    } else if (jobsToAssign >= currentCementWorkers && resources.Stone.rateOfChange < 5) {
+                    } else if (jobsToAssign >= currentCementWorkers && stoneRateOfChange < 5) {
                         // If we're making less than 5 stone then lets remove a cement worker even if we want more
                         jobsToAssign = job.count - 1;
-                    } else if (jobsToAssign > job.count && resources.Stone.rateOfChange > 8) {
+                    } else if (jobsToAssign > job.count && stoneRateOfChange > 8) {
                         // If we want more cement workers and we're making more than 8 stone then add a cement worker
                         jobsToAssign = job.count + 1;
                     } else {
@@ -8936,15 +8944,14 @@
      * @param {boolean} [ignoreSellRatio]
      */
     function autoMarket(bulkSell, ignoreSellRatio) {
-        adjustTradeRoutes();
-
         let m = state.marketManager;
 
         // Market has not been unlocked in game yet (tech not researched)
         if (!m.isUnlocked()) {
             return;
         }
-        
+        adjustTradeRoutes();
+
         let currentMultiplier = m.getMultiplier(); // Save the current multiplier so we can reset it at the end of the function
         let maxMultiplier = m.getMaxMultiplier();
         
@@ -8960,7 +8967,7 @@
                 let unitSellPrice = m.getUnitSellPrice(resource);
                 let maxAllowedUnits = Math.floor(maxAllowedTotalSellPrice / unitSellPrice); // only sell up to our maximum money
 
-                if (resource.storageRatio < 0.99) {
+                if (resource.storageRatio < 0.99 || resource.storageRatio > resource.autoSellRatio) {
                     maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.currentQuantity - (resource.autoSellRatio * resource.maxQuantity))); // If not full sell up to our sell ratio
                 } else {
                     maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.rateOfChange * 2)); // If resource is full then sell up to 2 seconds worth of production
@@ -8971,8 +8978,8 @@
                     m.setMultiplier(maxAllowedUnits);
                     m.sell(resource)
                 } else {
-                    // Our current max multiplier doesn't cover the full amount that we want to sell. Sell up to 10 batches.
-                    let counter = Math.min(5, Math.floor(maxAllowedUnits / maxMultiplier)); // Allow up to 10 sales per script loop
+                    // Our current max multiplier doesn't cover the full amount that we want to sell. Sell up to 5 batches.
+                    let counter = Math.min(5, Math.floor(maxAllowedUnits / maxMultiplier)); // Allow up to 5 sales per script loop
                     m.setMultiplier(maxMultiplier);
 
                     for (let j = 0; j < counter; j++) {
@@ -8986,19 +8993,22 @@
             }
 
             if (resource.autoBuyEnabled === true && resource.storageRatio < resource.autoBuyRatio) {
-                m.setMultiplier(currentMultiplier);
-                let tradeQuantity = m.getMultiplier();
-                let buyValue = tradeQuantity * m.getUnitBuyPrice(resource);
-                let counter = 0;
+              let storableAmount = Math.floor((resource.autoBuyRatio - resource.storageRatio) * resource.maxQuantity);
+              let affordableAmount = Math.floor((resources.Money.currentQuantity - state.minimumMoneyAllowed) / m.getUnitBuyPrice(resource));
+              let amountToBuy = Math.min(storableAmount, affordableAmount);
+              if (amountToBuy > 0) {
+                if (amountToBuy > maxMultiplier){
+                  let counter = Math.min(5, Math.floor(amountToBuy / maxMultiplier));
+                  m.setMultiplier(maxMultiplier);
 
-                while(true) {
-                    // break if not enough money or not enough resource storage
-                    if (resources.Money.currentQuantity - buyValue <= state.minimumMoneyAllowed || resource.currentQuantity + tradeQuantity > resource.maxQuantity - 3 * tradeQuantity || counter++ > 2) {
-                        break;
-                    }
-
-                    m.buy(resource);
+                  for (let j = 0; j < counter; j++) {
+                      m.buy(resource);
+                  }
+                } else {
+                  m.setMultiplier(amountToBuy);
+                  m.buy(resource);
                 }
+              }
             }
         }
 
@@ -9022,9 +9032,20 @@
         return false;
     }
     
+    function getResourcesPerClick() {
+      let amount = 1;
+      if (game.global.race['strong']) {
+        amount *= game.traits.strong.vars[0];
+      }
+      if (game.global.genes['enhance']) {
+        amount *= 2;
+      }
+      return amount;
+    }
+    
     function autoGatherResources() {
         // Don't spam click once we've got a bit of population going
-        if (resources.Population.currentQuantity > 15) {
+        if (!settings.buildingAlwaysClick && resources.Population.currentQuantity > 15) {
             if (!state.cityBuildings.RockQuarry.isUnlocked()) {
                 return;
             }
@@ -9034,10 +9055,36 @@
             }
         }
 
-        state.cityBuildings.Food.click(50);
-        state.cityBuildings.Lumber.click(50);
-        state.cityBuildings.Stone.click(50);
-        state.cityBuildings.Slaughter.click(50);
+        //Uses exposed action handlers, bypassing vue - they much faster, and that's important with a lot of calls
+        let resPerClick = getResourcesPerClick();
+        if (state.cityBuildings.Food.isClickable()){
+           let amount = Math.min((resources.Food.maxQuantity - resources.Food.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+           let food = game.actions.city.food;
+           for (var i = 0; i < amount; i++) {
+             food.action();
+           }
+        }
+        if (state.cityBuildings.Lumber.isClickable()){
+           let amount = Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+           let lumber = game.actions.city.lumber;
+           for (var i = 0; i < amount; i++) {
+             lumber.action();
+           }
+        }
+        if (state.cityBuildings.Stone.isClickable()){
+           let amount = Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+           let stone = game.actions.city.stone;
+           for (var i = 0; i < amount; i++) {
+             stone.action();
+           }
+        }
+        if (state.cityBuildings.Slaughter.isClickable()){
+           let amount = Math.min(Math.max(resources.Lumber.maxQuantity - resources.Lumber.currentQuantity, resources.Food.maxQuantity - resources.Food.currentQuantity, resources.Furs.maxQuantity - resources.Furs.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+           let slaughter = game.actions.city.slaughter;
+           for (var i = 0; i < amount; i++) {
+             slaughter.action();
+           }
+        }
     }
     
     function autoBuild() {
@@ -9824,11 +9871,16 @@
             const resource = tradableResources[i];
             requiredTradeRoutes.push(0);
 
-            while (resource.autoTradeSellEnabled && tradeRoutesUsed < maxTradeRoutes && resource.storageRatio > 0.98 && resource.calculatedRateOfChange > resource.autoTradeSellMinPerSecond) {
-                tradeRoutesUsed++;
-                requiredTradeRoutes[i]--;
-                resource.calculatedRateOfChange -= resource.tradeRouteQuantity;
-                currentMoneyPerSecond += resource.currentTradeRouteSellPrice;
+            if (resource.autoTradeSellEnabled && resource.storageRatio > 0.98 && tradeRoutesUsed < maxTradeRoutes){
+              let freeRoutes = maxTradeRoutes - tradeRoutesUsed;
+              let routesToLimit = Math.floor((resource.calculatedRateOfChange - resource.autoTradeSellMinPerSecond) / resource.tradeRouteQuantity);
+              let routesToAssign = Math.min(freeRoutes, routesToLimit);
+              if (routesToAssign > 0){
+                tradeRoutesUsed += routesToAssign;
+                requiredTradeRoutes[i] -= routesToAssign;
+                resource.calculatedRateOfChange -= resource.tradeRouteQuantity * routesToAssign;
+                currentMoneyPerSecond += resource.currentTradeRouteSellPrice * routesToAssign;
+              }
             }
 
             //console.log(resource.id + " tradeRoutesUsed " + tradeRoutesUsed + ", maxTradeRoutes " + maxTradeRoutes + ", storageRatio " + resource.storageRatio + ", calculatedRateOfChange " + resource.calculatedRateOfChange)
@@ -10400,6 +10452,7 @@
         let scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
         $("#localization").parent().append(scriptContentNode);
         let parentNode = $('#script_settings');
+        parentNode.empty();
 
         buildImportExport();
         buildPrestigeSettings(parentNode, true);
@@ -11781,6 +11834,7 @@
             updateSettingsFromState();
             updateMarketSettingsContent();
             if ( $('.ea-market-toggle').length !== 0 ) {
+              removeMarketToggles();
               createMarketToggles();
             }
         };
@@ -12571,6 +12625,8 @@
         // Add any pre table settings
         let preTableNode = $('#script_buildingPreTable');
         addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides the below settings to still build if resources are full");
+        addStandardSectionSettingsToggle(preTableNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of game, to build first production buildings. With this toggled on it will continue clicking forever.");
+        addStandardSectionSettingsNumber(preTableNode, "buildingClickPerTick", "Maximum clicks per script tick", "Number of clicks performed at once, each script tick(1 second). Actual amount hardcapped by missed resources.");
     }
 
     function updateBuildingTable() {
@@ -13433,13 +13489,16 @@
         let autoBuyChecked = resource.autoBuyEnabled ? " checked" : "";
         let autoSellChecked = resource.autoSellEnabled ? " checked" : "";
         let autoTradeBuyChecked = resource.autoTradeBuyEnabled ? " checked" : "";
+        let autoTradeSellChecked = resource.autoTradeSellEnabled ? " checked" : "";
         let marketRow = $('#market-' + resource.id);
         let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
         let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" title="Enable selling of this resource. When to sell is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">sell</span><span class="state"></span></label>');
-        let toggleTrade = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" title="Enable trading for this resource. Max routes is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade for</span><span class="state"></span></label>');
+        let toggleTradeFor = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" title="Enable trading for this resource. Max routes is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade for</span><span class="state"></span></label>');
+        let toggleTradeAway = $('<label id="script_tsell1_' +  resource.id + '" tabindex="0" title="Enable trading this resource away. Max routes is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade away</span><span class="state"></span></label>');
         marketRow.append(toggleBuy);
         marketRow.append(toggleSell);
-        marketRow.append(toggleTrade);
+        marketRow.append(toggleTradeFor);
+        marketRow.append(toggleTradeAway);
 
         toggleBuy.on('change', function(e) {
             //console.log(e);
@@ -13503,7 +13562,7 @@
             //console.log(state);
         });
 
-        toggleTrade.on('change', function(e) {
+        toggleTradeFor.on('change', function(e) {
             //console.log(e);
             let input = e.currentTarget.children[0];
             let state = input.checked;
@@ -13517,13 +13576,44 @@
             if (resource.autoTradeBuyEnabled && resource.autoTradeSellEnabled) {
                 resource.autoTradeSellEnabled = false;
 
-                let buyCheckBox1 = document.querySelector('#script_tsell1_' + resource.id + ' input');
+                let sellCheckBox1 = document.querySelector('#script_tsell1_' + resource.id + ' input');
+                if (sellCheckBox1 !== null) {
+                    // @ts-ignore
+                    sellCheckBox1.checked = false;
+                }
+
+                let sellCheckBox2 = document.querySelector('#script_tsell2_' + resource.id + ' input');
+                if (sellCheckBox2 !== null) {
+                    // @ts-ignore
+                    sellCheckBox2.checked = false;
+                }
+            }
+
+            updateSettingsFromState();
+            //console.log(state);
+        });
+
+        toggleTradeAway.on('change', function(e) {
+            //console.log(e);
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            resource.autoTradeSellEnabled = state;
+            let otherCheckbox = document.querySelector('#script_tsell2_' + resource.id + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
+            }
+
+            if (resource.autoTradeBuyEnabled && resource.autoTradeSellEnabled) {
+                resource.autoTradeBuyEnabled = false;
+
+                let buyCheckBox1 = document.querySelector('#script_tbuy1_' + resource.id + ' input');
                 if (buyCheckBox1 !== null) {
                     // @ts-ignore
                     buyCheckBox1.checked = false;
                 }
 
-                let buyCheckBox2 = document.querySelector('#script_tsell2_' + resource.id + ' input');
+                let buyCheckBox2 = document.querySelector('#script_tbuy2_' + resource.id + ' input');
                 if (buyCheckBox2 !== null) {
                     // @ts-ignore
                     buyCheckBox2.checked = false;
@@ -13536,13 +13626,18 @@
     }
 
     function createMarketToggles() {
-        removeMarketToggles();
+        $("#market .market-item .res").width("5rem");
+        $("#market .market-item .trade > :first-child").text("R:");
+        $("#market .trade .zero").text("x").css("margin-right", 12);
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             createMarketToggle(state.marketManager.priorityList[i]);
         }
     }
 
     function removeMarketToggles() {
+        $("#market .market-item .res").width("7.5rem");
+        $("#market .market-item .trade > :first-child").text("Routes:");
+        $("#market .trade .zero").text("Cancel Routes").css("margin-right", "");
         $('.ea-market-toggle').remove();
     }
 
