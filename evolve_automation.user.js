@@ -1,62 +1,33 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.18
+// @version      3.2.1.9
 // @description  try to take over the world!
-// @downloadURL  https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
+// @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
 // @author       TMVictor
+// @author       Vollch
 // @match        https://tmvictor.github.io/Evolve-Scripting-Edition/
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.4.1.min.js
 // @require      https://code.jquery.com/ui/1.12.1/jquery-ui.min.js
 // ==/UserScript==
 //
-// DIRECT LINK FOR GREASEMONKEY / TAMPERMONKEY: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da/raw/evolve_automation.user.js
-// Just navigate to that link with one of the monkeys installed and it will load the script.
-// You can update to latest through the relevent UI for each extension.
-//
 // This script will NOT WORK WITH THE ORIGINAL VERSION OF THE GAME. It will only work with the scripting edition which can be found at:
 // https://tmvictor.github.io/Evolve-Scripting-Edition/
 //
-// Full release notes at: https://gist.github.com/TMVictor/e2a0634391002888469e79c13c62f60e
-// Massive thanks to NotOats for contributing how to access game code directly from GreaseMonkey / TamperMonkey.
+// This script forked from TMVictor's script version 3.2.1. Original link: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da
 //
-// * autoEvolution - Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids.
-//          See autoAchievements to target races that you don't have extinction achievements for yet. Settings available in Settings tab.
-//  ** autoAchievements - Works through all evolution paths until all race's extinction achievements have been completed (also works with autoChallenge for starred achievements)
-//  ** autoChallenge - Chooses ALL challenge options during evolution
-// * autoFight - Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attach type when offensive
-//          rating is greater than the rating cutoff for that attack type.
-// * autoHell - Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.
-// * autoCraft - Craft when a specified crafting ratio is met. This changes throughout the game (lower in the beginning and rising as the game progresses)
-// * autoBuild - Builds city and space building when it can an production allows (eg. Won't build a Fission Reactor if you don't have enough uranium production).
-//          Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker. eg. If you don't have enough libraries / 
-//          cottages / coal mines then it will stop building anything that uses the same materials for a while to allow you to craft the resources to build them.
-//          Will only build the buildings that the user enables. Settings available in Settings tab.
-// * autoMarket - Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum
-//          specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes. Each resource can be configured
-//          in the Market settings in the settings tab.
-// * autoStorage - Assigns crates to allow storage of resources. Only assigns enough crates to reach MAD unless enabling autoSpace. Settings available in Settings tab.
-// * autoResearch - Performs research when minimum requirements are met. Settings available in Settings tab.
-// * autoARPA - Builds ARPA projects if user enables them to be built
-// * autoJobs - Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on
-//          lumber / stone then fill up capped jobs first. Settings available in Settings tab.
-//  ** autoCraftsmen - Enable this when performing challenge runs and autoJobs will also manage craftsmen
-// * autoTax - Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.
-// * autoPower - Manages power based on a priority order of buildings. Starts with city based building then space based. Settings available in Settings tab.
-// * autoSmelter - Manages smelter output at different stages at the game. Fuel preferences are available in the Production section of the Settings tab.
-// * autoFactory - Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.
-//          Settings available in the Settings tab.
-// * autoMiningDroid - Manages mining droid production based on power and consumption. Produces Adamantite only. Not currently user configurable.
-// * autoGraphenePlant - Uses what fuel it can to fuel the graphene plant. Not currently user configurable.
-// * autoMAD - Once MAD is unlocked will stop sending out troops and will perform MAD
-// * autoSpace - Once MAD is unlocked it will start funding the launch facility regardless of arpa settings
-// * autoSeeder - Will send out the seeder ship once at least 4 (or user entered max) probes are constructed. Currently tries to find a forest world, then grassland, then the others.
-//          Not currently user configurable.
-// * autoAssembleGene - Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.
-// * autoMinorTraits - Purchase minor traits using genes according to their weighting settings. Settings available in Settings tab.
-// 
+// Changes from original version:
+//
+//  Added autoBuild weighting, script can wait for more resources to buy prioritized buildings, instead of getting cheapest at first opportunity. Just researched(buildable, enabled, and with count==0) buildings have increased weight, encouraging script to get new production going as soon as possible. You can change in setting whether script should avoid wasting resources, or wait for target building even if something overflowing.
+//  Pre-mad autoCraft doesn't use resources such greedy, as it used to do. It crafts either exactly needed amount, or use regular 0.9 ratio for surplus resources. And it also will lower ratio for first level of coal mine, to get coal demanding researches sooner.
+//  autoMarket will import 25 pieces of steel for crucible research, once you'll get your first piece from trading(unless you've got enought from raid)
+//  You can enable buying and selling of same resources at once, depends of current ratios. Same for routes.
+//  Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
+//  Optimized performance in few places(Trigges doesn't have 1k DOM elements each anymore, script doesn't constantly fire 50ms timer for callbacks, etc), fixed some bugs(Market gui not refreshing on reset, trading resurces before marker actually unlocked, etc), alter some GUIs(Tooltips for script options, toggles for trading resources away on market page, etc), and such. Probably added some new bugs :)
+//
+//  And, of course, you can do whatever you want with my changes. Fork further, backport any changes back(no credits required). Whatever.
 
 //@ts-check
 (function($) {
@@ -5474,9 +5445,6 @@
         goal: "Standard",
 
         /** @type {Resource[]} */
-        allResourceList: [],
-
-        /** @type {Resource[]} */
         craftableResourceList: [],
 
         jobs: {
@@ -5894,27 +5862,6 @@
         // Lets set our crate / container resource requirements
         resources.Crates.resourceRequirements.push(new ResourceRequirement(resources.Plywood, 10));
         resources.Containers.resourceRequirements.push(new ResourceRequirement(resources.Steel, 125));
-
-        // Construct all resource list
-        state.allResourceList = state.marketManager.priorityList.concat(state.craftableResourceList);
-        state.allResourceList.push(resources.Money);
-        state.allResourceList.push(resources.Population);
-        state.allResourceList.push(resources.Knowledge);
-        state.allResourceList.push(resources.Crates);
-        state.allResourceList.push(resources.Containers);
-        state.allResourceList.push(resources.Plasmid);
-        state.allResourceList.push(resources.Genes);
-        state.allResourceList.push(resources.Power);
-        state.allResourceList.push(resources.HellArmy);
-        state.allResourceList.push(resources.Moon_Support);
-        state.allResourceList.push(resources.Red_Support);
-        state.allResourceList.push(resources.Sun_Support);
-        state.allResourceList.push(resources.Belt_Support);
-        state.allResourceList.push(resources.Alpha_Support);
-        state.allResourceList.push(resources.Nebula_Support);
-        state.allResourceList.push(resources.Neutronium);
-        state.allResourceList.push(resources.Elerium);
-        state.allResourceList.push(resources.Nano_Tube);
 
         state.jobs.Plywood.resource = resources.Plywood;
         state.jobManager.addCraftingJob(state.jobs.Plywood);
@@ -7947,25 +7894,25 @@
                 let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
                 let farmerChange = state.jobs.Farmer.count - state.lastFarmerCount;
 
-                if (populationChange === farmerChange && resources.Food.rateOfChange > 0) {
+                if (populationChange === farmerChange && resources.Food.calculatedRateOfChange > 0) {
                     requiredJobs.push(Math.max(state.jobs.Farmer.count - populationChange, 0));
                     log("autoJobs", "Removing a farmer due to population growth")
                 } else {
                     requiredJobs.push(state.jobs.Farmer.count);
                 }
-            } else if (resources.Food.storageRatio < 0.2 && resources.Food.rateOfChange < 0) {
+            } else if (resources.Food.storageRatio < 0.2 && resources.Food.calculatedRateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
                 requiredJobs.push(Math.min(state.jobs.Farmer.count + 1, availableEmployees));
                 log("autoJobs", "Adding one farmer")
-            } else if (resources.Food.storageRatio > 0.6 && resources.Food.rateOfChange > 0) {
+            } else if (resources.Food.storageRatio > 0.6 && resources.Food.calculatedRateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
                 requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
                 log("autoJobs", "Removing one farmer")
-            } else if (resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > 100) {
+            } else if (resources.Food.storageRatio > 0.3 && resources.Food.calculatedRateOfChange > 100) {
                 // If we have over 30% storage and have > 100 food per second then remove a farmer
                 requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
                 log("autoJobs", "Removing one farmer - 100 food per second")
-            } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > resources.Population.currentQuantity / 10) {
+            } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && resources.Food.calculatedRateOfChange > resources.Population.currentQuantity / 10) {
                 // Carnivore race. We've got some food so put them to work!
                 requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
                 log("autoJobs", "Removing one farmer - Carnivore")
@@ -8044,19 +7991,15 @@
                 }
 
                 if (job === state.jobs.CementWorker) {
-                    let stoneRateOfChange = resources.Stone.rateOfChange;
-                    if (settings.buildingAlwaysClick) {
-                      stoneRateOfChange += (getResourcesPerClick() * settings.buildingClickPerTick);
-                    }
                     let currentCementWorkers = job.count;
-                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.Stone.rateOfChange);
+                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.calculatedRateOfChange " + resources.Stone.calculatedRateOfChange);
 
                     if (jobsToAssign < currentCementWorkers) {
                         // great, remove workers as we want less than we have
-                    } else if (jobsToAssign >= currentCementWorkers && stoneRateOfChange < 5) {
+                    } else if (jobsToAssign >= currentCementWorkers && resources.Stone.calculatedRateOfChange < 5) {
                         // If we're making less than 5 stone then lets remove a cement worker even if we want more
                         jobsToAssign = job.count - 1;
-                    } else if (jobsToAssign > job.count && stoneRateOfChange > 8) {
+                    } else if (jobsToAssign > job.count && resources.Stone.calculatedRateOfChange > 8) {
                         // If we want more cement workers and we're making more than 8 stone then add a cement worker
                         jobsToAssign = job.count + 1;
                     } else {
@@ -8383,7 +8326,7 @@
                     return;
                 }
 
-                let remainingRateOfChange = fuel.productionCost.resource.rateOfChange + (smelter.fueledCount(fuel.fuelIndex) * fuel.productionCost.quantity);
+                let remainingRateOfChange = fuel.productionCost.resource.calculatedRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * fuel.productionCost.quantity);
 
                 while (remainingSmelters > 0 && remainingRateOfChange - fuel.productionCost.quantity > fuel.productionCost.minRateOfChange) {
                     fuel.required++;
@@ -8423,7 +8366,7 @@
             for (let i = 0; i < steelSmeltingConsumption.length; i++) {
                 let productionCost = steelSmeltingConsumption[i];
                 
-                if (productionCost.resource.rateOfChange < productionCost.minRateOfChange
+                if (productionCost.resource.calculatedRateOfChange < productionCost.minRateOfChange
                         && productionCost.resource.storageRatio < 0.5
                         && smelter.smeltingCount(SmelterSmeltingTypes.Steel) > 0) {
                     steelAdjustment = -2;
@@ -8455,7 +8398,7 @@
         // We want to work out the maximum steel smelters that we can have based on our resource consumption
         for (let i = 0; i < steelSmeltingConsumption.length; i++) {
             let productionCost = steelSmeltingConsumption[i];
-            currentAvaiableRateOfChange.push(productionCost.resource.rateOfChange);
+            currentAvaiableRateOfChange.push(productionCost.resource.calculatedRateOfChange);
         }
 
         for (let i = 0; i < steelSmeltingConsumption.length; i++) {
@@ -8480,7 +8423,7 @@
         } else if (state.cityBuildings.CoalMine.count < 10) {
             // two thirds to steel with any remainder going to iron
             desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.maxOperating * 2 / 3);
-        } else if (resources.Iron.rateOfChange > 100 || resources.Iron.storageRatio > 0.99) {
+        } else if (resources.Iron.calculatedRateOfChange > 100 || resources.Iron.storageRatio > 0.99) {
             desiredSteelCount = state.cityBuildings.Smelter.maxOperating;
         } else if (smelterIronCount >= 2) {
             desiredSteelCount = state.cityBuildings.Smelter.maxOperating - 2;
@@ -8532,7 +8475,7 @@
                 productionCosts.forEach(resourceCost => {
                     let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
                     let cost = actualRequiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.rateOfChange + resourceCost.minRateOfChange + previousCost;
+                    let rate = resourceCost.resource.calculatedRateOfChange + resourceCost.minRateOfChange + previousCost;
 
                     if (production.resource.storageRatio > 0.99) {
                         actualRequiredFactories = 0;
@@ -8564,7 +8507,7 @@
             productionCosts.forEach(resourceCost => {
                 let previousCost = state.cityBuildings.Factory.currentProduction(FactoryGoods.LuxuryGoods) * resourceCost.quantity;
                 let cost = actualRequiredFactories * resourceCost.quantity;
-                let rate = resourceCost.resource.rateOfChange + resourceCost.minRateOfChange + previousCost;
+                let rate = resourceCost.resource.calculatedRateOfChange + resourceCost.minRateOfChange + previousCost;
 
                 if (allProduction[luxuryGoodsIndex].resource.storageRatio > 0.99) {
                     actualRequiredFactories = 0;
@@ -8651,7 +8594,7 @@
             }
 
             let currentFuelCount = plant.fueledCount(i);
-            let rateOfChange = consumption.resource.rateOfChange;
+            let rateOfChange = consumption.resource.calculatedRateOfChange;
             rateOfChange += (consumption.quantity * currentFuelCount);
             let maxFueledForConsumption = Math.floor((rateOfChange - consumption.minRateOfChange) / consumption.quantity);
     
@@ -8708,7 +8651,7 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let roundedRateOfChange = Math.floor(resource.rateOfChange);
+                let roundedRateOfChange = Math.floor(resource.calculatedRateOfChange);
 
                 if (remaining <= 0) {
                     resourceRequirement.requirement = 0;
@@ -8758,7 +8701,7 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let roundedRateOfChange = Math.floor(resource.rateOfChange);
+                let roundedRateOfChange = Math.floor(resource.calculatedRateOfChange);
 
                 if (remaining <= 0 || resource.storageRatio < 0.99) {
                     resourceRequirement.requirement = 0;
@@ -8967,10 +8910,10 @@
                 let unitSellPrice = m.getUnitSellPrice(resource);
                 let maxAllowedUnits = Math.floor(maxAllowedTotalSellPrice / unitSellPrice); // only sell up to our maximum money
 
-                if (resource.storageRatio < 0.99 || resource.storageRatio > resource.autoSellRatio) {
+                if (resource.storageRatio > resource.autoSellRatio) {
                     maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.currentQuantity - (resource.autoSellRatio * resource.maxQuantity))); // If not full sell up to our sell ratio
                 } else {
-                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.rateOfChange * 2)); // If resource is full then sell up to 2 seconds worth of production
+                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.calculatedRateOfChange * 2)); // If resource is full then sell up to 2 seconds worth of production
                 }
 
                 if (maxAllowedUnits <= maxMultiplier) {
@@ -8993,22 +8936,22 @@
             }
 
             if (resource.autoBuyEnabled === true && resource.storageRatio < resource.autoBuyRatio) {
-              let storableAmount = Math.floor((resource.autoBuyRatio - resource.storageRatio) * resource.maxQuantity);
-              let affordableAmount = Math.floor((resources.Money.currentQuantity - state.minimumMoneyAllowed) / m.getUnitBuyPrice(resource));
-              let amountToBuy = Math.min(storableAmount, affordableAmount);
-              if (amountToBuy > 0) {
-                if (amountToBuy > maxMultiplier){
-                  let counter = Math.min(5, Math.floor(amountToBuy / maxMultiplier));
-                  m.setMultiplier(maxMultiplier);
+                let storableAmount = Math.floor((resource.autoBuyRatio - resource.storageRatio) * resource.maxQuantity);
+                let affordableAmount = Math.floor((resources.Money.currentQuantity - state.minimumMoneyAllowed) / m.getUnitBuyPrice(resource));
+                let maxAllowedUnits = Math.min(storableAmount, affordableAmount);
+                if (maxAllowedUnits > 0) {
+                    if (maxAllowedUnits <= maxMultiplier){
+                        m.setMultiplier(maxAllowedUnits);
+                        m.buy(resource);
+                    } else {
+                        let counter = Math.min(5, Math.floor(maxAllowedUnits / maxMultiplier));
+                        m.setMultiplier(maxMultiplier);
 
-                  for (let j = 0; j < counter; j++) {
-                      m.buy(resource);
-                  }
-                } else {
-                  m.setMultiplier(amountToBuy);
-                  m.buy(resource);
+                        for (let j = 0; j < counter; j++) {
+                            m.buy(resource);
+                        }
+                    }
                 }
-              }
             }
         }
 
@@ -9025,7 +8968,7 @@
      * @param {number} requiredProduction
      */
     function buildIfEnoughProduction(building, requiredResource, requiredProduction) {
-        if (building.autoBuildEnabled && building.count < building.autoMax && requiredResource.rateOfChange > requiredProduction) {
+        if (building.autoBuildEnabled && building.count < building.autoMax && requiredResource.calculatedRateOfChange > requiredProduction) {
             return building.click(1);
         }
 
@@ -9506,7 +9449,7 @@
                 }
 
                 if (building === state.spaceBuildings.BeltEleriumShip) {
-                    if (resources.Elerium.storageRatio >= 0.99 && resources.Elerium.rateOfChange >= 0) {
+                    if (resources.Elerium.storageRatio >= 0.99 && resources.Elerium.calculatedRateOfChange >= 0) {
                         if (state.spaceBuildings.DwarfEleriumReactor.autoStateEnabled) {
                             let required = (state.spaceBuildings.DwarfEleriumReactor.count + 1) * 2;
                             if (requiredStateOn >= required) {
@@ -9609,8 +9552,14 @@
     }
 
     function autoStorage() {
-        let storageList = state.storageManager.managedPriorityList();
+        let m = state.storageManager;
 
+        // Containers has not been unlocked in game yet (tech not researched)
+        if (!m.isUnlocked()) {
+            return;
+        }
+
+        let storageList = m.managedPriorityList();
         if (storageList.length === 0) {
             return;
         }
@@ -9848,7 +9797,7 @@
         let tradableResources = m.getSortedTradeRouteSellList();
         let maxTradeRoutes = m.getMaxTradeRoutes();
         let tradeRoutesUsed = 0;
-        let currentMoneyPerSecond = resources.Money.rateOfChange;
+        let currentMoneyPerSecond = resources.Money.calculatedRateOfChange;
         let requiredTradeRoutes = [];
         let adjustmentTradeRoutes = [];
         let resourcesToTrade = [];
@@ -10027,6 +9976,17 @@
             updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
         }
         
+        // Initial updates needed each loop
+        for (let key in resources) {
+            resources[key].calculatedRateOfChange = resources[key].rateOfChange;
+        }
+        if (settings.autoBuild && settings.buildingAlwaysClick) {
+          let ResPerClick = getResourcesPerClick();
+          resources.Food.calculatedRateOfChange += (ResPerClick * settings.buildingClickPerTick);
+          resources.Lumber.calculatedRateOfChange += (ResPerClick * settings.buildingClickPerTick);
+          resources.Stone.calculatedRateOfChange += (ResPerClick * settings.buildingClickPerTick);
+        }
+        
         if (settings.minimumMoneyPercentage > 0) {
             state.minimumMoneyAllowed = resources.Money.maxQuantity * settings.minimumMoneyPercentage / 100;
         } else {
@@ -10193,11 +10153,6 @@
                 autoEvolution();
             }
         } else if (state.goal !== "GameOverMan") {
-            // Initial updates needed each loop
-            for (let i = 0; i < state.allResourceList.length; i++) {
-                state.allResourceList[i].calculatedRateOfChange = state.allResourceList[i].rateOfChange;
-            }
-
             let massEjectorProcessed = false;
             if (state.spaceBuildings.BlackholeMassEjector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
                 autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
@@ -10419,31 +10374,8 @@
         document.getElementsByTagName("head")[0].appendChild(css);
     }
 
-    const loadJQueryUI = (callback) => {
-        const existingScript = document.getElementById('script_jqueryui');
-      
-        if (!existingScript) {
-          const script = document.createElement('script');
-          script.src = 'https://code.jquery.com/ui/1.12.1/jquery-ui.min.js'
-          script.id = 'script_jqueryui'; // e.g., googleMaps or stripe
-          document.body.appendChild(script);
-      
-          script.onload = () => {
-            if (callback) callback();
-          };
-        }
-      
-        if (existingScript && callback) callback();
-    };
-
     function removeScriptSettings() {
         $("#script_settings").remove();
-    }
-    function createScriptSettings() {
-        loadJQueryUI(() => {
-            // Work to do after the library loads.
-            buildScriptSettings();
-          });
     }
 
     function buildScriptSettings() {
@@ -11893,25 +11825,25 @@
             marketElement.append(toggle);
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsToggle(resource, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id));
+            marketElement.append(buildMarketSettingsToggle(resource, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id));
 
             marketElement = marketElement.next();
             marketElement.append(buildMarketSettingsInput(resource, "res_buy_r_" + resource.id, "autoBuyRatio"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsToggle(resource, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id));
+            marketElement.append(buildMarketSettingsToggle(resource, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id));
 
             marketElement = marketElement.next();
             marketElement.append(buildMarketSettingsInput(resource, "res_sell_r_" + resource.id, "autoSellRatio"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsToggle(resource, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id));
+            marketElement.append(buildMarketSettingsToggle(resource, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id));
 
             marketElement = marketElement.next();
             marketElement.append(buildMarketSettingsInput(resource, "res_trade_buy_mtr_" + resource.id, "autoTradeBuyRoutes"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsToggle(resource, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id));
+            marketElement.append(buildMarketSettingsToggle(resource, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id));
 
             marketElement = marketElement.next();
             marketElement.append(buildMarketSettingsInput(resource, "res_trade_sell_mps_" + resource.id, "autoTradeSellMinPerSecond"));
@@ -11944,7 +11876,7 @@
     /**
      * @param {Resource} resource
      */
-    function buildMarketSettingsToggle(resource, property, toggleId, syncToggleId, oppositeProperty, oppositeToggleId, oppositeSyncToggleId) {
+    function buildMarketSettingsToggle(resource, property, toggleId, syncToggleId) {
         let checked = resource[property] ? " checked" : "";
         let toggle = $('<label id="' + toggleId + '" tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
 
@@ -11958,23 +11890,6 @@
                 // @ts-ignore
                 otherCheckbox.checked = state;
             }
-
-            if (resource[property] && resource[oppositeProperty]) {
-                resource[oppositeProperty] = false;
-
-                let oppositeCheckbox1 =  document.querySelector('#' + oppositeToggleId + ' input');
-                if (oppositeCheckbox1 !== null) {
-                    // @ts-ignore
-                    oppositeCheckbox1.checked = false;
-                }
-
-                let oppositeCheckbox2 =  document.querySelector('#' + oppositeSyncToggleId + ' input');
-                if (oppositeCheckbox2 !== null) {
-                    // @ts-ignore
-                    oppositeCheckbox2.checked = false;
-                }
-            }
-
             updateSettingsFromState();
             //console.log(resource.name + " changed enabled to " + state);
         });
@@ -13086,10 +13001,10 @@
         addOptionUiClickHandler(optionsDiv, optionsDisplayName, buildOptionsFunction);
     }
 
-    function createSettingToggle(name, enabledCallBack, disabledCallBack) {
+    function createSettingToggle(name, title, enabledCallBack, disabledCallBack) {
         let elm = $('#autoScriptContainer');
         let checked = settings[name] ? " checked" : "";
-        let toggle = $(`<label tabindex="0" class="switch" id="${name}" style=""><input type="checkbox" value=${settings[name]}${checked}/> <span class="check"></span><span>${name}</span></label></br>`);
+        let toggle = $(`<label tabindex="0" class="switch" id="${name}" style="" title="${title}"><input type="checkbox" value=${settings[name]}${checked}/> <span class="check"></span><span>${name}</span></label></br>`);
         elm.append(toggle);
 
         if (settings[name]) {
@@ -13235,95 +13150,95 @@
             elm.append(span);
         }
         if ($('#masterScriptToggle').length === 0) {
-            createSettingToggle('masterScriptToggle');
+            createSettingToggle('masterScriptToggle', 'Stop taking any actions on behalf of the player.');
         }
 
         // Dirty performance patch. Settings have a lot of elements, and they stress JQuery selectors way too much. This toggle allow to remove them from DOM completely, when they aren't needed.
         // It doesn't have such huge impact anymore, as used to before rewriting trigger's tech selectors, but still won't hurt to have an option to increase performance a bit more
         if ($('#showSettings').length === 0) {
-            createSettingToggle('showSettings', createScriptSettings, removeScriptSettings);
+            createSettingToggle('showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
         } else if (settings.showSettings && $("#script_settings").length === 0) {
-            createScriptSettings();
+            buildScriptSettings();
         }
 
         if ($('#autoEvolution').length === 0) {
-            createSettingToggle('autoEvolution');
+            createSettingToggle('autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids. See autoAchievements to target races that you don\'t have extinction achievements for yet.');
         }
         if ($('#autoAchievements').length === 0) {
-            createSettingToggle('autoAchievements');
+            createSettingToggle('autoAchievements', 'Works through all evolution paths until all race\'s extinction achievements have been completed. Also works with autoChallenge for starred achievements.');
         }
         if ($('#autoChallenge').length === 0) {
-            createSettingToggle('autoChallenge');
+            createSettingToggle('autoChallenge', 'Chooses challenge options during evolution.');
         }
         if ($('#autoFight').length === 0) {
-            createSettingToggle('autoFight');
+            createSettingToggle('autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
         }
         if ($('#autoHell').length === 0) {
-            createSettingToggle('autoHell');
+            createSettingToggle('autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
         }
         if ($('#autoTax').length === 0) {
-            createSettingToggle('autoTax');
+            createSettingToggle('autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
         }
         if ($('#autoCraft').length === 0) {
-            createSettingToggle('autoCraft', createCraftToggles, removeCraftToggles);
+            createSettingToggle('autoCraft', 'Craft when a specified crafting ratio is met. This changes throughout the game - lower in the beginning and rising as the game progresses.', createCraftToggles, removeCraftToggles);
         } else if (settings.autoCraft && $('.ea-craft-toggle').length === 0) {
             createCraftToggles();
         }
         if ($('#autoBuild').length === 0) {
-            createSettingToggle('autoBuild', createBuildingToggles, removeBuildingToggles);
+            createSettingToggle('autoBuild', 'Builds city and space building when it can an production allows (eg. Won\'t build a Fission Reactor if you don\'t have enough uranium production). Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker.', createBuildingToggles, removeBuildingToggles);
         } else if (settings.autoBuild && $('.ea-building-toggle').length === 0) {
             createBuildingToggles();
         }
         if ($('#autoPower').length === 0) {
-            createSettingToggle('autoPower');
+            createSettingToggle('autoPower', 'Manages power based on a priority order of buildings. Starts with city based building then space based.');
         }
         if ($('#autoStorage').length === 0) {
-            createSettingToggle('autoStorage');
+            createSettingToggle('autoStorage', 'Assigns crates to allow storage of resources.');
         }
         if ($('#autoMarket').length === 0) {
-            createSettingToggle('autoMarket', createMarketToggles, removeMarketToggles);
+            createSettingToggle('autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes.', createMarketToggles, removeMarketToggles);
         } else if (settings.autoMarket > 0 && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
             createMarketToggles();
         }
         if ($('#autoResearch').length === 0) {
-            createSettingToggle('autoResearch');
+            createSettingToggle('autoResearch', 'Performs research when minimum requirements are met. ');
         }
         if ($('#autoARPA').length === 0) {
-            createSettingToggle('autoARPA', createArpaToggles, removeArpaToggles);
+            createSettingToggle('autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
         } else if (settings.autoARPA && $('.ea-arpa-toggle').length === 0) {
             createArpaToggles();
         }
 
         if ($('#autoJobs').length === 0) {
-            createSettingToggle('autoJobs');
+            createSettingToggle('autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
         }
         if ($('#autoCraftsmen').length === 0) {
-            createSettingToggle('autoCraftsmen');
+            createSettingToggle('autoCraftsmen', 'Enable this when performing challenge runs and autoJobs will also manage craftsmen.');
         }
 
         if ($('#autoSmelter').length === 0) {
-            createSettingToggle('autoSmelter');
+            createSettingToggle('autoSmelter', 'Manages smelter output at different stages at the game.');
         }
         if ($('#autoFactory').length === 0) {
-            createSettingToggle('autoFactory');
+            createSettingToggle('autoFactory', 'Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.');
         }
         if ($('#autoMiningDroid').length === 0) {
-            createSettingToggle('autoMiningDroid');
+            createSettingToggle('autoMiningDroid', 'Manages mining droid production based on power and consumption. Produces Adamantite only. Not currently user configurable.');
         }
         if ($('#autoGraphenePlant').length === 0) {
-            createSettingToggle('autoGraphenePlant');
+            createSettingToggle('autoGraphenePlant', 'Uses what fuel it can to fuel the graphene plant. Not currently user configurable.');
         }
         if ($('#autoAssembleGene').length === 0) {
-            createSettingToggle('autoAssembleGene');
+            createSettingToggle('autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.');
         }
         if ($('#autoMinorTrait').length === 0) {
-            createSettingToggle('autoMinorTrait');
+            createSettingToggle('autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings.');
         }
 
         if (document.getElementById("s-quick-prestige-options") === null) { createQuickOptions("s-quick-prestige-options", "Prestige", buildPrestigeSettings); }
 
         if (showLogging && $('#autoLogging').length === 0) {
-           createSettingToggle('autoLogging');
+           createSettingToggle('autoLogging', 'autoLogging');
 
            let settingsDiv = $('<div id="ea-logging"></div>');
            let logTypeTxt = $('<div>Logging Type:</div>')
@@ -13510,23 +13425,6 @@
                 // @ts-ignore
                 otherCheckbox.checked = state;
             }
-
-            if (resource.autoBuyEnabled && resource.autoSellEnabled) {
-                resource.autoSellEnabled = false;
-
-                let sellCheckBox1 = document.querySelector('#script_sell1_' + resource.id + ' input');
-                if (sellCheckBox1 !== null) {
-                    // @ts-ignore
-                    sellCheckBox1.checked = false;
-                }
-
-                let sellCheckBox2 = document.querySelector('#script_sell2_' + resource.id + ' input');
-                if (sellCheckBox2 !== null) {
-                    // @ts-ignore
-                    sellCheckBox2.checked = false;
-                }
-            }
-
             updateSettingsFromState();
             //console.log(state);
         });
@@ -13541,23 +13439,6 @@
                 // @ts-ignore
                 otherCheckbox.checked = state;
             }
-
-            if (resource.autoSellEnabled && resource.autoBuyEnabled) {
-                resource.autoBuyEnabled = false;
-
-                let buyCheckBox1 = document.querySelector('#script_buy1_' + resource.id + ' input');
-                if (buyCheckBox1 !== null) {
-                    // @ts-ignore
-                    buyCheckBox1.checked = false;
-                }
-
-                let buyCheckBox2 = document.querySelector('#script_buy2_' + resource.id + ' input');
-                if (buyCheckBox2 !== null) {
-                    // @ts-ignore
-                    buyCheckBox2.checked = false;
-                }
-            }
-
             updateSettingsFromState();
             //console.log(state);
         });
@@ -13572,23 +13453,6 @@
                 // @ts-ignore
                 otherCheckbox.checked = state;
             }
-
-            if (resource.autoTradeBuyEnabled && resource.autoTradeSellEnabled) {
-                resource.autoTradeSellEnabled = false;
-
-                let sellCheckBox1 = document.querySelector('#script_tsell1_' + resource.id + ' input');
-                if (sellCheckBox1 !== null) {
-                    // @ts-ignore
-                    sellCheckBox1.checked = false;
-                }
-
-                let sellCheckBox2 = document.querySelector('#script_tsell2_' + resource.id + ' input');
-                if (sellCheckBox2 !== null) {
-                    // @ts-ignore
-                    sellCheckBox2.checked = false;
-                }
-            }
-
             updateSettingsFromState();
             //console.log(state);
         });
@@ -13603,23 +13467,6 @@
                 // @ts-ignore
                 otherCheckbox.checked = state;
             }
-
-            if (resource.autoTradeBuyEnabled && resource.autoTradeSellEnabled) {
-                resource.autoTradeBuyEnabled = false;
-
-                let buyCheckBox1 = document.querySelector('#script_tbuy1_' + resource.id + ' input');
-                if (buyCheckBox1 !== null) {
-                    // @ts-ignore
-                    buyCheckBox1.checked = false;
-                }
-
-                let buyCheckBox2 = document.querySelector('#script_tbuy2_' + resource.id + ' input');
-                if (buyCheckBox2 !== null) {
-                    // @ts-ignore
-                    buyCheckBox2.checked = false;
-                }
-            }
-
             updateSettingsFromState();
             //console.log(state);
         });
