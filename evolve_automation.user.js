@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.9
+// @version      3.2.1.10
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -26,6 +26,9 @@
 //  You can enable buying and selling of same resources at once, depends of current ratios. Same for routes.
 //  Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
 //  Optimized performance in few places(Trigges doesn't have 1k DOM elements each anymore, script doesn't constantly fire 50ms timer for callbacks, etc), fixed some bugs(Market gui not refreshing on reset, trading resurces before marker actually unlocked, etc), alter some GUIs(Tooltips for script options, toggles for trading resources away on market page, etc), and such. Probably added some new bugs :)
+//  Added option to restore backup after evolution, and try another group, if started with a race who already earned MAD achievement.
+//  autoAchievements now check and pick conditional races.
+//  Rewrote autoSmelter logic. Now it tries to balance iron and steel to numbers where both of resources will be full at same time(assuming you can afford it, if not - it'll try it best to set as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to such resource, and vice versa.
 //
 //  And, of course, you can do whatever you want with my changes. Fork further, backport any changes back(no credits required). Whatever.
 
@@ -4691,14 +4694,14 @@
         /**
          * @param {String} id
          * @param {String} name
-         * @param {boolean} isEvolutionConditional
+         * @param {Function} evolutionCondition
          * @param {string} evolutionConditionText
          * @param {string} achievementText
          */
-        constructor(id, name, isEvolutionConditional, evolutionConditionText, achievementText) {
+        constructor(id, name, evolutionCondition, evolutionConditionText, achievementText) {
             this.id = id;
             this.name = name;
-            this.isEvolutionConditional = isEvolutionConditional;
+            this.evolutionCondition = evolutionCondition;
             this.evolutionConditionText = evolutionConditionText;
             this.achievementText = achievementText;
 
@@ -5273,50 +5276,86 @@
     var tech = {};
     var techIds = {};
 
+    function alwaysAllowed() {
+        return true;
+    }
+
+    function neverAllowed() {
+        return false;
+    }
+
+    function demonicAllowed() {
+        return game.global.city.biome === 'hellscape' || game.global.blood['unbound'] && game.global.blood.unbound >= 3
+    }
+
+    function celestialAllowed() {
+        return game.global.city.biome === 'eden' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
+    }
+
+    function aquaticAllowed() {
+        return game.global.city.biome === 'oceanic' || game.global.blood['unbound'];
+    }
+
+    function feyAllowed() {
+        return game.global.city.biome === 'forest' || game.global.blood['unbound'];
+    }
+
+    function sandAllowed() {
+        return game.global.city.biome === 'desert' || game.global.blood['unbound'];
+    }
+
+    function heatAllowed() {
+        return game.global.city.biome === 'volcanic' || game.global.blood['unbound'];
+    }
+
+    function polarAllowed() {
+        return game.global.city.biome === 'tundra' || game.global.blood['unbound'];
+    }
+
     var races = {
-        antid: new Race("antid", "Antid", false, "", "Ophiocordyceps Unilateralis"),
-        mantis: new Race("mantis", "Mantis", false, "", "Praying Unanswered"),
-        scorpid: new Race("scorpid", "Scorpid", false, "", "Pulmonoscorpius"),
-        human: new Race("human", "Human", false, "", "Homo Adeadus"),
-        orc: new Race("orc", "Orc", false, "", "Outlander"),
-        elven: new Race("elven", "Elf", false, "", "The few, the proud, the dead"),
-        troll: new Race("troll", "Troll", false, "", "Bad Juju"),
-        ogre: new Race("ogre", "Ogre", false, "", "Too stupid to live"),
-        cyclops: new Race("cyclops", "Cyclops", false, "", "Blind Ambition"),
-        kobold: new Race("kobold", "Kobold", false, "", "Took their candle"),
-        goblin: new Race("goblin", "Goblin", false, "", "Greed before Need"),
-        gnome: new Race("gnome", "Gnome", false, "", "Unathletic"),
-        cath: new Race("cath", "Cath", false, "", "Saber Tooth Tiger"),
-        wolven: new Race("wolven", "Wolven", false, "", "Dire Wolf"),
-        centaur: new Race("centaur", "Centaur", false, "", "Ferghana"),
-        balorg: new Race("balorg", "Balorg", true, "Hellscape planet", "Self immolation"),
-        imp: new Race("imp", "Imp", true, "Hellscape planet", "Deal with the devil"),
-        seraph: new Race("seraph", "Seraph", true, "Eden planet", "Fallen Angel"),
-        unicorn: new Race("unicorn", "Unicorn", true, "Eden planet", "Unicorn Burgers"),
-        arraak: new Race("arraak", "Arraak", false, "", "Way of the Dodo"),
-        pterodacti: new Race("pterodacti", "Pterodacti", false, "", "Chicxulub"),
-        dracnid: new Race("dracnid", "Dracnid", false, "", "Desolate Smaug"),
-        tortoisan: new Race("tortoisan", "Tortoisan", false, "", "Circle of Life"),
-        gecko: new Race("gecko", "Gecko", false, "", "No Savings"),
-        slitheryn: new Race("slitheryn", "Slitheryn", false, "", "Final Shedding"),
-        sharkin: new Race("sharkin", "Sharkin", true, "Oceanic planet", "Megalodon"),
-        octigoran: new Race("octigoran", "Octigoran", true, "Oceanic planet", "Calamari"),
-        entish: new Race("entish", "Ent", false, "", "Saruman's Revenge"),
-        cacti: new Race("cacti", "Cacti", false, "", "Desert Deserted"),
-        pinguicula: new Race("pinguicula", "Pinguicula", false, "", "Weed Whacker"),
-        sporgar: new Race("sporgar", "Sporgar", false, "", "Fungicide"),
-        shroomi: new Race("shroomi", "Shroomi", false, "", "Bad Trip"),
-        moldling: new Race("moldling", "Moldling", false, "", "Digested"),
-        junker: new Race("junker", "Valdi", true, "Challenge genes unlocked", "Euthanasia"),
-        dryad: new Race("dryad", "Dryad", true, "Forest planet", "Ashes to Ashes"),
-        satyr: new Race("satyr", "Satyr", true, "Forest planet", "Stopped the music"),
-        phoenix: new Race("phoenix", "Phoenix", true, "Volcanic planet", "Snuffed"),
-        salamander: new Race("salamander", "Salamander", true, "Volcanic planet", "Cooled Off"),
-        yeti: new Race("yeti", "Yeti", true, "Tundra planet", "Captured"),
-        wendigo: new Race("wendigo", "Wendigo", true, "Tundra planet", "Soulless Abomination"),
-        tuskin: new Race("tuskin", "Tuskin", true, "Desert planet", "Startled"),
-        kamel: new Race("kamel", "Kamel", true, "Desert planet", "No Oasis"),
-        custom: new Race("custom", "Custom", true, "Custom designed race", "Lab Failure"),
+        antid: new Race("antid", "Antid", alwaysAllowed, "", "Ophiocordyceps Unilateralis"),
+        mantis: new Race("mantis", "Mantis", alwaysAllowed, "", "Praying Unanswered"),
+        scorpid: new Race("scorpid", "Scorpid", alwaysAllowed, "", "Pulmonoscorpius"),
+        human: new Race("human", "Human", alwaysAllowed, "", "Homo Adeadus"),
+        orc: new Race("orc", "Orc", alwaysAllowed, "", "Outlander"),
+        elven: new Race("elven", "Elf", alwaysAllowed, "", "The few, the proud, the dead"),
+        troll: new Race("troll", "Troll", alwaysAllowed, "", "Bad Juju"),
+        ogre: new Race("ogre", "Ogre", alwaysAllowed, "", "Too stupid to live"),
+        cyclops: new Race("cyclops", "Cyclops", alwaysAllowed, "", "Blind Ambition"),
+        kobold: new Race("kobold", "Kobold", alwaysAllowed, "", "Took their candle"),
+        goblin: new Race("goblin", "Goblin", alwaysAllowed, "", "Greed before Need"),
+        gnome: new Race("gnome", "Gnome", alwaysAllowed, "", "Unathletic"),
+        cath: new Race("cath", "Cath", alwaysAllowed, "", "Saber Tooth Tiger"),
+        wolven: new Race("wolven", "Wolven", alwaysAllowed, "", "Dire Wolf"),
+        centaur: new Race("centaur", "Centaur", alwaysAllowed, "", "Ferghana"),
+        balorg: new Race("balorg", "Balorg", demonicAllowed, "Hellscape planet", "Self immolation"),
+        imp: new Race("imp", "Imp", demonicAllowed, "Hellscape planet", "Deal with the devil"),
+        seraph: new Race("seraph", "Seraph", celestialAllowed, "Eden planet", "Fallen Angel"),
+        unicorn: new Race("unicorn", "Unicorn", celestialAllowed, "Eden planet", "Unicorn Burgers"),
+        arraak: new Race("arraak", "Arraak", alwaysAllowed, "", "Way of the Dodo"),
+        pterodacti: new Race("pterodacti", "Pterodacti", alwaysAllowed, "", "Chicxulub"),
+        dracnid: new Race("dracnid", "Dracnid", alwaysAllowed, "", "Desolate Smaug"),
+        tortoisan: new Race("tortoisan", "Tortoisan", alwaysAllowed, "", "Circle of Life"),
+        gecko: new Race("gecko", "Gecko", alwaysAllowed, "", "No Savings"),
+        slitheryn: new Race("slitheryn", "Slitheryn", alwaysAllowed, "", "Final Shedding"),
+        sharkin: new Race("sharkin", "Sharkin", aquaticAllowed, "Oceanic planet", "Megalodon"),
+        octigoran: new Race("octigoran", "Octigoran", aquaticAllowed, "Oceanic planet", "Calamari"),
+        entish: new Race("entish", "Ent", alwaysAllowed, "", "Saruman's Revenge"),
+        cacti: new Race("cacti", "Cacti", alwaysAllowed, "", "Desert Deserted"),
+        pinguicula: new Race("pinguicula", "Pinguicula", alwaysAllowed, "", "Weed Whacker"),
+        sporgar: new Race("sporgar", "Sporgar", alwaysAllowed, "", "Fungicide"),
+        shroomi: new Race("shroomi", "Shroomi", alwaysAllowed, "", "Bad Trip"),
+        moldling: new Race("moldling", "Moldling", alwaysAllowed, "", "Digested"),
+        junker: new Race("junker", "Valdi", neverAllowed, "Challenge genes unlocked", "Euthanasia"),
+        dryad: new Race("dryad", "Dryad", feyAllowed, "Forest planet", "Ashes to Ashes"),
+        satyr: new Race("satyr", "Satyr", feyAllowed, "Forest planet", "Stopped the music"),
+        phoenix: new Race("phoenix", "Phoenix", heatAllowed, "Volcanic planet", "Snuffed"),
+        salamander: new Race("salamander", "Salamander", heatAllowed, "Volcanic planet", "Cooled Off"),
+        yeti: new Race("yeti", "Yeti", polarAllowed, "Tundra planet", "Captured"),
+        wendigo: new Race("wendigo", "Wendigo", polarAllowed, "Tundra planet", "Soulless Abomination"),
+        tuskin: new Race("tuskin", "Tuskin", sandAllowed, "Desert planet", "Startled"),
+        kamel: new Race("kamel", "Kamel", sandAllowed, "Desert planet", "No Oasis"),
+        custom: new Race("custom", "Custom", neverAllowed, "Custom designed race", "Lab Failure"),
     }
 
     /** @type {Race[]} */
@@ -5440,7 +5479,6 @@
         minimumMoneyAllowed: 0,
         
         lastStorageBuildCheckLoop: 0,
-        lastSmelterCheckLoop: 0,
         
         goal: "Standard",
 
@@ -5584,15 +5622,13 @@
         },// weak_mastery
 
         /** @type {Race[][]} */
-        raceGroupAchievementList: [ [] ],
+        raceGroupAchievementList: [],
         /** @type {ChallengeEvolutionAction[]} */
         evolutionChallengeList: [],
 
         /** @type {Race} */
         evolutionTarget: null,
         resetEvolutionTarget: false,
-        /** @type {Race} */
-        evolutionFallback: null,
         universeTarget: 'none',
         
         cityBuildings: {
@@ -6287,6 +6323,8 @@
     function resetEvolutionSettings() {
         settings.userUniverseTargetName = "none";
         settings.userEvolutionTargetName = "auto";
+        settings.evolutionIgnore = {};
+        settings.evolutionBackup = false;
         settings.challenge_plasmid = false;
         settings.challenge_trade = false;
         settings.challenge_craft = false;
@@ -7179,6 +7217,8 @@
     function updateStandAloneSettings() {
         settings['scriptName'] = "TMVictor";
 
+        addSetting("evolutionIgnore", {});
+
         addSetting("storageLimitPreMad", true);
         addSetting("arpaBuildIfStorageFull", true);
         addSetting("arpaBuildIfStorageFullCraftableMin", 50000);
@@ -7357,17 +7397,8 @@
             state.resetEvolutionTarget = false;
         }
 
-        // If the user has specified a target evolution then use that
-        if (state.evolutionTarget === null && settings.userEvolutionTargetName != "auto") {
-            state.evolutionTarget = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
-            state.evolutionFallback = races.antid;
-
-            state.log.logSuccess(loggingTypes.special, `Attempting user chosen evolution of ${state.evolutionTarget.name}.`);
-        } else if (state.evolutionTarget === null) {
-            // User has automatic race selection enabled - Antids or autoAchievements
-            state.evolutionTarget = races.antid;
-            state.evolutionFallback = races.antid;
-
+        if (state.evolutionTarget === null) {
+            // Try to pick race for achievment first
             if (settings.autoAchievements) {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
                 let achievementLevel = 1;
@@ -7380,16 +7411,19 @@
                 }
 
                 let targetedGroup = { group: null, race: null, remainingPercent: 0 };
-                let fallbackGroup = { group: null, race: null, remainingPercent: 0 };
 
                 for (let i = 0; i < state.raceGroupAchievementList.length; i++) {
+                    // Skip if we already tried that group, and failed
+                    if (settings.evolutionBackup && settings.evolutionIgnore[i]) {
+                      continue;
+                    }
                     const raceGroup = state.raceGroupAchievementList[i];
                     let remainingAchievements = 0;
                     let remainingRace = null;
                     
                     for (let j = 0; j < raceGroup.length; j++) {
                         const race = raceGroup[j];
-                        if (!race.isMadAchievementUnlocked(achievementLevel) && !race.isEvolutionConditional) { // Just ignore conditional races for now
+                        if (!race.isMadAchievementUnlocked(achievementLevel) && race.evolutionCondition()) { // Pick races who met conditions
                             remainingRace = race;
                             remainingAchievements++;
                         }
@@ -7404,19 +7438,24 @@
                         targetedGroup.race = remainingRace;
                         targetedGroup.remainingPercent = remainingPercent;
                     }
-
-                    // Just in case the targeted race has a condition attached (eg. acquatic requires an ocean world) then have a fallback... just in case
-                    if (remainingPercent > fallbackGroup.remainingPercent && !remainingRace.isEvolutionConditional) {
-                        fallbackGroup.group = raceGroup;
-                        fallbackGroup.race = remainingRace;
-                        fallbackGroup.remainingPercent = remainingPercent;
-                    }
                 }
 
                 if (targetedGroup.group != null) { state.evolutionTarget = targetedGroup.race; }
-                if (fallbackGroup.group != null) { state.evolutionFallback = fallbackGroup.race; }
             }
 
+            // Still no target. autoAchievements either disabled, or failed to pick race. Checking user specified race
+            if (state.evolutionTarget === null && settings.userEvolutionTargetName != "auto") {
+                let userRace = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
+                if (userRace.evolutionCondition()){
+                    // Race specified, and condition is met
+                    state.evolutionTarget = userRace
+                }
+            }
+
+            // Still no target. Fallback to antid.
+            if (state.evolutionTarget === null) {
+                state.evolutionTarget = races.antid;
+            }
             state.log.logSuccess(loggingTypes.special, `Attempting evolution of ${state.evolutionTarget.name}.`);
         }
 
@@ -7457,16 +7496,6 @@
                 } else {
                     // Our path is unlocked but we can't click it yet
                     break;
-                }
-            }
-        }
-
-        // If we can't find our targeted evolution then use the fallback (eg. our target is an Aquatic race but we're not on an ocean planet)
-        if (!targetedEvolutionFound && state.evolutionTarget.isEvolutionConditional) {
-            for (let i = 0; i < state.evolutionFallback.evolutionTree.length; i++) {
-                if (state.evolutionFallback.evolutionTree[i].click(1)) {
-                    // If we successfully click the action then return to give the ui some time to refresh
-                    return;
                 }
             }
         }
@@ -8326,12 +8355,12 @@
                     return;
                 }
 
-                let remainingRateOfChange = fuel.productionCost.resource.calculatedRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * fuel.productionCost.quantity);
-
-                while (remainingSmelters > 0 && remainingRateOfChange - fuel.productionCost.quantity > fuel.productionCost.minRateOfChange) {
-                    fuel.required++;
-                    remainingRateOfChange -= fuel.productionCost.quantity;
-                    remainingSmelters --;
+                let remainingRateOfChange = fuel.productionCost.resource.calculatedRateOfChange - fuel.productionCost.minRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * fuel.productionCost.quantity);
+                let affordableAmount = Math.floor(remainingRateOfChange / fuel.productionCost.quantity);
+                let maxAllowedUnits = Math.min(affordableAmount, remainingSmelters);
+                if (maxAllowedUnits > 0) {
+                    fuel.required += maxAllowedUnits;
+                    remainingSmelters -= maxAllowedUnits;
                 }
             });
 
@@ -8353,87 +8382,33 @@
         if (game.global.race['steelen']) {
             return; // can't use the smelter in the Steelen challenge
         }
-        
-        // Adjust steel production
-        let steelAdjustment = 0;
 
-        if (state.lastSmelterCheckLoop === 0 || (state.lastSmelterCheckLoop + 30 <= state.loopCounter)) {
-            // We've already got our cached values so just check if there is any need to change our ratios
-            steelAdjustment = determineSteelAdjustment();
-            state.lastSmelterCheckLoop = state.loopCounter;
-        } else {
-            let steelSmeltingConsumption = smelter.smeltingConsumption[SmelterSmeltingTypes.Steel];
-            for (let i = 0; i < steelSmeltingConsumption.length; i++) {
-                let productionCost = steelSmeltingConsumption[i];
-                
-                if (productionCost.resource.calculatedRateOfChange < productionCost.minRateOfChange
-                        && productionCost.resource.storageRatio < 0.5
-                        && smelter.smeltingCount(SmelterSmeltingTypes.Steel) > 0) {
-                    steelAdjustment = -2;
-                    break;
-                }
-            }
-        }
-
-        if (steelAdjustment > 0) {
-            state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Steel, steelAdjustment);
-        }
-
-        if (steelAdjustment < 0) {
-            state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Iron, steelAdjustment * -1);
-        }
-    }
-
-    function determineSteelAdjustment() {
         let smelterIronCount = state.cityBuildings.Smelter.smeltingCount(SmelterSmeltingTypes.Iron);
         let smelterSteelCount = state.cityBuildings.Smelter.smeltingCount(SmelterSmeltingTypes.Steel);
-
-        // The number of buildings hasn't changed so check if we need to adjust. Otherwise continue to updating our numbers
         let maxAllowedSteel = state.cityBuildings.Smelter.maxOperating;
-        let currentAvaiableRateOfChange = [];
-        let steelSmeltingConsumption = state.cityBuildings.Smelter.smeltingConsumption[SmelterSmeltingTypes.Steel];
 
         // We only care about steel. It isn't worth doing a full generic calculation here
         // Just assume that smelters will always be fueled so Iron smelting is unlimited
         // We want to work out the maximum steel smelters that we can have based on our resource consumption
+        let steelSmeltingConsumption = state.cityBuildings.Smelter.smeltingConsumption[SmelterSmeltingTypes.Steel];
         for (let i = 0; i < steelSmeltingConsumption.length; i++) {
             let productionCost = steelSmeltingConsumption[i];
-            currentAvaiableRateOfChange.push(productionCost.resource.calculatedRateOfChange);
+            let remainingRateOfChange = productionCost.resource.calculatedRateOfChange - productionCost.minRateOfChange + (productionCost.quantity * smelterSteelCount);
+            let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
+            maxAllowedSteel = Math.min(maxAllowedSteel, affordableAmount);
         }
 
-        for (let i = 0; i < steelSmeltingConsumption.length; i++) {
-            let productionCost = steelSmeltingConsumption[i];
-            currentAvaiableRateOfChange[i] += productionCost.quantity * smelterSteelCount;
-            let maxAllowedForProductionCost = Math.floor((currentAvaiableRateOfChange[i] - productionCost.minRateOfChange) / productionCost.quantity);
-            maxAllowedSteel = Math.min(maxAllowedSteel, maxAllowedForProductionCost);
+        // Yes, it can devide on zero, and get Infinity. That's fine.
+        let ironTicksToFull = (resources.Iron.maxQuantity - resources.Iron.currentQuantity) / resources.Iron.calculatedRateOfChange;
+        let steelTicksToFull = (resources.Steel.maxQuantity - resources.Steel.currentQuantity) / resources.Steel.calculatedRateOfChange;
 
-            if (maxAllowedForProductionCost < maxAllowedSteel) {
-                maxAllowedSteel = maxAllowedForProductionCost;
-            }
+        if (smelterSteelCount > maxAllowedSteel || ironTicksToFull > steelTicksToFull && smelterSteelCount > 0) {
+          state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Iron, 1);
         }
 
-        if (maxAllowedSteel < 0) { maxAllowedSteel = 0; }
-
-        // Now figure out how many steel smelters we want regardless of resource consumption
-        let desiredSteelCount = state.cityBuildings.Smelter.maxOperating;
-
-        if (state.cityBuildings.Cottage.count < 15) {
-            // half to steel with any remainder going to iron
-            desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.maxOperating / 2);
-        } else if (state.cityBuildings.CoalMine.count < 10) {
-            // two thirds to steel with any remainder going to iron
-            desiredSteelCount = Math.ceil(state.cityBuildings.Smelter.maxOperating * 2 / 3);
-        } else if (resources.Iron.calculatedRateOfChange > 100 || resources.Iron.storageRatio > 0.99) {
-            desiredSteelCount = state.cityBuildings.Smelter.maxOperating;
-        } else if (smelterIronCount >= 2) {
-            desiredSteelCount = state.cityBuildings.Smelter.maxOperating - 2;
+        if (smelterSteelCount < maxAllowedSteel && steelTicksToFull > ironTicksToFull && smelterIronCount > 0) {
+          state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Steel, 1);
         }
-
-        // We'll take the minium of our desired and maximum allowed steel
-        if (desiredSteelCount > maxAllowedSteel) { desiredSteelCount = maxAllowedSteel; }
-        let adjustmentToSteelCount = desiredSteelCount - smelterSteelCount;
-
-        return adjustmentToSteelCount;
     }
 
     //#endregion Auto Smelter
@@ -9117,7 +9092,6 @@
             }
 
             if (building === state.cityBuildings.CoalPower) {
-                // I'd like to check if we are in a "no plasmids" run but not sure how... so check manual crafting instead
                 if (!isLowPlasmidCount()) {
                     if (buildIfEnoughProduction(building, resources.Coal, 2.35)) {
                         return;
@@ -9913,6 +9887,7 @@
                                 //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " current money per second: " + currentMoneyPerSecond);
                                 requiredTradeRoutes[resourceToTrade.index]++;
                                 requiredTradeRoutes[i] = currentRequired;
+                                resource.calculatedRateOfChange += resource.tradeRouteQuantity;
                                 addedTradeRoute = true;
 
                                 if (requiredTradeRoutes[resourceToTrade.index] === resourceToTrade.requiredTradeRoutes) {
@@ -9972,6 +9947,35 @@
         if (game.global.race.species === speciesProtoplasm) {
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
+            // Chech what we got
+            if (settings.autoEvolution && settings.autoAchievements && settings.evolutionBackup){
+                let a_level = 1;
+                if (game.global.race['no_plasmid'] || game.global.race['weak_mastery']){ a_level++; }
+                if (game.global.race['no_trade']){ a_level++; }
+                if (game.global.race['no_craft']){ a_level++; }
+                if (game.global.race['no_crispr']){ a_level++; }
+
+                let newRace = races[game.global.race.species];
+                if (newRace.isMadAchievementUnlocked(a_level)) {
+                    let raceGroup = state.raceGroupAchievementList.findIndex(group => group.includes(newRace));
+
+                    if (!settings.evolutionIgnore[raceGroup]) {
+                      state.goal = "GameOverMan";
+                      state.log.logSuccess(loggingTypes.special, `${newRace} achievment already earned, ignoring group, and restoring backup.`);
+
+                      // Restoring backup reloads page, so we need to store list of ignored groups in settings
+                      settings.evolutionIgnore[raceGroup] = true;
+                      updateSettingsFromState();
+                      document.querySelector(".importExport .right").click();
+                      return;
+                    } else {
+                      // Group already ignored - probably we tried all available options, and using fallback race now.
+                      state.log.logSuccess(loggingTypes.special, `Couldn't select race with unearned achievements. Continue with ${newRace}.`);
+                    }
+                }
+            }
+            // Succesfully evolved, clear ignore list
+            settings.evolutionIgnore = {};
             state.goal = "Standard";
             updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
         }
@@ -10948,8 +10952,8 @@
         }
 
         let race = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
-        if (race !== null && race !== undefined && race.isEvolutionConditional) {
-            document.getElementById("script_race_warning").textContent = "Warning! Only choose if you meet requirements: " + race.evolutionConditionText;
+        if (race !== null && race !== undefined && race.evolutionConditionText !== '') {
+            document.getElementById("script_race_warning").textContent = "Warning! This race have special requirements: " + race.evolutionConditionText + ". This condition is currently " + (race.evolutionCondition() ? "met." : "not met.");
         }
 
         selectNode.on('change', function() {
@@ -10960,8 +10964,8 @@
             //console.log("Chosen evolution target of " + value);
             
             let race = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
-            if (race !== null && race !== undefined && race.isEvolutionConditional) {
-                document.getElementById("script_race_warning").textContent = "Warning! Only choose if you meet requirements: " + race.evolutionConditionText;
+            if (race !== null && race !== undefined && race.evolutionConditionText !== '') {
+                document.getElementById("script_race_warning").textContent = "Warning! This race have special requirements: " + race.evolutionConditionText + ". This condition is currently " + (race.evolutionCondition() ? "met." : "not met.");
             } else {
                 document.getElementById("script_race_warning").textContent = "";
             }
@@ -10973,6 +10977,7 @@
             content.style.height = content.offsetHeight + "px"
         });
 
+        addStandardSectionSettingsToggle(currentNode, "evolutionBackup", "Restore Backups", "If autoAchievements enabled restore last backup when evolve as a race with already earned MAD achievement.");
         // Challenges
         addStandardSectionSettingsToggle(currentNode, "challenge_plasmid", "No Plasmids", "Challenge mode - no plasmids");
         addStandardSectionSettingsToggle(currentNode, "challenge_mastery", "Weak Mastery", "Challenge mode - weak mastery");
@@ -13409,7 +13414,7 @@
         let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
         let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" title="Enable selling of this resource. When to sell is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">sell</span><span class="state"></span></label>');
         let toggleTradeFor = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" title="Enable trading for this resource. Max routes is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade for</span><span class="state"></span></label>');
-        let toggleTradeAway = $('<label id="script_tsell1_' +  resource.id + '" tabindex="0" title="Enable trading this resource away. Max routes is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade away</span><span class="state"></span></label>');
+        let toggleTradeAway = $('<label id="script_tsell1_' +  resource.id + '" tabindex="0" title="Enable trading this resource away. Min income is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade away</span><span class="state"></span></label>');
         marketRow.append(toggleBuy);
         marketRow.append(toggleSell);
         marketRow.append(toggleTradeFor);
@@ -13493,8 +13498,7 @@
     //#region Utility Functions
 
     function isNoPlasmidChallenge() {
-        // This isn't a good way to detect this but it will do for now
-        return !state.jobManager.canManualCraft()
+        return game.global.race['no_plasmid'] > 0;
     }
 
     function isLowPlasmidCount() {
@@ -13562,7 +13566,7 @@
      */
     function getRaceId() {
         
-        let raceNameNode = document.querySelector('#race .column > span');
+        let raceNameNode = document.querySelector('#race .name');
         if (raceNameNode === null) {
             return "";
         }
