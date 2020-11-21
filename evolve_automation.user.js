@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.10
+// @version      3.2.1.11
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -16,21 +16,20 @@
 // This script will NOT WORK WITH THE ORIGINAL VERSION OF THE GAME. It will only work with the scripting edition which can be found at:
 // https://tmvictor.github.io/Evolve-Scripting-Edition/
 //
-// This script forked from TMVictor's script version 3.2.1. Original link: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da
+// This script forked from TMVictor's script version 3.2.1. Original script: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da
 //
 // Changes from original version:
+//   Added autoBuild weighting, script can wait for more resources to buy prioritized buildings, instead of getting cheapest at first opportunity. Just researched(buildable, enabled, and with count==0) buildings have increased weight, encouraging script to get new production going as soon as possible. You can change in setting whether script should avoid wasting resources, or wait for target building even if something overflowing.
+//   Pre-mad autoCraft doesn't use resources such greedy, as it used to do. It crafts either exactly needed amount, or use regular 0.9 ratio for surplus resources. And it also will lower wrought iron ratio for first level of coal mine, to get coal demanding researches sooner.
+//   You can enable buying and selling of same resources at once, depends of current ratios. Same for routes.
+//   autoMarket will also import steel and titanium in amount required for their producing researches, once those resources unlocked. Setting trigger for hunter process is recommended.
+//   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
+//   Optimized performance in few places(Trigges doesn't have 1k DOM elements each anymore, script doesn't constantly fire 50ms timer for callbacks, etc), fixed some bugs(Market gui not refreshing on reset, trading resurces before marker actually unlocked, etc), alter some GUIs(Tooltips for script options, toggles for trading resources away on market page, etc), and such. Probably added some new bugs :)
+//   Added option to restore backup after evolution, and try another group, if started with a race who already earned MAD achievement.
+//   autoAchievements now check and pick conditional races.
+//   Rewrote autoSmelter logic. Now it tries to balance iron and steel to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
 //
-//  Added autoBuild weighting, script can wait for more resources to buy prioritized buildings, instead of getting cheapest at first opportunity. Just researched(buildable, enabled, and with count==0) buildings have increased weight, encouraging script to get new production going as soon as possible. You can change in setting whether script should avoid wasting resources, or wait for target building even if something overflowing.
-//  Pre-mad autoCraft doesn't use resources such greedy, as it used to do. It crafts either exactly needed amount, or use regular 0.9 ratio for surplus resources. And it also will lower ratio for first level of coal mine, to get coal demanding researches sooner.
-//  autoMarket will import 25 pieces of steel for crucible research, once you'll get your first piece from trading(unless you've got enought from raid)
-//  You can enable buying and selling of same resources at once, depends of current ratios. Same for routes.
-//  Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
-//  Optimized performance in few places(Trigges doesn't have 1k DOM elements each anymore, script doesn't constantly fire 50ms timer for callbacks, etc), fixed some bugs(Market gui not refreshing on reset, trading resurces before marker actually unlocked, etc), alter some GUIs(Tooltips for script options, toggles for trading resources away on market page, etc), and such. Probably added some new bugs :)
-//  Added option to restore backup after evolution, and try another group, if started with a race who already earned MAD achievement.
-//  autoAchievements now check and pick conditional races.
-//  Rewrote autoSmelter logic. Now it tries to balance iron and steel to numbers where both of resources will be full at same time(assuming you can afford it, if not - it'll try it best to set as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to such resource, and vice versa.
-//
-//  And, of course, you can do whatever you want with my changes. Fork further, backport any changes back(no credits required). Whatever.
+// And, of course, you can do whatever you want with my changes. Fork further, backport any patches back(no credits required). Whatever.
 
 //@ts-check
 (function($) {
@@ -1389,6 +1388,17 @@
             }
 
             return this.instance !== undefined && this.instance.hasOwnProperty("diff") ? this.instance.diff : 0;
+        }
+
+        get timeToFull() {
+            let missingAmount = this.maxQuantity - this.currentQuantity;
+            if (missingAmount <= 0) {
+                return 0; // Already full.
+            }
+            if (this.calculatedRateOfChange === 0) {
+                return Infinity; // Won't ever fill with current rate.
+            }
+            return missingAmount / this.calculatedRateOfChange;
         }
 
         //#endregion Standard resource
@@ -8355,8 +8365,15 @@
                     return;
                 }
 
-                let remainingRateOfChange = fuel.productionCost.resource.calculatedRateOfChange - fuel.productionCost.minRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * fuel.productionCost.quantity);
-                let affordableAmount = Math.floor(remainingRateOfChange / fuel.productionCost.quantity);
+                let productionCost = fuel.productionCost;
+                let resource = productionCost.resource;
+
+                let remainingRateOfChange = resource.calculatedRateOfChange - productionCost.minRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * productionCost.quantity);
+                // Add trading resources, if they can be reclaimed
+                if (settings.autoMarket && resource.autoTradeSellEnabled && resource.currentTradeRoutes < 0) {
+                    remainingRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
+                }
+                let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
                 let maxAllowedUnits = Math.min(affordableAmount, remainingSmelters);
                 if (maxAllowedUnits > 0) {
                     fuel.required += maxAllowedUnits;
@@ -8393,22 +8410,34 @@
         let steelSmeltingConsumption = state.cityBuildings.Smelter.smeltingConsumption[SmelterSmeltingTypes.Steel];
         for (let i = 0; i < steelSmeltingConsumption.length; i++) {
             let productionCost = steelSmeltingConsumption[i];
-            let remainingRateOfChange = productionCost.resource.calculatedRateOfChange - productionCost.minRateOfChange + (productionCost.quantity * smelterSteelCount);
+            let resource = productionCost.resource;
+
+            let remainingRateOfChange = resource.calculatedRateOfChange - productionCost.minRateOfChange + (smelterSteelCount * productionCost.quantity);
+            // Add trading resources, if they can be reclaimed
+            if (settings.autoMarket && resource.autoTradeSellEnabled && resource.currentTradeRoutes < 0) {
+                remainingRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
+            }
             let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
             maxAllowedSteel = Math.min(maxAllowedSteel, affordableAmount);
         }
 
-        // Yes, it can devide on zero, and get Infinity. That's fine.
-        let ironTicksToFull = (resources.Iron.maxQuantity - resources.Iron.currentQuantity) / resources.Iron.calculatedRateOfChange;
-        let steelTicksToFull = (resources.Steel.maxQuantity - resources.Steel.currentQuantity) / resources.Steel.calculatedRateOfChange;
+        let ironTicksToFull = resources.Iron.timeToFull;
+        let steelTicksToFull = resources.Steel.timeToFull;
 
-        if (smelterSteelCount > maxAllowedSteel || ironTicksToFull > steelTicksToFull && smelterSteelCount > 0) {
-          state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Iron, 1);
+        // We have more steel than we can afford OR iron income is too low
+        if (smelterSteelCount > maxAllowedSteel || smelterSteelCount > 0 && ironTicksToFull > steelTicksToFull) {
+            state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Iron, 1);
         }
 
-        if (smelterSteelCount < maxAllowedSteel && steelTicksToFull > ironTicksToFull && smelterIronCount > 0) {
-          state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Steel, 1);
+        // We can afford more steel AND either steel income is too low OR both steel and iron full, but we can use steel smelters to increase titanium income
+        if (smelterSteelCount < maxAllowedSteel && smelterIronCount > 0 &&
+              (steelTicksToFull > ironTicksToFull) ||
+              (steelTicksToFull === 0 && ironTicksToFull === 0 && isResearchUnlocked("hunter_process") && resources.Titanium.timeToFull > 0)) {
+            state.cityBuildings.Smelter.increaseSmelting(SmelterSmeltingTypes.Steel, 1);
         }
+
+        // It's possible to also remove steel smelters when when we have nothing to produce, to save some coal
+        // Or even disable them completely. But it doesn't worth it. Let it stay as it is, without jerking around
     }
 
     //#endregion Auto Smelter
@@ -8974,6 +9003,7 @@
         }
 
         //Uses exposed action handlers, bypassing vue - they much faster, and that's important with a lot of calls
+        //Clicks only up to full storage, but calculatedRateOfChange increased by full amount, so script will know exact number of surplus
         let resPerClick = getResourcesPerClick();
         if (state.cityBuildings.Food.isClickable()){
            let amount = Math.min((resources.Food.maxQuantity - resources.Food.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8981,6 +9011,7 @@
            for (var i = 0; i < amount; i++) {
              food.action();
            }
+           resources.Food.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Lumber.isClickable()){
            let amount = Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8988,6 +9019,7 @@
            for (var i = 0; i < amount; i++) {
              lumber.action();
            }
+           resources.Lumber.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Stone.isClickable()){
            let amount = Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8995,6 +9027,7 @@
            for (var i = 0; i < amount; i++) {
              stone.action();
            }
+           resources.Stone.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Slaughter.isClickable()){
            let amount = Math.min(Math.max(resources.Lumber.maxQuantity - resources.Lumber.currentQuantity, resources.Food.maxQuantity - resources.Food.currentQuantity, resources.Furs.maxQuantity - resources.Furs.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -9002,6 +9035,9 @@
            for (var i = 0; i < amount; i++) {
              slaughter.action();
            }
+           resources.Lumber.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
+           resources.Food.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
+           resources.Furs.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
         }
     }
     
@@ -9816,15 +9852,26 @@
         let minimumAllowedMoneyPerSecond = Math.max(settings.tradeRouteMinimumMoneyPerSecond, settings.tradeRouteMinimumMoneyPercentage / 100 * currentMoneyPerSecond);
         //console.log("minimum money per second: " + minimumAllowedMoneyPerSecond + " based on current money per second of " + currentMoneyPerSecond)
 
-        //Force buying steel up to crucible research cost, if we got just one piece
-        if (!isResearchUnlocked("steel") && resources.Steel.isUnlocked() && resources.Steel.currentQuantity < 25){
-          resourcesToTrade.push( {
-              resource: resources.Steel,
-              requiredTradeRoutes: 100,
-              completed: false,
-              index: findArrayIndex(tradableResources, "id", resources.Steel.id),
-          } );
-          minimumAllowedMoneyPerSecond = 0;
+        //Force buying steel up to crucible research cost, if we got just one piece. Unless it's explicitly configured.
+        if (!isResearchUnlocked("steel") && resources.Steel.isUnlocked() && resources.Steel.currentQuantity < 25 && (!resources.Steel.autoTradeBuyEnabled || resources.Steel.autoTradeBuyRoutes === 0)){
+            resourcesToTrade.push( {
+                resource: resources.Steel,
+                requiredTradeRoutes: 100,
+                completed: false,
+                index: findArrayIndex(tradableResources, "id", resources.Steel.id),
+            } );
+            minimumAllowedMoneyPerSecond = 0;
+        }
+
+        //Same for titanium
+        if (!isResearchUnlocked("hunter_process") && resources.Titanium.isUnlocked() && resources.Titanium.currentQuantity < 1020 && (!resources.Titanium.autoTradeBuyEnabled || resources.Titanium.autoTradeBuyRoutes === 0)){
+            resourcesToTrade.push( {
+                resource: resources.Titanium,
+                requiredTradeRoutes: 100,
+                completed: false,
+                index: findArrayIndex(tradableResources, "id", resources.Titanium.id),
+            } );
+            minimumAllowedMoneyPerSecond = 0;
         }
 
         while (findArrayIndex(resourcesToTrade, "completed", false) != -1) {
@@ -9936,7 +9983,10 @@
             } else if (adjustmentTradeRoutes[i] < 0) {
                 m.removeTradeRoutes(resource, -1 * adjustmentTradeRoutes[i]);
             }
+            // Update variables so we can use it later
+            resource.currentTradeRoutes = requiredTradeRoutes[i];
         }
+        resources.Money.calculatedRateOfChange = currentMoneyPerSecond;
     }
 
     //#endregion Auto Trade Specials
@@ -9983,12 +10033,6 @@
         // Initial updates needed each loop
         for (let key in resources) {
             resources[key].calculatedRateOfChange = resources[key].rateOfChange;
-        }
-        if (settings.autoBuild && settings.buildingAlwaysClick) {
-          let ResPerClick = getResourcesPerClick();
-          resources.Food.calculatedRateOfChange += (ResPerClick * settings.buildingClickPerTick);
-          resources.Lumber.calculatedRateOfChange += (ResPerClick * settings.buildingClickPerTick);
-          resources.Stone.calculatedRateOfChange += (ResPerClick * settings.buildingClickPerTick);
         }
         
         if (settings.minimumMoneyPercentage > 0) {
