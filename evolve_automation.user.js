@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.11
+// @version      3.2.1.12
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -22,7 +22,7 @@
 //   Added autoBuild weighting, script can wait for more resources to buy prioritized buildings, instead of getting cheapest at first opportunity. Just researched(buildable, enabled, and with count==0) buildings have increased weight, encouraging script to get new production going as soon as possible. You can change in setting whether script should avoid wasting resources, or wait for target building even if something overflowing.
 //   Pre-mad autoCraft doesn't use resources such greedy, as it used to do. It crafts either exactly needed amount, or use regular 0.9 ratio for surplus resources. And it also will lower wrought iron ratio for first level of coal mine, to get coal demanding researches sooner.
 //   You can enable buying and selling of same resources at once, depends of current ratios. Same for routes.
-//   autoMarket will also import steel and titanium in amount required for their producing researches, once those resources unlocked. Setting trigger for hunter process is recommended.
+//   Trigger can import missing resources via routes. When trigger requirements are met script will set trade routes for missing resources.
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
 //   Optimized performance in few places(Trigges doesn't have 1k DOM elements each anymore, script doesn't constantly fire 50ms timer for callbacks, etc), fixed some bugs(Market gui not refreshing on reset, trading resurces before marker actually unlocked, etc), alter some GUIs(Tooltips for script options, toggles for trading resources away on market page, etc), and such. Probably added some new bugs :)
 //   Added option to restore backup after evolution, and try another group, if started with a race who already earned MAD achievement.
@@ -1391,14 +1391,13 @@
         }
 
         get timeToFull() {
-            let missingAmount = this.maxQuantity - this.currentQuantity;
-            if (missingAmount <= 0) {
+            if (this.storageRatio > 0.999) {
                 return 0; // Already full.
             }
-            if (this.calculatedRateOfChange === 0) {
+            if (this.calculatedRateOfChange <= 0) {
                 return Infinity; // Won't ever fill with current rate.
             }
-            return missingAmount / this.calculatedRateOfChange;
+            return (this.maxQuantity - this.currentQuantity) / this.calculatedRateOfChange;
         }
 
         //#endregion Standard resource
@@ -6774,7 +6773,7 @@
     }
 
     function resetTriggerSettings() {
-
+        settings.triggerRequest = true;
     }
 
     function resetTriggerState() {
@@ -7369,6 +7368,8 @@
 
         addSetting("buildingEnabledAll", false);
         addSetting("buildingStateAll", false);
+
+        addSetting("triggerRequest", true);
 
         // Collapse or expand settings sections
         for (let i = 0; i < settingsSections.length; i++) {
@@ -9849,29 +9850,35 @@
         }
 
         //console.log("current money per second: " + currentMoneyPerSecond);
-        let minimumAllowedMoneyPerSecond = Math.max(settings.tradeRouteMinimumMoneyPerSecond, settings.tradeRouteMinimumMoneyPercentage / 100 * currentMoneyPerSecond);
+        let minimumAllowedMoneyPerSecond = Math.min(Math.max(settings.tradeRouteMinimumMoneyPerSecond, settings.tradeRouteMinimumMoneyPercentage / 100 * currentMoneyPerSecond), resources.Money.maxQuantity - resources.Money.currentQuantity);
         //console.log("minimum money per second: " + minimumAllowedMoneyPerSecond + " based on current money per second of " + currentMoneyPerSecond)
 
-        //Force buying steel up to crucible research cost, if we got just one piece. Unless it's explicitly configured.
-        if (!isResearchUnlocked("steel") && resources.Steel.isUnlocked() && resources.Steel.currentQuantity < 25 && (!resources.Steel.autoTradeBuyEnabled || resources.Steel.autoTradeBuyRoutes === 0)){
-            resourcesToTrade.push( {
-                resource: resources.Steel,
-                requiredTradeRoutes: 100,
-                completed: false,
-                index: findArrayIndex(tradableResources, "id", resources.Steel.id),
-            } );
-            minimumAllowedMoneyPerSecond = 0;
-        }
-
-        //Same for titanium
-        if (!isResearchUnlocked("hunter_process") && resources.Titanium.isUnlocked() && resources.Titanium.currentQuantity < 1020 && (!resources.Titanium.autoTradeBuyEnabled || resources.Titanium.autoTradeBuyRoutes === 0)){
-            resourcesToTrade.push( {
-                resource: resources.Titanium,
-                requiredTradeRoutes: 100,
-                completed: false,
-                index: findArrayIndex(tradableResources, "id", resources.Titanium.id),
-            } );
-            minimumAllowedMoneyPerSecond = 0;
+        // Import resources demanded by trigger
+        if (settings.triggerRequest) {
+          for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
+            let trigger = state.triggerManager.targetTriggers[i];
+            if (trigger.actionType === "research") {
+              let triggerTech = tech[trigger.actionId];
+              if (!triggerTech.isClickable()) {
+                triggerTech.updateResourceRequirements();
+                let techResourceRequirements = triggerTech.resourceRequirements;
+                for (let j = 0; j < techResourceRequirements.length; j++){
+                  let cost = techResourceRequirements[j];
+                  if (cost.resource.currentQuantity < cost.quantity && cost.resource.isTradable){
+                    let amount = Math.ceil((cost.quantity - cost.resource.currentQuantity) / cost.resource.tradeRouteQuantity);
+                    if (!isNaN(amount) && amount > 0) {
+                      resourcesToTrade.push( {
+                          resource: cost.resource,
+                          requiredTradeRoutes: amount,
+                          completed: false,
+                          index: findArrayIndex(tradableResources, "id", cost.resource.id),
+                      } );
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
 
         while (findArrayIndex(resourcesToTrade, "completed", false) != -1) {
@@ -11021,7 +11028,7 @@
             content.style.height = content.offsetHeight + "px"
         });
 
-        addStandardSectionSettingsToggle(currentNode, "evolutionBackup", "Restore Backups", "If autoAchievements enabled restore last backup when evolve as a race with already earned MAD achievement.");
+        addStandardSectionSettingsToggle(currentNode, "evolutionBackup", "Restore Backups", "If autoEvolution and autoAchievements enabled script will restore last backup if evolved as a race with already earned MAD achievement.");
         // Challenges
         addStandardSectionSettingsToggle(currentNode, "challenge_plasmid", "No Plasmids", "Challenge mode - no plasmids");
         addStandardSectionSettingsToggle(currentNode, "challenge_mastery", "Weak Mastery", "Challenge mode - weak mastery");
@@ -11074,7 +11081,7 @@
         let addButton = $('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
         preTableNode.append(addButton);
         $("#script_trigger_add").on("click", addTriggerSetting);
-        //addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
+        addStandardSectionSettingsNumber(preTableNode, "triggerRequest", "Request missing resources", "Once trigger requirements are met, and you have enough storage, script will set the routes to import missing resources to complete task. autoMarket should be enabled for this to work.");
     }
 
     function addTriggerSetting() {
