@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.12
+// @version      3.2.1.13
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -28,6 +28,7 @@
 //   Added option to restore backup after evolution, and try another group, if started with a race who already earned MAD achievement.
 //   autoAchievements now check and pick conditional races.
 //   Rewrote autoSmelter logic. Now it tries to balance iron and steel to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
+//   Restored "researched" trigger condition.
 //
 // And, of course, you can do whatever you want with my changes. Fork further, backport any patches back(no credits required). Whatever.
 
@@ -289,7 +290,8 @@
                 return this.jobOverride.isCraftsman();
             }
 
-            return game.craftCost[this._originalId] !== undefined;
+            // Scripting Edition expose a function, rather than it's result. So we need to actually call it.
+            return game.craftCost()[this._originalId] !== undefined;
         }
         
         get count() {
@@ -4902,7 +4904,7 @@
             }
 
             if (this.type === "tech") {
-                if (this.requirementType === "unlocked") {
+                if (this.actionType === "research") {
                     if (tech[this.actionId].isResearched()) {
                         this.complete = true;
                         return true;
@@ -4916,7 +4918,12 @@
         areRequirementsMet() {
             if (this.type === "tech") {
                 if (this.requirementType === "unlocked") {
-                    if (tech[this.actionId].isUnlocked()) {
+                    if (tech[this.requirementId].isUnlocked()) {
+                        return true;
+                    }
+                }
+                if (this.requirementType === "research") {
+                    if (tech[this.requirementId].isResearched()) {
                         return true;
                     }
                 }
@@ -4935,7 +4942,7 @@
             this.complete = false;
 
             if (this.type === "tech") {
-                this.requirementType = "unlock";
+                this.requirementType = "unlocked";
                 this.requirementId = "club";
                 this.requirementCount = 0;
                 this.actionType = "research";
@@ -4961,10 +4968,16 @@
                 return;
             }
 
+            let oldType = this.requirementType;
             this.requirementType = requirementType;
             this.complete = false;
 
             if (this.type === "tech") {
+                if ((this.requirementType === "unlocked" || this.requirementType === "researched") &&
+                    (oldType === "unlocked" || oldType === "researched")) {
+                    return; // Old ID is fine.
+                }
+
                 if (this.requirementType === "unlocked") {
                     this.requirementId = "club";
                     this.requirementCount = 0;
@@ -4975,10 +4988,10 @@
                 }
 
                 if (this.requirementType === "researched") {
-                    this.requirementId = "";
+                    this.requirementId = "club";
                     this.requirementCount = 0;
-                    this.actionType = "";
-                    this.actionId = "";
+                    this.actionType = "research";
+                    this.actionId = "club";
                     this.actionCount = 0;
                     return;
                 }
@@ -8369,7 +8382,11 @@
                 let productionCost = fuel.productionCost;
                 let resource = productionCost.resource;
 
-                let remainingRateOfChange = resource.calculatedRateOfChange - productionCost.minRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * productionCost.quantity);
+                let remainingRateOfChange = resource.calculatedRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * productionCost.quantity);
+                // No need to preserve minimum income when storage is full
+                if (resource.storageRatio < 0.99) {
+                    remainingRateOfChange -= productionCost.minRateOfChange;
+                }
                 // Add trading resources, if they can be reclaimed
                 if (settings.autoMarket && resource.autoTradeSellEnabled && resource.currentTradeRoutes < 0) {
                     remainingRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
@@ -8413,7 +8430,11 @@
             let productionCost = steelSmeltingConsumption[i];
             let resource = productionCost.resource;
 
-            let remainingRateOfChange = resource.calculatedRateOfChange - productionCost.minRateOfChange + (smelterSteelCount * productionCost.quantity);
+            let remainingRateOfChange = resource.calculatedRateOfChange + (smelterSteelCount * productionCost.quantity);
+            // No need to preserve minimum income when storage is full
+            if (resource.storageRatio < 0.99) {
+                remainingRateOfChange -= productionCost.minRateOfChange;
+            }
             // Add trading resources, if they can be reclaimed
             if (settings.autoMarket && resource.autoTradeSellEnabled && resource.currentTradeRoutes < 0) {
                 remainingRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
@@ -11227,9 +11248,9 @@
             let typeOptionNode = $('<option value = "unlocked"' + selected + '>Unlocked</option>');
             typeSelectNode.append(typeOptionNode);
 
-            // selected = trigger.type === "researched" ? ' selected="selected"' : "";
-            // typeOptionNode = $('<option value = "researched"' + selected + '>Researched</option>');
-            // typeSelectNode.append(typeOptionNode);
+            selected = trigger.requirementType === "researched" ? ' selected="selected"' : "";
+            typeOptionNode = $('<option value = "researched"' + selected + '>Researched</option>');
+            typeSelectNode.append(typeOptionNode);
 
             triggerElement.append(typeSelectNode);
 
@@ -11275,7 +11296,7 @@
               if(ui.item === null){
                 let typedTech = Object.values(tech).find(technology => this.value === technology.title);
                 if (typedTech !== undefined){
-                  ui.item = {label: this.value, value: typedTech};
+                  ui.item = {label: this.value, value: typedTech.id};
                 }
               }
 
