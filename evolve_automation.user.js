@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.13
+// @version      3.2.1.14
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1393,7 +1393,7 @@
         }
 
         get timeToFull() {
-            if (this.storageRatio > 0.999) {
+            if (this.storageRatio > 0.98) {
                 return 0; // Already full.
             }
             if (this.calculatedRateOfChange <= 0) {
@@ -5280,7 +5280,7 @@
             for (let i = 0; i < this.targetTriggers.length; i++) {
                 const targetTrigger = this.targetTriggers[i];
                 //@ts-ignore
-                if (this.costsConflict(targetTrigger.cost, research.definition.cost)) {
+                if (targetTrigger.areRequirementsMet() && this.costsConflict(targetTrigger.cost, research.definition.cost)) {
 
                     //console.log("research " + research.id + " CONFLICTS with target")
                     return true;
@@ -9894,6 +9894,7 @@
                           completed: false,
                           index: findArrayIndex(tradableResources, "id", cost.resource.id),
                       } );
+                      minimumAllowedMoneyPerSecond = 0;
                     }
                   }
                 }
@@ -10034,6 +10035,7 @@
                 if (game.global.race['no_crispr']){ a_level++; }
 
                 let newRace = races[game.global.race.species];
+                console.log("race: " + newRace.name + ", isMadAchievementUnlocked("+a_level+"): " + newRace.isMadAchievementUnlocked(a_level));
                 if (newRace.isMadAchievementUnlocked(a_level)) {
                     let raceGroup = state.raceGroupAchievementList.findIndex(group => group.includes(newRace));
 
@@ -10173,6 +10175,7 @@
 
     function automate() {
         // Setup in the first loop only
+        // console.log("Loop: " + state.loopCounter + ", goal: " + state.goal);
         if (state.loopCounter === 1) {
             initialiseRaces();
 
@@ -10289,8 +10292,11 @@
             autoWhiteholePrestige();
             autoSeederPrestige();
             autoMadPrestige();
+            
+            if (settings.autoFight) {
+              manageSpies();
+            }
 
-            manageSpies();
             if (!massEjectorProcessed) {
                 autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
             }
@@ -11102,7 +11108,7 @@
         let addButton = $('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
         preTableNode.append(addButton);
         $("#script_trigger_add").on("click", addTriggerSetting);
-        addStandardSectionSettingsNumber(preTableNode, "triggerRequest", "Request missing resources", "Once trigger requirements are met, and you have enough storage, script will set the routes to import missing resources to complete task. autoMarket should be enabled for this to work.");
+        addStandardSectionSettingsToggle(preTableNode, "triggerRequest", "Request missing resources", "Once trigger requirements are met, and you have enough storage, script will set the routes to import missing resources to complete task. autoMarket should be enabled for this to work.");
     }
 
     function addTriggerSetting() {
