@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.17
+// @version      3.2.1.18
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -19,28 +19,23 @@
 // This script forked from TMVictor's script version 3.2.1. Original script: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da
 //
 // Changes from original version:
-//   Added autoBuild weighting, script can wait for more resources to buy prioritized buildings, instead of getting cheapest at first opportunity. Just researched(buildable, enabled, and with count==0) buildings have increased weight, encouraging script to get new production going as soon as possible. You can change in setting whether script should avoid wasting resources, or wait for target building even if something overflowing.
-//   Pre-mad autoCraft doesn't use resources such greedy, as it used to do. It crafts either exactly needed amount, or use regular 0.9 ratio for surplus resources. And it also will lower wrought iron ratio for first level of coal mine, to get coal demanding researches sooner.
-//   You can enable buying and selling of same resources at once, depends of current ratios. Same for routes.
-//   Trigger can import missing resources via routes. When trigger requirements are met script will set trade routes for missing resources.
+//   Remade autoBuild, all buildings now can have individual weights, plus dynamic coefficients to weights(like, increasing weights of power plants when you need more energy), plus additional safe-guards checking for resource usage, available support, and such. You can fine-tune script to build what you actually need, and save resources for further constructions.
+//   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
+//   Remade autoCraftsmen, it assigns all crafters to same resource at once, to utilize apprentice bonus, and rotates them between resources aiming to desired ratio of stored resources.
+//   Slightly tuned pre-mad autoCraft, so it won't use resources such greedy, as it used to do. You'll still have resources for everything you need, you just won't stuck with hounders of thousands of plywood... and no lumber to build university.
+//   You can enable buying and selling of same resource at same time, depends on whether you're lacking something, or have a surplus. Works both with batch sell, and routes.
+//   Trigger can import missing resources via routes. When trigger requirements are met script will set trade routes for missing resources. It wull import steel for crucible, titanium for hunter process, uranium for mutual destruction - whatever you need.
+//   Restored "researched" trigger condition, and old "unlocked" condition now actually works too.
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
-//   Optimized performance in few places(Trigges doesn't have 1k DOM elements each anymore, script doesn't constantly fire 50ms timer for callbacks, etc), fixed some bugs(Market gui not refreshing on reset, trading resurces before marker actually unlocked, etc), alter some GUIs(Tooltips for script options, toggles for trading resources away on market page, etc), and such. Probably added some new bugs :)
-//   Added option to restore backup after evolution, and try another group, if started with a race who already earned MAD achievement. (Not very stable due to page reload. Reset evolution settings if you have issues with it)
 //   autoAchievements now check and pick conditional races.
-//   Rewrote autoSmelter logic. Now it tries to balance iron and steel to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
-//   Restored "researched" trigger condition.
-//   Rewrote autoCraftsmen - it assign all crafters to same resource to utilize stacking bonus, switching between resources to keep desired ratio(production tab in settings) between them
-//
+//   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and current implementation. Reset evolution settings if you have issues with it. 
+//   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)//
 // And, of course, you can do whatever you want with my changes. Fork further, backport any patches back(no credits required). Whatever.
 
 //@ts-check
 (function($) {
     'use strict';
-    var settings = {};
-    var jsonSettings = localStorage.getItem('settings');
-    if (jsonSettings !== null) {
-        settings = JSON.parse(jsonSettings);
-    }
+    var settings = JSON.parse(localStorage.getItem('settings')) || {};
 
     var game = null;
 
@@ -460,11 +455,11 @@
          * @param {string} id
          * @param {string} name
          */
-        constructor(id, name) {
+        constructor(id, name, resource) {
             super(id, name);
 
             this._vueBinding = "foundry";
-            this.resource = null;
+            this.resource = resource;
         }
 
         isUnlocked() {
@@ -885,16 +880,16 @@
           let weighting = this._weighting;
 
           // Increase weighting for new buildings
-          if (this.count === 0) { weighting *= 3; }
+          if (this.count === 0) { weighting *= settings.buildingWeightingNew; }
 
           // Increase weighting for power plants, when we missing energy
-          if (resources.Power.currentQuantity < 1 && this.powered < 0) { weighting *= 3; }
+          if (resources.Power.currentQuantity < 1 && this.powered < 0) { weighting *= settings.buildingWeightingNeedfulPowerPlant; }
 
           // Reduce weighting for power plants, when we have surplus energy
-          if (resources.Power.currentQuantity > 1 && this.powered < 0) { weighting *= 0.1; }
+          if (resources.Power.currentQuantity > 1 && this.powered < 0) { weighting *= settings.buildingWeightingUselessPowerPlant; }
 
           // Reduce weighting for powered buildings, when we missing energy
-          if (resources.Power.currentQuantity < 1 && this.powered > 0) { weighting *= 0.5; }
+          if (resources.Power.currentQuantity < 1 && this.powered > 0) { weighting *= settings.buildingWeightingUnderpowered; }
 
           return weighting;
         }
@@ -5541,14 +5536,14 @@
             HellSurveyor: new Job("hell_surveyor", "Hell Surveyor"),
 
             // Crafting jobs
-            Plywood: new CraftingJob("Plywood", "Plywood Crafter"),
-            Brick: new CraftingJob("Brick", "Brick Crafter"),
-            WroughtIron: new CraftingJob("Wrought_Iron", "Wrought Iron Crafter"),
-            SheetMetal: new CraftingJob("Sheet_Metal", "Sheet Metal Crafter"),
-            Mythril: new CraftingJob("Mythril", "Mythril Crafter"),
-            Aerogel: new CraftingJob("Aerogel", "Aerogel Crafter"),
-            Nanoweave: new CraftingJob("Nanoweave", "Nanoweave Crafter"),
-            Scarletite: new CraftingJob("Scarletite", "Scarletite Crafter"),
+            Plywood: new CraftingJob("Plywood", "Plywood Crafter", resources.Plywood),
+            Brick: new CraftingJob("Brick", "Brick Crafter", resources.Brick),
+            WroughtIron: new CraftingJob("Wrought_Iron", "Wrought Iron Crafter", resources.Wrought_Iron),
+            SheetMetal: new CraftingJob("Sheet_Metal", "Sheet Metal Crafter", resources.Sheet_Metal),
+            Mythril: new CraftingJob("Mythril", "Mythril Crafter", resources.Mythril),
+            Aerogel: new CraftingJob("Aerogel", "Aerogel Crafter", resources.Aerogel),
+            Nanoweave: new CraftingJob("Nanoweave", "Nanoweave Crafter", resources.Nanoweave),
+            Scarletite: new CraftingJob("Scarletite", "Scarletite Crafter", resources.Scarletite),
         },
 
         evolutions: {
@@ -5906,9 +5901,6 @@
     };
 
     function initialiseState() {
-        resetMarketState();
-        resetStorageState();
-
         // Construct craftable resource list
         state.craftableResourceList.push(resources.Plywood);
         resources.Plywood.resourceRequirements.push(new ResourceRequirement(resources.Lumber, 100));
@@ -5936,21 +5928,13 @@
         resources.Crates.resourceRequirements.push(new ResourceRequirement(resources.Plywood, 10));
         resources.Containers.resourceRequirements.push(new ResourceRequirement(resources.Steel, 125));
 
-        state.jobs.Plywood.resource = resources.Plywood;
         state.jobManager.addCraftingJob(state.jobs.Plywood);
-        state.jobs.Brick.resource = resources.Brick;
         state.jobManager.addCraftingJob(state.jobs.Brick);
-        state.jobs.WroughtIron.resource = resources.Wrought_Iron;
         state.jobManager.addCraftingJob(state.jobs.WroughtIron);
-        state.jobs.SheetMetal.resource = resources.Sheet_Metal;
         state.jobManager.addCraftingJob(state.jobs.SheetMetal);
-        state.jobs.Mythril.resource = resources.Mythril;
         state.jobManager.addCraftingJob(state.jobs.Mythril);
-        state.jobs.Aerogel.resource = resources.Aerogel;
         state.jobManager.addCraftingJob(state.jobs.Aerogel);
-        state.jobs.Nanoweave.resource = resources.Nanoweave;
         state.jobManager.addCraftingJob(state.jobs.Nanoweave);
-        state.jobs.Scarletite.resource = resources.Scarletite;
         state.jobManager.addCraftingJob(state.jobs.Scarletite);
 
         resetJobState();
@@ -6087,9 +6071,13 @@
         state.evolutionChallengeList.push(state.evolutions.EmField);
         state.evolutionChallengeList.push(state.evolutions.Cataclysm);
 
+        resetMarketState();
+        resetStorageState();
         resetProjectState();
         resetWarState();
         resetProductionState();
+        resetBuildingState();
+        resetMinorTraitState();
     }
 
     function initialiseRaces() {
@@ -6330,7 +6318,7 @@
     }
 
     function resetGeneralSettings() {
-        // None at the moment - moved to government settings
+        settings.genesAssembleGeneAlways = false;
     }
 
     function resetPrestigeSettings() {
@@ -6502,6 +6490,10 @@
         settings.jobLumberWeighting = 50;
         settings.jobQuarryWeighting = 50;
         settings.jobScavengerWeighting = 50;
+
+        for (let i = 0; i < state.Jobs.length; i++){
+            state.Jobs[i].autoJobEnabled = true;
+        }
     }
 
     function resetJobState() {
@@ -6511,14 +6503,6 @@
         state.jobManager.addJobToPriorityList(state.jobs.Lumberjack);
         state.jobManager.addJobToPriorityList(state.jobs.QuarryWorker);
         state.jobManager.addJobToPriorityList(state.jobs.Scavenger);
-        state.jobManager.addJobToPriorityList(state.jobs.Plywood);
-        state.jobManager.addJobToPriorityList(state.jobs.Brick);
-        state.jobManager.addJobToPriorityList(state.jobs.WroughtIron);
-        state.jobManager.addJobToPriorityList(state.jobs.SheetMetal);
-        state.jobManager.addJobToPriorityList(state.jobs.Mythril);
-        state.jobManager.addJobToPriorityList(state.jobs.Aerogel);
-        state.jobManager.addJobToPriorityList(state.jobs.Nanoweave);
-        state.jobManager.addJobToPriorityList(state.jobs.Scarletite);
         state.jobManager.addJobToPriorityList(state.jobs.Entertainer);
         state.jobManager.addJobToPriorityList(state.jobs.Scientist);
         state.jobManager.addJobToPriorityList(state.jobs.Professor);
@@ -6530,20 +6514,19 @@
         state.jobManager.addJobToPriorityList(state.jobs.SpaceMiner);
         state.jobManager.addJobToPriorityList(state.jobs.HellSurveyor);
         state.jobManager.addJobToPriorityList(state.jobs.Priest);
+        state.jobManager.addJobToPriorityList(state.jobs.Plywood);
+        state.jobManager.addJobToPriorityList(state.jobs.Brick);
+        state.jobManager.addJobToPriorityList(state.jobs.WroughtIron);
+        state.jobManager.addJobToPriorityList(state.jobs.SheetMetal);
+        state.jobManager.addJobToPriorityList(state.jobs.Mythril);
+        state.jobManager.addJobToPriorityList(state.jobs.Aerogel);
+        state.jobManager.addJobToPriorityList(state.jobs.Nanoweave);
+        state.jobManager.addJobToPriorityList(state.jobs.Scarletite);
 
         state.jobs.Farmer.breakpointMaxs = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
         state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
         state.jobs.QuarryWorker.breakpointMaxs = [5, 10, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
         state.jobs.Scavenger.breakpointMaxs = [0, 0, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
-
-        state.jobs.SheetMetal.breakpointMaxs = [2, 4, -1];
-        state.jobs.Plywood.breakpointMaxs = [2, 4, -1];
-        state.jobs.Brick.breakpointMaxs = [2, 4, -1];
-        state.jobs.WroughtIron.breakpointMaxs = [2, 4, -1];
-        state.jobs.Mythril.breakpointMaxs = [2, 4, -1];
-        state.jobs.Aerogel.breakpointMaxs = [1, 1, 1];
-        state.jobs.Nanoweave.breakpointMaxs = [1, 1, 1];
-        state.jobs.Scarletite.breakpointMaxs = [1, 1, 1];
 
         state.jobs.Scientist.breakpointMaxs = [3, 6, -1];
         state.jobs.Professor.breakpointMaxs = [6, 10, -1];
@@ -6562,6 +6545,19 @@
         settings.buildingBuildIfStorageFull = true;
         settings.buildingAlwaysClick = false;
         settings.buildingClickPerTick = 50;
+        settings.buildingWeightingNew = 3;
+        settings.buildingWeightingUselessPowerPlant = 0.2;
+        settings.buildingWeightingNeedfulPowerPlant = 5;
+        settings.buildingWeightingUnderpowered = 0.5;
+
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
+            const building = state.buildingManager.priorityList[i];
+
+            building.autoBuildEnabled = true;
+            building.autoStateEnabled = true;
+            building._autoMax = ( building.settingId === "spcdock-probes" ? 4 : -1 );
+            building._weighting = 100;
+        }
     }
 
     function resetBuildingState() {
@@ -6733,17 +6729,6 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedVrCenter);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionMachine);
-
-        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
-            const building = state.buildingManager.priorityList[i];
-
-            if (building.settingId === "spcdock-probes") {
-                building._autoMax = 4;
-            } else {
-                building._autoMax = -1;
-            }
-            building._weighting = 100;
-        }
     }
 
     function resetProjectSettings() {
@@ -6831,8 +6816,6 @@
         });
     }
 
-    initialiseState();
-
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
                             "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed"];
@@ -6840,9 +6823,7 @@
     function updateStateFromSettings() {
         updateStandAloneSettings();
 
-        if (!settings["triggers"]) {
-            settings.triggers = [];
-        }
+        settings.triggers = settings.triggers || [];
 
         state.triggerManager.clearPriorityList();
         settings.triggers.forEach(trigger => {
@@ -7073,15 +7054,7 @@
         }
         state.jobManager.sortByPriority();
 
-        if (!settings.hasOwnProperty('arpa')) {
-            settings.arpa = {
-                //lhc: false,
-                //stock_exchange: false,
-                //monument: false,
-                //launch_facility: false,
-            };
-        }
-
+        settings.arpa = settings.arpa || {};
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
 
@@ -7159,21 +7132,6 @@
 
         settings.triggers = state.triggerManager.priorityList;
 
-        // Remove old building settings... We had to update these with the prefix as well as building ids started to have duplicates
-        for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
-            const building = state.buildingManager.priorityList[i];
-            if (settings.hasOwnProperty('bat' + building.id)) { delete settings['bat' + building.id]; }
-            if (settings.hasOwnProperty('bld_p_' + building.id)) { delete settings['bld_p_' + building.id]; }
-            if (settings.hasOwnProperty('bld_s_' + building.id)) { delete settings['bld_s_' + building.id]; }
-            if (settings.hasOwnProperty('bld_m_' + building.id)) { delete settings['bld_m_' + building.id]; }
-            if (settings.hasOwnProperty('bld_w_' + building.id)) { delete settings['bld_w_' + building.id]; }
-
-            delete settings['bld_p_' + building.id];
-            delete settings['bld_s_' + building.id];
-            delete settings['bld_m_' + building.id];
-            delete settings['bld_w_' + building.id];
-        }
-
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             let campaign = state.warManager.campaignList[i];
             settings['btl_' + campaign.name] = campaign.rating;
@@ -7233,15 +7191,7 @@
             settings['mTrait_p_' + trait.traitName] = trait.priority;
         }
 
-        if (!settings.hasOwnProperty('arpa')) {
-            settings.arpa = {
-                //lhc: false,
-                //stock_exchange: false,
-                //monument: false,
-                //launch_facility: false,
-            };
-        }
-
+        settings.arpa = settings.arpa || {};
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
             settings.arpa[project.id] = project.autoBuildEnabled;
@@ -7418,6 +7368,10 @@
         addSetting("buildingBuildIfStorageFull", true);
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
+        addSetting("buildingWeightingNew", 3);
+        addSetting("buildingWeightingUselessPowerPlant", 0.2);
+        addSetting("buildingWeightingNeedfulPowerPlant", 5);
+        addSetting("buildingWeightingUnderpowered", 0.5);
 
         addSetting("buildingEnabledAll", false);
         addSetting("buildingStateAll", false);
@@ -8059,7 +8013,7 @@
                 if (job.isCraftsman()) {
                     jobsToAssign = 0;
                 }
-                
+
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
                 if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.Money.storageRatio > 0.98) {
                     jobsToAssign = 0;
@@ -9579,10 +9533,14 @@
             numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
         );
 
-        // Just a hack for pre-mad wtihtout limititng storage
-        // TODO: make proper ratios, when to build crates, and adjust them with storageLimitPreMad
-        if (resources.Steel.storageRatio < 0.5 && !settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
-            numberOfContainersWeCanBuild = 0;
+        // Just a hack for pre-mad wtithout limitited storage
+        if (!settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
+          if (resources.Steel.storageRatio < 0.5) {
+              numberOfContainersWeCanBuild = 0;
+          }
+          if (isLumberRace() && resources.Plywood.currentQuantity < 1000) {
+              numberOfCratesWeCanBuild = 0;
+          }
         }
 
         let storageChanges = {
@@ -10164,10 +10122,7 @@
         }
     }
 
-    function initialise() {
-        // Setup in the first loop only
-        initialiseRaces();
-
+    function initialiseScript() {
         let tempTech = {};
         //@ts-ignore
         let technologies = Object.entries(game.actions.tech);
@@ -10179,9 +10134,6 @@
         Object.keys(tempTech).sort().forEach(function(key) {
             tech[key] = tempTech[key];
         });
-
-        resetBuildingState();
-        resetMinorTraitState();
 
         updateStateFromSettings();
         updateSettingsFromState();
@@ -10335,7 +10287,9 @@
             game = window.game;
         }
 
-        initialise();
+        initialiseState();
+        initialiseRaces();
+        initialiseScript();
         setInterval(automate, 1000);
     }
 
@@ -10839,7 +10793,6 @@
         let sectionName = "General";
 
         let resetFunction = function() {
-            //resetGeneralState();
             resetGeneralSettings();
             updateSettingsFromState();
             updateGeneralSettingsContent();
@@ -10876,6 +10829,7 @@
 
         let resetFunction = function() {
             resetPrestigeSettings();
+            updateSettingsFromState();
             updatePrestigeSettingsContent(isMainSettings);
         };
 
@@ -10924,7 +10878,6 @@
         let sectionName = "Government";
 
         let resetFunction = function() {
-            //resetGeneralState();
             resetGovernmentSettings();
             updateSettingsFromState();
             updateGovernmentSettingsContent(isMainSettings);
@@ -11050,7 +11003,7 @@
         });
 
         // Target evolution
-        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div><div><span id="script_race_warning" class="has-text-danger"></span></div>');
+        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div><div><span id="script_race_warning"></span></div>');
         currentNode.append(targetEvolutionNode);
 
         selectNode = $('#script_userEvolutionTargetName');
@@ -11069,7 +11022,7 @@
 
         let race = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
         if (race !== null && race !== undefined && race.evolutionConditionText !== '') {
-            document.getElementById("script_race_warning").textContent = "Warning! This race have special requirements: " + race.evolutionConditionText + ". This condition is currently " + (race.evolutionCondition() ? "met." : "not met.");
+            $("#script_race_warning").html(`<span class="${race.evolutionCondition() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.evolutionConditionText}. This condition is currently ${race.evolutionCondition() ? "met" : "not met"}.</span>`);
         }
 
         selectNode.on('change', function() {
@@ -11081,11 +11034,10 @@
 
             let race = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
             if (race !== null && race !== undefined && race.evolutionConditionText !== '') {
-                document.getElementById("script_race_warning").textContent = "Warning! This race have special requirements: " + race.evolutionConditionText + ". This condition is currently " + (race.evolutionCondition() ? "met." : "not met.");
+                $("#script_race_warning").html(`<span class="${race.evolutionCondition() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.evolutionConditionText}. This condition is currently ${race.evolutionCondition() ? "met" : "not met"}.</span>`);
             } else {
-                document.getElementById("script_race_warning").textContent = "";
+                $("#script_race_warning").empty();
             }
-
             let content = document.querySelector('#script_evolutionSettings .script-content');
             // @ts-ignore
             content.style.height = null;
@@ -11161,7 +11113,7 @@
 
         tableBodyNode.append($(newTableBodyText));
 
-        buildTriggerType(trigger);
+        //buildTriggerType(trigger);
         buildTriggerRequirementType(trigger);
         buildTriggerRequirementId(trigger);
         buildTriggerRequirementCount(trigger);
@@ -11187,8 +11139,8 @@
         let currentNode = $('#script_triggerContent');
         currentNode.append(
             `<table style="width:100%">
-                    <tr><th class="has-text-warning" colspan="1">Trigger</th><th class="has-text-warning" colspan="3">Requirement</th><th class="has-text-warning" colspan="4">Action</th></tr>
-                    <tr><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Id</th><th class="has-text-warning" style="width:12.85%">Count</th><th class="has-text-warning" style="width:12.85%">Type</th><th class="has-text-warning" style="width:12.85%">Id</th><th class="has-text-warning" style="width:12.85%">Count</th><th class="has-text-warning" style="width:10%"></th></tr>
+                    <tr><th class="has-text-warning" colspan="3">Requirement</th><th class="has-text-warning" colspan="5">Action</th></tr>
+                    <tr><th class="has-text-warning" style="width:16%">Type</th><th class="has-text-warning" style="width:18%">Id</th><th class="has-text-warning" style="width:11%">Count</th><th class="has-text-warning" style="width:16%">Type</th><th class="has-text-warning" style="width:18%">Id</th><th class="has-text-warning" style="width:11%">Count</th><th style="width:5%"></th><th style="width:5%"></th></tr>
                 <tbody id="script_triggerTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -11199,15 +11151,14 @@
         for (let i = 0; i < state.triggerManager.priorityList.length; i++) {
             const trigger = state.triggerManager.priorityList[i];
             let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + trigger.seq + '"' + classAttribute + '><td id="script_trigger_' + trigger.seq + '" style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:12.85%"></td><td style="width:10%"></td></tr>';
+            newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '"' + classAttribute + '><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         for (let i = 0; i < state.triggerManager.priorityList.length; i++) {
             const trigger = state.triggerManager.priorityList[i];
-            //let triggerElement = $('#script_trigger_' + trigger.seq);
 
-            buildTriggerType(trigger);
+            //buildTriggerType(trigger);
             buildTriggerRequirementType(trigger);
             buildTriggerRequirementId(trigger);
             buildTriggerRequirementCount(trigger);
@@ -11281,8 +11232,7 @@
      * @param {Trigger} trigger
      */
     function buildTriggerRequirementType(trigger) {
-        let triggerElement = $('#script_trigger_' + trigger.seq);
-        triggerElement = triggerElement.next();
+        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(0);
         triggerElement.empty().off("*");
 
         if (trigger.type === "tech") {
@@ -11324,8 +11274,7 @@
      * @param {Trigger} trigger
      */
     function buildTriggerRequirementId(trigger) {
-        let triggerElement = $('#script_trigger_' + trigger.seq);
-        triggerElement = triggerElement.next().next();
+        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(1);
         triggerElement.empty().off("*");
 
         if (trigger.type === "tech") {
@@ -11413,8 +11362,7 @@
      * @param {Trigger} trigger
      */
     function buildTriggerActionType(trigger) {
-        let triggerElement = $('#script_trigger_' + trigger.seq);
-        triggerElement = triggerElement.next().next().next().next();
+        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(3);
         triggerElement.empty().off("*");
 
         if (trigger.type === "tech") {
@@ -11448,8 +11396,7 @@
      * @param {Trigger} trigger
      */
     function buildTriggerActionId(trigger) {
-        let triggerElement = $('#script_trigger_' + trigger.seq);
-        triggerElement = triggerElement.next().next().next().next().next();
+        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(4);
         triggerElement.empty().off("*");
 
         if (trigger.actionType === "research") {
@@ -11529,8 +11476,7 @@
      * @param {Trigger} trigger
      */
     function buildTriggerSettingsColumn(trigger) {
-        let triggerElement = $('#script_trigger_' + trigger.seq);
-        triggerElement = triggerElement.next().next().next().next().next().next().next();
+        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(6);
         triggerElement.empty().off("*");
 
         let deleteTriggerButton = $('<a class="button is-dark is-small"><span>X</span></a>');
@@ -11547,7 +11493,6 @@
             // @ts-ignore
             content.style.height = content.offsetHeight + "px"
         });
-        triggerElement.append($('<span class="script-lastcolumn"></span>'));
     }
 
     function buildResearchSettings() {
@@ -11822,6 +11767,7 @@
 
         let resetFunction = function() {
             resetHellSettings();
+            updateSettingsFromState();
             updateHellSettingsContent(isMainSettings);
         };
 
@@ -11886,6 +11832,8 @@
             resetMarketSettings();
             updateSettingsFromState();
             updateMarketSettingsContent();
+
+            // Redraw toggles on market tab
             if ( $('.ea-market-toggle').length !== 0 ) {
               removeMarketToggles();
               createMarketToggles();
@@ -12059,7 +12007,7 @@
     function updateStorageTable() {
         let currentNode = $('#script_storageContent');
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Max Crates</th><th class="has-text-warning" style="width:20%">Max Containers</th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:15%">Enabled</th><th class="has-text-warning" style="width:15%">Weighting</th><th class="has-text-warning" style="width:15%">Max Crates</th><th class="has-text-warning" style="width:15%">Max Containers</th><th style="width:5%"></th></tr>
                 <tbody id="script_storageTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12070,7 +12018,7 @@
         for (let i = 0; i < state.storageManager.priorityList.length; i++) {
             const resource = state.storageManager.priorityList[i];
             let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_storage_' + resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+            newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_storage_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12093,8 +12041,6 @@
 
             storageElement = storageElement.next();
             storageElement.append(buildStandartSettingsInput(resource, "res_containers_m_" + resource.id, "_autoContainersMax"));
-
-            storageElement.append($('<span class="script-lastcolumn"></span>'));
         }
 
         $('#script_storageTableBody').sortable( {
@@ -12244,6 +12190,12 @@
             resetProductionSettings();
             updateSettingsFromState();
             updateProductionSettingsContent();
+
+            // Redraw toggles on in resources tab
+            if ( $('.ea-craft-toggle').length !== 0 ) {
+              removeCraftToggles();
+              createCraftToggles();
+            }
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateProductionSettingsContent);
@@ -12346,7 +12298,7 @@
     function updateProductionTableFactory() {
         let currentNode = $('#script_productionContent');
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:25%"></th></tr>
                 <tbody id="script_productionTableBodyFactory" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12360,7 +12312,7 @@
         for (let i = 0; i < productionSettings.length; i++) {
             const production = productionSettings[i];
             let classAttribute = ' ';
-            newTableBodyText += '<tr value="' + production.resource.id + '"' + classAttribute + '><td id="script_factory_' + production.resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
+            newTableBodyText += '<tr value="' + production.resource.id + '"' + classAttribute + '><td id="script_factory_' + production.resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:35%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12394,7 +12346,7 @@
     function updateProductionTableFoundry() {
         let currentNode = $('#script_productionContent');
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:25%"></th></tr>
                 <tbody id="script_productionTableBodyFoundry" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12637,9 +12589,13 @@
 
         // Add any pre table settings
         let preTableNode = $('#script_buildingPreTable');
+        addStandardSectionSettingsToggle(preTableNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of game, to build first production buildings. With this toggled on it will continue clicking forever");
+        addStandardSectionSettingsNumber(preTableNode, "buildingClickPerTick", "Maximum clicks per second", "Number of clicks performed at once, each second. Hardcapped by amount of missed resources");
         addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides the below settings to still build if resources are full");
-        addStandardSectionSettingsToggle(preTableNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of game, to build first production buildings. With this toggled on it will continue clicking forever.");
-        addStandardSectionSettingsNumber(preTableNode, "buildingClickPerTick", "Maximum clicks per script tick", "Number of clicks performed at once, each script tick(1 second). Actual amount hardcapped by missed resources.");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNew", "Weighting: new buildings", "Weighting multiplier for new building, can help to get new production gong");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUselessPowerPlant", "Weighting: useless power plants", "Weighting multiplier for power plant, only applies when you have spare energy");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulPowerPlant", "Weighting: needful power plant", "Weighting multiplier for power plant, only applies when you have no spare energy");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUnderpowered", "Weighting: missing energy", "Weighting multiplier for new powered buildings, only applies when you have no spare energy");
     }
 
     function updateBuildingTable() {
@@ -13001,7 +12957,6 @@
         let sectionName = "Logging";
 
         let resetFunction = function() {
-            //resetGeneralState();
             resetLoggingSettings();
             updateSettingsFromState();
             updateLoggingSettingsContent(isMainSettings);
@@ -13403,7 +13358,6 @@
     }
 
     function createCraftToggles() {
-        removeCraftToggles();
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
             createCraftToggle(craftable);
