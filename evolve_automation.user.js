@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.15
+// @version      3.2.1.16
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -884,7 +884,7 @@
                 if (resourceType.rate > 0 && resourceType.resource.calculatedRateOfChange < resourceType.rate) {
                     return resourceType.resource;
                 }
-                
+
                 // It provides support which we don't need
                 if (resourceType.rate < 0 && resourceType.resource.isSupport && resourceType.resource.calculatedRateOfChange > 1) {
                     return resourceType.resource;
@@ -1286,7 +1286,7 @@
         }
 
         isEjectable() {
-            return game.global.interstellar.mass_ejector.hasOwnProperty(this.id);
+            return game.atomic_mass.hasOwnProperty(this.id);
         }
 
         /** @return {number} */
@@ -7725,8 +7725,6 @@
     //#region Manage Government
 
     function manageGovernment() {
-        if (!settings.govManage) { return; }
-
         let gm = state.governmentManager;
         if (!gm.isEnabled()) { return; }
 
@@ -7801,8 +7799,6 @@
     //#region Auto Battle
 
     function autoBattle() {
-        if (!settings.autoFight) { return; }
-
         // mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
         let mercenariesHired = 0;
         let mercenaryCost = state.warManager.getMercenaryCost();
@@ -8450,10 +8446,6 @@
                 if (resource.storageRatio < 0.99) {
                     remainingRateOfChange -= productionCost.minRateOfChange;
                 }
-                // Add trading resources, if they can be reclaimed
-                if (settings.autoMarket && resource.autoTradeSellEnabled && resource.currentTradeRoutes < 0) {
-                    remainingRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
-                }
                 let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
                 let maxAllowedUnits = Math.min(affordableAmount, remainingSmelters);
                 if (maxAllowedUnits > 0) {
@@ -8497,10 +8489,6 @@
             // No need to preserve minimum income when storage is full
             if (resource.storageRatio < 0.99) {
                 remainingRateOfChange -= productionCost.minRateOfChange;
-            }
-            // Add trading resources, if they can be reclaimed
-            if (settings.autoMarket && resource.autoTradeSellEnabled && resource.currentTradeRoutes < 0) {
-                remainingRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
             }
             let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
             maxAllowedSteel = Math.min(maxAllowedSteel, affordableAmount);
@@ -8705,31 +8693,11 @@
     //#region Mass Ejector
 
     /** @type { { resource: Resource, requirement: number }[] } */
-    var resourcesByAtomicMass = null;
+    var resourcesByAtomicMass = [];
 
     function autoMassEjector() {
         if (!settings.prestigeWhiteholeEjectEnabled) { return; }
         if (state.spaceBuildings.BlackholeMassEjector.stateOnCount === 0) { return; }
-
-        // Now that we have a mass ejector then set up our sorted resource atomic mass array
-        if (resourcesByAtomicMass === null) {
-            resourcesByAtomicMass = [];
-
-            Object.keys(resources).forEach(resourceKey => {
-                let resource = resources[resourceKey];
-                if (resource === resources.Elerium || resource === resource.Infernite) { return; } // We'll add these exotic resources to the front of the list after sorting as these should always come first
-
-                if (resource.isEjectable()) {
-                    resourcesByAtomicMass.push({ resource: resource, requirement: 0, });
-                }
-            });
-
-            resourcesByAtomicMass.sort((a, b) => b.resource.atomicMass - a.resource.atomicMass );
-
-            // Elerium and infernite are always first as they are the exotic resources which are worth the most DE
-            resourcesByAtomicMass.unshift({ resource: resources.Infernite, requirement: 0, });
-            resourcesByAtomicMass.unshift({ resource: resources.Elerium, requirement: 0, });
-        }
 
         let adjustMassEjector = false;
 
@@ -8740,7 +8708,7 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let roundedRateOfChange = Math.floor(resource.calculatedRateOfChange);
+                let roundedRateOfChange = Math.floor(resource.calculatedRateOfChange) - game.global.interstellar.mass_ejector[resource.id];
 
                 if (remaining <= 0) {
                     resourceRequirement.requirement = 0;
@@ -8790,22 +8758,14 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let roundedRateOfChange = Math.floor(resource.calculatedRateOfChange);
+                let roundedRateOfChange = Math.ceil(resource.calculatedRateOfChange);
 
                 if (remaining <= 0 || resource.storageRatio < 0.99) {
                     resourceRequirement.requirement = 0;
                     return;
                 }
 
-                if (resource.storageRatio > 0.01 && roundedRateOfChange === 0) {
-                    resourceRequirement.requirement = game.global.interstellar.mass_ejector[resource.id];
-                } else if (resource.storageRatio > 0.01 && roundedRateOfChange < 0) {
-                    resourceRequirement.requirement = Math.max(0, game.global.interstellar.mass_ejector[resource.id] + roundedRateOfChange);
-                } else if (resource.storageRatio > 0.01 && roundedRateOfChange > 0) {
-                    resourceRequirement.requirement = Math.min(remaining, game.global.interstellar.mass_ejector[resource.id] + roundedRateOfChange);
-                } else {
-                    resourceRequirement.requirement = 0;
-                }
+                resourceRequirement.requirement = Math.min(remaining, Math.max(0, roundedRateOfChange));
 
                 remaining -= resourceRequirement.requirement;
             });
@@ -8837,7 +8797,6 @@
     //#region Auto Whitehole
 
     function autoWhiteholePrestige() {
-        if (!settings.prestigeWhiteholeReset) { return; }
         if (!isWhiteholePrestigeAvailable()) {return; } // Solar mass requirements met and research available
 
         let tech = techIds["tech-infusion_confirm"];
@@ -8867,8 +8826,6 @@
     //#region Auto MAD
 
     function autoMadPrestige() {
-        if (!settings.autoMAD) { return; }
-
         // Don't MAD if it isn't unlocked
         if (!isResearchUnlocked("mad") || document.getElementById("mad").style.display === "none") {
             return;
@@ -8907,7 +8864,6 @@
     function autoSeederPrestige() {
         let spaceDock = state.spaceBuildings.GasSpaceDock;
 
-        if (!settings.autoSeeder) { return; }
         if (!spaceDock.isUnlocked()) { return; }
         if (spaceDock.count < 1) { return; }
         if (!isBioseederPrestigeAvailable()) { return; } // ship completed and probe requirements met
@@ -9142,42 +9098,43 @@
         // Filtering, some obvious labels are disabled to reduce clutter.
         buildingList = buildingList.filter(function(building){
           let id = "pop" + building.settingId;
+          extraDesc[id] = "AutoBuild weighting: " + building.weighting + "<br>";
 
           if (building.count >= building.autoMax) {
-              extraDesc[id] = "Maximum amount reached";
+              extraDesc[id] += "Maximum amount reached";
               return false;
           }
 
           if (!game.checkAffordable(building.definition, true)) {
-              //extraDesc[id] = "Not enought storage";
+              //extraDesc[id] += "Not enought storage";
               return false;
           }
 
           let trigger = state.triggerManager.buildingConflicts(building);
           if (trigger !== false){
-              extraDesc[id] = "Conflicts with trigger: " + trigger.desc;
+              extraDesc[id] += "Conflicts with trigger: " + trigger.desc;
               return false;
           }
 
           let miss = building.missingSupply();
           if (miss !== false) {
-              extraDesc[id] = "Missing " + miss.name + " to operate";
+              extraDesc[id] += "Missing " + miss.name + " to operate";
               return false;
           }
 
           if (!settings.prestigeBioseedConstruct && (building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe)) {
-              extraDesc[id] = "Bioseed prestige disabled";
+              extraDesc[id] += "Bioseed prestige disabled";
               return false;
           }
 
           // We don't need too many crates and containers if we're not going to use it
           if (settings.storageLimitPreMad) {
             if(building === state.cityBuildings.StorageYard && !isResearchUnlocked("mad") && resources.Crates.maxQuantity > 0) {
-              extraDesc[id] = "Pre-mad storage limited.";
+              extraDesc[id] += "Pre-mad storage limited.";
               return false;
             }
             if(building === state.cityBuildings.Warehouse && !isResearchUnlocked("mad") && resources.Containers.maxQuantity > 0) {
-              extraDesc[id] = "Pre-mad storage limited.";
+              extraDesc[id] += "Pre-mad storage limited.";
               return false;
             }
           }
@@ -9194,14 +9151,13 @@
 
             // Only go further if we can build it right now
             if (!building.isClickable()) {
-                //extraDesc[id] = "Not enought resources";
+                //extraDesc[id] += "Not enought resources";
                 continue;
             }
 
             // Checks weights, if this building doesn't demands any overflowing resources(unless we ignoring overflowing)
             if (!settings.buildingBuildIfStorageFull || !building.resourceRequirements.find(requirement => requirement.resource.storageRatio > 0.98)) {
               let thisWeighting = building.weighting;
-              extraDesc[id] = "Weighting: " + thisWeighting + "<br>"; 
               loop2:
               for (let j = 0; j < buildingList.length; j++) {
                 let other = buildingList[j];
@@ -9247,6 +9203,7 @@
             if (desc_node.length){
               desc_node.html(note);
             } else {
+              $(this).css("pointer-events", "none");
               $(this).append(`<div id="extra_desc">${note}</div>`);
             }
           }
@@ -9658,6 +9615,12 @@
         resources.Containers.resourceRequirements.forEach(requirement =>
             numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
         );
+        
+        // Just a hack for pre-mad wtihtout limititng storage
+        // TODO: make proper ratios, when to build crates, and adjust them with storageLimitPreMad
+        if (resources.Steel.storageRatio < 0.5 && !settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
+            numberOfContainersWeCanBuild = 0;
+        }
 
         let storageChanges = {
             cratesToBuild: Math.min(resources.Crates.maxQuantity - resources.Crates.currentQuantity, numberOfCratesWeCanBuild),
@@ -9886,19 +9849,6 @@
         let adjustmentTradeRoutes = [];
         let resourcesToTrade = [];
 
-        // Calculate the resources and money that we would have if we weren't trading anything on the market
-        for (let i = 0; i < tradableResources.length; i++) {
-            const resource = tradableResources[i];
-
-            if (resource.currentTradeRoutes > 0) {
-                currentMoneyPerSecond += resource.currentTradeRoutes * resource.currentTradeRouteBuyPrice;
-            } else {
-                currentMoneyPerSecond += resource.currentTradeRoutes * resource.currentTradeRouteSellPrice;
-            }
-
-            resource.calculatedRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
-        }
-
         // Fill our trade routes with selling
         for (let i = 0; i < tradableResources.length; i++) {
             const resource = tradableResources[i];
@@ -10078,7 +10028,7 @@
         if (game.global.race.species === speciesProtoplasm) {
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
-            // Chech what we got
+            // Check what we got after evolution
             if (settings.autoEvolution && settings.autoAchievements && settings.evolutionBackup){
                 let a_level = 1;
                 if (game.global.race['no_plasmid'] || game.global.race['weak_mastery']){ a_level++; }
@@ -10087,7 +10037,7 @@
                 if (game.global.race['no_crispr']){ a_level++; }
 
                 let newRace = races[game.global.race.species];
-                console.log("race: " + newRace.name + ", isMadAchievementUnlocked("+a_level+"): " + newRace.isMadAchievementUnlocked(a_level));
+                console.log("Race: " + newRace.name + ", " + a_level + "★ achievement: " + newRace.isMadAchievementUnlocked(a_level));
                 if (newRace.isMadAchievementUnlocked(a_level)) {
                     let raceGroup = state.raceGroupAchievementList.findIndex(group => group.includes(newRace));
 
@@ -10102,7 +10052,7 @@
                       return;
                     } else {
                       // Group already ignored - probably we tried all available options, and using fallback race now.
-                      state.log.logSuccess(loggingTypes.special, `Couldn't select race with unearned achievements. Continue with ${newRace}.`);
+                      state.log.logSuccess(loggingTypes.special, `Couldn't select race with unearned achievements. Continuing with ${newRace}.`);
                     }
                 }
             }
@@ -10112,9 +10062,35 @@
             updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
         }
 
-        // Initial updates needed each loop
-        for (let key in resources) {
-            resources[key].calculatedRateOfChange = resources[key].rateOfChange;
+        state.triggerManager.updateCompleteTriggers();
+        state.triggerManager.resetTargetTriggers();
+
+        // Reset calculated rate of changes
+        for (let id in resources) {
+            resources[id].calculatedRateOfChange = resources[id].rateOfChange;
+        }
+
+        // Add resources sold by trade routes, which can be reclaimed if needed
+        if (settings.autoMarket) {
+            let tradableResources = state.marketManager.getSortedTradeRouteSellList();
+            for (let i = 0; i < tradableResources.length; i++) {
+                const resource = tradableResources[i];
+
+                if (resource.currentTradeRoutes > 0) {
+                    resources.Money.calculatedRateOfChange += resource.currentTradeRoutes * resource.currentTradeRouteBuyPrice;
+                } else {
+                    resources.Money.calculatedRateOfChange += resource.currentTradeRoutes * resource.currentTradeRouteSellPrice;
+                }
+
+                resource.calculatedRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
+            }
+        }
+
+        // Same for ejected resources, but only if we're ejecting excesses
+        if (settings.prestigeWhiteholeEjectEnabled && state.spaceBuildings.BlackholeMassEjector.stateOnCount > 0 && state.spaceBuildings.BlackholeMassEjector.stateOnCount < settings.prestigeWhiteholeEjectAllCount) {
+            resourcesByAtomicMass.forEach(eject => {
+                eject.resource.calculatedRateOfChange += game.global.interstellar.mass_ejector[eject.resource.id];
+            });
         }
 
         if (settings.minimumMoneyPercentage > 0) {
@@ -10225,43 +10201,55 @@
         }
     }
 
-    function automate() {
+    function initialise() {
         // Setup in the first loop only
-        // console.log("Loop: " + state.loopCounter + ", goal: " + state.goal);
-        if (state.loopCounter === 1) {
-            initialiseRaces();
+        initialiseRaces();
 
-            let tempTech = {};
-            //@ts-ignore
-            let technologies = Object.entries(game.actions.tech);
-            for (const [technology, action] of technologies) {
-                tempTech[technology] = new Technology(action);
-                techIds[action.id] = tempTech[technology];
-            }
-
-            Object.keys(tempTech).sort().forEach(function(key) {
-                tech[key] = tempTech[key];
-            });
-
-            resetBuildingState();
-            resetMinorTraitState();
-
-            updateStateFromSettings();
-            updateSettingsFromState();
-
-            state.triggerManager.priorityList.forEach(trigger => {
-                trigger.complete = false;
-            });
-
-            // If debug logging is enabled then verify the game actions code is both correct and in sync with our script code
-            if (showLogging) {
-                verifyGameActions();
-            }
+        let tempTech = {};
+        //@ts-ignore
+        let technologies = Object.entries(game.actions.tech);
+        for (const [technology, action] of technologies) {
+            tempTech[technology] = new Technology(action);
+            techIds[action.id] = tempTech[technology];
         }
 
-        state.triggerManager.updateCompleteTriggers();
-        state.triggerManager.resetTargetTriggers();
+        Object.keys(tempTech).sort().forEach(function(key) {
+            tech[key] = tempTech[key];
+        });
 
+        resetBuildingState();
+        resetMinorTraitState();
+
+        updateStateFromSettings();
+        updateSettingsFromState();
+
+        state.triggerManager.priorityList.forEach(trigger => {
+            trigger.complete = false;
+        });
+
+        // If debug logging is enabled then verify the game actions code is both correct and in sync with our script code
+        if (showLogging) {
+            verifyGameActions();
+        }
+
+        // Set up our sorted resource atomic mass array
+        Object.keys(resources).forEach(resourceKey => {
+            let resource = resources[resourceKey];
+            if (resource === resources.Elerium || resource === resource.Infernite) { return; } // We'll add these exotic resources to the front of the list after sorting as these should always come first
+
+            if (resource.isEjectable()) {
+                resourcesByAtomicMass.push({ resource: resource, requirement: 0, });
+            }
+        });
+        resourcesByAtomicMass.sort((a, b) => b.resource.atomicMass - a.resource.atomicMass );
+        // Elerium and infernite are always first as they are the exotic resources which are worth the most DE
+        resourcesByAtomicMass.unshift({ resource: resources.Infernite, requirement: 0, });
+        resourcesByAtomicMass.unshift({ resource: resources.Elerium, requirement: 0, });
+
+    }
+
+    function automate() {
+        // console.log("Loop: " + state.loopCounter + ", goal: " + state.goal);
         if (state.loopCounter < Number.MAX_SAFE_INTEGER) {
             state.loopCounter++;
         } else {
@@ -10279,79 +10267,92 @@
             return;
         }
 
+        if (state.goal === "GameOverMan"){
+            return;
+        }
+
         if (state.goal === "Evolution") {
             if (settings.autoEvolution) {
                 autoEvolution();
             }
-        } else if (state.goal !== "GameOverMan") {
-            let massEjectorProcessed = false;
-            if (state.spaceBuildings.BlackholeMassEjector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
-                autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
-                massEjectorProcessed = true;
-            }
+            return;
+        }
+
+        let massEjectorProcessed = false;
+        if (state.spaceBuildings.BlackholeMassEjector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
+            autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
+            massEjectorProcessed = true;
+        }
+
+        if (settings.govManage) {
             manageGovernment();
+        }
+        if (settings.autoFight) {
             autoBattle();
-
-            if (settings.autoARPA) {
-                autoArpa();
-            }
-            if (settings.autoBuild) {
-                autoBuild();
-            }
-            if (settings.autoCraft) {
-                autoCraft();
-            }
-            if (settings.autoResearch) {
-                autoResearch();
-            }
-            if (settings.autoMarket) {
-                autoMarket();
-            }
-            if (settings.autoStorage) {
-                autoStorage();
-            }
-            if (settings.autoJobs) {
-                autoJobs();
-            }
-            if (settings.autoTax) {
-                autoTax();
-            }
-            if (settings.autoHell) {
-                autoHell();
-            }
-            if (settings.autoPower) {
-                autoBuildingPriority();
-            }
-            if (settings.autoFactory) {
-                autoFactory();
-            }
-            if (settings.autoMiningDroid) {
-                autoMiningDroid();
-            }
-            if (settings.autoGraphenePlant) {
-                autoGraphenePlant();
-            }
-            if (settings.autoSmelter) {
-                autoSmelter();
-            }
-            if (settings.autoAssembleGene) {
-                autoAssembleGene();
-            }
-            if (settings.autoMinorTrait) {
-                autoMinorTrait();
-            }
-
+        }
+        if (settings.autoARPA) {
+            autoArpa();
+        }
+        if (settings.autoBuild) {
+            autoBuild();
+        }
+        if (settings.autoCraft) {
+            autoCraft();
+        }
+        if (settings.autoResearch) {
+            autoResearch();
+        }
+        if (settings.autoMarket) {
+            autoMarket();
+        }
+        if (settings.autoStorage) {
+            autoStorage();
+        }
+        if (settings.autoJobs) {
+            autoJobs();
+        }
+        if (settings.autoTax) {
+            autoTax();
+        }
+        if (settings.autoHell) {
+            autoHell();
+        }
+        if (settings.autoPower) {
+            autoBuildingPriority();
+        }
+        if (settings.autoFactory) {
+            autoFactory();
+        }
+        if (settings.autoMiningDroid) {
+            autoMiningDroid();
+        }
+        if (settings.autoGraphenePlant) {
+            autoGraphenePlant();
+        }
+        if (settings.autoSmelter) {
+            autoSmelter();
+        }
+        if (settings.autoAssembleGene) {
+            autoAssembleGene();
+        }
+        if (settings.autoMinorTrait) {
+            autoMinorTrait();
+        }
+        if (settings.prestigeWhiteholeReset) {
             autoWhiteholePrestige();
+        }
+        if (settings.autoSeeder) {
             autoSeederPrestige();
+        }
+        if (settings.autoMAD) {
             autoMadPrestige();
+        }
+        if (settings.autoFight) {
+            manageSpies();
+        }
 
-            if (settings.autoFight) {
-              manageSpies();
-            }
-
-            if (!massEjectorProcessed) {
-                autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
-            }
+        if (!massEjectorProcessed) {
+            autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
         }
     }
 
@@ -10371,6 +10372,7 @@
             game = window.game;
         }
 
+        initialise();
         setInterval(automate, 1000);
     }
 
@@ -10661,14 +10663,14 @@
 
         if (isMainSettings) {
             let headerNode = $(
-                '<div id="script_' + mainSectionId + 'Settings" style="margin-top: 2px;">' +
+                '<div id="script_' + mainSectionId + 'Settings" style="margin-top: 10px;">' +
                     '<h3 id="' + mainSectionId + 'SettingsCollapsed" class="script-collapsible text-center has-text-success">' + sectionName + ' Settings</h3>' +
                 '</div>'
             );
 
             contentContainerNode = $(
                 '<div class="script-content">' +
-                    '<div style="margin-top: 2px;"><button id="script_reset' + mainSectionId + '" class="button">Reset ' + sectionName + ' Settings</button></div>' +
+                    '<div style="margin-top: 10px;"><button id="script_reset' + mainSectionId + '" class="button">Reset ' + sectionName + ' Settings</button></div>' +
                 '</div>'
             );
 
@@ -10678,7 +10680,7 @@
             $("#script_reset" + mainSectionId).on("click", function() { genericResetFunction(resetFunction, sectionName) });
         }
 
-        let contentNode = $('<div style="margin-top: 2px; margin-bottom: 2px;" id="script_' + computedSectionId + 'Content"></div>');
+        let contentNode = $('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_' + computedSectionId + 'Content"></div>');
         contentContainerNode.append(contentNode);
 
         updateSettingsContentFunction(isMainSettings);
@@ -12176,7 +12178,7 @@
      * @param {string} property
      */
     function buildStorageSettingsInput(resource, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
         textBox.val(settings[settingKey]);
 
         textBox.on('change', function() {
@@ -12297,7 +12299,7 @@
      * @param {string} property
      */
     function buildMinorTraitSettingsInput(minorTrait, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
         textBox.val(settings[settingKey]);
 
         textBox.on('change', function() {
@@ -12479,7 +12481,7 @@
      * @param {{ [x: string]: number; }} production
      */
     function buildProductionSettingsInput(production, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
         textBox.val(settings[settingKey]);
 
         textBox.on('change', function() {
@@ -12624,7 +12626,7 @@
             return span;
         }
 
-        let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="width:25%"/>' + lastSpan);
+        let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="width:100%"/>' + lastSpan);
         jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job._originalId]);
 
         jobBreakpointTextbox.on('change', function() {
@@ -12907,7 +12909,7 @@
      * @param {Action} building
      */
     function buildBuildingMaxSettingsInput(building) {
-        let buildingMaxTextBox = $('<input type="text" class="input is-small" style="width:35%"/>');
+        let buildingMaxTextBox = $('<input type="text" class="input is-small" style="width:100%"/>');
         buildingMaxTextBox.val(settings["bld_m_" + building.settingId]);
 
         buildingMaxTextBox.on('change', function() {
@@ -12924,7 +12926,7 @@
     }
 
     function buildBuildingWeightSettingsInput(building) {
-        let buildingWeightTextBox = $('<input type="text" class="input is-small" style="width:35%"/>');
+        let buildingWeightTextBox = $('<input type="text" class="input is-small" style="width:100%"/>');
         buildingWeightTextBox.val(settings["bld_w_" + building.settingId]);
 
         buildingWeightTextBox.on('change', function() {
@@ -13057,7 +13059,7 @@
      * @param {Project} project
      */
     function buildProjectMaxSettingsInput(project) {
-        let projectMaxTextBox = $('<input type="text" class="input is-small" style="width:25%"/>');
+        let projectMaxTextBox = $('<input type="text" class="input is-small" style="width:100%"/>');
         projectMaxTextBox.val(settings["arpa_m_" + project.id]);
 
         projectMaxTextBox.on('change', function() {
@@ -13377,7 +13379,7 @@
 
            let settingsDiv = $('<div id="ea-logging"></div>');
            let logTypeTxt = $('<div>Logging Type:</div>')
-           let logTypeInput = $('<input type="text" class="input is-small" style="width:32%"/>');
+           let logTypeInput = $('<input type="text" class="input is-small" style="width:100%"/>');
            logTypeInput.val(loggingType);
            let setBtn = $('<a class="button is-dark is-small" id="set-loggingType"><span>set</span></a>');
            settingsDiv.append(logTypeTxt).append(logTypeInput).append(setBtn);
@@ -13397,7 +13399,7 @@
         } if ($('#ea-settings').length === 0) {
             let settingsDiv = $('<div id="ea-settings"></div>');
             let minMoneyTxt = $('<div>Minimum money to keep :</div>')
-            let minMoneyInput = $('<input type="text" class="input is-small" style="width:32%"/>');
+            let minMoneyInput = $('<input type="text" class="input is-small" style="width:100%"/>');
             let minimumMoneyValue = settings.minimumMoney > 0 ? settings.minimumMoney : settings.minimumMoneyPercentage;
             minMoneyInput.val(minimumMoneyValue);
             let setBtn = $('<a class="button is-dark is-small" id="set-min-money"><span>Set</span></a>');
