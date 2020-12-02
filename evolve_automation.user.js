@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.16
+// @version      3.2.1.17
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -29,6 +29,7 @@
 //   autoAchievements now check and pick conditional races.
 //   Rewrote autoSmelter logic. Now it tries to balance iron and steel to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
 //   Restored "researched" trigger condition.
+//   Rewrote autoCraftsmen - it assign all crafters to same resource to utilize stacking bonus, switching between resources to keep desired ratio(production tab in settings) between them
 //
 // And, of course, you can do whatever you want with my changes. Fork further, backport any patches back(no credits required). Whatever.
 
@@ -186,7 +187,7 @@
          */
         constructor(id, name) {
             /** @type {{job: string, display: boolean, workers: number, max: number, impact: number, name: string}} job */
-            this._nullJob = { job: "nullJob", display: false, workers: 0, max: 0, impact: 0, name: "None",  };
+            this._nullJob = { job: "nullJob", display: false, workers: 0, max: 0, impact: 0, name: "None" };
 
             // Private properties
             this._originalId = id;
@@ -463,7 +464,6 @@
             super(id, name);
 
             this._vueBinding = "foundry";
-            this._max = Number.MAX_SAFE_INTEGER;
             this.resource = null;
         }
 
@@ -487,20 +487,8 @@
             return game.global.city.foundry[this._originalId];
         }
 
-        set max(count) {
-            this._max = count;
-        }
-
         get max() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            if (this._max === -1) {
-                state.jobManager.calculateCraftingMaxs();
-            }
-
-            return this._max;
+            return game.global.civic.craftsman.max;
         }
 
         /**
@@ -1225,6 +1213,7 @@
 
             this._isCraftable = isCraftable;
             this.craftRatio = craftRatio;
+            this.weighting = 1;
 
             this.isSupport = isSupport;
 
@@ -3944,7 +3933,7 @@
                 this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, this.priorityList[i].breakpointMaxs.length);
             }
 
-            this.craftingJobs.sort(function (a, b) { return a.priority - b.priority } );
+            //this.craftingJobs.sort(function (a, b) { return a.priority - b.priority } );
         }
 
         managedPriorityList() {
@@ -4057,57 +4046,20 @@
             return game.global.civic.craftsman.max;
         }
 
-        calculateCraftingMaxs() {
+        get craftingMax() {
             if (!this.isFoundryUnlocked()) {
-                return;
+                return 0;
             }
 
             let max = this.maxCraftsmen;
-            let remainingJobs = [];
-
             for (let i = 0; i < this.craftingJobs.length; i++) {
                 const job = this.craftingJobs[i];
 
-                if (!settings['craft' + job.resource.id]) {
-                    // The job isn't unlocked or the user has said to not craft the resource associated with this job
-                    job.max = 0;
-                } else if (job === state.jobs.Brick && state.cityBuildings.CementPlant.count === 0) {
-                    // We've got no cement plants so don't put any craftsmen on making Brick
-                    job.max = 0;
-                } else if (!job.isManaged()) {
-                    // The user has said to not manage this job
-                    job.max = job.count;
+                if (!settings['craft' + job.resource.id] || !job.isManaged()) {
                     max -= job.count;
-                } else {
-                    let setting = parseInt(settings['job_b3_' + job._originalId]);
-                    if (setting >= 0) {
-                        // The user has set a specific max for this job so we'll honour it
-                        job.max = Math.min(setting, max);
-                        max -= job.max;
-                    } else {
-                        remainingJobs.push(job);
-                    }
                 }
             }
-
-            // Divide the remaining jobs between the remaining crafting jobs
-            let remainingWorkersToAssign = max;
-
-            for (let i = 0; i < remainingJobs.length; i++) {
-                const job = remainingJobs[i];
-                job.max = Math.floor(max / remainingJobs.length);
-                remainingWorkersToAssign -= job.max;
-            }
-
-            if (remainingWorkersToAssign > 0) {
-                for (let i = 0; i < remainingJobs.length; i++) {
-                    if (remainingWorkersToAssign > 0) {
-                        const job = remainingJobs[i];
-                        job.max++;
-                        remainingWorkersToAssign--;
-                    }
-                }
-            }
+            return max;
         }
     }
 
@@ -6846,6 +6798,20 @@
             if (production.goods === FactoryGoods.NanoTube) production.weighting = 8;
             if (production.goods === FactoryGoods.Stanene) production.weighting = 8;
         }
+
+        // Foundry settings
+        for (let i = 0; i < state.craftableResourceList.length; i++) {
+            const resource = state.craftableResourceList[i];
+            resource.autoCraftEnabled = true;
+        }
+        resources.Plywood.weighting = 20;
+        resources.Brick.weighting = 20;
+        resources.Wrought_Iron.weighting = 20;
+        resources.Sheet_Metal.weighting = 50;
+        resources.Mythril.weighting = 5;
+        resources.Aerogel.weighting = 1;
+        resources.Nanoweave.weighting = 1;
+        resources.Scarletite.weighting = 1;
     }
 
     function resetTriggerSettings() {
@@ -7008,11 +6974,20 @@
 
         // Retrieve settings for crafting resources
         for (let i = 0; i < state.craftableResourceList.length; i++) {
-            let settingKey = 'craft' + state.craftableResourceList[i].id;
+            const resource = state.craftableResourceList[i];
+
+            let settingKey = 'craft' + resource.id;
             if (settings.hasOwnProperty(settingKey)) {
-                state.craftableResourceList[i].autoCraftEnabled = settings[settingKey];
+                resource.autoCraftEnabled = settings[settingKey];
             } else {
                 settings[settingKey] = defaultAllOptionsEnabled;
+            }
+
+            settingKey = 'foundry_w_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) {
+                resource.weighting = parseFloat(settings[settingKey]);
+            } else {
+                settings[settingKey] = resource.weighting;
             }
         }
 
@@ -7050,7 +7025,7 @@
 
             settingKey = 'bld_w_' + building.settingId;
             if (settings.hasOwnProperty(settingKey)) {
-                building._weighting = parseInt(settings[settingKey]);
+                building._weighting = parseFloat(settings[settingKey]);
             } else {
                 settings[settingKey] = building._weighting;
             }
@@ -7215,7 +7190,9 @@
         }
 
         for (let i = 0; i < state.craftableResourceList.length; i++) {
-            settings['craft' + state.craftableResourceList[i].id] = state.craftableResourceList[i].autoCraftEnabled;
+            const resource = state.craftableResourceList[i];
+            settings['craft' + resource.id] = resource.autoCraftEnabled;
+            settings["foundry_w_" + resource.id] = resource.weighting;
         }
 
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
@@ -7944,7 +7921,6 @@
     //#region Auto Jobs
 
     function autoJobs() {
-        state.jobManager.calculateCraftingMaxs();
         let jobList = state.jobManager.managedPriorityList();
 
         // No jobs unlocked yet
@@ -7978,6 +7954,15 @@
         }
 
         let availableEmployees = state.jobManager.totalEmployees;
+        let availableCraftsmen = state.jobManager.craftingMax;
+
+        // We're only crafting wheh we have enought population to fill all foundries, and still have some employees for other work.  Second part should always be true, usnless you starved to death most of your population...
+        if (settings.autoCraftsmen && availableEmployees > availableCraftsmen * 4) {
+            availableEmployees -= availableCraftsmen;
+        } else {
+            availableCraftsmen = 0;
+        }
+
         let requiredJobs = [];
         let jobAdjustments = [];
 
@@ -8051,8 +8036,6 @@
             availableEmployees -= requiredJobs[0];
         }
 
-        let availableCraftsmen = state.jobManager.maxCraftsmen;
-
         for (let i = 0; i < state.jobManager.maxJobBreakpoints; i++) {
             for (let j = 0; j < jobList.length; j++) {
                 const job = jobList[j];
@@ -8062,26 +8045,21 @@
                     continue;
                 }
 
+
+
                 if (i !== 0) {
                     // If we're going up to the next breakpoint then add back the workers from this job from the last one
                     // so that we don't double-take them
                     availableEmployees += requiredJobs[j];
-
-                    // We have to keep track of craftsmen separately as they have a special max number of total craftsmen
-                    if (job.isCraftsman()) {
-                        availableCraftsmen += requiredJobs[j];
-                    }
                 }
 
                 log("autoJobs", "job " + job._originalId + " job.breakpointEmployees(i) " + job.breakpointEmployees(i, false) + " availableEmployees " + availableEmployees);
-                let jobsToAssign = 0;
-                if (!job.isCraftsman()) {
-                    jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i, false));
-                } else {
-                    // We have to keep track of craftsmen separately as they have a special max number of total craftsmen
-                    jobsToAssign = Math.min(availableEmployees, availableCraftsmen, job.breakpointEmployees(i, false));
+                let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i, false));
+                // We don't need to do anything with crafters here
+                if (job.isCraftsman()) {
+                    jobsToAssign = 0;
                 }
-
+                
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
                 if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.Money.storageRatio > 0.98) {
                     jobsToAssign = 0;
@@ -8129,11 +8107,6 @@
                 }
 
                 availableEmployees -= jobsToAssign;
-
-                // We have to keep track of craftsmen separately as they have a special max number of total craftsmen
-                if (job.isCraftsman()) {
-                    availableCraftsmen -= jobsToAssign;
-                }
 
                 log("autoJobs", "job " + job._originalId +  " has jobsToAssign: " + jobsToAssign + ", availableEmployees: " + availableEmployees + ", availableCraftsmen: " + availableCraftsmen);
             }
@@ -8246,51 +8219,41 @@
             }
         }
 
-        if (settings.autoCraftsmen && state.jobs.SheetMetal.isManaged() && settings['craft' + state.jobs.SheetMetal.resource.id]) {
-            if (state.cityBuildings.Wardenclyffe.count < 18) {
-                let sheetMetalIndex = jobList.indexOf(state.jobs.SheetMetal);
+        if (availableCraftsmen > 0){
+            // Get list of craftabe resources
 
-                if (sheetMetalIndex != -1 && state.cityBuildings.Cottage.count > 10 && state.cityBuildings.Library.count > 15 && state.cityBuildings.CoalMine.count > 8) {
-                    let plywoodIndex = jobList.indexOf(state.jobs.Plywood);
-                    let brickIndex = jobList.indexOf(state.jobs.Brick);
-                    let wroughtIronIndex = jobList.indexOf(state.jobs.WroughtIron);
-                    let additionalSheetMetalJobs = 0;
+            let availableJobs = state.jobManager.craftingJobs.filter(job => {
+                // Check if we're allowed to craft this resource
+                if (!job.isManaged() || !job.resource.autoCraftEnabled) {
+                    return false;
+                }
 
-                    if (plywoodIndex !== -1 && state.jobs.Plywood.isManaged()) {
-                        // add plywood jobs above 1 to sheet metal
-                        let plywoodJobs = requiredJobs[plywoodIndex];
+                // And have enought resources to craft if for at least 2 seconds
+                let afforableAmount = availableCraftsmen;
+                job.resource.resourceRequirements.forEach(requirement =>
+                    afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / requirement.quantity / 2)
+                );
 
-                        if (plywoodJobs > 1) {
-                            requiredJobs[plywoodIndex] = 1;
-                            jobAdjustments[plywoodIndex] -= (plywoodJobs - 1);
-                            additionalSheetMetalJobs += (plywoodJobs - 1);
-                        }
-                    }
+                if (afforableAmount < availableCraftsmen){
+                    return false;
+                } else {
+                    return true;
+                }
+            });
 
-                    if (brickIndex !== -1 && state.jobs.Brick.isManaged()) {
-                        // add brick jobs above 1 to sheet metal
-                        let brickJobs = requiredJobs[brickIndex];
 
-                        if (brickJobs > 1) {
-                            requiredJobs[brickIndex] = 1;
-                            jobAdjustments[brickIndex] -= (brickJobs - 1);
-                            additionalSheetMetalJobs += (brickJobs - 1);
-                        }
-                    }
+            // Sort them by amount and weight. Yes, it can be empty, not a problem.
+            availableJobs.sort((a, b) => (a.resource.currentQuantity / a.resource.weighting) - (b.resource.currentQuantity / b.resource.weighting) );
 
-                    if (wroughtIronIndex !== -1 && state.jobs.WroughtIron.isManaged()) {
-                        // add wroughtIron jobs above 1 to sheet metal
-                        let wroughtIronJobs = requiredJobs[wroughtIronIndex];
+            // Again, having undefined availableJobs[0] is fine - we still need to remove other jobs.
+            for (let i = 0; i < state.jobManager.craftingJobs.length; i++) {
+                const job = state.jobManager.craftingJobs[i];
+                const jobIndex = jobList.indexOf(job);
 
-                        if (wroughtIronJobs > 1) {
-                            requiredJobs[wroughtIronIndex] = 1;
-                            jobAdjustments[wroughtIronIndex] -= (wroughtIronJobs - 1);
-                            additionalSheetMetalJobs += (wroughtIronJobs - 1);
-                        }
-                    }
-
-                    requiredJobs[sheetMetalIndex] += additionalSheetMetalJobs;
-                    jobAdjustments[sheetMetalIndex] += additionalSheetMetalJobs;
+                if (job === availableJobs[0]){
+                    jobAdjustments[jobIndex] = availableCraftsmen - job.count;
+                } else {
+                    jobAdjustments[jobIndex] = 0 - job.count;
                 }
             }
         }
@@ -9615,7 +9578,7 @@
         resources.Containers.resourceRequirements.forEach(requirement =>
             numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
         );
-        
+
         // Just a hack for pre-mad wtihtout limititng storage
         // TODO: make proper ratios, when to build crates, and adjust them with storageLimitPreMad
         if (resources.Steel.storageRatio < 0.5 && !settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
@@ -10850,6 +10813,27 @@
         });
     }
 
+    /**
+     * @param {Object} object
+     * @param {string} settingKey
+     * @param {string} property
+     */
+    function buildStandartSettingsInput(object, settingKey, property) {
+        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
+        textBox.val(settings[settingKey]);
+
+        textBox.on('change', function() {
+            let val = textBox.val();
+            let parsedValue = getRealNumber(val);
+            if (!isNaN(parsedValue)) {
+                object[property] = parsedValue;
+                updateSettingsFromState();
+            }
+        });
+
+        return textBox;
+    }
+
     function buildGeneralSettings() {
         let sectionId = "general";
         let sectionName = "General";
@@ -11965,25 +11949,25 @@
             marketElement.append(buildMarketSettingsToggle(resource, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsInput(resource, "res_buy_r_" + resource.id, "autoBuyRatio"));
+            marketElement.append(buildStandartSettingsInput(resource, "res_buy_r_" + resource.id, "autoBuyRatio"));
 
             marketElement = marketElement.next();
             marketElement.append(buildMarketSettingsToggle(resource, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsInput(resource, "res_sell_r_" + resource.id, "autoSellRatio"));
+            marketElement.append(buildStandartSettingsInput(resource, "res_sell_r_" + resource.id, "autoSellRatio"));
 
             marketElement = marketElement.next();
             marketElement.append(buildMarketSettingsToggle(resource, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsInput(resource, "res_trade_buy_mtr_" + resource.id, "autoTradeBuyRoutes"));
+            marketElement.append(buildStandartSettingsInput(resource, "res_trade_buy_mtr_" + resource.id, "autoTradeBuyRoutes"));
 
             marketElement = marketElement.next();
             marketElement.append(buildMarketSettingsToggle(resource, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsInput(resource, "res_trade_sell_mps_" + resource.id, "autoTradeSellMinPerSecond"));
+            marketElement.append(buildStandartSettingsInput(resource, "res_trade_sell_mps_" + resource.id, "autoTradeSellMinPerSecond"));
 
             marketElement = marketElement.next();
             marketElement.append($('<span class="script-lastcolumn"></span>'));
@@ -12032,26 +12016,6 @@
         });
 
         return toggle;
-    }
-
-    /**
-     * @param {Resource} resource
-     */
-    function buildMarketSettingsInput(resource, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
-        textBox.val(settings[settingKey]);
-
-        textBox.on('change', function() {
-            let val = textBox.val();
-            let parsedValue = getRealNumber(val);
-            if (!isNaN(parsedValue)) {
-                //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
-                resource[property] = parsedValue;
-                updateSettingsFromState();
-            }
-        });
-
-        return textBox;
     }
 
     function buildStorageSettings() {
@@ -12122,13 +12086,13 @@
             storageElement.append(buildStorageSettingsEnabledToggle(resource));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStorageSettingsInput(resource, "res_storage_w_" + resource.id, "autoStorageWeighting"));
+            storageElement.append(buildStandartSettingsInput(resource, "res_storage_w_" + resource.id, "autoStorageWeighting"));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStorageSettingsInput(resource, "res_crates_m_" + resource.id, "_autoCratesMax"));
+            storageElement.append(buildStandartSettingsInput(resource, "res_crates_m_" + resource.id, "_autoCratesMax"));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStorageSettingsInput(resource, "res_containers_m_" + resource.id, "_autoContainersMax"));
+            storageElement.append(buildStandartSettingsInput(resource, "res_containers_m_" + resource.id, "_autoContainersMax"));
 
             storageElement.append($('<span class="script-lastcolumn"></span>'));
         }
@@ -12170,28 +12134,6 @@
         });
 
         return toggle;
-    }
-
-    /**
-     * @param {Resource} resource
-     * @param {string} settingKey
-     * @param {string} property
-     */
-    function buildStorageSettingsInput(resource, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
-        textBox.val(settings[settingKey]);
-
-        textBox.on('change', function() {
-            let val = textBox.val();
-            let parsedValue = getRealNumber(val);
-            if (!isNaN(parsedValue)) {
-                //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
-                resource[property] = parsedValue;
-                updateSettingsFromState();
-            }
-        });
-
-        return textBox;
     }
 
     function buildMinorTraitSettings() {
@@ -12249,7 +12191,7 @@
             minorTraitElement.append(buildMinorTraitSettingsEnabledToggle(trait));
 
             minorTraitElement = minorTraitElement.next();
-            minorTraitElement.append(buildMinorTraitSettingsInput(trait, "mTrait_w_" + trait.traitName, "autoMinorTraitWeighting"));
+            minorTraitElement.append(buildStandartSettingsInput(trait, "mTrait_w_" + trait.traitName, "autoMinorTraitWeighting"));
 
             minorTraitElement = minorTraitElement.next();
             minorTraitElement.append($('<span class="script-lastcolumn"></span>'));
@@ -12293,27 +12235,6 @@
         return toggle;
     }
 
-    /**
-     * @param {MinorTrait} minorTrait
-     * @param {string} settingKey
-     * @param {string} property
-     */
-    function buildMinorTraitSettingsInput(minorTrait, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
-        textBox.val(settings[settingKey]);
-
-        textBox.on('change', function() {
-            let val = textBox.val();
-            let parsedValue = getRealNumber(val);
-            if (!isNaN(parsedValue)) {
-                minorTrait[property] = parsedValue;
-                updateSettingsFromState();
-            }
-        });
-
-        return textBox;
-    }
-
     function buildProductionSettings() {
         let sectionId = "production";
         let sectionName = "Production";
@@ -12340,6 +12261,9 @@
         updateProductionPreTableFactory();
         updateProductionTableFactory();
 
+        updateProductionPreTableFoundry();
+        updateProductionTableFoundry();
+
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
@@ -12352,7 +12276,6 @@
         // Add any pre table settings
         let preTableNode = $('#script_productionPreTableSmelter');
         addStandardHeading(preTableNode, "Smelter");
-        //addStandardSectionSettingsToggle(preTableNode, "productionMoneyIfOnly", "Override and produce money if we can't fill factories with other production", "If all other production has been allocated and there are leftover factories then use them to produce money");
     }
 
     function updateProductionTableSmelter() {
@@ -12453,7 +12376,51 @@
             productionElement.append(buildProductionSettingsEnabledToggle(production));
 
             productionElement = productionElement.next();
-            productionElement.append(buildProductionSettingsInput(production, "production_w_" + production.resource.id, "weighting"));
+            productionElement.append(buildStandartSettingsInput(production, "production_w_" + production.resource.id, "weighting"));
+        }
+    }
+
+    function updateProductionPreTableFoundry() {
+        let currentNode = $('#script_productionContent');
+
+        // Add the pre table section
+        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFoundry"></div>');
+
+        // Add any pre table settings
+        let preTableNode = $('#script_productionPreTableFoundry');
+        addStandardHeading(preTableNode, "Foundry");
+    }
+
+    function updateProductionTableFoundry() {
+        let currentNode = $('#script_productionContent');
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
+                <tbody id="script_productionTableBodyFoundry" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_productionTableBodyFoundry');
+        let newTableBodyText = "";
+
+        for (let i = 0; i < state.craftableResourceList.length; i++) {
+            const resource = state.craftableResourceList[i];
+            newTableBodyText += '<tr value="' + resource.id + '"><td id="script_foundry_' + resource.id + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other productions settings rows
+        for (let i = 0; i < state.craftableResourceList.length; i++) {
+            const resource = state.craftableResourceList[i];
+            let productionElement = $('#script_foundry_' + resource.id + 'Toggle');
+
+            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + resource.name + '</span>');
+            productionElement.append(toggle);
+
+            productionElement = productionElement.next();
+            productionElement.append(buildFoundrySettingsEnabledToggle(resource));
+
+            productionElement = productionElement.next();
+            productionElement.append(buildStandartSettingsInput(resource, "foundry_w_" + resource.id, "weighting"));
         }
     }
 
@@ -12475,26 +12442,22 @@
         return toggle;
     }
 
-    /**
-     * @param {string} settingKey
-     * @param {string} property
-     * @param {{ [x: string]: number; }} production
-     */
-    function buildProductionSettingsInput(production, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
-        textBox.val(settings[settingKey]);
+    function buildFoundrySettingsEnabledToggle(resource) {
+        let checked = resource.autoCraftEnabled ? " checked" : "";
+        let toggle = $(`<label id=script_craft2_${resource.id} tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"${checked}> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>`);
 
-        textBox.on('change', function() {
-            let val = textBox.val();
-            let parsedValue = getRealNumber(val);
-            if (!isNaN(parsedValue)) {
-                //console.log('Setting resource max for resource ' + resource.name + ' to be ' + max);
-                production[property] = parsedValue;
-                updateSettingsFromState();
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            resource.autoCraftEnabled = state;
+            let otherCheckbox = document.querySelector(`#script_craft1_${resource.id} input`);
+            if (otherCheckbox !== null) {
+                otherCheckbox.checked = state;
             }
+            updateSettingsFromState();
         });
 
-        return textBox;
+        return toggle;
     }
 
     function buildJobSettings() {
@@ -12542,7 +12505,7 @@
 
         let currentNode = $('#script_jobContent');
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Job</th><th class="has-text-warning" style="width:25%">1st Pass Max</th><th class="has-text-warning" style="width:25%">2nd Pass Max</th><th class="has-text-warning" style="width:25%">Final Max</th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Job</th><th class="has-text-warning" style="width:20%">1st Pass Max</th><th class="has-text-warning" style="width:20%">2nd Pass Max</th><th class="has-text-warning" style="width:20%">Final Max</th><th style="width:5%"></th></tr>
                 <tbody id="script_jobTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12553,7 +12516,7 @@
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
             const job = state.jobManager.priorityList[i];
             let classAttribute = job !== state.jobs.Farmer ? ' class="script-draggable"' : ' class="unsortable"';
-            newTableBodyText += '<tr value="' + job._originalId + '"' + classAttribute + '><td id="script_' + job._originalId + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
+            newTableBodyText += '<tr value="' + job._originalId + '"' + classAttribute + '><td id="script_' + job._originalId + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12602,7 +12565,7 @@
         let checked = job.autoJobEnabled ? " checked" : "";
         let classAttribute = !job.isCraftsman() ? ' class="has-text-info"' : ' class="has-text-danger"';
         let marginTop = job !== state.jobs.Farmer ? ' margin-top: 4px;' : "";
-        let toggle = $('<label tabindex="0" class="switch" style="position:absolute;' + marginTop + ' margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span' + classAttribute + ' style="margin-left: 20px;">' + job._originalName + '</span></label>');
+        let toggle = $('<label tabindex="0" class="switch"' + marginTop + ' margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span' + classAttribute + ' style="margin-left: 20px;">' + job._originalName + '</span></label>');
 
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
@@ -12619,14 +12582,12 @@
      * @param {number} breakpoint
      */
     function buildJobSettingsInput(job, breakpoint) {
-        let lastSpan = breakpoint === 3 && job !== state.jobs.Farmer ? '<span class="script-lastcolumn"></span>' : "";
-
-        if (job === state.jobs.Farmer || (breakpoint === 3 && (job === state.jobs.Lumberjack || job === state.jobs.QuarryWorker || job === state.jobs.Scavenger))) {
-            let span = $('<span>Managed</span>' + lastSpan);
+        if (job === state.jobs.Farmer || job.isCraftsman() || (breakpoint === 3 && (job === state.jobs.Lumberjack || job === state.jobs.QuarryWorker || job === state.jobs.Scavenger))) {
+            let span = $('<span>Managed</span>');
             return span;
         }
 
-        let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="width:100%"/>' + lastSpan);
+        let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="width:100%"/>');
         jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job._originalId]);
 
         jobBreakpointTextbox.on('change', function() {
@@ -12742,10 +12703,10 @@
             buildingElement.append(toggle);
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildBuildingMaxSettingsInput(building));
+            buildingElement.append(buildStandartSettingsInput(building, "bld_m_" + building.settingId, "autoMax"));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildBuildingWeightSettingsInput(building));
+            buildingElement.append(buildStandartSettingsInput(building, "bld_w_" + building.settingId, "_weighting"));
 
             buildingElement = buildingElement.next();
             toggle = buildBuildingStateSettingsToggle(building);
@@ -12807,7 +12768,6 @@
             let input = e.currentTarget.children[0];
             let state = input.checked;
             building.autoBuildEnabled = state;
-            //$('#script_bat1_' + building.settingId + ' input').checked = state; // Update the on-building toggle
             let otherCheckbox =  document.querySelector('#script_bat1_' + building.settingId + ' input');
             if (otherCheckbox !== null) {
                 // @ts-ignore
@@ -12905,43 +12865,6 @@
         return toggle;
     }
 
-    /**
-     * @param {Action} building
-     */
-    function buildBuildingMaxSettingsInput(building) {
-        let buildingMaxTextBox = $('<input type="text" class="input is-small" style="width:100%"/>');
-        buildingMaxTextBox.val(settings["bld_m_" + building.settingId]);
-
-        buildingMaxTextBox.on('change', function() {
-            let val = buildingMaxTextBox.val();
-            let max = getRealNumber(val);
-            if (!isNaN(max)) {
-                //console.log('Setting building max for building ' + building.name + ' to be ' + max);
-                building.autoMax = max;
-                updateSettingsFromState();
-            }
-        });
-
-        return buildingMaxTextBox;
-    }
-
-    function buildBuildingWeightSettingsInput(building) {
-        let buildingWeightTextBox = $('<input type="text" class="input is-small" style="width:100%"/>');
-        buildingWeightTextBox.val(settings["bld_w_" + building.settingId]);
-
-        buildingWeightTextBox.on('change', function() {
-            let val = buildingWeightTextBox.val();
-            let weighting = Math.max(1, getRealNumber(val));
-            if (!isNaN(weighting)) {
-                //console.log('Setting building weighting for building ' + building.name + ' to be ' + weighting);
-                building._weighting = weighting;
-                updateSettingsFromState();
-            }
-        });
-
-        return buildingWeightTextBox;
-    }
-
     function buildProjectSettings() {
         let sectionId = "project";
         let sectionName = "A.R.P.A.";
@@ -13008,7 +12931,7 @@
             projectElement.append(toggle);
 
             projectElement = projectElement.next();
-            projectElement.append(buildProjectMaxSettingsInput(project));
+            projectElement.append(buildStandartSettingsInput(project, "arpa_m_" + project.id, "autoMax"));
 
             projectElement = projectElement.next();
             projectElement.append(buildProjectIgnoreMinMoneySettingsToggle(project));
@@ -13047,32 +12970,16 @@
             let state = input.checked;
             project.autoBuildEnabled = state;
             // @ts-ignore
-            document.querySelector('#script_arpa1_' + project.id + ' input').checked = state;
+            let otherCheckbox = document.querySelector('#script_arpa1_' + project.id + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
+            }
             updateSettingsFromState();
             //console.log(project.name + " changed enabled to " + state);
         });
 
         return toggle;
-    }
-
-    /**
-     * @param {Project} project
-     */
-    function buildProjectMaxSettingsInput(project) {
-        let projectMaxTextBox = $('<input type="text" class="input is-small" style="width:100%"/>');
-        projectMaxTextBox.val(settings["arpa_m_" + project.id]);
-
-        projectMaxTextBox.on('change', function() {
-            let val = projectMaxTextBox.val();
-            let max = getRealNumber(val);
-            if (!isNaN(max)) {
-                //console.log('Setting max for project ' + project.name + ' to be ' + max);
-                project.autoMax = max;
-                updateSettingsFromState();
-            }
-        });
-
-        return projectMaxTextBox;
     }
 
     function buildProjectIgnoreMinMoneySettingsToggle(project) {
@@ -13449,7 +13356,11 @@
             let state = input.checked;
             project.autoBuildEnabled = state;
             // @ts-ignore
-            document.querySelector('#script_arpa2_' + project.id + ' input').checked = state;
+            let otherCheckbox = document.querySelector('#script_arpa2_' + project.id + ' input');
+            if (otherCheckbox !== null) {
+                // @ts-ignore
+                otherCheckbox.checked = state;
+            }
             updateSettingsFromState();
         });
     }
@@ -13476,13 +13387,17 @@
     function createCraftToggle(craftable) {
         let resourceSpan = $('#res' + craftable.id);
         let checked = craftable.autoCraftEnabled ? " checked" : "";
-        let toggle = $(`<label tabindex="0" class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:30%;"><input type="checkbox" value=${craftable.autoCraftEnabled}${checked}/> <span class="check" style="height:5px;"></span></label>`);
+        let toggle = $(`<label tabindex="0" id=script_craft1_${craftable.id} class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:30%;"><input type="checkbox" value=${craftable.autoCraftEnabled}${checked}/> <span class="check" style="height:5px;"></span></label>`);
         resourceSpan.append(toggle);
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
             input.setAttribute('value', state);
             craftable.autoCraftEnabled = state;
+            let otherCheckbox = document.querySelector(`#script_craft2_${craftable.id} input`);
+            if (otherCheckbox !== null) {
+                otherCheckbox.checked = state;
+            }
             updateSettingsFromState();
         });
     }
@@ -13512,7 +13427,6 @@
             let input = e.currentTarget.children[0];
             let state = input.checked;
             building.autoBuildEnabled = state;
-            //$('#script_bat2_' + building.settingId + ' input').checked = state; // Update the settings-building toggle
             let otherCheckbox = document.querySelector('#script_bat2_' + building.settingId + ' input');
             if (otherCheckbox !== null) {
                 // @ts-ignore
