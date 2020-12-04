@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.18
+// @version      3.2.1.19
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -719,7 +719,25 @@
                 return this.overridePowered;
             }
 
-            return this.definition.hasOwnProperty("powered") ? this.definition.powered() : 0;
+            if (!this.definition.hasOwnProperty("powered")) {
+                return 0;
+            }
+
+            //checkPowerRequirements()
+            if (this.definition.hasOwnProperty("power_reqs")) {
+                let power_reqs = this.definition.power_reqs;
+                let isMet = true;
+                Object.keys(power_reqs).forEach(function (req){
+                    if (!game.global.tech[req] || game.global.tech[req] < power_reqs[req]){
+                        isMet = false;
+                    }
+                });
+                if (!isMet) {
+                    return 0;
+                }
+            }
+
+            return this.definition.powered();
         }
 
         updateResourceRequirements() {
@@ -5091,7 +5109,7 @@
 
                 this.priorityList.forEach(trigger => {
                     //console.log("trigger " + trigger.complete + " is possible? " + trigger.isActionPossible() + " conflicts? " + this.actionConflicts(trigger))
-                    if (!trigger.complete && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
+                    if (!trigger.complete && trigger.areRequirementsMet() && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
                         this._targetTriggers.push(trigger);
                     }
                 });
@@ -5290,7 +5308,7 @@
             for (let i = 0; i < this.targetTriggers.length; i++) {
                 const targetTrigger = this.targetTriggers[i];
                 //@ts-ignore
-                if (targetTrigger.areRequirementsMet() && this.costsConflict(targetTrigger.cost, research.definition.cost)) {
+                if (this.costsConflict(targetTrigger.cost, research.definition.cost)) {
 
                     //console.log("research " + research.id + " CONFLICTS with target")
                     return true;
@@ -6049,6 +6067,7 @@
         state.spaceBuildings.ProximaCruiser.overridePowered = 0;
         state.spaceBuildings.NebulaHarvestor.overridePowered = 0;
         state.spaceBuildings.NebulaEleriumProspector.overridePowered = 0;
+        //state.spaceBuildings.ProximaDyson.overridePowered = -1.25; //TODO: get dyson, and test me
         ////////////////////
 
         // We aren't getting these ones yet...
@@ -9012,10 +9031,16 @@
         let extraDesc = [];
         let buildingList = state.buildingManager.managedPriorityList();
 
-        // Filtering, some obvious labels are disabled to reduce clutter.
+        // Filtering out building which we're not going to build for sure. Make it before main loop, to reduce buildingList before we'll start iterate it comparing weights
         buildingList = buildingList.filter(function(building){
           let id = "pop" + building.settingId;
-          extraDesc[id] = "AutoBuild weighting: " + building.weighting + "<br>";
+          let weighting = building.weighting;
+          extraDesc[id] = `AutoBuild weighting: ${weighting}<br>`;
+
+          if (weighting <= 0) {
+              extraDesc[id] += "Too low weighting";
+              return false;
+          }
 
           if (building.count >= building.autoMax) {
               extraDesc[id] += "Maximum amount reached";
@@ -9023,7 +9048,7 @@
           }
 
           if (!game.checkAffordable(building.definition, true)) {
-              //extraDesc[id] += "Not enought storage";
+              extraDesc[id] += "Not enought storage";
               return false;
           }
 
@@ -9045,15 +9070,13 @@
           }
 
           // We don't need too many crates and containers if we're not going to use it
-          if (settings.storageLimitPreMad) {
-            if(building === state.cityBuildings.StorageYard && !isResearchUnlocked("mad") && resources.Crates.maxQuantity > 0) {
-              extraDesc[id] += "Pre-mad storage limited.";
-              return false;
-            }
-            if(building === state.cityBuildings.Warehouse && !isResearchUnlocked("mad") && resources.Containers.maxQuantity > 0) {
-              extraDesc[id] += "Pre-mad storage limited.";
-              return false;
-            }
+          if(building === state.cityBuildings.StorageYard && resources.Crates.maxQuantity > 0) {
+            extraDesc[id] += "Still have some unused crates.";
+            return false;
+          }
+          if(building === state.cityBuildings.Warehouse && resources.Containers.maxQuantity > 0) {
+            extraDesc[id] += "Still have some unused containers.";
+            return false;
           }
 
           //extraDesc[id] = "Processing...";
@@ -9061,45 +9084,62 @@
         });
 
         // Loop through the auto build list and try to buy them
-        loop1:
+        buildingsLoop:
         for (let i = 0; i < buildingList.length; i++) {
             const building = buildingList[i];
             const id = "pop" + building.settingId;
 
             // Only go further if we can build it right now
             if (!building.isClickable()) {
-                //extraDesc[id] += "Not enought resources";
+                extraDesc[id] += "Not enought resources";
                 continue;
             }
 
             // Checks weights, if this building doesn't demands any overflowing resources(unless we ignoring overflowing)
-            if (!settings.buildingBuildIfStorageFull || !building.resourceRequirements.find(requirement => requirement.resource.storageRatio > 0.98)) {
+            if (!settings.buildingBuildIfStorageFull || !building.resourceRequirements.some(requirement => requirement.resource.storageRatio > 0.98)) {
               let thisWeighting = building.weighting;
-              loop2:
               for (let j = 0; j < buildingList.length; j++) {
                 let other = buildingList[j];
-                // Do same trick for other building
                 let otherWeighting = other.weighting;
-                // Compare costs, if other buildng have highter weight
-                if (otherWeighting > thisWeighting){
-                  let weightScale = otherWeighting / thisWeighting;
-                  for (let k = 0; k < building.resourceRequirements.length; k++) {
-                    let thisRequirement = building.resourceRequirements[k];
-                    for (let l = 0; l < other.resourceRequirements.length; l++){
-                      let otherRequirement = other.resourceRequirements[l];
-                      // Found conflicting resource
-                      if (otherRequirement.resource === thisRequirement.resource){
-                        if (otherRequirement.quantity / thisRequirement.quantity < weightScale && otherRequirement.resource.currentQuantity < otherRequirement.quantity) {
-                          // We're conflicting on resource which is missed by priritized building, and differents is not too big for our weights. Not building anything, waiting for more resources.
-                          extraDesc[id] += "Conflicts with " + other.name + " for " + otherRequirement.resource.name;
-                          continue loop1;
-                        } else {
-                          // Found conflicting resource, but it didn't passed weighting check. Break out of this loop, and check next resource.
-                          break;
-                        }
-                      }
-                    }
+
+                // We only care about buildings with highter weight
+                if (thisWeighting >= otherWeighting){
+                    continue;
+                }
+                let weightDiffRatio = otherWeighting / thisWeighting;
+
+                // Compare resource costs
+                for (let k = 0; k < building.resourceRequirements.length; k++) {
+                  let thisRequirement = building.resourceRequirements[k];
+
+                  // Ignore locked resources
+                  if (!thisRequirement.resource.isUnlocked()){
+                      continue;
                   }
+                  
+                  let otherRequirement = other.resourceRequirements.find(otherRequirement => otherRequirement.resource === thisRequirement.resource);
+
+                  // Check if we're conflicting on this resource 
+                  if (otherRequirement === undefined){
+                      continue;
+                  }
+
+                  // Check if we're actually missing this resoure
+                  // It might be better to compare current value with sum of requirements of both buildings, but i've got questionable results with such approach. 
+                  // Not really sure what's more optimal. Let's just assume that if we have enough resources for prioritized building - it's not something scarce, and won't needlessly delay building process
+                  if (otherRequirement.resource.currentQuantity > otherRequirement.quantity) {
+                      continue;
+                  }
+
+                  // Check if cost difference is below weighting threshold, so we won't wait hours for 10x amount of resources when weight is just twice higher
+                  let costDiffRatio = otherRequirement.quantity / thisRequirement.quantity;
+                  if (costDiffRatio >= weightDiffRatio) {
+                      continue;
+                  }
+                  
+                  // If we reached here - then we want to delay with our current building. Return all way back to main building loop, and check next building
+                  extraDesc[id] += "Conflicts with " + other.name + " for " + otherRequirement.resource.name;
+                  continue buildingsLoop;
                 }
               }
             }
@@ -9132,20 +9172,22 @@
     //#region Auto Research
 
     function autoResearch() {
-        let items = document.querySelectorAll('#tech .action');
+        let items = $('#tech .action').not('.cna');
+        
+        // Check if we have something researchable
+        if (items.length === 0){
+            return;
+        }
 
         // Check for active research triggers
         let targetResearch = [];
         for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
             const trigger = state.triggerManager.targetTriggers[i];
 
-            if (trigger.actionType === "research" && trigger.areRequirementsMet()) {
-                for (let j = 0; j < items.length; j++) {
-                    const itemId = items[j].id;
-
-                    if (tech[trigger.actionId].definition.id === itemId) {
-                        targetResearch.push(itemId);
-                    }
+            if (trigger.actionType === "research") {
+                const techId = tech[trigger.actionId].definition.id;
+                if (items.filter("#" + techId).length > 0){
+                  targetResearch.push(techId);
                 }
             }
         }
@@ -9156,7 +9198,7 @@
 
             // Block research that conflics with active triggers, but never block research that is wanted by an active trigger
             // @ts-ignore
-            if (!targetResearch.includes(itemId) && state.triggerManager.researchConflicts(tech[techIds[itemId].id])) {
+            if (!targetResearch.includes(itemId) && state.triggerManager.researchConflicts(techIds[itemId])) {
                 continue;
             }
 
@@ -9533,12 +9575,14 @@
             numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
         );
 
-        // Just a hack for pre-mad wtithout limitited storage
+        
         if (!settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
-          if (resources.Steel.storageRatio < 0.5) {
+          // Only build pre-mad conainers when steel storage is over 80%
+          if (resources.Steel.storageRatio < 0.8) {
               numberOfContainersWeCanBuild = 0;
           }
-          if (isLumberRace() && resources.Plywood.currentQuantity < 1000) {
+          // Only build pre-mad crates when already have Plywood for next level of library
+          if (isLumberRace() && state.cityBuildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity)) {
               numberOfCratesWeCanBuild = 0;
           }
         }
@@ -9742,24 +9786,6 @@
         });
     }
 
-    /**
-     * @param {any[] | { resource: any; requiredTradeRoutes: any; completed: boolean; index: number; }[]} requiredTradeRouteResources
-     * @param {Resource[]} marketResources
-     * @param {Resource} resource
-     */
-    function addResourceToTrade(requiredTradeRouteResources, marketResources, resource) {
-        if (!resource.autoTradeBuyEnabled || resource.autoTradeBuyRoutes <= 0) {
-            return;
-        }
-
-        requiredTradeRouteResources.push( {
-            resource: resource,
-            requiredTradeRoutes: resource.autoTradeBuyRoutes,
-            completed: false,
-            index: findArrayIndex(marketResources, "id", resource.id),
-        } );
-    }
-
     function adjustTradeRoutes() {
         let m = state.marketManager;
         let tradableResources = m.getSortedTradeRouteSellList();
@@ -9789,37 +9815,54 @@
 
             //console.log(resource.id + " tradeRoutesUsed " + tradeRoutesUsed + ", maxTradeRoutes " + maxTradeRoutes + ", storageRatio " + resource.storageRatio + ", calculatedRateOfChange " + resource.calculatedRateOfChange)
             if (resource.autoTradeBuyEnabled && resource.autoTradeBuyRoutes > 0) {
-                addResourceToTrade(resourcesToTrade, tradableResources, resource);
+                resourcesToTrade.push( {
+                    resource: resource,
+                    requiredTradeRoutes: resource.autoTradeBuyRoutes,
+                    completed: false,
+                    index: findArrayIndex(tradableResources, "id", resource.id),
+                } );
             }
         }
 
         //console.log("current money per second: " + currentMoneyPerSecond);
-        let minimumAllowedMoneyPerSecond = Math.min(Math.max(settings.tradeRouteMinimumMoneyPerSecond, settings.tradeRouteMinimumMoneyPercentage / 100 * currentMoneyPerSecond), resources.Money.maxQuantity - resources.Money.currentQuantity);
+        let minimumAllowedMoneyPerSecond = Math.max(settings.tradeRouteMinimumMoneyPerSecond, settings.tradeRouteMinimumMoneyPercentage / 100 * currentMoneyPerSecond)
+        minimumAllowedMoneyPerSecond = Math.min(minimumAllowedMoneyPerSecond, resources.Money.maxQuantity - resources.Money.currentQuantity);
         //console.log("minimum money per second: " + minimumAllowedMoneyPerSecond + " based on current money per second of " + currentMoneyPerSecond)
 
         // Import resources demanded by trigger
         if (settings.triggerRequest) {
           for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
+
+            // Only works with research trigger (And that's only trigger we have at the momvent...)
             let trigger = state.triggerManager.targetTriggers[i];
-            if (trigger.actionType === "research") {
-              let triggerTech = tech[trigger.actionId];
-              if (!triggerTech.isClickable()) {
-                triggerTech.updateResourceRequirements();
-                let techResourceRequirements = triggerTech.resourceRequirements;
-                for (let j = 0; j < techResourceRequirements.length; j++){
-                  let cost = techResourceRequirements[j];
-                  if (cost.resource.currentQuantity < cost.quantity && cost.resource.isTradable){
-                    let amount = Math.ceil((cost.quantity - cost.resource.currentQuantity) / cost.resource.tradeRouteQuantity);
-                    if (!isNaN(amount) && amount > 0) {
-                      resourcesToTrade.push( {
-                          resource: cost.resource,
-                          requiredTradeRoutes: amount,
-                          completed: false,
-                          index: findArrayIndex(tradableResources, "id", cost.resource.id),
-                      } );
-                      minimumAllowedMoneyPerSecond = 0;
-                    }
-                  }
+            if (trigger.actionType !== "research") {
+                continue;
+            }
+            
+            let triggerTech = tech[trigger.actionId];
+            triggerTech.updateResourceRequirements();
+
+            // Check resources required for trigger tech
+            for (let j = 0; j < triggerTech.resourceRequirements.length; j++){
+              let cost = triggerTech.resourceRequirements[j];
+
+              // We only care for missing tradeable resources
+              if (cost.resource.currentQuantity > cost.quantity || !cost.resource.isTradable){
+                  continue;
+              }
+              
+              // Calculate amount of traades we need
+              let amount = Math.ceil((cost.quantity - cost.resource.currentQuantity) / cost.resource.tradeRouteQuantity);
+              if (!isNaN(amount) && amount > 0) {
+                resourcesToTrade.push( {
+                    resource: cost.resource,
+                    requiredTradeRoutes: amount,
+                    completed: false,
+                    index: findArrayIndex(tradableResources, "id", cost.resource.id),
+                } );
+                // Drop minimum income to minimum, if we have something on demand, but can't trade with our income
+                if (minimumAllowedMoneyPerSecond > resources.Money.calculatedRateOfChange){
+                    minimumAllowedMoneyPerSecond = 0;
                 }
               }
             }
