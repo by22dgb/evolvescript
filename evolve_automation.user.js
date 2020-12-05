@@ -9597,6 +9597,7 @@
                 totalContainers += removedContainers;
                 storageAdjustments[i].adjustContainers -= removedContainers;
                 extraStorage -= removedContainers * containerVolume;
+                freeStorage -= removedContainers * containerVolume;;
             }
 
             // Check if have extra crates here
@@ -9614,6 +9615,7 @@
                 totalCrates += removedCrates;
                 storageAdjustments[i].adjustCrates -= removedCrates;
                 extraStorage -= removedCrates * crateVolume;
+                //freeStorage -= removedCrates * crateVolume;
             }
 
             let missingStorage = extraStorageRequired - extraStorage;
@@ -9641,6 +9643,7 @@
                             storageAdjustments[j].calculatedCrates -= cratesToUnassign;
                             totalCrates += cratesToUnassign;
                             missingStorage -= cratesToUnassign * crateVolume;
+                            otherFreeStorage -= cratesToUnassign * crateVolume;
                         }
 
                         // Unassign containers, if we still need them
@@ -9657,6 +9660,7 @@
                             storageAdjustments[j].calculatedContainers -= containersToUnassign;
                             totalContainers += containersToUnassign;
                             missingStorage -= containersToUnassign * containerVolume;
+                            //otherFreeStorage -= containersToUnassign * containerVolume;
                         }
 
                         // If we got all we needed - get back to assigning
