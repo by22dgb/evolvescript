@@ -9601,7 +9601,7 @@
             }
 
             // Check against max containers
-            if (resource.autoContainersMax >= 0 && resource.currentContainers > resource.autoContainersMax){
+            if (resource.currentContainers > resource.autoContainersMax){
                 let extraContainers = resource.currentContainers - resource.autoContainersMax;
                 totalContainers += extraContainers;
                 containersStorage -= extraContainers * containerVolume;
@@ -9610,7 +9610,7 @@
             }
 
             // Check against max crates
-            if (resource.autoCratesMax >= 0 && resource.currentCrates > resource.autoCratesMax){
+            if (resource.currentCrates > resource.autoCratesMax){
                 let extraCrates = resource.currentCrates - resource.autoCratesMax;
                 totalCrates += extraCrates;
                 cratesStorage -= extraCrates * crateVolume;
@@ -9666,10 +9666,7 @@
 
             // Add crates
             if (totalCrates > 0) {
-                let addCrates = Math.min(totalCrates, Math.ceil(missingExtraStorage / crateVolume));
-                if (resource.autoCratesMax >= 0){
-                    addCrates = Math.min(addCrates, resource.autoCratesMax - resource.currentCrates);
-                }
+                let addCrates = Math.min(totalCrates, resource.autoCratesMax - resource.currentCrates, Math.ceil(missingExtraStorage / crateVolume));
                 totalCrates -= addCrates;
                 storageAdjustments[i].crates += addCrates;
 
@@ -9683,12 +9680,9 @@
 
             // Add containers
             if (totalContainers > 0){
-                let addContainers = Math.min(totalContainers, Math.ceil(missingExtraStorage / containerVolume));
-                if (resource.autoContainersMax >= 0){
-                    addContainers = Math.min(addContainers, resource.autoContainersMax - resource.currentContainers);
-                }
+                let addContainers = Math.min(totalContainers, resource.autoContainersMax - resource.currentContainers, Math.ceil(missingExtraStorage / containerVolume));
                 totalContainers -= addContainers;
-                storageAdjustments[i].conainers += addContainers;
+                storageAdjustments[i].containers += addContainers;
 
                 missingExtraStorage -= addContainers * containerVolume;
             }
