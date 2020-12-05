@@ -26,12 +26,13 @@
 //   Remade autoStorage, it calculates requred storages, based on available techs and buildings, and assign storages to make them all affordable. Weighting option is gone as it not needed anymore, just rearrange list to change filling order when storages are scarce. Max crate\containers for individual reources still exist, and respected by adjustments.
 //   Pre-mad storage limit doesn't completely prevents constructing crates and containers, it just make it work above certain ratio(80%+ steel storage for containers, and more-than-you-need-for-next-library for crates)
 //   You can enable buying and selling of same resource at same time, depends on whether you're lacking something, or have a surplus. Works both with batch sell, and routes.
-//   Trigger can import missing resources via routes. When trigger requirements are met script will set trade routes for missing resources. It wull import steel for crucible, titanium for hunter process, uranium for mutual destruction - whatever you need.
+//   Trigger can import missing resources via routes. When trigger requirements are met script will set trade routes for missing resources. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction - whatever you need.
 //   Restored "researched" trigger condition, and old "unlocked" condition now actually works too.
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
 //   autoAchievements now check and pick conditional races.
-//   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and current implementation. Reset evolution settings if you have issues with it. 
-//   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)//
+//   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
+//   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)
+//
 // And, of course, you can do whatever you want with my changes. Fork further, backport any patches back(no credits required). Whatever.
 
 //@ts-check
