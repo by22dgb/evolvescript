@@ -6476,26 +6476,26 @@
         state.storageManager.addResourceToPriorityList(resources.Lumber);
         state.storageManager.addResourceToPriorityList(resources.Food);
 
-        resources.Food.updateStorageState(true, 0, -1, -1);
-        resources.Lumber.updateStorageState(true, 1, -1, -1);
-        resources.Stone.updateStorageState(true, 1, -1, -1);
-        resources.Furs.updateStorageState(true, 1, -1, -1);
-        resources.Copper.updateStorageState(true, 1, -1, -1);
-        resources.Iron.updateStorageState(true, 1, -1, -1);
-        resources.Aluminium.updateStorageState(true, 1, -1, -1);
-        resources.Cement.updateStorageState(true, 1, -1, -1);
-        resources.Coal.updateStorageState(true, 1, -1, -1);
-        resources.Steel.updateStorageState(true, 2, -1, -1);
-        resources.Titanium.updateStorageState(true, 1, -1, -1);
-        resources.Alloy.updateStorageState(true, 1, -1, -1);
-        resources.Polymer.updateStorageState(true, 1, -1, -1);
-        resources.Iridium.updateStorageState(true, 1, -1, -1);
-        resources.Adamantite.updateStorageState(true, 1, -1, -1);
-        resources.Graphene.updateStorageState(true, 1, -1, -1);
-        resources.Stanene.updateStorageState(true, 1, -1, -1);
-        resources.Bolognium.updateStorageState(true, 1, -1, -1);
-        resources.Vitreloy.updateStorageState(true, 1, -1, -1);
-        resources.Orichalcum.updateStorageState(true, 1, -1, -1);
+        resources.Food.updateStorageState(true, -1, -1);
+        resources.Lumber.updateStorageState(true, -1, -1);
+        resources.Stone.updateStorageState(true, -1, -1);
+        resources.Furs.updateStorageState(true, -1, -1);
+        resources.Copper.updateStorageState(true, -1, -1);
+        resources.Iron.updateStorageState(true, -1, -1);
+        resources.Aluminium.updateStorageState(true, -1, -1);
+        resources.Cement.updateStorageState(true, -1, -1);
+        resources.Coal.updateStorageState(true, -1, -1);
+        resources.Steel.updateStorageState(true, -1, -1);
+        resources.Titanium.updateStorageState(true, -1, -1);
+        resources.Alloy.updateStorageState(true, -1, -1);
+        resources.Polymer.updateStorageState(true, -1, -1);
+        resources.Iridium.updateStorageState(true, -1, -1);
+        resources.Adamantite.updateStorageState(true, -1, -1);
+        resources.Graphene.updateStorageState(true, -1, -1);
+        resources.Stanene.updateStorageState(true, -1, -1);
+        resources.Bolognium.updateStorageState(true, -1, -1);
+        resources.Vitreloy.updateStorageState(true, -1, -1);
+        resources.Orichalcum.updateStorageState(true, -1, -1);
     }
 
     function resetStorageSettings() {
