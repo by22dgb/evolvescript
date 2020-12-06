@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.21
+// @version      3.2.1.22
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -41,8 +41,6 @@
     var settings = JSON.parse(localStorage.getItem('settings')) || {};
 
     var game = null;
-
-    var defaultAllOptionsEnabled = false;
 
     var speciesProtoplasm = "protoplasm";
     var challengeNoCraft = "no_craft";
@@ -197,7 +195,7 @@
             // Settings
             this._settingJobEnabled = "job_" + this._originalId;
 
-            this.autoJobEnabled = true; // Don't use defaultAllOptionsEnabled. By default assign all new jobs.
+            this.autoJobEnabled = true;
             this.priority = 0;
 
             /** @type {number[]} */
@@ -596,7 +594,7 @@
          * @param {string} id
          * @param {string} location
          */
-        constructor(name, tab, id, location) {
+        constructor(name, tab, id, location, flags) {
             this.name = name;
             this._tab = tab;
             this._id = id;
@@ -609,7 +607,7 @@
             this._definition = null;
             this._instance = null;
 
-            this.autoBuildEnabled = defaultAllOptionsEnabled;
+            this.autoBuildEnabled = true;
             this.autoStateEnabled = true;
 
             if (this._elementId === "spcdock-probes") { // Can't use buildings in the constructor as we are still creating them!
@@ -632,6 +630,9 @@
             this.setupCache();
 
             this.overridePowered = undefined;
+
+            // Additional flags
+            this.is = flags || {};
         }
 
         get definition() {
@@ -911,6 +912,9 @@
 
           // Reduce weighting for powered buildings, when we missing energy
           if (resources.Power.currentQuantity < 1 && this.powered > 0) { weighting *= settings.buildingWeightingUnderpowered; }
+          
+          // Increase weighting for science, when knowledge is capped
+          if (resources.Knowledge.storageRatio > 0.98 && this.is.knowledge) { weighting *= settings.buildingWeightingNeedfulKnowledge; }
 
           return weighting;
         }
@@ -1202,7 +1206,7 @@
             this.name = name;
             this._id = id;
             this._isPopulation = (id === "Population"); // We can't store the full elementId because we don't know the name of the population node until later
-            this.autoCraftEnabled = defaultAllOptionsEnabled;
+            this.autoCraftEnabled = true;
 
             this._isTradable = isTradable;
             this.tradeRouteQuantity = tradeRouteQuantity;
@@ -4709,7 +4713,7 @@
 
             return true;
         }
-        
+
         getCrateVolume() {
             let crateDescNumbers = $(".crate .tooltip-content").text().match(/(\d+)/g);
             if (crateDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
@@ -5706,26 +5710,26 @@
             Slaughter: new Action("Slaughter", "city", "slaughter", ""),
             SacrificialAltar: new SacrificialAlter(), // special click properties
 
-            University: new Action("University", "city", "university", ""),
-            Wardenclyffe: new Action("Wardenclyffe", "city", "wardenclyffe", ""),
+            University: new Action("University", "city", "university", "", {knowledge: true}),
+            Wardenclyffe: new Action("Wardenclyffe", "city", "wardenclyffe", "", {knowledge: true}),
             Mine: new Action("Mine", "city", "mine", ""),
             CoalMine: new Action("Coal Mine", "city", "coal_mine", ""),
             Smelter: new Smelter(), // has options
             CoalPower: new Action("Coal Powerplant", "city", "coal_power", ""),
             Temple: new Action("Temple", "city", "temple", ""),
             OilWell: new Action("Oil Derrick", "city", "oil_well", ""),
-            BioLab: new Action("Bioscience Lab", "city", "biolab", ""),
+            BioLab: new Action("Bioscience Lab", "city", "biolab", "", {knowledge: true}),
             StorageYard: new Action("Freight Yard", "city", "storage_yard", ""),
             Warehouse: new Action("Container Port", "city", "warehouse", ""),
             OilPower: new Action("Oil Powerplant", "city", "oil_power", ""),
             Bank: new Action("Bank", "city", "bank", ""),
-            Barracks: new Action("Barracks", "city", "garrison", ""),
+            Barracks: new Action("Barracks", "city", "garrison", "", {garrison: true}),
             Hospital: new Action("Hospital", "city", "hospital", ""),
             BootCamp: new Action("Boot Camp", "city", "boot_camp", ""),
-            House: new Action("Cabin", "city", "basic_housing", ""),
-            Cottage: new Action("Cottage", "city", "cottage", ""),
-            Apartment: new Action("Apartment", "city", "apartment", ""),
-            Farm: new Action("Farm", "city", "farm", ""),
+            House: new Action("Cabin", "city", "basic_housing", "", {housing: true}),
+            Cottage: new Action("Cottage", "city", "cottage", "", {housing: true}),
+            Apartment: new Action("Apartment", "city", "apartment", "", {housing: true}),
+            Farm: new Action("Farm", "city", "farm", "", {housing: true}),
             SoulWell: new Action("Soul Well", "city", "soul_well", ""),
             Mill: new Action("Mill (Good Windmill)", "city", "mill", ""),
             Windmill: new Action("Windmill (Evil only)", "city", "windmill", ""),
@@ -5739,10 +5743,10 @@
             OilDepot: new Action("Fuel Depot", "city", "oil_depot", ""),
             Trade: new Action("Trade Post", "city", "trade", ""),
             Amphitheatre: new Action("Amphitheatre", "city", "amphitheatre", ""),
-            Library: new Action("Library", "city", "library", ""),
+            Library: new Action("Library", "city", "library", "", {knowledge: true}),
             Sawmill: new Action("Sawmill", "city", "sawmill", ""),
             FissionPower: new Action("Fission Reactor", "city", "fission_power", ""),
-            Lodge: new Action("Lodge", "city", "lodge", ""),
+            Lodge: new Action("Lodge", "city", "lodge", "", {housing: true}),
             Smokehouse: new Action("Smokehouse", "city", "smokehouse", ""),
             Casino: new Action("Casino", "city", "casino", ""),
             TouristCenter: new Action("Tourist Center", "city", "tourist_center", ""),
@@ -5759,7 +5763,7 @@
         spaceBuildings: {
             // Space
             SpaceTestLaunch: new Action("Test Launch", "space", "test_launch", "spc_home"),
-            SpaceSatellite: new Action("Space Satellite", "space", "satellite", "spc_home"),
+            SpaceSatellite: new Action("Space Satellite", "space", "satellite", "spc_home", {knowledge: true}),
             SpaceGps: new Action("Space Gps", "space", "gps", "spc_home"),
             SpacePropellantDepot: new Action("Space Propellant Depot", "space", "propellant_depot", "spc_home"),
             SpaceNavBeacon: new Action("Space Navigation Beacon", "space", "nav_beacon", "spc_home"),
@@ -5769,21 +5773,21 @@
             MoonBase: new Action("Moon Base", "space", "moon_base", "spc_moon"),
             MoonIridiumMine: new Action("Moon Iridium Mine", "space", "iridium_mine", "spc_moon"),
             MoonHeliumMine: new Action("Moon Helium-3 Mine", "space", "helium_mine", "spc_moon"),
-            MoonObservatory: new Action("Moon Observatory", "space", "observatory", "spc_moon"),
+            MoonObservatory: new Action("Moon Observatory", "space", "observatory", "spc_moon", {knowledge: true}),
 
             // Red
             RedMission: new Action("Red Mission", "space", "red_mission", "spc_red"),
             RedSpaceport: new Action("Red Spaceport", "space", "spaceport", "spc_red"),
             RedTower: new Action("Red Space Control", "space", "red_tower", "spc_red"),
-            RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red"),
+            RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red", {housing: true}),
             RedVrCenter: new Action("Red VR Center", "space", "vr_center", "spc_red"),
             RedGarage: new Action("Red Garage", "space", "garage", "spc_red"),
             RedMine: new Action("Red Mine", "space", "red_mine", "spc_red"),
             RedFabrication: new Action("Red Fabrication", "space", "fabrication", "spc_red"),
             RedFactory: new Action("Red Factory", "space", "red_factory", "spc_red"),
             RedBiodome: new Action("Red Biodome", "space", "biodome", "spc_red"),
-            RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red"),
-            RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red"),
+            RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
+            RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
             RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
 
             // Hell
@@ -5829,21 +5833,21 @@
 
             AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
             AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
-            AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha"),
+            AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
             AlphaMiningDroid: new MiningDroid(), // has options
             AlphaProcessing: new Action("Alpha Processing", "interstellar", "processing", "int_alpha"),
             AlphaFusion: new Action("Alpha Fusion", "interstellar", "fusion", "int_alpha"),
-            AlphaLaboratory: new Action("Alpha Laboratory", "interstellar", "laboratory", "int_alpha"),
+            AlphaLaboratory: new Action("Alpha Laboratory", "interstellar", "laboratory", "int_alpha", {knowledge: true}),
             AlphaExchange: new Action("Alpha Exchange", "interstellar", "exchange", "int_alpha"),
             AlphaFactory: new GraphenePlant(), // has options
             AlphaWarehouse: new Action("Alpha Warehouse", "interstellar", "warehouse", "int_alpha"),
             AlphaMegaFactory: new Action("Alpha Mega Factory", "interstellar", "int_factory", "int_alpha"),
-            AlphaLuxuryCondo: new Action("Alpha Luxury Condo", "interstellar", "luxury_condo", "int_alpha"),
+            AlphaLuxuryCondo: new Action("Alpha Luxury Condo", "interstellar", "luxury_condo", "int_alpha", {housing: true}),
 
             ProximaMission: new Action("Proxima Mission", "interstellar", "proxima_mission", "int_proxima"),
             ProximaTransferStation: new Action("Proxima Transfer Station", "interstellar", "xfer_station", "int_proxima"),
             ProximaCargoYard: new Action("Proxima Cargo Yard", "interstellar", "cargo_yard", "int_proxima"),
-            ProximaCruiser: new Action("Proxima Cruiser", "interstellar", "cruiser", "int_proxima"),
+            ProximaCruiser: new Action("Proxima Cruiser", "interstellar", "cruiser", "int_proxima", {garrison: true}),
             ProximaDyson: new Action("Proxima Dyson", "interstellar", "dyson", "int_proxima"),
             ProximaDysonSphere: new Action("Proxima Dyson Sphere", "interstellar", "dyson_sphere", "int_proxima"),
             ProximaOrichalcumSphere: new Action("Proxima Orichalcum Sphere", "interstellar", "orichalcum_sphere", "int_proxima"),
@@ -6579,14 +6583,15 @@
     }
 
     function resetBuildingSettings() {
-        settings.buildingBuildIfStorageFull = true;
+        settings.buildingBuildIfStorageFull = false;
         settings.buildingAlwaysClick = false;
         settings.buildingClickPerTick = 50;
         settings.buildingWeightingNew = 3;
         settings.buildingWeightingUselessPowerPlant = 0.2;
         settings.buildingWeightingNeedfulPowerPlant = 5;
         settings.buildingWeightingUnderpowered = 0.5;
-
+        settings.buildingWeightingNeedfulKnowledge = 5;
+        
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
 
@@ -6974,7 +6979,7 @@
             if (settings.hasOwnProperty(settingKey)) {
                 resource.autoCraftEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = defaultAllOptionsEnabled;
+                settings[settingKey] = true;
             }
 
             settingKey = 'foundry_w_' + resource.id;
@@ -7034,7 +7039,7 @@
             if (settings.hasOwnProperty(settingKey)) {
                 job.autoJobEnabled = settings[settingKey];
             } else {
-                settings[settingKey] = true; // Don't use defaultAllOptionsEnabled. By default assign all new jobs.
+                settings[settingKey] = true;
             }
 
             settingKey = 'job_p_' + job._originalId;
@@ -7258,22 +7263,22 @@
 
         addSetting("masterScriptToggle", true);
         addSetting("showSettings", true);
-        addSetting("autoEvolution", defaultAllOptionsEnabled);
+        addSetting("autoEvolution", false);
         addSetting("autoAchievements", false);
         addSetting("autoChallenge", false);
-        addSetting("autoMarket", defaultAllOptionsEnabled);
-        addSetting("autoFight", defaultAllOptionsEnabled);
-        addSetting("autoCraft", defaultAllOptionsEnabled);
-        addSetting("autoARPA", defaultAllOptionsEnabled);
-        addSetting("autoBuild", defaultAllOptionsEnabled);
-        addSetting("autoResearch", defaultAllOptionsEnabled);
-        addSetting("autoJobs", defaultAllOptionsEnabled);
-        addSetting("autoTax", defaultAllOptionsEnabled);
-        addSetting("autoCraftsmen", defaultAllOptionsEnabled);
-        addSetting("autoPower", defaultAllOptionsEnabled);
-        addSetting("autoStorage", defaultAllOptionsEnabled);
-        addSetting("autoMinorTrait", defaultAllOptionsEnabled);
-        addSetting("autoHell", defaultAllOptionsEnabled);
+        addSetting("autoMarket", false);
+        addSetting("autoFight", false);
+        addSetting("autoCraft", false);
+        addSetting("autoARPA", false);
+        addSetting("autoBuild", false);
+        addSetting("autoResearch", false);
+        addSetting("autoJobs", false);
+        addSetting("autoTax", false);
+        addSetting("autoCraftsmen", false);
+        addSetting("autoPower", false);
+        addSetting("autoStorage", false);
+        addSetting("autoMinorTrait", false);
+        addSetting("autoHell", false);
 
         addSetting("logEnabled", true);
         Object.keys(loggingTypes).forEach(loggingTypeKey => {
@@ -7287,10 +7292,10 @@
             delete settings.autoTradeSpecialResources;
         }
 
-        addSetting("autoSmelter", defaultAllOptionsEnabled);
-        addSetting("autoFactory", defaultAllOptionsEnabled);
-        addSetting("autoMiningDroid", defaultAllOptionsEnabled);
-        addSetting("autoGraphenePlant", defaultAllOptionsEnabled);
+        addSetting("autoSmelter", false);
+        addSetting("autoFactory", false);
+        addSetting("autoMiningDroid", false);
+        addSetting("autoGraphenePlant", false);
         addSetting("autoMAD", false);
         addSetting("autoSpace", false);
         addSetting("prestigeBioseedConstruct", false);
@@ -7385,6 +7390,7 @@
         addSetting("buildingWeightingUselessPowerPlant", 0.2);
         addSetting("buildingWeightingNeedfulPowerPlant", 5);
         addSetting("buildingWeightingUnderpowered", 0.5);
+        addSetting("buildingWeightingNeedfulKnowledge", 5);
 
         addSetting("buildingEnabledAll", false);
         addSetting("buildingStateAll", false);
@@ -9030,6 +9036,9 @@
         let extraDesc = [];
         let buildingList = state.buildingManager.managedPriorityList();
 
+        // We don't need to check that for each building...
+        let performingMAD = settings.autoMAD && (tech['mad'].isUnlocked() || tech['mad'].isResearched());
+
         // Filtering out building which we're not going to build for sure. Make it before main loop, to reduce buildingList before we'll start iterate it comparing weights
         buildingList = buildingList.filter(function(building){
           let id = "pop" + building.settingId;
@@ -9065,6 +9074,11 @@
 
           if (!settings.prestigeBioseedConstruct && (building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe)) {
               extraDesc[id] += "Bioseed prestige disabled";
+              return false;
+          }
+
+          if (performingMAD && !building.is.housing && !building.is.garrison){
+              extraDesc[id] += "MAD prestige unlocked and enabled, only building housings and barracks from now";
               return false;
           }
 
@@ -9115,16 +9129,16 @@
                   if (!thisRequirement.resource.isUnlocked()){
                       continue;
                   }
-                  
+
                   let otherRequirement = other.resourceRequirements.find(otherRequirement => otherRequirement.resource === thisRequirement.resource);
 
-                  // Check if we're conflicting on this resource 
+                  // Check if we're conflicting on this resource
                   if (otherRequirement === undefined){
                       continue;
                   }
 
                   // Check if we're actually missing this resoure
-                  // It might be better to compare current value with sum of requirements of both buildings, but i've got questionable results with such approach. 
+                  // It might be better to compare current value with sum of requirements of both buildings, but i've got questionable results with such approach.
                   // Not really sure what's more optimal. Let's just assume that if we have enough resources for prioritized building - it's not something scarce, and won't needlessly delay building process
                   if (otherRequirement.resource.currentQuantity > otherRequirement.quantity) {
                       continue;
@@ -9135,7 +9149,7 @@
                   if (costDiffRatio >= weightDiffRatio) {
                       continue;
                   }
-                  
+
                   // If we reached here - then we want to delay with our current building. Return all way back to main building loop, and check next building
                   extraDesc[id] += "Conflicts with " + other.name + " for " + otherRequirement.resource.name;
                   continue buildingsLoop;
@@ -9172,7 +9186,7 @@
 
     function autoResearch() {
         let items = $('#tech .action').not('.cna');
-        
+
         // Check if we have something researchable
         if (items.length === 0){
             return;
@@ -9633,12 +9647,12 @@
                         if (storageAdjustments[j].calculatedCrates > 0) {
                             let missingCrates = Math.ceil(missingStorage / crateVolume);
                             let cratesToUnassign = Math.min(storageAdjustments[j].calculatedCrates, missingCrates);
-                            
+
                             if (settings.storageSafeReassign) {
                                 let emptyCrates = Math.floor(otherFreeStorage / containerVolume);
                                 cratesToUnassign = Math.min(cratesToUnassign, emptyCrates);
                             }
-                            
+
                             storageAdjustments[j].adjustCrates -= cratesToUnassign;
                             storageAdjustments[j].calculatedCrates -= cratesToUnassign;
                             totalCrates += cratesToUnassign;
@@ -9650,12 +9664,12 @@
                         if (storageAdjustments[j].calculatedContainers > 0 && missingStorage > 0){
                             let missingContainers = Math.ceil(missingStorage / containerVolume);
                             let containersToUnassign = Math.min(storageAdjustments[j].calculatedContainers, missingContainers);
-                            
+
                             if (settings.storageSafeReassign) {
                                 let emptyContainers = Math.floor(otherFreeStorage / containerVolume);
                                 containersToUnassign = Math.min(containersToUnassign, emptyContainers);
                             }
-                
+
                             storageAdjustments[j].adjustContainers -= containersToUnassign;
                             storageAdjustments[j].calculatedContainers -= containersToUnassign;
                             totalContainers += containersToUnassign;
@@ -9671,7 +9685,7 @@
                 }
                 // Restore missing storage, in case if was changed during unassignment
                 missingStorage = extraStorageRequired - extraStorage;
-                
+
                 // Add crates
                 if (totalCrates > 0) {
                     let missingCrates = Math.ceil(missingStorage / crateVolume);
@@ -9681,7 +9695,7 @@
                     storageAdjustments[i].adjustCrates += addCrates;
                     missingStorage -= addCrates * crateVolume;
                 }
-                
+
                 // Add containers
                 if (totalContainers > 0 && missingStorage > 0){
                     let missingContainers = Math.ceil(missingStorage / containerVolume);
@@ -9691,7 +9705,7 @@
                     storageAdjustments[i].adjustContainers += addContainers;
                     missingStorage -= addContainers * containerVolume;
                 }
-                
+
                 if (missingStorage > 0){
                     totalStorageMissing += missingStorage;
                 }
@@ -9725,7 +9739,7 @@
             // Build crates
             let cratesToBuild = Math.min(numberOfCratesWeCanBuild, Math.ceil(totalStorageMissing / crateVolume));
             m.tryConstructCrate(cratesToBuild);
-            
+
             // And containers, if still needed
             totalStorageMissing -= cratesToBuild * crateVolume;
             if (totalStorageMissing > 0) {
@@ -9833,7 +9847,7 @@
             if (trigger.actionType !== "research") {
                 continue;
             }
-            
+
             let triggerTech = tech[trigger.actionId];
             triggerTech.updateResourceRequirements();
 
@@ -9928,7 +9942,6 @@
                                 //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " current money per second: " + currentMoneyPerSecond);
                                 requiredTradeRoutes[resourceToTrade.index]++;
                                 requiredTradeRoutes[i] = currentRequired;
-                                resource.calculatedRateOfChange += resource.tradeRouteQuantity;
                                 addedTradeRoute = true;
 
                                 if (requiredTradeRoutes[resourceToTrade.index] === resourceToTrade.requiredTradeRoutes) {
@@ -9979,6 +9992,7 @@
             }
             // Update variables so we can use it later
             resource.currentTradeRoutes = requiredTradeRoutes[i];
+            resource.calculatedRateOfChange += requiredTradeRoutes[i] * resource.tradeRouteQuantity;
         }
         resources.Money.calculatedRateOfChange = currentMoneyPerSecond;
     }
@@ -10241,6 +10255,9 @@
             massEjectorProcessed = true;
         }
 
+        if (settings.autoMarket) {
+            autoMarket();
+        }
         if (settings.govManage) {
             manageGovernment();
         }
@@ -10258,9 +10275,6 @@
         }
         if (settings.autoResearch) {
             autoResearch();
-        }
-        if (settings.autoMarket) {
-            autoMarket();
         }
         if (settings.autoStorage) {
             autoStorage();
@@ -12632,11 +12646,12 @@
         let preTableNode = $('#script_buildingPreTable');
         addStandardSectionSettingsToggle(preTableNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of game, to build first production buildings. With this toggled on it will continue clicking forever");
         addStandardSectionSettingsNumber(preTableNode, "buildingClickPerTick", "Maximum clicks per second", "Number of clicks performed at once, each second. Hardcapped by amount of missed resources");
-        addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides the below settings to still build if resources are full");
+        addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides the below settings to still build if resources are full, preventing wasting them by overflowing");
         addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNew", "Weighting: new buildings", "Weighting multiplier for new building, can help to get new production gong");
         addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUselessPowerPlant", "Weighting: useless power plants", "Weighting multiplier for power plant, only applies when you have spare energy");
         addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulPowerPlant", "Weighting: needful power plant", "Weighting multiplier for power plant, only applies when you have no spare energy");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUnderpowered", "Weighting: missing energy", "Weighting multiplier for new powered buildings, only applies when you have no spare energy");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUnderpowered", "Weighting: missing energy", "Weighting multiplier for powered buildings, only applies when you have no spare energy");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulKnowledge", "Weighting: needful knowledge", "Weighting multiplier for buildings expanding knowledge cap, only applies when you knowledge is capped");
     }
 
     function updateBuildingTable() {
