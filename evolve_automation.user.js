@@ -8379,7 +8379,7 @@
 
                 let remainingRateOfChange = resource.calculatedRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * productionCost.quantity);
                 // No need to preserve minimum income when storage is full
-                if (resource.storageRatio < 0.99) {
+                if (resource.storageRatio < 0.98) {
                     remainingRateOfChange -= productionCost.minRateOfChange;
                 }
                 let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
@@ -8423,7 +8423,7 @@
 
             let remainingRateOfChange = resource.calculatedRateOfChange + (smelterSteelCount * productionCost.quantity);
             // No need to preserve minimum income when storage is full
-            if (resource.storageRatio < 0.99) {
+            if (resource.storageRatio < 0.98) {
                 remainingRateOfChange -= productionCost.minRateOfChange;
             }
             let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
@@ -9563,7 +9563,8 @@
         let requiredStorage = {};
         $(".cna a:first-child").each(function() {
             Object.entries($(this).data()).forEach(([resource, amount]) => {
-                requiredStorage[resource.toLowerCase()] = Math.max(amount, requiredStorage[resource] || 0)
+                // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building monuments, and that might cause an issues if we'll need 100% of storage
+                requiredStorage[resource.toLowerCase()] = Math.max(amount*1.03, requiredStorage[resource] || 0)
             });
         });
 
