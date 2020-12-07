@@ -7664,7 +7664,7 @@
         if (missResourceForBuilding(state.cityBuildings.Wardenclyffe, 20, craftable)) {
             craftable.craftRatio = 0.5;
         }
-        // Iron tends to be in high demand, make sure we have enought wrought for at least one coal mine, to start collecting coal for researches as soon as possible
+        // Iron tends to be in high demand, make sure we have enough wrought for at least one coal mine, to start collecting coal for researches as soon as possible
         if (missResourceForBuilding(state.cityBuildings.CoalMine, 1, craftable)) {
             craftable.craftRatio = 0;
         }
@@ -7929,7 +7929,7 @@
         let availableEmployees = state.jobManager.totalEmployees;
         let availableCraftsmen = state.jobManager.craftingMax;
 
-        // We're only crafting wheh we have enought population to fill all foundries, and still have some employees for other work.  Second part should always be true, usnless you starved to death most of your population...
+        // We're only crafting wheh we have enough population to fill all foundries, and still have some employees for other work.  Second part should always be true, usnless you starved to death most of your population...
         if (settings.autoCraftsmen && availableEmployees > availableCraftsmen * 4) {
             availableEmployees -= availableCraftsmen;
         } else {
@@ -8201,7 +8201,7 @@
                     return false;
                 }
 
-                // And have enought resources to craft if for at least 2 seconds
+                // And have enough resources to craft if for at least 2 seconds
                 let afforableAmount = availableCraftsmen;
                 job.resource.resourceRequirements.forEach(requirement =>
                     afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / requirement.quantity / 2)
@@ -9056,7 +9056,7 @@
           }
 
           if (!game.checkAffordable(building.definition, true)) {
-              extraDesc[id] += "Not enought storage";
+              extraDesc[id] += "Not enough storage";
               return false;
           }
 
@@ -9104,7 +9104,7 @@
 
             // Only go further if we can build it right now
             if (!building.isClickable()) {
-                extraDesc[id] += "Not enought resources";
+                extraDesc[id] += "Not enough resources";
                 continue;
             }
 
@@ -9639,7 +9639,7 @@
             if (missingStorage > 0){
                 let availableStorage = (totalCrates * crateVolume) + (totalContainers * containerVolume);
 
-                // We don't have enought containers, let's try to unassign something less prioritized
+                // We don't have enough containers, let's try to unassign something less prioritized
                 if (availableStorage < missingStorage){
                     for (var j = storageList.length-1; j > i; j--){
                         let otherFreeStorage = storageList[j].maxQuantity - storageList[j].currentQuantity;
@@ -9713,7 +9713,7 @@
             }
         }
 
-        // Build more storage if we didn't had enought
+        // Build more storage if we didn't had enough
         if (totalStorageMissing > 0 && state.loopCounter % 30 === 0){
             let numberOfCratesWeCanBuild = 1000000;
             let numberOfContainersWeCanBuild = 1000000;
