@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.22
+// @version      3.2.1.23
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -9037,7 +9037,7 @@
         let buildingList = state.buildingManager.managedPriorityList();
 
         // We don't need to check that for each building...
-        let performingMAD = settings.autoMAD && (tech['mad'].isUnlocked() || tech['mad'].isResearched());
+        let performingMAD = settings.autoMAD && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true));
 
         // Filtering out building which we're not going to build for sure. Make it before main loop, to reduce buildingList before we'll start iterate it comparing weights
         buildingList = buildingList.filter(function(building){
@@ -9840,6 +9840,7 @@
 
         // Import resources demanded by trigger
         if (settings.triggerRequest) {
+          let demandedTrades = [];
           for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
 
             // Only works with research trigger (And that's only trigger we have at the momvent...)
@@ -9867,20 +9868,24 @@
               }
 
               // Add routes
-              resourcesToTrade.push( {
+              demandedTrades.push( {
                   resource: cost.resource,
                   requiredTradeRoutes: amount,
                   completed: false,
                   index: findArrayIndex(tradableResources, "id", cost.resource.id),
               } );
-
+            }
+          }
+          if (demandedTrades.length > 0) {
+              // Override regular routes, to get demanded sooner
+              resourcesToTrade = demandedTrades;
               // Drop minimum income, if we have something on demand, but can't trade with our income
               if (minimumAllowedMoneyPerSecond > resources.Money.calculatedRateOfChange){
                   minimumAllowedMoneyPerSecond = 0;
               }
-            }
           }
         }
+
 
         while (findArrayIndex(resourcesToTrade, "completed", false) != -1) {
             for (let i = 0; i < resourcesToTrade.length; i++) {
@@ -9991,8 +9996,9 @@
                 m.removeTradeRoutes(resource, -1 * adjustmentTradeRoutes[i]);
             }
             // Update variables so we can use it later
-            resource.currentTradeRoutes = requiredTradeRoutes[i];
-            resource.calculatedRateOfChange += requiredTradeRoutes[i] * resource.tradeRouteQuantity;
+            if (requiredTradeRoutes[i] > 0){
+                resource.calculatedRateOfChange += requiredTradeRoutes[i] * resource.tradeRouteQuantity;
+            }
         }
         resources.Money.calculatedRateOfChange = currentMoneyPerSecond;
     }
