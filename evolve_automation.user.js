@@ -8785,7 +8785,7 @@
             return; // Give the UI time to update
         }
 
-        if (state.warManager.currentSoldiers === state.warManager.maxSoldiers) {
+        if (state.warManager.currentSoldiers === state.warManager.maxSoldiers && resources.Population.currentQuantity === resources.Population.maxQuantity) {
             // Push... the button
             console.log("Soft resetting game with MAD");
             state.goal = "GameOverMan";
