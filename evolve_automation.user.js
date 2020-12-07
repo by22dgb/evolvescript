@@ -9715,8 +9715,8 @@
 
         // Build more storage if we didn't had enough
         if (totalStorageMissing > 0 && state.loopCounter % 30 === 0){
-            let numberOfCratesWeCanBuild = 1000000;
-            let numberOfContainersWeCanBuild = 1000000;
+            let numberOfCratesWeCanBuild = resources.Crates.maxQuantity - resources.Crates.currentQuantity;
+            let numberOfContainersWeCanBuild = resources.Containers.maxQuantity - resources.Containers.currentQuantity;
 
             resources.Crates.resourceRequirements.forEach(requirement =>
                 numberOfCratesWeCanBuild = Math.min(numberOfCratesWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
