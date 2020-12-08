@@ -9558,13 +9558,21 @@
         let totalContainers = resources.Containers.currentQuantity;
         let storageAdjustments = [];
 
-        // Get list of all buttons, both buildings and techs, and find biggest numbers for each resource
-        // TODO: Filter out buildings with disabled autobuild, and unaffordable due to low knowledge\money cap
+        // Get list of all unlocked techs, and find biggest numbers for each resource
+        // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building monuments, and that might cause an issues if we'll need 100% of storage
         let requiredStorage = {};
-        $(".cna a:first-child").each(function() {
+        $("#tech .action a:first-child").each(function() {
             Object.entries($(this).data()).forEach(([resource, amount]) => {
-                // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building monuments, and that might cause an issues if we'll need 100% of storage
-                requiredStorage[resource.toLowerCase()] = Math.max(amount*1.03, requiredStorage[resource] || 0)
+                let index = resource.toLowerCase();
+                requiredStorage[index] = Math.max(amount*1.03, requiredStorage[index] || 0)
+            });
+        });
+        // For building using data attributes is not optimal, as they aren't updates in real time
+        // And that also filters out buildings with disabled autobuild
+        state.buildingManager.managedPriorityList().forEach(building => {
+            building.resourceRequirements.forEach(requirement => {
+                let index = requirement.resource.name.toLowerCase();
+                requiredStorage[index] = Math.max(requirement.quantity*1.03, requiredStorage[index] || 0)
             });
         });
 
@@ -9714,7 +9722,7 @@
         }
 
         // Build more storage if we didn't had enough
-        if (totalStorageMissing > 0 && state.loopCounter % 30 === 0){
+        if (totalStorageMissing > 0){
             let numberOfCratesWeCanBuild = resources.Crates.maxQuantity - resources.Crates.currentQuantity;
             let numberOfContainersWeCanBuild = resources.Containers.maxQuantity - resources.Containers.currentQuantity;
 
