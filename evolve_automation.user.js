@@ -6088,7 +6088,8 @@
         state.spaceBuildings.ProximaCruiser.overridePowered = 0;
         state.spaceBuildings.NebulaHarvestor.overridePowered = 0;
         state.spaceBuildings.NebulaEleriumProspector.overridePowered = 0;
-        //state.spaceBuildings.ProximaDyson.overridePowered = -1.25; //TODO: get dyson, and test me
+        state.spaceBuildings.SunSwarmSatellite.overridePowered = -0.35;
+        state.spaceBuildings.ProximaDyson.overridePowered = -1.25;
         ////////////////////
 
         // We aren't getting these ones yet...
