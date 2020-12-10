@@ -8489,7 +8489,10 @@
                 productionCosts.forEach(resourceCost => {
                     let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
                     let cost = actualRequiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.calculatedRateOfChange + resourceCost.minRateOfChange + previousCost;
+                    let rate = resourceCost.resource.calculatedRateOfChange + previousCost;
+                    if (resourceCost.resource.storageRatio < 0.98) {
+                        rate -= resourceCost.minRateOfChange;
+                    }
 
                     if (production.resource.storageRatio > 0.99) {
                         actualRequiredFactories = 0;
