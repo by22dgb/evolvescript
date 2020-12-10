@@ -10008,9 +10008,10 @@
             } else if (adjustmentTradeRoutes[i] < 0) {
                 m.removeTradeRoutes(resource, -1 * adjustmentTradeRoutes[i]);
             }
-            // Update variables so we can use it later
-            if (requiredTradeRoutes[i] > 0){
-                resource.calculatedRateOfChange += requiredTradeRoutes[i] * resource.tradeRouteQuantity;
+            // Add sold resources to rate of change, so we can still use it
+            // Bought resources ignored, to avoid ending with negative income when trade routes readjusted to another resource
+            if (requiredTradeRoutes[i] < 0){
+                resource.calculatedRateOfChange -= requiredTradeRoutes[i] * resource.tradeRouteQuantity;
             }
         }
         resources.Money.calculatedRateOfChange = currentMoneyPerSecond;
