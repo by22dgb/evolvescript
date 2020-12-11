@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.23
+// @version      3.2.1.24
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -893,6 +893,11 @@
                 // It provides support which we don't need
                 if (resourceType.rate < 0 && resourceType.resource.isSupport && resourceType.resource.calculatedRateOfChange > 1) {
                     return resourceType.resource;
+                }
+
+                // BeltSpaceStation is special case, as it provide jobs, which provides support, thus we can have 0 support even with powered buildings, if jobs not filled
+                if (this === state.spaceBuildings.BeltSpaceStation && resourceType.resource === resources.Belt_Support && state.jobs.SpaceMiner.count < state.jobs.SpaceMiner.max){
+                    return resources.Population;
                 }
             }
             return false; // false means we have all we need for this to operate
@@ -4552,6 +4557,10 @@
         /**
          * @param {Resource} resource
          */
+        // TODO: game.tradeRatio contains static rates for selling, buying rates can be affected
+        // by certain perks, and differ from that numbers. Fixing that would require importing
+        // calc_mastery(), or copypasting *a lot* of code from game script. Not script-breaking
+        // issue, but should be fixed eventually.
         getTradeRouteQuantity(resource) {
             return game.tradeRatio[resource.id];
         }
@@ -4714,6 +4723,13 @@
             return true;
         }
 
+        // TODO: This value can be slightly inaccurate. Number is taken from UI tooltip, and it doesn't
+        // updates in realtime when you getting plasmids(and bonus to storage) from gene sequencing.
+        // It can be worked around - importing crateValue() from game, importing calc_mastery() and
+        // rewriting it, opening modal to redraw tooltip with actual data, etc... but that's all quite
+        // tedious, and this issue probably doesn't worth such hussle, as inaccuracity inlikely will
+        // be more than a couple of percents. And even that will be eventually fixed, when tooltips
+        // will be redrawn. But if there will be easier way to fix it eventually - it would be nice to do so.
         getCrateVolume() {
             let crateDescNumbers = $(".crate .tooltip-content").text().match(/(\d+)/g);
             if (crateDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
@@ -4723,6 +4739,7 @@
             }
         }
 
+        // Same as above
         getContainerVolume() {
             let containerDescNumbers = $(".container .tooltip-content").text().match(/(\d+)/g);
             if (containerDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
@@ -9087,12 +9104,18 @@
           }
 
           // We don't need too many crates and containers if we're not going to use it
-          if(building === state.cityBuildings.StorageYard && resources.Crates.maxQuantity > 0) {
-            extraDesc[id] += "Still have some unused crates.";
+          if (building === state.cityBuildings.StorageYard && resources.Crates.maxQuantity > 0) {
+            extraDesc[id] += "Still have some unused crates";
             return false;
           }
-          if(building === state.cityBuildings.Warehouse && resources.Containers.maxQuantity > 0) {
-            extraDesc[id] += "Still have some unused containers.";
+          if (building === state.cityBuildings.Warehouse && resources.Containers.maxQuantity > 0) {
+            extraDesc[id] += "Still have some unused containers";
+            return false;
+          }
+
+          // Some buildings works even without power, not sure whether they should be builded or not... Probably not. Go get more power first.
+          if (building.stateOffCount > 0){
+            extraDesc[id] += "Still have some non operating buildings";
             return false;
           }
 
@@ -10027,6 +10050,7 @@
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
             if (settings.autoEvolution && settings.autoAchievements && settings.evolutionBackup){
+                // Taken from alevel()
                 let a_level = 1;
                 if (game.global.race['no_plasmid'] || game.global.race['weak_mastery']){ a_level++; }
                 if (game.global.race['no_trade']){ a_level++; }
@@ -10034,7 +10058,7 @@
                 if (game.global.race['no_crispr']){ a_level++; }
 
                 let newRace = races[game.global.race.species];
-                console.log("Race: " + newRace.name + ", " + a_level + "★ achievement: " + newRace.isMadAchievementUnlocked(a_level));
+                console.log("Race: " + newRace.name + ", " + (a_level-1) + "★ achievement: " + newRace.isMadAchievementUnlocked(a_level));
                 if (newRace.isMadAchievementUnlocked(a_level)) {
                     let raceGroup = state.raceGroupAchievementList.findIndex(group => group.includes(newRace));
 
@@ -11174,6 +11198,7 @@
         let addButton = $('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
         preTableNode.append(addButton);
         $("#script_trigger_add").on("click", addTriggerSetting);
+        // TODO: This thing should be able to buy resources via regular trades, not only routes.
         addStandardSectionSettingsToggle(preTableNode, "triggerRequest", "Request missing resources", "Once trigger requirements are met, and you have enough storage, script will set the routes to import missing resources to complete task. autoMarket should be enabled for this to work.");
     }
 
