@@ -7818,12 +7818,13 @@
         }
 
         // Find someone that we are allowed to attack. Only check non-occupied foreign powers
-        if (settings.foreignAttack0 && !game.global.civic.foreign[`gov0`].occ) {
-            govAttackIndex = 0;
-        } else if (settings.foreignAttack1 && !game.global.civic.foreign[`gov1`].occ) {
-            govAttackIndex = 1;
-        } else if (settings.foreignAttack2 && !game.global.civic.foreign[`gov2`].occ) {
+        // prioritizes powers in order 3 > 2 > 1 as long as powers 2 and 3 have been sabotaged to 50 (by pokemonfreak97)
+        if (settings.foreignAttack2 && !game.global.civic.foreign[`gov2`].occ && game.global.civic.foreign[`gov2`].mil == 50) {
             govAttackIndex = 2;
+        } else if (settings.foreignAttack1 && !game.global.civic.foreign[`gov1`].occ && game.global.civic.foreign[`gov1`].mil == 50) {
+            govAttackIndex = 1;
+        } else if (settings.foreignAttack0 && !game.global.civic.foreign[`gov0`].occ) {
+            govAttackIndex = 0;
         }
 
         // Check if there is an already occupied foreign power that we can unoccupy, then attack to occupy again
