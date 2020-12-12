@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.24
+// @version      3.2.1.25
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -21,9 +21,10 @@
 // Changes from original version:
 //   Remade autoBuild, all buildings now can have individual weights, plus dynamic coefficients to weights(like, increasing weights of power plants when you need more energy), plus additional safe-guards checking for resource usage, available support, and such. You can fine-tune script to build what you actually need, and save resources for further constructions.
 //   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
-//   Remade autoCraftsmen, it assigns all crafters to same resource at once, to utilize apprentice bonus, and rotates them between resources aiming to desired ratio of stored resources.
+//   Remade autoCraftsmen, it assigns all crafters to same resource at once, to utilize apprentice bonus, and rotates them between resources aiming to desired ratio of stored resources
 //   Slightly tuned pre-mad autoCraft, so it won't use resources such greedy, as it used to do. You'll still have resources for everything you need, you just won't stuck with hounders of thousands of plywood... and no lumber to build university.
-//   Remade autoStorage, it calculates requred storages, based on available techs and buildings, and assign storages to make them all affordable. Weighting option is gone as it not needed anymore, just rearrange list to change filling order when storages are scarce. Max crate\containers for individual reources still exist, and respected by adjustments.
+//   Remade autoStorage, it calculates required storages, based on available techs and buildings, and assign storages to make them all affordable. Weighting option is gone as it not needed anymore, just rearrange list to change filling order when storages are scarce. Max crate\containers for individual reources still exist, and respected by adjustments.
+//   Required amount of resources also taken in account by autoCraftsmen(they can prioritize what's actually needed), and ARPA got an option("-1" craftables to keep) to keep required amount of craftables, instead of some static number
 //   Pre-mad storage limit doesn't completely prevents constructing crates and containers, it just make it work above certain ratio(80%+ steel storage for containers, and more-than-you-need-for-next-library for crates)
 //   You can enable buying and selling of same resource at same time, depends on whether you're lacking something, or have a surplus. Works both with batch sell, and routes.
 //   Trigger can import missing resources via routes. When trigger requirements are met script will set trade routes for missing resources. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction - whatever you need.
@@ -910,16 +911,20 @@
           if (this.count === 0) { weighting *= settings.buildingWeightingNew; }
 
           // Increase weighting for power plants, when we missing energy
-          if (resources.Power.currentQuantity < 1 && this.powered < 0) { weighting *= settings.buildingWeightingNeedfulPowerPlant; }
+          if (this.powered < 0 && resources.Power.currentQuantity < 1) { weighting *= settings.buildingWeightingNeedfulPowerPlant; }
 
           // Reduce weighting for power plants, when we have surplus energy
-          if (resources.Power.currentQuantity > 1 && this.powered < 0) { weighting *= settings.buildingWeightingUselessPowerPlant; }
+          if (this.powered < 0 && resources.Power.currentQuantity > 1) { weighting *= settings.buildingWeightingUselessPowerPlant; }
 
           // Reduce weighting for powered buildings, when we missing energy
-          if (resources.Power.currentQuantity < 1 && this.powered > 0) { weighting *= settings.buildingWeightingUnderpowered; }
-          
+          if (this.powered > 0 && resources.Power.currentQuantity < 1) { weighting *= settings.buildingWeightingUnderpowered; }
+
+          // Reduce weighting for science, when no more cap required
+          if (this.is.knowledge && state.knowledgeRequiredByTechs < resources.Knowledge.maxQuantity) { weighting *= settings.buildingWeightingUselessKnowledge; }
+
           // Increase weighting for science, when knowledge is capped
-          if (resources.Knowledge.storageRatio > 0.98 && this.is.knowledge) { weighting *= settings.buildingWeightingNeedfulKnowledge; }
+          if (this.is.knowledge && state.knowledgeRequiredByTechs > resources.Knowledge.maxQuantity) { weighting *= settings.buildingWeightingNeedfulKnowledge; }
+
 
           return weighting;
         }
@@ -1231,6 +1236,7 @@
 
             this.hasStorage = hasStorage;
             this.storagePriority = 0;
+            this.storageRequired = 0;
             this.autoStorageEnabled = true;
             this._autoCratesMax = -1;
             this._autoContainersMax = -1;
@@ -5366,6 +5372,9 @@
     var tech = {};
     var techIds = {};
 
+    // Data attribtes have IDs in lower case for some reason, we're going to use it as lookup table
+    var resLowIds = {};
+
     function alwaysAllowed() {
         return true;
     }
@@ -5567,6 +5576,7 @@
         spyManager: new SpyManager(),
 
         minimumMoneyAllowed: 0,
+        knowledgeRequiredByTechs: 0,
 
         goal: "Standard",
 
@@ -6608,6 +6618,7 @@
         settings.buildingWeightingUselessPowerPlant = 0.2;
         settings.buildingWeightingNeedfulPowerPlant = 5;
         settings.buildingWeightingUnderpowered = 0.5;
+        settings.buildingWeightingUselessKnowledge = 0.2;
         settings.buildingWeightingNeedfulKnowledge = 5;
         
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
@@ -6793,7 +6804,7 @@
 
     function resetProjectSettings() {
         settings.arpaBuildIfStorageFull = true;
-        settings.arpaBuildIfStorageFullCraftableMin = 50000;
+        settings.arpaBuildIfStorageFullCraftableMin = -1;
         settings.arpaBuildIfStorageFullResourceMaxPercent = 5;
     }
 
@@ -6812,6 +6823,7 @@
 
     function resetProductionSettings() {
         settings.productionMoneyIfOnly = true;
+        settings.productionPrioritizeDemanded = true;
     }
 
     function resetProductionState() {
@@ -7269,10 +7281,11 @@
         addSetting("storageLimitPreMad", true);
         addSetting("storageSafeReassign", true);
         addSetting("arpaBuildIfStorageFull", true);
-        addSetting("arpaBuildIfStorageFullCraftableMin", 50000);
+        addSetting("arpaBuildIfStorageFullCraftableMin", -1);
         addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
 
         addSetting("productionMoneyIfOnly", true);
+        addSetting("productionPrioritizeDemanded", true);
 
         addSetting("jobSetDefault", false);
         addSetting("jobLumberWeighting", 50);
@@ -7408,6 +7421,7 @@
         addSetting("buildingWeightingUselessPowerPlant", 0.2);
         addSetting("buildingWeightingNeedfulPowerPlant", 5);
         addSetting("buildingWeightingUnderpowered", 0.5);
+        addSetting("buildingWeightingUselessKnowledge", 0.2);
         addSetting("buildingWeightingNeedfulKnowledge", 5);
 
         addSetting("buildingEnabledAll", false);
@@ -8213,7 +8227,6 @@
 
         if (availableCraftsmen > 0){
             // Get list of craftabe resources
-
             let availableJobs = state.jobManager.craftingJobs.filter(job => {
                 // Check if we're allowed to craft this resource
                 if (!job.isManaged() || !job.resource.autoCraftEnabled) {
@@ -8233,6 +8246,13 @@
                 }
             });
 
+            // Try to filter out excess resources, if we're prioritizing demanded
+            if (settings.productionPrioritizeDemanded) {
+                let demandedJobs = availableJobs.filter(job => job.resource.currentQuantity < job.resource.storageRequired);
+                if (demandedJobs.length > 0){
+                    availableJobs = demandedJobs;
+                }
+            }
 
             // Sort them by amount and weight. Yes, it can be empty, not a problem.
             availableJobs.sort((a, b) => (a.resource.currentQuantity / a.resource.weighting) - (b.resource.currentQuantity / b.resource.weighting) );
@@ -9426,10 +9446,13 @@
                     break;
                 }
 
-                if (requirement.resource.isCraftable && requirement.resource.currentQuantity - onePercentOfRequirementQuantity < settings.arpaBuildIfStorageFullCraftableMin) {
-                    log("autoARPA", "break: craftables < setting");
-                    allowBuild = false;
-                    break;
+                if (requirement.resource.isCraftable) {
+                    let amountToKeep = (settings.arpaBuildIfStorageFullCraftableMin === -1 ? requirement.resource.storageRequired : settings.arpaBuildIfStorageFullCraftableMin);
+                    if (requirement.resource.currentQuantity - onePercentOfRequirementQuantity < amountToKeep){
+                        log("autoARPA", "break: craftables < setting");
+                        allowBuild = false;
+                        break;
+                    }
                 }
             }
 
@@ -9591,24 +9614,6 @@
         let totalContainers = resources.Containers.currentQuantity;
         let storageAdjustments = [];
 
-        // Get list of all unlocked techs, and find biggest numbers for each resource
-        // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building monuments, and that might cause an issues if we'll need 100% of storage
-        let requiredStorage = {};
-        $("#tech .action a:first-child").each(function() {
-            Object.entries($(this).data()).forEach(([resource, amount]) => {
-                let index = resource.toLowerCase();
-                requiredStorage[index] = Math.max(amount*1.03, requiredStorage[index] || 0)
-            });
-        });
-        // For building using data attributes is not optimal, as they aren't updates in real time
-        // And that also filters out buildings with disabled autobuild
-        state.buildingManager.managedPriorityList().forEach(building => {
-            building.resourceRequirements.forEach(requirement => {
-                let index = requirement.resource.name.toLowerCase();
-                requiredStorage[index] = Math.max(requirement.quantity*1.03, requiredStorage[index] || 0)
-            });
-        });
-
         // Init storageAdjustments, we need to do it saparately, as loop below can jump to the and of array
         for (var i = 0; i < storageList.length; i++){
             storageAdjustments.push({resource: storageList[i], adjustCrates: 0, adjustContainers: 0, calculatedContainers: storageList[i].currentContainers, calculatedCrates: storageList[i].currentCrates});
@@ -9619,24 +9624,21 @@
         // Calculate storages
         for (var i = 0; i < storageList.length; i++){
             let resource = storageList[i];
-            let index = resource.name.toLowerCase();
             let cratesStorage = storageAdjustments[i].calculatedCrates * crateVolume;
             let containersStorage = storageAdjustments[i].calculatedContainers * containerVolume;
             let extraStorage = cratesStorage + containersStorage;
             let rawStorage = resource.maxQuantity - extraStorage;
             let freeStorage = resource.maxQuantity - resource.currentQuantity;
+            let extraStorageRequired = resource.storageRequired - rawStorage;
 
             // We don't need any extra storage here, and don't care about overflowing, just remove everything and go to next resource
-            if (!settings.storageSafeReassign && (requiredStorage[index] === undefined || requiredStorage[index] < rawStorage)){
+            if (!settings.storageSafeReassign && extraStorageRequired <= 0){
                 totalCrates += storageAdjustments[i].calculatedCrates;
                 totalContainers += storageAdjustments[i].calculatedContainers;
                 storageAdjustments[i].adjustCrates -= storageAdjustments[i].calculatedCrates;
                 storageAdjustments[i].adjustContainers -= storageAdjustments[i].calculatedContainers;
                 continue;
             }
-
-            // requiredStorage[index] can be undefined with storageSafeReassign === true
-            let extraStorageRequired = (requiredStorage[index] - rawStorage) || 0;
 
             // Check if have extra containers here
             if (containersStorage > 0 && ((extraStorage - containerVolume) > extraStorageRequired || storageAdjustments[i].calculatedContainers > resource.autoContainersMax)){
@@ -10089,12 +10091,15 @@
             updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
         }
 
+        state.buildingManager.updateResourceRequirements();
+        state.projectManager.updateResourceRequirements();
         state.triggerManager.updateCompleteTriggers();
         state.triggerManager.resetTargetTriggers();
 
-        // Reset calculated rate of changes
+        // Reset calculated rate of changes, and required storage
         for (let id in resources) {
             resources[id].calculatedRateOfChange = resources[id].rateOfChange;
+            resources[id].storageRequired = 0;
         }
 
         // Add resources sold by trade routes, which can be reclaimed if needed
@@ -10126,14 +10131,44 @@
             state.minimumMoneyAllowed = settings.minimumMoney;
         }
 
+        // Get list of all unlocked techs, and find biggest numbers for each resource
+        // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
+        $("#tech .action a:first-child").each(function() {
+            Object.entries($(this).data()).forEach(([name, amount]) => {
+                let resource = resLowIds[name];
+                if (resource !== undefined) {
+                    resource.storageRequired = Math.max(amount*1.03, resource.storageRequired);
+                }
+            });
+        });
+
+        // We need to preserve amount of knowledge required by techs only, while amount still not polluted
+        // by buildings - wardenclyffe, labs, etc. This way we can determine what's our real demand is.
+        // Otherwise they might start build up knowledge cap just to afford themselves, increasing required
+        // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
+        state.knowledgeRequiredByTechs = resources.Knowledge.storageRequired;
+
+        // For building using data attributes is not optimal, as they doesn't updates in real time
+        // And that also filters out buildings with disabled autobuild
+        state.buildingManager.managedPriorityList().forEach(building => {
+            building.resourceRequirements.forEach(requirement => {
+                requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
+            });
+        });
+
+        // Same for projects
+        state.projectManager.managedPriorityList().forEach(project => {
+            project.resourceRequirements.forEach(requirement => {
+                // 0.0103 multiplier it's 3% extra above 1/100 of full cost.
+                requirement.resource.storageRequired = Math.max(requirement.quantity*0.0103, requirement.resource.storageRequired);
+            });
+        });
+
         // If our script opened a modal window but it is now closed (and the script didn't close it) then the user did so don't continue
         // with whatever our script was doing with the open modal window.
         if (state.windowManager.openedByScript && !state.windowManager.isOpenHtml()) {
             state.windowManager.resetWindowManager();
         }
-
-        state.buildingManager.updateResourceRequirements();
-        state.projectManager.updateResourceRequirements();
 
         if (resources.Population.cachedId !== resources.Population.id) {
             resources.Population.setupCache();
@@ -10240,6 +10275,12 @@
         Object.keys(tempTech).sort().forEach(function(key) {
             tech[key] = tempTech[key];
         });
+
+        // Filling lookup table for data attributes
+        for (let id in resources) {
+            let resource = resources[id];
+            resLowIds[resource.id.toLowerCase()] = resource;
+        }
 
         updateStateFromSettings();
         updateSettingsFromState();
@@ -12447,6 +12488,7 @@
         // Add any pre table settings
         let preTableNode = $('#script_productionPreTableFoundry');
         addStandardHeading(preTableNode, "Foundry");
+        addStandardSectionSettingsToggle(preTableNode, "productionPrioritizeDemanded", "Prioritize demanded craftables", "Resources above amount required for constructions won't be crafted, if there's better options enabled and available, ignoring weighted ratio");
     }
 
     function updateProductionTableFoundry() {
@@ -12699,10 +12741,11 @@
         addStandardSectionSettingsNumber(preTableNode, "buildingClickPerTick", "Maximum clicks per second", "Number of clicks performed at once, each second. Hardcapped by amount of missed resources");
         addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides the below settings to still build if resources are full, preventing wasting them by overflowing");
         addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNew", "Weighting: new buildings", "Weighting multiplier for new building, can help to get new production gong");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUselessPowerPlant", "Weighting: useless power plants", "Weighting multiplier for power plant, only applies when you have spare energy");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulPowerPlant", "Weighting: needful power plant", "Weighting multiplier for power plant, only applies when you have no spare energy");
         addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUnderpowered", "Weighting: missing energy", "Weighting multiplier for powered buildings, only applies when you have no spare energy");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulKnowledge", "Weighting: needful knowledge", "Weighting multiplier for buildings expanding knowledge cap, only applies when you knowledge is capped");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUselessPowerPlant", "Weighting: useless power plants", "Weighting multiplier for power plant, only applies when you have more energy than needed");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulPowerPlant", "Weighting: needful power plant", "Weighting multiplier for power plant, only applies when all generated energy is being used");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUselessKnowledge", "Weighting: useless knowledge", "Weighting multiplier for knowledge storages, only applies when no additional cap required by any technologies");
+        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulKnowledge", "Weighting: needful knowledge", "Weighting multiplier for knowledge storages, only applies when some of unlocked techonoges can't be afforded with current cap");
     }
 
     function updateBuildingTable() {
@@ -12963,7 +13006,7 @@
         // Add any pre table settings
         let preTableNode = $('#script_projectPreTable');
         addStandardSectionSettingsToggle(preTableNode, "arpaBuildIfStorageFull", "Override and build if storage is full", "Overrides the below settings to still build A.R.P.A projects if resources are full");
-        addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullCraftableMin", "Minimum craftables to keep if overriding", "A.R.P.A. projects that require crafted resources won't override and build if resources are below this amount");
+        addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullCraftableMin", "Minimum craftables to keep if overriding", "A.R.P.A. projects that require crafted resources won't override and build if resources are below this amount, -1 stands for maximum amount required by other buildings.");
         addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullResourceMaxPercent", "Maximim percent of resources if overriding", "A.R.P.A. project that require more than this percentage of a non-crafted resource won't override and build");
     }
 
