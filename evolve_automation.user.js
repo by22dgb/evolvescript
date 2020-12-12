@@ -8631,12 +8631,15 @@
             }
 
             let currentFuelCount = plant.fueledCount(i);
-            let rateOfChange = consumption.resource.calculatedRateOfChange;
-            rateOfChange += (consumption.quantity * currentFuelCount);
-            let maxFueledForConsumption = Math.floor((rateOfChange - consumption.minRateOfChange) / consumption.quantity);
+            let rateOfChange = consumption.resource.calculatedRateOfChange + (consumption.quantity * currentFuelCount);
+            if (consumption.resource.storageRatio < 0.98) {
+                rateOfChange -= consumption.minRateOfChange;
+            }
 
-            if (maxFueledForConsumption > remainingPlants) {
-                maxFueledForConsumption = remainingPlants;
+            let maxFueledForConsumption = remainingPlants;
+            if (consumption.resource.storageRatio < 0.8){
+                let affordableAmount = Math.floor(rateOfChange / consumption.quantity);
+                maxFueledForConsumption = Math.max(Math.min(maxFueledForConsumption, affordableAmount), 0);
             }
 
             if (maxFueledForConsumption != currentFuelCount) {
