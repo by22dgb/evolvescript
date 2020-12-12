@@ -8662,6 +8662,11 @@
                 maxFueledForConsumption = Math.max(Math.min(maxFueledForConsumption, affordableAmount), 0);
             }
 
+            // Only produce graphene above cap if there's working BlackholeMassEjector, otherwise there's no use for excesses for sure.
+            if (resources.Graphene.storageRatio > 0.99 && state.spaceBuildings.BlackholeMassEjector.stateOnCount <= 0) {
+                maxFueledForConsumption = 0;
+            }
+
             if (maxFueledForConsumption != currentFuelCount) {
                 let delta = maxFueledForConsumption - currentFuelCount;
                 plant.increaseFuel(i, delta);
