@@ -8502,32 +8502,34 @@
 
                 let calculatedRequiredFactories = Math.min(remainingFactories, Math.ceil(maxOperatingFactories / totalWeight * production.weighting));
                 let actualRequiredFactories = calculatedRequiredFactories;
+                if (production.resource.storageRatio > 0.99) {
+                    actualRequiredFactories = 0;
+                }
                 let productionCosts = state.cityBuildings.Factory.productionCosts(production.goods);
 
                 productionCosts.forEach(resourceCost => {
                     let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
-                    let cost = actualRequiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.calculatedRateOfChange + previousCost;
+                    let currentCost = production.requiredFactories * resourceCost.quantity;
+                    let rate = resourceCost.resource.calculatedRateOfChange + previousCost - currentCost;
                     if (resourceCost.resource.storageRatio < 0.98) {
                         rate -= resourceCost.minRateOfChange;
                     }
 
-                    if (production.resource.storageRatio > 0.99) {
-                        actualRequiredFactories = 0;
-                    } else {
-                        // If we can't afford it (it's above our minimum rate of change) then remove a factory
-                        // UNLESS we've got over 80% storage full. In that case lets go wild!
-                        while (cost > 0 && cost > rate && resourceCost.resource.storageRatio < 0.8) {
-                            cost -= resourceCost.quantity;
-                            actualRequiredFactories -= 1;
-                        }
+                    // If we can't afford it (it's above our minimum rate of change) then remove a factory
+                    // UNLESS we've got over 80% storage full. In that case lets go wild!
+                    if (resourceCost.resource.storageRatio < 0.8){
+                        let affordableAmount = Math.floor(rate / resourceCost.quantity);
+                        actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
                     }
                 });
 
-                remainingFactories -= actualRequiredFactories;
-                production.requiredFactories += actualRequiredFactories;
+                if (actualRequiredFactories > 0){
+                    remainingFactories -= actualRequiredFactories;
+                    production.requiredFactories += actualRequiredFactories;
+                }
 
-                if (calculatedRequiredFactories !== actualRequiredFactories) {
+                // We assigned less than wanted, i.e. we either don't need this product, or can't afford it. In both cases - we're done with it.
+                if (actualRequiredFactories < calculatedRequiredFactories) {
                     production.completed = true;
                 }
             }
@@ -8535,28 +8537,28 @@
 
         // If we have any remaining factories and the user wants to allocate unallocated factories to money then do it
         let luxuryGoodsIndex = findArrayIndex(allProduction, "goods", FactoryGoods.LuxuryGoods);
-        if (remainingFactories > 0 && allProduction[luxuryGoodsIndex].requiredFactories === 0 && settings.productionMoneyIfOnly) {
+        if (settings.productionMoneyIfOnly && remainingFactories > 0 && allProduction[luxuryGoodsIndex].resource.storageRatio < 0.99 ) {
             let actualRequiredFactories = remainingFactories;
+            let production = allProduction[luxuryGoodsIndex];
             let productionCosts = state.cityBuildings.Factory.productionCosts(FactoryGoods.LuxuryGoods);
 
             productionCosts.forEach(resourceCost => {
-                let previousCost = state.cityBuildings.Factory.currentProduction(FactoryGoods.LuxuryGoods) * resourceCost.quantity;
-                let cost = actualRequiredFactories * resourceCost.quantity;
-                let rate = resourceCost.resource.calculatedRateOfChange + resourceCost.minRateOfChange + previousCost;
-
-                if (allProduction[luxuryGoodsIndex].resource.storageRatio > 0.99) {
-                    actualRequiredFactories = 0;
-                } else {
-                    // If we can't afford it (it's above our minimum rate of change) then remove a factory
-                    // UNLESS we've got over 80% storage full. In that case lets go wild!
-                    while (cost > 0 && cost > rate && resourceCost.resource.storageRatio < 0.8) {
-                        cost -= resourceCost.quantity;
-                        actualRequiredFactories -= 1;
-                    }
+                let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
+                let currentCost = production.requiredFactories * resourceCost.quantity;
+                let rate = resourceCost.resource.calculatedRateOfChange + previousCost - currentCost;
+                if (resourceCost.resource.storageRatio < 0.98) {
+                    rate -= resourceCost.minRateOfChange;
                 }
 
-                allProduction[luxuryGoodsIndex].requiredFactories += actualRequiredFactories;
+                // If we can't afford it (it's above our minimum rate of change) then remove a factory
+                // UNLESS we've got over 80% storage full. In that case lets go wild!
+                if (resourceCost.resource.storageRatio < 0.8){
+                    let affordableAmount = Math.floor(rate / resourceCost.quantity);
+                    actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
+                }
             });
+
+            production.requiredFactories += actualRequiredFactories;
         }
 
         // First decrease any production so that we have room to increase others
