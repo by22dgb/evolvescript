@@ -8528,6 +8528,9 @@
                 let productionCosts = state.cityBuildings.Factory.productionCosts(production.goods);
 
                 productionCosts.forEach(resourceCost => {
+                    if (!resourceCost.resource.isUnlocked()) {
+                        return;
+                    }
                     let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
                     let currentCost = production.requiredFactories * resourceCost.quantity;
                     let rate = resourceCost.resource.calculatedRateOfChange + previousCost - currentCost;
