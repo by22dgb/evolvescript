@@ -8643,14 +8643,16 @@
         // We've already got our cached values so just check if there is any need to change our ratios
         let remainingPlants = plant.stateOnCount;
 
-        for (let i = 0; i < plant.grapheheConsumption.length; i++) {
-            const consumption = plant.grapheheConsumption[i];
+        let sortedFuel = plant.grapheheConsumption.slice().sort((a, b) => b.resource.storageRatio - a.resource.storageRatio);
+        for (let i = 0; i < sortedFuel.length; i++) {
+            const consumption = sortedFuel[i];
+            const fuelIndex = plant.grapheheConsumption.indexOf(consumption);
 
             if (remainingPlants === 0) {
                 return;
             }
 
-            let currentFuelCount = plant.fueledCount(i);
+            let currentFuelCount = plant.fueledCount(fuelIndex);
             let rateOfChange = consumption.resource.calculatedRateOfChange + (consumption.quantity * currentFuelCount);
             if (consumption.resource.storageRatio < 0.98) {
                 rateOfChange -= consumption.minRateOfChange;
@@ -8669,10 +8671,10 @@
 
             if (maxFueledForConsumption != currentFuelCount) {
                 let delta = maxFueledForConsumption - currentFuelCount;
-                plant.increaseFuel(i, delta);
+                plant.increaseFuel(fuelIndex, delta);
             }
 
-            remainingPlants -= plant.fueledCount(i);
+            remainingPlants -= plant.fueledCount(fuelIndex);
         }
     }
 
