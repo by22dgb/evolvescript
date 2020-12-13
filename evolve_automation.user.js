@@ -5890,7 +5890,7 @@
             NeutronStellarForge: new Action("Neutron Stellar Forge", "interstellar", "stellar_forge", "int_neutron"),
 
             Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole"),
-            BlackholeFarReach: new Action("Blackhole Far Reach", "interstellar", "far_reach", "int_blackhole"),
+            BlackholeFarReach: new Action("Blackhole Far Reach", "interstellar", "far_reach", "int_blackhole", {knowledge: true}),
             BlackholeStellarEngine: new Action("Blackhole Stellar Engine", "interstellar", "stellar_engine", "int_blackhole"),
             BlackholeMassEjector: new Action("Blackhole Mass Ejector", "interstellar", "mass_ejector", "int_blackhole"),
 
@@ -7934,12 +7934,13 @@
             return;
         }
 
+        let farmerIndex = jobList.indexOf(state.jobs.Farmer);
         let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
-        let lumberjackIndex = -1;
         let scavengerIndex = jobList.indexOf(state.jobs.Scavenger);
 
+        let lumberjackIndex = -1;
         if (isEvilRace() && !isEvilUniverse()) {
-            lumberjackIndex = jobList.indexOf(state.jobs.Farmer);
+            lumberjackIndex = farmerIndex;
         } else {
             lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
         }
@@ -7991,67 +7992,117 @@
                     && !state.jobs.SpaceMiner.isUnlocked()
                     && !state.jobs.HellSurveyor.isUnlocked()) {
                 // No other jobs are unlocked - everyone on farming!
-                requiredJobs.push(availableEmployees);
+                requiredJobs[farmerIndex] = availableEmployees;
                 log("autoJobs", "Pushing all farmers")
             } else if (resources.Population.currentQuantity > state.lastPopulationCount) {
                 let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
                 let farmerChange = state.jobs.Farmer.count - state.lastFarmerCount;
 
                 if (populationChange === farmerChange && resources.Food.calculatedRateOfChange > 0) {
-                    requiredJobs.push(Math.max(state.jobs.Farmer.count - populationChange, 0));
+                    requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - populationChange, 0);
                     log("autoJobs", "Removing a farmer due to population growth")
                 } else {
-                    requiredJobs.push(state.jobs.Farmer.count);
+                    requiredJobs[farmerIndex] = state.jobs.Farmer.count;
                 }
             } else if (resources.Food.storageRatio < 0.2 && resources.Food.calculatedRateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
-                requiredJobs.push(Math.min(state.jobs.Farmer.count + 1, availableEmployees));
+                requiredJobs[farmerIndex] = Math.min(state.jobs.Farmer.count + 1, availableEmployees);
                 log("autoJobs", "Adding one farmer")
             } else if (resources.Food.storageRatio > 0.6 && resources.Food.calculatedRateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
-                requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
+                requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer")
             } else if (resources.Food.storageRatio > 0.3 && resources.Food.calculatedRateOfChange > 100) {
                 // If we have over 30% storage and have > 100 food per second then remove a farmer
-                requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
+                requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer - 100 food per second")
             } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && resources.Food.calculatedRateOfChange > resources.Population.currentQuantity / 10) {
                 // Carnivore race. We've got some food so put them to work!
-                requiredJobs.push(Math.max(state.jobs.Farmer.count - 1, 0));
+                requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer - Carnivore")
             } else {
                 // We're good; leave farmers as they are
-                requiredJobs.push(state.jobs.Farmer.count);
+                requiredJobs[farmerIndex] = state.jobs.Farmer.count;
                 log("autoJobs", "Leaving current farmers")
             }
 
             log("autoJobs", "currentQuantity " + resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1, false) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0, false))
             if (isEvilRace() && !isEvilUniverse()) {
-                if (resources.Population.currentQuantity > breakpoint0Max && requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(1, false)) {
+                if (resources.Population.currentQuantity > breakpoint0Max && requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(1, false)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
-                    requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(1, false);
-                } else if (requiredJobs[0] < state.jobs.Lumberjack.breakpointEmployees(0, false)) {
+                    requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(1, false);
+                } else if (requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(0, false)) {
                     log("autoJobs", "Setting required hunters to breakpoint 0")
-                    requiredJobs[0] = state.jobs.Lumberjack.breakpointEmployees(0, false);
+                    requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(0, false);
                 }
             }
 
-            if (requiredJobs[0] < 0) { requiredJobs[0] = 0; }
+            if (requiredJobs[farmerIndex] < 0) { requiredJobs[farmerIndex] = 0; }
 
-            jobAdjustments.push(requiredJobs[0] - state.jobs.Farmer.count);
-            availableEmployees -= requiredJobs[0];
+            jobAdjustments[farmerIndex] = requiredJobs[farmerIndex] - state.jobs.Farmer.count;
+            availableEmployees -= requiredJobs[farmerIndex];
         }
 
+        // Now assign crafters
+        if (availableCraftsmen > 0){
+            // Get list of craftabe resources
+            let availableJobs = state.jobManager.craftingJobs.filter(job => {
+                // Check if we're allowed to craft this resource
+                if (!job.isManaged() || !job.resource.autoCraftEnabled) {
+                    return false;
+                }
+
+                // And have enough resources to craft if for at least 2 seconds
+                let afforableAmount = availableCraftsmen;
+                job.resource.resourceRequirements.forEach(requirement =>
+                    afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / requirement.quantity / 2)
+                );
+
+                if (afforableAmount < availableCraftsmen){
+                    return false;
+                } else {
+                    return true;
+                }
+            });
+
+            // Try to filter out excess resources, if we're prioritizing demanded
+            if (settings.productionPrioritizeDemanded) {
+                let demandedJobs = availableJobs.filter(job => job.resource.currentQuantity < job.resource.storageRequired);
+                if (demandedJobs.length > 0){
+                    availableJobs = demandedJobs;
+                }
+            }
+
+            // Sort them by amount and weight. Yes, it can be empty, not a problem.
+            availableJobs.sort((a, b) => (a.resource.currentQuantity / a.resource.weighting) - (b.resource.currentQuantity / b.resource.weighting) );
+
+            for (let i = 0; i < state.jobManager.craftingJobs.length; i++) {
+                const job = state.jobManager.craftingJobs[i];
+                const jobIndex = jobList.indexOf(job);
+
+                // Having empty array and undefined availableJobs[0] is fine - we still need to remove other crafters.
+                if (job === availableJobs[0]){
+                    jobAdjustments[jobIndex] = availableCraftsmen - job.count;
+                } else {
+                    jobAdjustments[jobIndex] = 0 - job.count;
+                }
+            }
+
+            // We didn't assigned crafter for some reason, return employees so we can use them somewhere else
+            if (availableJobs[0] === undefined){
+                availableEmployees += availableCraftsmen;
+            }
+        }
+
+        // And deal with the rest now
         for (let i = 0; i < state.jobManager.maxJobBreakpoints; i++) {
             for (let j = 0; j < jobList.length; j++) {
                 const job = jobList[j];
 
-                // We've already done the farmer above
-                if (job === state.jobs.Farmer) {
+                // We've already done the farmer and crafters
+                if (job === state.jobs.Farmer || job.isCraftsman()) {
                     continue;
                 }
-
-
 
                 if (i !== 0) {
                     // If we're going up to the next breakpoint then add back the workers from this job from the last one
@@ -8061,10 +8112,6 @@
 
                 log("autoJobs", "job " + job._originalId + " job.breakpointEmployees(i) " + job.breakpointEmployees(i, false) + " availableEmployees " + availableEmployees);
                 let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i, false));
-                // We don't need to do anything with crafters here
-                if (job.isCraftsman()) {
-                    jobsToAssign = 0;
-                }
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
                 if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.Money.storageRatio > 0.98) {
@@ -8104,13 +8151,8 @@
                     }
                 }
 
-                if (i === 0) {
-                    requiredJobs.push(jobsToAssign);
-                    jobAdjustments.push(jobsToAssign - job.count);
-                } else {
-                    requiredJobs[j] = jobsToAssign;
-                    jobAdjustments[j] = jobsToAssign - job.count;
-                }
+                requiredJobs[j] = jobsToAssign;
+                jobAdjustments[j] = jobsToAssign - job.count;
 
                 availableEmployees -= jobsToAssign;
 
@@ -8222,51 +8264,6 @@
                 requiredJobs[0] += availableEmployees;
                 jobAdjustments[0] += availableEmployees;
                 availableEmployees = 0;
-            }
-        }
-
-        if (availableCraftsmen > 0){
-            // Get list of craftabe resources
-            let availableJobs = state.jobManager.craftingJobs.filter(job => {
-                // Check if we're allowed to craft this resource
-                if (!job.isManaged() || !job.resource.autoCraftEnabled) {
-                    return false;
-                }
-
-                // And have enough resources to craft if for at least 2 seconds
-                let afforableAmount = availableCraftsmen;
-                job.resource.resourceRequirements.forEach(requirement =>
-                    afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / requirement.quantity / 2)
-                );
-
-                if (afforableAmount < availableCraftsmen){
-                    return false;
-                } else {
-                    return true;
-                }
-            });
-
-            // Try to filter out excess resources, if we're prioritizing demanded
-            if (settings.productionPrioritizeDemanded) {
-                let demandedJobs = availableJobs.filter(job => job.resource.currentQuantity < job.resource.storageRequired);
-                if (demandedJobs.length > 0){
-                    availableJobs = demandedJobs;
-                }
-            }
-
-            // Sort them by amount and weight. Yes, it can be empty, not a problem.
-            availableJobs.sort((a, b) => (a.resource.currentQuantity / a.resource.weighting) - (b.resource.currentQuantity / b.resource.weighting) );
-
-            // Again, having undefined availableJobs[0] is fine - we still need to remove other jobs.
-            for (let i = 0; i < state.jobManager.craftingJobs.length; i++) {
-                const job = state.jobManager.craftingJobs[i];
-                const jobIndex = jobList.indexOf(job);
-
-                if (job === availableJobs[0]){
-                    jobAdjustments[jobIndex] = availableCraftsmen - job.count;
-                } else {
-                    jobAdjustments[jobIndex] = 0 - job.count;
-                }
             }
         }
 
