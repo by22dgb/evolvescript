@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.25
+// @version      3.2.1.26
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -618,6 +618,9 @@
             }
 
             this._weighting = 100;
+            this.weighting = 0;
+            this.extraDescription = "";
+
             this.priority = 0;
 
             this.consumption = {
@@ -892,7 +895,7 @@
                 }
 
                 // It provides support which we don't need
-                if (resourceType.rate < 0 && resourceType.resource.isSupport && resourceType.resource.calculatedRateOfChange > 1) {
+                if (resourceType.rate < 0 && resourceType.resource.isSupport && resourceType.resource.calculatedRateOfChange > 0) {
                     return resourceType.resource;
                 }
 
@@ -903,32 +906,6 @@
             }
             return false; // false means we have all we need for this to operate
         }
-
-        get weighting() {
-          let weighting = this._weighting;
-
-          // Increase weighting for new buildings
-          if (this.count === 0) { weighting *= settings.buildingWeightingNew; }
-
-          // Increase weighting for power plants, when we missing energy
-          if (this.powered < 0 && resources.Power.currentQuantity < 1) { weighting *= settings.buildingWeightingNeedfulPowerPlant; }
-
-          // Reduce weighting for power plants, when we have surplus energy
-          if (this.powered < 0 && resources.Power.currentQuantity > 1) { weighting *= settings.buildingWeightingUselessPowerPlant; }
-
-          // Reduce weighting for powered buildings, when we missing energy
-          if (this.powered > 0 && resources.Power.currentQuantity < 1) { weighting *= settings.buildingWeightingUnderpowered; }
-
-          // Reduce weighting for science, when no more cap required
-          if (this.is.knowledge && state.knowledgeRequiredByTechs < resources.Knowledge.maxQuantity) { weighting *= settings.buildingWeightingUselessKnowledge; }
-
-          // Increase weighting for science, when knowledge is capped
-          if (this.is.knowledge && state.knowledgeRequiredByTechs > resources.Knowledge.maxQuantity) { weighting *= settings.buildingWeightingNeedfulKnowledge; }
-
-
-          return weighting;
-        }
-
         //#endregion Standard actions
 
         //#region Buildings
@@ -4110,6 +4087,36 @@
             this.priorityList.forEach(building => building.updateResourceRequirements());
         }
 
+        updateWeighting() {
+             // Check generic conditions, and multiplier - x1 have no effect, so skip them too.
+            let activeRules = weightingRules.filter(rule => rule[0]() && rule[3]() !== 1);
+
+            // Iterate over buildings
+            for (let i = 0; i < this.priorityList.length; i++){
+                const building = this.priorityList[i];
+                // Reset old weighting and note
+                building.extraDescription = "";
+                building.weighting = building._weighting;
+
+                // Apply weighting rules
+                for (let j = 0; j < activeRules.length; j++) {
+                    let result = activeRules[j][1](building);
+                    // Rule passed
+                    if (result) {
+                      building.extraDescription += activeRules[j][2](result) + "<br>";
+                      building.weighting *= activeRules[j][3](result);
+
+
+                      // Last rule disabled building, no need to check the rest
+                      if (building.weighting <= 0) {
+                          break;
+                      }
+                    }
+                }
+                building.extraDescription = "Weighting: " + building.weighting + "<br>" + building.extraDescription;
+            }
+        }
+
         clearPriorityList() {
             this.priorityList.length = 0;
             this._managedPriorityList.length = 0;
@@ -4147,7 +4154,7 @@
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const building = this.priorityList[i];
 
-                    if (building.isUnlocked() && building.autoBuildEnabled) {
+                    if (building.weighting > 0) {
                         this._managedPriorityList.push(building);
                     }
                 }
@@ -5372,8 +5379,13 @@
     var tech = {};
     var techIds = {};
 
+    var weightingRules = null;
+
     // Data attribtes have IDs in lower case for some reason, we're going to use it as lookup table
     var resLowIds = {};
+
+    // Lookup table for building popups
+    var buildingPopId = {}
 
     function alwaysAllowed() {
         return true;
@@ -5576,7 +5588,10 @@
         spyManager: new SpyManager(),
 
         minimumMoneyAllowed: 0,
+
         knowledgeRequiredByTechs: 0,
+        oilRequiredByMissions: 0,
+        heliumRequiredByMissions: 0,
 
         goal: "Standard",
 
@@ -5789,21 +5804,21 @@
 
         spaceBuildings: {
             // Space
-            SpaceTestLaunch: new Action("Test Launch", "space", "test_launch", "spc_home"),
+            SpaceTestLaunch: new Action("Test Launch", "space", "test_launch", "spc_home", {mission: true}),
             SpaceSatellite: new Action("Space Satellite", "space", "satellite", "spc_home", {knowledge: true}),
             SpaceGps: new Action("Space Gps", "space", "gps", "spc_home"),
             SpacePropellantDepot: new Action("Space Propellant Depot", "space", "propellant_depot", "spc_home"),
             SpaceNavBeacon: new Action("Space Navigation Beacon", "space", "nav_beacon", "spc_home"),
 
             // Moon
-            MoonMission: new Action("Moon Mission", "space", "moon_mission", "spc_moon"),
+            MoonMission: new Action("Moon Mission", "space", "moon_mission", "spc_moon", {mission: true}),
             MoonBase: new Action("Moon Base", "space", "moon_base", "spc_moon"),
             MoonIridiumMine: new Action("Moon Iridium Mine", "space", "iridium_mine", "spc_moon"),
             MoonHeliumMine: new Action("Moon Helium-3 Mine", "space", "helium_mine", "spc_moon"),
             MoonObservatory: new Action("Moon Observatory", "space", "observatory", "spc_moon", {knowledge: true}),
 
             // Red
-            RedMission: new Action("Red Mission", "space", "red_mission", "spc_red"),
+            RedMission: new Action("Red Mission", "space", "red_mission", "spc_red", {mission: true}),
             RedSpaceport: new Action("Red Spaceport", "space", "spaceport", "spc_red"),
             RedTower: new Action("Red Space Control", "space", "red_tower", "spc_red"),
             RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red", {housing: true}),
@@ -5818,18 +5833,18 @@
             RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
 
             // Hell
-            HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
+            HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell", {mission: true}),
             HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
             HellSpaceCasino: new Action("Hell Space Casino", "space", "spc_casino", "spc_hell"),
             HellSwarmPlant: new Action("Hell Swarm Plant", "space", "swarm_plant", "spc_hell"),
 
             // Sun
-            SunMission: new Action("Sun Mission", "space", "sun_mission", "spc_sun"),
+            SunMission: new Action("Sun Mission", "space", "sun_mission", "spc_sun", {mission: true}),
             SunSwarmControl: new Action("Sun Control Station", "space", "swarm_control", "spc_sun"),
             SunSwarmSatellite: new Action("Sun Swarm Satellite", "space", "swarm_satellite", "spc_sun"),
 
             // Gas
-            GasMission: new Action("Gas Mission", "space", "gas_mission", "spc_gas"),
+            GasMission: new Action("Gas Mission", "space", "gas_mission", "spc_gas", {mission: true}),
             GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas"),
             GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", "spc_gas"),
             GasSpaceDock: new SpaceDock(), // has options
@@ -5839,26 +5854,26 @@
             GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "starDock", "launch_ship", "", "starDock"),
 
             // Gas moon
-            GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon"),
+            GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon", {mission: true}),
             GasMoonOutpost: new Action("Gas Moon Mining Outpost", "space", "outpost", "spc_gas_moon"),
             GasMoonDrone: new Action("Gas Moon Mining Drone", "space", "drone", "spc_gas_moon"),
             GasMoonOilExtractor: new Action("Gas Moon Oil Extractor", "space", "oil_extractor", "spc_gas_moon"),
 
             // Belt
-            BeltMission: new Action("Belt Mission", "space", "belt_mission", "spc_belt"),
+            BeltMission: new Action("Belt Mission", "space", "belt_mission", "spc_belt", {mission: true}),
             BeltSpaceStation: new Action("Belt Space Station", "space", "space_station", "spc_belt"),
             BeltEleriumShip: new Action("Belt Elerium Mining Ship", "space", "elerium_ship", "spc_belt"),
             BeltIridiumShip: new Action("Belt Iridium Mining Ship", "space", "iridium_ship", "spc_belt"),
             BeltIronShip: new Action("Belt Iron Mining Ship", "space", "iron_ship", "spc_belt"),
 
             // Dwarf
-            DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", "spc_dwarf"),
+            DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", "spc_dwarf", {mission: true}),
             DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", "spc_dwarf"),
             DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", "spc_dwarf"),
             DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
             DwarfWorldController: new Action("Dwarf WSC Control", "space", "world_controller", "spc_dwarf"),
 
-            AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
+            AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha", {mission: true}),
             AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
             AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
             AlphaMiningDroid: new MiningDroid(), // has options
@@ -5871,7 +5886,7 @@
             AlphaMegaFactory: new Action("Alpha Mega Factory", "interstellar", "int_factory", "int_alpha"),
             AlphaLuxuryCondo: new Action("Alpha Luxury Condo", "interstellar", "luxury_condo", "int_alpha", {housing: true}),
 
-            ProximaMission: new Action("Proxima Mission", "interstellar", "proxima_mission", "int_proxima"),
+            ProximaMission: new Action("Proxima Mission", "interstellar", "proxima_mission", "int_proxima", {mission: true}),
             ProximaTransferStation: new Action("Proxima Transfer Station", "interstellar", "xfer_station", "int_proxima"),
             ProximaCargoYard: new Action("Proxima Cargo Yard", "interstellar", "cargo_yard", "int_proxima"),
             ProximaCruiser: new Action("Proxima Cruiser", "interstellar", "cruiser", "int_proxima", {garrison: true}),
@@ -5879,17 +5894,17 @@
             ProximaDysonSphere: new Action("Proxima Dyson Sphere", "interstellar", "dyson_sphere", "int_proxima"),
             ProximaOrichalcumSphere: new Action("Proxima Orichalcum Sphere", "interstellar", "orichalcum_sphere", "int_proxima"),
 
-            NebulaMission: new Action("Nebula Mission", "interstellar", "nebula_mission", "int_nebula"),
+            NebulaMission: new Action("Nebula Mission", "interstellar", "nebula_mission", "int_nebula", {mission: true}),
             NebulaNexus: new Action("Nebula Nexus", "interstellar", "nexus", "int_nebula"),
             NebulaHarvestor: new Action("Nebula Harvester", "interstellar", "harvester", "int_nebula"),
             NebulaEleriumProspector: new Action("Nebula Elerium Prospector", "interstellar", "elerium_prospector", "int_nebula"),
 
-            NeutronMission: new Action("Neutron Mission", "interstellar", "neutron_mission", "int_neutron"),
+            NeutronMission: new Action("Neutron Mission", "interstellar", "neutron_mission", "int_neutron", {mission: true}),
             NeutronMiner: new Action("Neutron Miner", "interstellar", "neutron_miner", "int_neutron"),
             NeutronCitadel: new Action("Neutron Citadel Station", "interstellar", "citadel", "int_neutron"),
             NeutronStellarForge: new Action("Neutron Stellar Forge", "interstellar", "stellar_forge", "int_neutron"),
 
-            Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole"),
+            Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole", {mission: true}),
             BlackholeFarReach: new Action("Blackhole Far Reach", "interstellar", "far_reach", "int_blackhole", {knowledge: true}),
             BlackholeStellarEngine: new Action("Blackhole Stellar Engine", "interstellar", "stellar_engine", "int_blackhole"),
             BlackholeMassEjector: new Action("Blackhole Mass Ejector", "interstellar", "mass_ejector", "int_blackhole"),
@@ -5899,7 +5914,7 @@
             BlackholeStargate: new Action("Blackhole Stargate", "interstellar", "stargate", "int_blackhole"),
             BlackholeCompletedStargate: new Action("Blackhole Completed Stargate", "interstellar", "s_gate", "int_blackhole"),
 
-            SiriusMission: new Action("Sirius Mission", "interstellar", "sirius_mission", "int_sirius"),
+            SiriusMission: new Action("Sirius Mission", "interstellar", "sirius_mission", "int_sirius", {mission: true}),
             SiriusAnalysis: new Action("Sirius B Analysis", "interstellar", "sirius_b", "int_sirius"),
             SiriusSpaceElevator: new Action("Sirius Space Elevator", "interstellar", "space_elevator", "int_sirius"),
             SiriusGravityDome: new Action("Sirius Gravity Dome", "interstellar", "gravity_dome", "int_sirius"),
@@ -5948,7 +5963,7 @@
             PortalSensorDrone: new Action("Portal Sensor Drone", "portal", "sensor_drone", "prtl_badlands"),
             PortalAttractor: new Action("Portal Attractor Beacon", "portal", "attractor", "prtl_badlands"),
 
-            PortalPitMission: new Action("Portal Pit Mission", "portal", "pit_mission", "prtl_pit"),
+            PortalPitMission: new Action("Portal Pit Mission", "portal", "pit_mission", "prtl_pit", {mission: true}),
             PortalAssaultForge: new Action("Portal AssaultForge", "portal", "assault_forge", "prtl_pit"),
             PortalSoulForge: new Action("Portal Soul Forge", "portal", "soul_forge", "prtl_pit"),
             PortalGunEmplacement: new Action("Portal Gun Emplacement", "portal", "gun_emplacement", "prtl_pit"),
@@ -6610,17 +6625,27 @@
         state.jobs.Priest.breakpointMaxs = [0, 0, 0];
     }
 
+    function resetWeightingSettings() {
+        settings.buildingWeightingNew = 3;
+        settings.buildingWeightingUselessPowerPlant = 0;
+        settings.buildingWeightingNeedfulPowerPlant = 5;
+        settings.buildingWeightingUnderpowered = 0.5;
+        settings.buildingWeightingUselessKnowledge = 0.1;
+        settings.buildingWeightingNeedfulKnowledge = 3;
+        settings.buildingWeightingUnusedEjectors = 0.1;
+        settings.buildingWeightingMADUseless = 0.01;
+        settings.buildingWeightingCrateUseless = 0.2;
+        settings.buildingWeightingMissingFuel = 10;
+        settings.buildingWeightingNonOperating = 0;
+        settings.buildingWeightingTriggerConflict = 0;
+        settings.buildingWeightingMissingSupply = 0;
+    }
+
     function resetBuildingSettings() {
         settings.buildingBuildIfStorageFull = false;
         settings.buildingAlwaysClick = false;
         settings.buildingClickPerTick = 50;
-        settings.buildingWeightingNew = 3;
-        settings.buildingWeightingUselessPowerPlant = 0.2;
-        settings.buildingWeightingNeedfulPowerPlant = 5;
-        settings.buildingWeightingUnderpowered = 0.5;
-        settings.buildingWeightingUselessKnowledge = 0.2;
-        settings.buildingWeightingNeedfulKnowledge = 5;
-        
+
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
 
@@ -6890,7 +6915,7 @@
 
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
-                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed"];
+                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed", "weightingSettingsCollapsed"];
 
     function updateStateFromSettings() {
         updateStandAloneSettings();
@@ -7418,11 +7443,18 @@
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
         addSetting("buildingWeightingNew", 3);
-        addSetting("buildingWeightingUselessPowerPlant", 0.2);
+        addSetting("buildingWeightingUselessPowerPlant", 0);
         addSetting("buildingWeightingNeedfulPowerPlant", 5);
         addSetting("buildingWeightingUnderpowered", 0.5);
-        addSetting("buildingWeightingUselessKnowledge", 0.2);
-        addSetting("buildingWeightingNeedfulKnowledge", 5);
+        addSetting("buildingWeightingUselessKnowledge", 0.1);
+        addSetting("buildingWeightingNeedfulKnowledge", 3);
+        addSetting("buildingWeightingUnusedEjectors", 0.1);
+        addSetting("buildingWeightingMADUseless", 0.01);
+        addSetting("buildingWeightingCrateUseless", 0.2);
+        addSetting("buildingWeightingMissingFuel", 10);
+        addSetting("buildingWeightingNonOperating", 0);
+        addSetting("buildingWeightingTriggerConflict", 0);
+        addSetting("buildingWeightingMissingSupply", 0);
 
         addSetting("buildingEnabledAll", false);
         addSetting("buildingStateAll", false);
@@ -8044,7 +8076,7 @@
         }
 
         // Now assign crafters
-        if (availableCraftsmen > 0){
+        if (settings.autoCraftsmen){
             // Get list of craftabe resources
             let availableJobs = state.jobManager.craftingJobs.filter(job => {
                 // Check if we're allowed to craft this resource
@@ -8052,10 +8084,12 @@
                     return false;
                 }
 
-                // And have enough resources to craft if for at least 2 seconds
+                // And have enough resources to craft it for at least 2 seconds
                 let afforableAmount = availableCraftsmen;
-                job.resource.resourceRequirements.forEach(requirement =>
-                    afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / requirement.quantity / 2)
+                job.resource.resourceRequirements.forEach(requirement => {
+                    let totalRate = job.count * requirement.quantity + requirement.resource.calculatedRateOfChange;
+                    afforableAmount = Math.min(afforableAmount, (requirement.resource.currentQuantity + totalRate * 2) / requirement.quantity / 2);
+                  }
                 );
 
                 if (afforableAmount < availableCraftsmen){
@@ -8750,7 +8784,7 @@
                 let resource = resourceRequirement.resource;
                 let roundedRateOfChange = Math.ceil(resource.calculatedRateOfChange);
 
-                if (remaining <= 0 || resource.storageRatio < 0.99) {
+                if (remaining <= 0 || resource.storageRatio < 0.98) {
                     resourceRequirement.requirement = 0;
                     return;
                 }
@@ -9078,8 +9112,6 @@
     }
 
     function autoBuild() {
-        autoGatherResources();
-
         // Space dock is special and has a modal window with more buildings!
         if (!state.spaceBuildings.GasSpaceDock.isOptionsCached()) {
             if (state.spaceBuildings.GasSpaceDock.cacheOptions()) {
@@ -9087,99 +9119,28 @@
             }
         }
 
-        let extraDesc = [];
         let buildingList = state.buildingManager.managedPriorityList();
-
-        // We don't need to check that for each building...
-        let performingMAD = settings.autoMAD && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true));
-
-        // Filtering out building which we're not going to build for sure. Make it before main loop, to reduce buildingList before we'll start iterate it comparing weights
-        buildingList = buildingList.filter(function(building){
-          let id = "pop" + building.settingId;
-          let weighting = building.weighting;
-          extraDesc[id] = `AutoBuild weighting: ${weighting}<br>`;
-
-          if (weighting <= 0) {
-              extraDesc[id] += "Too low weighting";
-              return false;
-          }
-
-          if (building.count >= building.autoMax) {
-              extraDesc[id] += "Maximum amount reached";
-              return false;
-          }
-
-          if (!game.checkAffordable(building.definition, true)) {
-              extraDesc[id] += "Not enough storage";
-              return false;
-          }
-
-          let trigger = state.triggerManager.buildingConflicts(building);
-          if (trigger !== false){
-              extraDesc[id] += "Conflicts with trigger: " + trigger.desc;
-              return false;
-          }
-
-          let miss = building.missingSupply();
-          if (miss !== false) {
-              extraDesc[id] += "Missing " + miss.name + " to operate";
-              return false;
-          }
-
-          if (!settings.prestigeBioseedConstruct && (building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe)) {
-              extraDesc[id] += "Bioseed prestige disabled";
-              return false;
-          }
-
-          if (performingMAD && !building.is.housing && !building.is.garrison){
-              extraDesc[id] += "MAD prestige unlocked and enabled, only building housings and barracks from now";
-              return false;
-          }
-
-          // We don't need too many crates and containers if we're not going to use it
-          if (building === state.cityBuildings.StorageYard && resources.Crates.maxQuantity > 0) {
-            extraDesc[id] += "Still have some unused crates";
-            return false;
-          }
-          if (building === state.cityBuildings.Warehouse && resources.Containers.maxQuantity > 0) {
-            extraDesc[id] += "Still have some unused containers";
-            return false;
-          }
-
-          // Some buildings works even without power, not sure whether they should be builded or not... Probably not. Go get more power first.
-          if (building.stateOffCount > 0){
-            extraDesc[id] += "Still have some non operating buildings";
-            return false;
-          }
-
-          //extraDesc[id] = "Processing...";
-          return true;
-        });
 
         // Loop through the auto build list and try to buy them
         buildingsLoop:
         for (let i = 0; i < buildingList.length; i++) {
             const building = buildingList[i];
-            const id = "pop" + building.settingId;
 
             // Only go further if we can build it right now
             if (!building.isClickable()) {
-                extraDesc[id] += "Not enough resources";
+                building.extraDescription += "Not enough resources<br>";
                 continue;
             }
 
             // Checks weights, if this building doesn't demands any overflowing resources(unless we ignoring overflowing)
             if (!settings.buildingBuildIfStorageFull || !building.resourceRequirements.some(requirement => requirement.resource.storageRatio > 0.98)) {
-              let thisWeighting = building.weighting;
               for (let j = 0; j < buildingList.length; j++) {
                 let other = buildingList[j];
-                let otherWeighting = other.weighting;
-
-                // We only care about buildings with highter weight
-                if (thisWeighting >= otherWeighting){
+                 // We only care about buildings with highter weight
+                if (building.weighting >= other.weighting){
                     continue;
                 }
-                let weightDiffRatio = otherWeighting / thisWeighting;
+                let weightDiffRatio = other.weighting / building.weighting;
 
                 // Compare resource costs
                 for (let k = 0; k < building.resourceRequirements.length; k++) {
@@ -9211,7 +9172,7 @@
                   }
 
                   // If we reached here - then we want to delay with our current building. Return all way back to main building loop, and check next building
-                  extraDesc[id] += "Conflicts with " + other.name + " for " + otherRequirement.resource.name;
+                  building.extraDescription += `Conflicts with ${other.name} for ${otherRequirement.resource.name}<br>`;
                   continue buildingsLoop;
                 }
               }
@@ -9227,14 +9188,14 @@
         }
 
         $('.popper').each(function(){
-          let note = extraDesc[this.id];
-          if (note) {
+          let building = buildingPopId[this.id];
+          if (building) {
             let desc_node = $(this).find("#extra_desc");
             if (desc_node.length){
-              desc_node.html(note);
+              desc_node.html(building.extraDescription);
             } else {
               $(this).css("pointer-events", "none");
-              $(this).append(`<div id="extra_desc">${note}</div>`);
+              $(this).append(`<div id="extra_desc">${building.extraDescription}</div>`);
             }
           }
         });
@@ -10099,6 +10060,7 @@
         }
 
         state.buildingManager.updateResourceRequirements();
+        state.buildingManager.updateWeighting();
         state.projectManager.updateResourceRequirements();
         state.triggerManager.updateCompleteTriggers();
         state.triggerManager.resetTargetTriggers();
@@ -10155,12 +10117,26 @@
         // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
         state.knowledgeRequiredByTechs = resources.Knowledge.storageRequired;
 
+        // Same for fuels, but we'll need to actually calculate it
+        state.oilRequiredByMissions = 0;
+        state.heliumRequiredByMissions = 0;
+
         // For building using data attributes is not optimal, as they doesn't updates in real time
-        // And that also filters out buildings with disabled autobuild
-        state.buildingManager.managedPriorityList().forEach(building => {
-            building.resourceRequirements.forEach(requirement => {
-                requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
-            });
+        state.buildingManager.priorityList.forEach(building => {
+            if (building.isUnlocked() && building.autoBuildEnabled){
+                building.resourceRequirements.forEach(requirement => {
+                    requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
+
+                    if (building.is.mission){
+                        if (requirement.resource === resources.Helium_3){
+                            state.heliumRequiredByMissions = Math.max(requirement.quantity*1.03, state.heliumRequiredByMissions);
+                        }
+                        if (requirement.resource === resources.Oil){
+                            state.oilRequiredByMissions = Math.max(requirement.quantity*1.03, state.oilRequiredByMissions);
+                        }
+                    }
+                });
+            }
         });
 
         // Same for projects
@@ -10270,6 +10246,106 @@
         }
     }
 
+    function initialiseWeightingRules(){
+        // Weighting rules consists of 4 lambdas: generic condition, weighting condition, note, and multiplier
+        // Generic condition will be checked just once per tick, before calculating weights. They take nothing and return bool - whether this rule is applicable, or not
+        // Passed rules will be checked against each building. Weighting condition takes current building, and return any value, if value casts to true - rule aplies
+        // Return value of second lambda goes in third lambda, which return a note displayed when rule applied
+        // Forth lambda return multiplier. Rules returning x1 multipliers wont ever be applied.
+
+        weightingRules = [[
+              () => true,
+              (building) => !building.isUnlocked(),
+              () => "Locked",
+              () => 0 // Should always be on top, processing locked building may lead to issues
+          ],[
+              () => true,
+              (building) => !building.autoBuildEnabled,
+              () => "AutoBuild disabled",
+              () => 0 // Configured in autoBuild
+          ],[
+              () => true,
+              (building) => building.count >= building.autoMax,
+              () => "Maximum amount reached",
+              () => 0 // Configured in autoBuild
+          ],[
+              () => true,
+              (building) => !game.checkAffordable(building.definition, true),
+              () => "Not enough storage",
+              () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
+          ],[
+              () => true,
+              (building) => state.triggerManager.buildingConflicts(building),
+              (trigger) => "Conflicts with trigger: " + trigger.desc,
+              () => settings.buildingWeightingTriggerConflict
+          ],[
+              () => true,
+              (building) => building.missingSupply(),
+              (resource) => "Missing " + resource.name + " to operate",
+              () => settings.buildingWeightingMissingSupply
+          ],[
+              () => true,
+              (building) => building.stateOffCount > 0,
+              () => "Still have some non operating buildings",
+              () => settings.buildingWeightingNonOperating
+          ],[
+              () => !settings.prestigeBioseedConstruct,
+              (building) => building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe,
+              () => "Bioseed prestige disabled",
+              () => 0
+          ],[
+              () => settings.autoMAD && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true)),
+              (building) => !building.is.housing && !building.is.garrison,
+              () => "Awaiting MAD prestige",
+              () => settings.buildingWeightingMADUseless
+          ],[
+              () => true,
+              (building) => building.count === 0,
+              () => "New building",
+              () => settings.buildingWeightingNew
+          ],[
+              () => resources.Power.currentQuantity < 1,
+              (building) => building.powered < 0,
+              () => "Need more energy",
+              () => settings.buildingWeightingNeedfulPowerPlant
+          ],[
+              () => resources.Power.currentQuantity > 1,
+              (building) => building.powered < 0,
+              () => "Too much energy",
+              () => settings.buildingWeightingUselessPowerPlant
+          ],[
+              () => resources.Power.currentQuantity < 1,
+              (building) => building.powered > 0,
+              () => "Need more energy",
+              () => settings.buildingWeightingUnderpowered
+          ],[
+              () => state.knowledgeRequiredByTechs < resources.Knowledge.maxQuantity,
+              (building) => building.is.knowledge,
+              () => "Too much knowledge",
+              () => settings.buildingWeightingUselessKnowledge
+          ],[
+              () => state.knowledgeRequiredByTechs > resources.Knowledge.maxQuantity,
+              (building) => building.is.knowledge,
+              () => "Need more knowledge",
+              () => settings.buildingWeightingNeedfulKnowledge
+          ],[
+              () => state.spaceBuildings.BlackholeMassEjector.isUnlocked(),
+              (building) => building === state.spaceBuildings.BlackholeMassEjector && building.count * 1000 - game.global.interstellar.mass_ejector.total > 100,
+              () => "Still have some unused ejectors",
+              () => settings.buildingWeightingUnusedEjectors
+          ],[
+              () => resources.Crates.maxQuantity > 0 || resources.Containers.maxQuantity > 0,
+              (building) => building === state.cityBuildings.StorageYard || building === state.cityBuildings.Warehouse,
+              () => "Still have some unused crates or containers",
+              () => settings.buildingWeightingCrateUseless
+          ],[
+              () => resources.Helium_3.maxQuantity < state.heliumRequiredByMissions || resources.Oil.maxQuantity < state.oilRequiredByMissions,
+              (building) => building === state.cityBuildings.OilDepot || building === state.spaceBuildings.SpacePropellantDepot || building === state.spaceBuildings.GasStorage,
+              () => "Need more fuel",
+              () => settings.buildingWeightingMissingFuel
+        ]];
+    }
+
     function initialiseScript() {
         let tempTech = {};
         //@ts-ignore
@@ -10287,6 +10363,12 @@
         for (let id in resources) {
             let resource = resources[id];
             resLowIds[resource.id.toLowerCase()] = resource;
+        }
+
+        // And for buildings popups
+        for (let i = 0; i < state.buildingManager.priorityList.length; i++){
+            let building = state.buildingManager.priorityList[i];
+            buildingPopId["pop" + building.settingId] = building;
         }
 
         updateStateFromSettings();
@@ -10364,6 +10446,9 @@
         }
         if (settings.autoARPA) {
             autoArpa();
+        }
+        if (settings.buildingAlwaysClick || settings.autoBuild){
+            autoGatherResources();
         }
         if (settings.autoBuild) {
             autoBuild();
@@ -10444,6 +10529,7 @@
         initialiseState();
         initialiseRaces();
         initialiseScript();
+        initialiseWeightingRules();
         setInterval(automate, 1000);
     }
 
@@ -10608,6 +10694,7 @@
         buildProductionSettings();
         buildJobSettings();
         buildBuildingSettings();
+        buildWeightingSettings();
         buildProjectSettings();
         buildLoggingSettings(parentNode, true);
 
@@ -10628,6 +10715,7 @@
                 } else {
                     settings[collapsibles[i].id] = false;
                     content.style.display = "block";
+                    content.style.height = null;
                     content.style.height = content.offsetHeight + "px";
                 }
 
@@ -10694,6 +10782,7 @@
         updateProductionSettingsContent();
         updateJobSettingsContent();
         updateBuildingSettingsContent();
+        updateWeightingSettingsContent();
         updateProjectSettingsContent();
         updateLoggingSettingsContent(true);
     }
@@ -10961,20 +11050,13 @@
         let currentNode = $('#script_generalContent');
         currentNode.empty().off("*");
 
-        updateGeneralPreTable();
+        // Add any pre table settings
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_generalPreTable"></div>');
+        addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
+        addStandardSectionSettingsToggle(preTableNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of autoBuild, to bootstrap production. With this toggled on it will continue clicking forever");
+        addStandardSectionSettingsNumber(preTableNode, "buildingClickPerTick", "Maximum clicks per second", "Number of clicks performed at once, each second. Hardcapped by amount of missed resources");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function updateGeneralPreTable() {
-        let currentNode = $('#script_generalContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_generalPreTable"></div>');
-
-        // Add any pre table settings
-        let preTableNode = $('#script_generalPreTable');
-        addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
     }
 
     function buildPrestigeSettings(parentNode, isMainSettings) {
@@ -11051,11 +11133,8 @@
         let currentNode = $(`#script_${secondaryPrefix}governmentContent`);
         currentNode.empty().off("*");
 
-        // Add the pre table section
-        currentNode.append(`<div id="script_${secondaryPrefix}governmentPreTable"></div>`);
-
         // Add any pre table settings
-        let preTableNode = $(`#script_${secondaryPrefix}governmentPreTable`);
+        let preTableNode = currentNode.append(`<div id="script_${secondaryPrefix}governmentPreTable"></div>`);
         addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, 0, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
         addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, 0, "generalMinimumMorale", "Minimum allowed morale", "Use this to set a minimum allowed morale. Remember that less than 100% can cause riots and weather can cause sudden swings");
         addStandardSectionSettingsNumber2(secondaryPrefix, preTableNode, 0, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
@@ -11235,63 +11314,17 @@
 
         let currentNode = $('#script_triggerContent');
         currentNode.empty().off("*");
-        updateTriggerPreTable();
-        updateTriggerTable();
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function updateTriggerPreTable() {
-        let currentNode = $('#script_triggerContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_triggerPreTable"></div>');
 
         // Add any pre table settings
-        let preTableNode = $('#script_triggerPreTable');
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_triggerPreTable"></div>');
         let addButton = $('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
         preTableNode.append(addButton);
         $("#script_trigger_add").on("click", addTriggerSetting);
+
         // TODO: This thing should be able to buy resources via regular trades, not only routes.
         addStandardSectionSettingsToggle(preTableNode, "triggerRequest", "Request missing resources", "Once trigger requirements are met, and you have enough storage, script will set the routes to import missing resources to complete task. autoMarket should be enabled for this to work.");
-    }
 
-    function addTriggerSetting() {
-        let trigger = state.triggerManager.AddTrigger("tech", "unlocked", "club", 0, "research", "club", 0);
-        updateSettingsFromState();
-
-        let tableBodyNode = $('#script_triggerTableBody');
-        let newTableBodyText = "";
-
-        let classAttribute = ' class="script-draggable"';
-        newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '"' + classAttribute + '><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
-
-        tableBodyNode.append($(newTableBodyText));
-
-        //buildTriggerType(trigger);
-        buildTriggerRequirementType(trigger);
-        buildTriggerRequirementId(trigger);
-        buildTriggerRequirementCount(trigger);
-
-        buildTriggerActionType(trigger);
-        buildTriggerActionId(trigger);
-        buildTriggerActionCount(trigger);
-
-        buildTriggerSettingsColumn(trigger);
-
-        let content = document.querySelector('#script_triggerSettings .script-content');
-        // @ts-ignore
-        content.style.height = null;
-        // @ts-ignore
-        content.style.height = content.offsetHeight + "px"
-
-        state.triggerManager.resetTargetTriggers();
-    }
-
-    function updateTriggerTable() {
-        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
-
-        let currentNode = $('#script_triggerContent');
+        // Add table
         currentNode.append(
             `<table style="width:100%">
                     <tr><th class="has-text-warning" colspan="3">Requirement</th><th class="has-text-warning" colspan="5">Action</th></tr>
@@ -11347,6 +11380,39 @@
         } );
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+
+    function addTriggerSetting() {
+        let trigger = state.triggerManager.AddTrigger("tech", "unlocked", "club", 0, "research", "club", 0);
+        updateSettingsFromState();
+
+        let tableBodyNode = $('#script_triggerTableBody');
+        let newTableBodyText = "";
+
+        let classAttribute = ' class="script-draggable"';
+        newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '"' + classAttribute + '><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+
+        tableBodyNode.append($(newTableBodyText));
+
+        //buildTriggerType(trigger);
+        buildTriggerRequirementType(trigger);
+        buildTriggerRequirementId(trigger);
+        buildTriggerRequirementCount(trigger);
+
+        buildTriggerActionType(trigger);
+        buildTriggerActionId(trigger);
+        buildTriggerActionCount(trigger);
+
+        buildTriggerSettingsColumn(trigger);
+
+        let content = document.querySelector('#script_triggerSettings .script-content');
+        // @ts-ignore
+        content.style.height = null;
+        // @ts-ignore
+        content.style.height = content.offsetHeight + "px"
+
+        state.triggerManager.resetTargetTriggers();
     }
 
     /**
@@ -12004,26 +12070,12 @@
         let currentNode = $('#script_marketContent');
         currentNode.empty().off("*");
 
-        updateMarketPreTable();
-        updateMarketTable();
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function updateMarketPreTable() {
-        let currentNode = $('#script_marketContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreTable"></div>');
-
         // Add any pre table settings
-        let preTableNode = $('#script_marketPreTable');
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreTable"></div>');
         addStandardSectionSettingsNumber(preTableNode, "tradeRouteMinimumMoneyPerSecond", "Trade minimum money /s", "Uses the highest per second amount of these two values. Will trade for resources until this minimum money per second amount is hit");
         addStandardSectionSettingsNumber(preTableNode, "tradeRouteMinimumMoneyPercentage", "Trade minimum money percentage /s", "Uses the highest per second amount of these two values. Will trade for resources until this percentage of your money per second amount is hit");
-    }
 
-    function updateMarketTable() {
-        let currentNode = $('#script_marketContent');
+        // Add table
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:15%">Resource</th><th class="has-text-warning" style="width:10%">Buy</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Sell</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Trade For</th><th class="has-text-warning" style="width:10%">Routes</th><th class="has-text-warning" style="width:10%">Trade Away</th><th class="has-text-warning" style="width:10%">Min p/s</th><th style="width:5%"></th></tr>
                 <tbody id="script_marketTableBody" class="script-contenttbody"></tbody>
@@ -12095,6 +12147,8 @@
                 updateSettingsFromState();
             },
         } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     /**
@@ -12141,28 +12195,11 @@
         let currentNode = $('#script_storageContent');
         currentNode.empty().off("*");
 
-        updateStoragePreTable();
-        updateStorageTable();
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function updateStoragePreTable() {
-        let currentNode = $('#script_storageContent');
-
-        // Add the pre table section
-        //currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_storagePreTable">' + '<div><span class="has-text-danger">Storage settings have not yet been implemented! You can change them but they won\'t take effect until a future version.</span></div>' + '</div>');
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_storagePreTable"></div>');
-
         // Add any pre table settings
-        let preTableNode = $('#script_storagePreTable');
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_storagePreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "storageLimitPreMad", "Limit Pre-MAD Storage", "Saves resources and shortens run time by limiting storage pre-MAD");
         addStandardSectionSettingsToggle(preTableNode, "storageSafeReassign", "Reassign only empty storages", "Wait until storage is empty before reassigning containers to another resource, to prevent overflowing and wasting resources");
 
-    }
-
-    function updateStorageTable() {
-        let currentNode = $('#script_storageContent');
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:50%">Resource</th><th class="has-text-warning" style="width:15%">Enabled</th><th class="has-text-warning" style="width:15%">Max Crates</th><th class="has-text-warning" style="width:15%">Max Containers</th><th style="width:5%"></th></tr>
                 <tbody id="script_storageTableBody" class="script-contenttbody"></tbody>
@@ -12216,6 +12253,8 @@
                 updateSettingsFromState();
             },
         } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     /**
@@ -12345,7 +12384,7 @@
             updateSettingsFromState();
             updateProductionSettingsContent();
 
-            // Redraw toggles on in resources tab
+            // Redraw toggles in resources tab
             if ( $('.ea-craft-toggle').length !== 0 ) {
               removeCraftToggles();
               createCraftToggles();
@@ -12361,31 +12400,19 @@
         let currentNode = $('#script_productionContent');
         currentNode.empty().off("*");
 
-        updateProductionPreTableSmelter();
-        updateProductionTableSmelter();
-
-        updateProductionPreTableFactory();
-        updateProductionTableFactory();
-
-        updateProductionPreTableFoundry();
-        updateProductionTableFoundry();
+        updateProductionTableSmelter(currentNode);
+        updateProductionTableFactory(currentNode);
+        updateProductionTableFoundry(currentNode);
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function updateProductionPreTableSmelter() {
-        let currentNode = $('#script_productionContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableSmelter"></div>');
-
+    function updateProductionTableSmelter(currentNode) {
         // Add any pre table settings
-        let preTableNode = $('#script_productionPreTableSmelter');
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableSmelter"></div>');
         addStandardHeading(preTableNode, "Smelter");
-    }
 
-    function updateProductionTableSmelter() {
-        let currentNode = $('#script_productionContent');
+        // Add table
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Fuel</th><th class="has-text-warning" style="width:75%"></th></tr>
                 <tbody id="script_productionTableBodySmelter" class="script-contenttbody"></tbody>
@@ -12437,20 +12464,13 @@
         } );
     }
 
-    function updateProductionPreTableFactory() {
-        let currentNode = $('#script_productionContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFactory"></div>');
-
+    function updateProductionTableFactory(currentNode) {
         // Add any pre table settings
-        let preTableNode = $('#script_productionPreTableFactory');
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFactory"></div>');
         addStandardHeading(preTableNode, "Factory");
         addStandardSectionSettingsToggle(preTableNode, "productionMoneyIfOnly", "Override and produce money if we can't fill factories with other production", "If all other production has been allocated and there are leftover factories then use them to produce money");
-    }
 
-    function updateProductionTableFactory() {
-        let currentNode = $('#script_productionContent');
+        // Add table
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:25%"></th></tr>
                 <tbody id="script_productionTableBodyFactory" class="script-contenttbody"></tbody>
@@ -12486,20 +12506,13 @@
         }
     }
 
-    function updateProductionPreTableFoundry() {
-        let currentNode = $('#script_productionContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFoundry"></div>');
-
+    function updateProductionTableFoundry(currentNode) {
         // Add any pre table settings
-        let preTableNode = $('#script_productionPreTableFoundry');
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFoundry"></div>');
         addStandardHeading(preTableNode, "Foundry");
         addStandardSectionSettingsToggle(preTableNode, "productionPrioritizeDemanded", "Prioritize demanded craftables", "Resources above amount required for constructions won't be crafted, if there's better options enabled and available, ignoring weighted ratio");
-    }
 
-    function updateProductionTableFoundry() {
-        let currentNode = $('#script_productionContent');
+        // Add table
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:25%"></th></tr>
                 <tbody id="script_productionTableBodyFoundry" class="script-contenttbody"></tbody>
@@ -12587,30 +12600,14 @@
         let currentNode = $('#script_jobContent');
         currentNode.empty().off("*");
 
-        updateJobPreTable();
-        updateJobTable();
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function updateJobPreTable() {
-        let currentNode = $('#script_jobContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_jobPreTable"></div>');
-
         // Add any pre table settings
-        let preTableNode = $('#script_jobPreTable');
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_jobPreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "jobSetDefault", "Set default job", "Automatically sets the default job in order of Quarry Worker -> Lumberjack -> Scavenger -> Farmer");
         addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
         addStandardSectionSettingsNumber(preTableNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
         addStandardSectionSettingsNumber(preTableNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
-    }
 
-    function updateJobTable() {
-        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
-
-        let currentNode = $('#script_jobContent');
+        // Add table
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Job</th><th class="has-text-warning" style="width:20%">1st Pass Max</th><th class="has-text-warning" style="width:20%">2nd Pass Max</th><th class="has-text-warning" style="width:20%">Final Max</th><th style="width:5%"></th></tr>
                 <tbody id="script_jobTableBody" class="script-contenttbody"></tbody>
@@ -12710,6 +12707,72 @@
         return jobBreakpointTextbox;
     }
 
+    function buildWeightingSettings() {
+        let sectionId = "weighting";
+        let sectionName = "AutoBuild Weighting";
+
+        let resetFunction = function() {
+            resetWeightingSettings();
+            updateSettingsFromState();
+            updateWeightingSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateWeightingSettingsContent);
+    }
+
+    function updateWeightingSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_weightingContent');
+        currentNode.empty().off("*");
+
+        // Add table
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:30%">Target</th><th class="has-text-warning" style="width:60%">Condition</th><th class="has-text-warning" style="width:10%">Multiplier</th></tr>
+                <tbody id="script_weightingTableBody" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_weightingTableBody');
+
+        // TODO: Make rules fully customizable? Like, eval() user's conditions, or configure them in some fancy gui.
+        addWeighingRule(tableBodyNode, "Any", "New building", "buildingWeightingNew");
+        addWeighingRule(tableBodyNode, "Powered building", "Low available energy", "buildingWeightingUnderpowered");
+        addWeighingRule(tableBodyNode, "Power plant", "Low available energy", "buildingWeightingNeedfulPowerPlant");
+        addWeighingRule(tableBodyNode, "Power plant", "Producing more energy than required", "buildingWeightingUselessPowerPlant");
+        addWeighingRule(tableBodyNode, "Knowledge storage", "Have unlocked unafforable researches", "buildingWeightingNeedfulKnowledge");
+        addWeighingRule(tableBodyNode, "Knowledge storage", "All unlocked researches already affordable", "buildingWeightingUselessKnowledge");
+        addWeighingRule(tableBodyNode, "Mass Ejector", "Existed ejectors not fully utilized", "buildingWeightingUnusedEjectors");
+        addWeighingRule(tableBodyNode, "Not housing or barrack", "MAD presige enabled, and affordable", "buildingWeightingMADUseless");
+        addWeighingRule(tableBodyNode, "Freight Yard, Container Port", "Have unused crates or containers", "buildingWeightingCrateUseless");
+        addWeighingRule(tableBodyNode, "All fuel depots", "Missing Oil or Helium for mission", "buildingWeightingMissingFuel");
+        addWeighingRule(tableBodyNode, "Building with state", "Some instances of this building are not working", "buildingWeightingNonOperating");
+        addWeighingRule(tableBodyNode, "Any", "Conflicts for some resource with active trigger", "buildingWeightingTriggerConflict");
+        addWeighingRule(tableBodyNode, "Any", "Missing consumables or support to operate", "buildingWeightingMissingSupply");
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function addWeighingRule(table, targetName, conditionDesc, settingName){
+        let ruleNode = $(`<tr>
+                          <td style="width:30%"><span class="has-text-info">${targetName}</span></td>
+                          <td style="width:60%"><span class="has-text-info">${conditionDesc}</span></td>
+                          <td style="width:10%"><input type="text" class="input is-small" style="width:100%"/></td>
+                        </tr>`);
+
+        let weightInput = ruleNode.find('input');
+        weightInput.val(settings[settingName]);
+        weightInput.on('change', function() {
+            let parsedValue = getRealNumber(this.value);
+            if (!isNaN(parsedValue)) {
+                settings[settingName] = parsedValue;
+                updateSettingsFromState();
+            }
+        });
+
+        table.append(ruleNode)
+    }
+
     function buildBuildingSettings() {
         let sectionId = "building";
         let sectionName = "Building";
@@ -12730,33 +12793,11 @@
         let currentNode = $('#script_buildingContent');
         currentNode.empty().off("*");
 
-        updateBuildingPreTable();
-        updateBuildingTable();
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function updateBuildingPreTable() {
-        let currentNode = $('#script_buildingContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
-
         // Add any pre table settings
-        let preTableNode = $('#script_buildingPreTable');
-        addStandardSectionSettingsToggle(preTableNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of game, to build first production buildings. With this toggled on it will continue clicking forever");
-        addStandardSectionSettingsNumber(preTableNode, "buildingClickPerTick", "Maximum clicks per second", "Number of clicks performed at once, each second. Hardcapped by amount of missed resources");
-        addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides the below settings to still build if resources are full, preventing wasting them by overflowing");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNew", "Weighting: new buildings", "Weighting multiplier for new building, can help to get new production gong");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUnderpowered", "Weighting: missing energy", "Weighting multiplier for powered buildings, only applies when you have no spare energy");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUselessPowerPlant", "Weighting: useless power plants", "Weighting multiplier for power plant, only applies when you have more energy than needed");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulPowerPlant", "Weighting: needful power plant", "Weighting multiplier for power plant, only applies when all generated energy is being used");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingUselessKnowledge", "Weighting: useless knowledge", "Weighting multiplier for knowledge storages, only applies when no additional cap required by any technologies");
-        addStandardSectionSettingsNumber(preTableNode, "buildingWeightingNeedfulKnowledge", "Weighting: needful knowledge", "Weighting multiplier for knowledge storages, only applies when some of unlocked techonoges can't be afforded with current cap");
-    }
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
+        addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides weighting to still build if resources are full, preventing wasting them by overflowing");
 
-    function updateBuildingTable() {
-        let currentNode = $('#script_buildingContent');
+        // Add table
         currentNode.append(
             `<div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings.."></div>
             <table style="width:100%"><tr><th class="has-text-warning" style="width:40%">Building</th><th class="has-text-warning" style="width:15%">Auto Build</th><th class="has-text-warning" style="width:15%">Max Build</th><th class="has-text-warning" style="width:15%">Weight</th><th class="has-text-warning" style="width:15%">Manage State</th></tr>
@@ -12847,6 +12888,8 @@
                 updateSettingsFromState();
             },
         } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     function filterBuildingSettingsTable() {
@@ -12868,6 +12911,10 @@
                 }
             }
         }
+
+        let content = document.querySelector('#script_buildingSettings .script-content');
+        content.style.height = null;
+        content.style.height = content.offsetHeight + "px"
     }
 
     /**
@@ -12998,27 +13045,13 @@
         let currentNode = $('#script_projectContent');
         currentNode.empty().off("*");
 
-        updateProjectPreTable();
-        updateProjectTable();
-
-        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function updateProjectPreTable() {
-        let currentNode = $('#script_projectContent');
-
-        // Add the pre table section
-        currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_projectPreTable"></div>');
-
         // Add any pre table settings
-        let preTableNode = $('#script_projectPreTable');
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_projectPreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "arpaBuildIfStorageFull", "Override and build if storage is full", "Overrides the below settings to still build A.R.P.A projects if resources are full");
         addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullCraftableMin", "Minimum craftables to keep if overriding", "A.R.P.A. projects that require crafted resources won't override and build if resources are below this amount, -1 stands for maximum amount required by other buildings.");
         addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullResourceMaxPercent", "Maximim percent of resources if overriding", "A.R.P.A. project that require more than this percentage of a non-crafted resource won't override and build");
-    }
 
-    function updateProjectTable() {
-        let currentNode = $('#script_projectContent');
+        // Add table section
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:25%">Ignore Min Money</th><th class="has-text-warning" style="width:25%"></th></tr>
                 <tbody id="script_projectTableBody" class="script-contenttbody"></tbody>
@@ -13069,6 +13102,8 @@
                 updateSettingsFromState();
             },
         } );
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     /**
@@ -13133,11 +13168,8 @@
         let currentNode = $(`#script_${secondaryPrefix}loggingContent`);
         currentNode.empty().off("*");
 
-        // Add the pre table section
-        currentNode.append(`<div id="script_${secondaryPrefix}loggingPreTable"></div>`);
-
         // Add any pre table settings
-        let preTableNode = $(`#script_${secondaryPrefix}loggingPreTable`);
+        let preTableNode = currentNode.append(`<div id="script_${secondaryPrefix}loggingPreTable"></div>`);
         addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, 0, "logEnabled", "Enable logging", "Master switch to enable logging of script actions in the game message queue");
 
         Object.keys(loggingTypes).forEach(loggingTypeKey => {
