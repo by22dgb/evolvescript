@@ -1801,7 +1801,7 @@
                     return false;
                 } else {
                     return game.global.city.s_alter.rage < 3600 || game.global.city.s_alter.regen < 3600 || game.global.city.s_alter.mind < 3600
-                        || game.global.city.s_alter.mine < 3600 || game.global.city.s_alter.harvest < 3600;
+                        || game.global.city.s_alter.mine < 3600 || (!game.global.race['kindling_kindred'] && game.global.city.s_alter.harvest < 3600);
                 }
             }
 
@@ -4113,7 +4113,7 @@
                       }
                     }
                 }
-                building.extraDescription = "Weighting: " + building.weighting + "<br>" + building.extraDescription;
+                building.extraDescription = "AutoBuild weighting: " + building.weighting + "<br>" + building.extraDescription;
             }
         }
 
@@ -6066,6 +6066,7 @@
         state.spaceBuildings.RedExoticLab.addResourceConsumption(resources.Red_Support, 1);
         state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.Oil, 2);
         state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.Food, 10);
+        state.spaceBuildings.RedVrCenter.addResourceConsumption(resources.Red_Support, 1);
         state.spaceBuildings.HellGeothermal.addResourceConsumption(resources.Helium_3, 0.5);
         state.spaceBuildings.SunSwarmControl.addResourceConsumption(resources.Sun_Support, -4);
         state.spaceBuildings.SunSwarmSatellite.addResourceConsumption(resources.Sun_Support, 1);
@@ -6631,10 +6632,10 @@
         settings.buildingWeightingNeedfulPowerPlant = 5;
         settings.buildingWeightingUnderpowered = 0.5;
         settings.buildingWeightingUselessKnowledge = 0.1;
-        settings.buildingWeightingNeedfulKnowledge = 3;
+        settings.buildingWeightingNeedfulKnowledge = 4;
         settings.buildingWeightingUnusedEjectors = 0.1;
-        settings.buildingWeightingMADUseless = 0.01;
-        settings.buildingWeightingCrateUseless = 0.2;
+        settings.buildingWeightingMADUseless = 0;
+        settings.buildingWeightingCrateUseless = 0.;
         settings.buildingWeightingMissingFuel = 10;
         settings.buildingWeightingNonOperating = 0;
         settings.buildingWeightingTriggerConflict = 0;
@@ -7447,10 +7448,10 @@
         addSetting("buildingWeightingNeedfulPowerPlant", 5);
         addSetting("buildingWeightingUnderpowered", 0.5);
         addSetting("buildingWeightingUselessKnowledge", 0.1);
-        addSetting("buildingWeightingNeedfulKnowledge", 3);
+        addSetting("buildingWeightingNeedfulKnowledge", 4);
         addSetting("buildingWeightingUnusedEjectors", 0.1);
-        addSetting("buildingWeightingMADUseless", 0.01);
-        addSetting("buildingWeightingCrateUseless", 0.2);
+        addSetting("buildingWeightingMADUseless", 0);
+        addSetting("buildingWeightingCrateUseless", 0);
         addSetting("buildingWeightingMissingFuel", 10);
         addSetting("buildingWeightingNonOperating", 0);
         addSetting("buildingWeightingTriggerConflict", 0);
@@ -8077,6 +8078,11 @@
 
         // Now assign crafters
         if (settings.autoCraftsmen){
+            // Taken from game source, no idea what this "140" means.
+            let speed = game.global.genes['crafty'] ? 2 : 1;
+            let craft_costs = game.global.race['resourceful'] ? (1 - game.traits.resourceful.vars[0] / 100) : 1;
+            let costMod = speed * craft_costs / 140;
+
             // Get list of craftabe resources
             let availableJobs = state.jobManager.craftingJobs.filter(job => {
                 // Check if we're allowed to craft this resource
@@ -8087,8 +8093,7 @@
                 // And have enough resources to craft it for at least 2 seconds
                 let afforableAmount = availableCraftsmen;
                 job.resource.resourceRequirements.forEach(requirement => {
-                    let totalRate = job.count * requirement.quantity + requirement.resource.calculatedRateOfChange;
-                    afforableAmount = Math.min(afforableAmount, (requirement.resource.currentQuantity + totalRate * 2) / requirement.quantity / 2);
+                    afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / (requirement.quantity * costMod) / 2);
                   }
                 );
 
@@ -8113,6 +8118,10 @@
             for (let i = 0; i < state.jobManager.craftingJobs.length; i++) {
                 const job = state.jobManager.craftingJobs[i];
                 const jobIndex = jobList.indexOf(job);
+
+                if (jobIndex === -1) {
+                    continue;
+                }
 
                 // Having empty array and undefined availableJobs[0] is fine - we still need to remove other crafters.
                 if (job === availableJobs[0]){
@@ -8886,10 +8895,6 @@
     //#region Auto Seeder Ship
 
     function autoSeederPrestige() {
-        let spaceDock = state.spaceBuildings.GasSpaceDock;
-
-        if (!spaceDock.isUnlocked()) { return; }
-        if (spaceDock.count < 1) { return; }
         if (!isBioseederPrestigeAvailable()) { return; } // ship completed and probe requirements met
 
         if (state.goal === "Standard") {
@@ -9743,7 +9748,7 @@
                   numberOfContainersWeCanBuild = 0;
               }
               // Only build pre-mad crates when already have Plywood for next level of library
-              if (isLumberRace() && state.cityBuildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity)) {
+              if (isLumberRace() && state.cityBuildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity) && state.cityBuildings.StorageYard.count > 1) {
                   numberOfCratesWeCanBuild = 0;
               }
             }
@@ -10087,8 +10092,8 @@
             }
         }
 
-        // Same for ejected resources, but only if we're ejecting excesses
-        if (settings.prestigeWhiteholeEjectEnabled && state.spaceBuildings.BlackholeMassEjector.stateOnCount > 0 && state.spaceBuildings.BlackholeMassEjector.stateOnCount < settings.prestigeWhiteholeEjectAllCount) {
+        // Same for ejected resources
+        if (settings.prestigeWhiteholeEjectEnabled && state.spaceBuildings.BlackholeMassEjector.stateOnCount > 0) {
             resourcesByAtomicMass.forEach(eject => {
                 eject.resource.calculatedRateOfChange += game.global.interstellar.mass_ejector[eject.resource.id];
             });
@@ -10334,9 +10339,14 @@
               () => "Still have some unused ejectors",
               () => settings.buildingWeightingUnusedEjectors
           ],[
-              () => resources.Crates.maxQuantity > 0 || resources.Containers.maxQuantity > 0,
-              (building) => building === state.cityBuildings.StorageYard || building === state.cityBuildings.Warehouse,
-              () => "Still have some unused crates or containers",
+              () => resources.Crates.maxQuantity > 0,
+              (building) => building === state.cityBuildings.StorageYard,
+              () => "Still have some unused crates",
+              () => settings.buildingWeightingCrateUseless
+          ],[
+              () => resources.Containers.maxQuantity > 0,
+              (building) => building === state.cityBuildings.Warehouse,
+              () => "Still have some unused containers",
               () => settings.buildingWeightingCrateUseless
           ],[
               () => resources.Helium_3.maxQuantity < state.heliumRequiredByMissions || resources.Oil.maxQuantity < state.oilRequiredByMissions,
@@ -10386,7 +10396,7 @@
         // Set up our sorted resource atomic mass array
         Object.keys(resources).forEach(resourceKey => {
             let resource = resources[resourceKey];
-            if (resource === resources.Elerium || resource === resource.Infernite) { return; } // We'll add these exotic resources to the front of the list after sorting as these should always come first
+            if (resource === resources.Elerium || resource === resources.Infernite) { return; } // We'll add these exotic resources to the front of the list after sorting as these should always come first
 
             if (resource.isEjectable()) {
                 resourcesByAtomicMass.push({ resource: resource, requirement: 0, });
