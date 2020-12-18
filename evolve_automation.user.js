@@ -6629,10 +6629,10 @@
     function resetWeightingSettings() {
         settings.buildingWeightingNew = 3;
         settings.buildingWeightingUselessPowerPlant = 0;
-        settings.buildingWeightingNeedfulPowerPlant = 5;
-        settings.buildingWeightingUnderpowered = 0.5;
+        settings.buildingWeightingNeedfulPowerPlant = 3;
+        settings.buildingWeightingUnderpowered = 0.8;
         settings.buildingWeightingUselessKnowledge = 0.1;
-        settings.buildingWeightingNeedfulKnowledge = 4;
+        settings.buildingWeightingNeedfulKnowledge = 5;
         settings.buildingWeightingUnusedEjectors = 0.1;
         settings.buildingWeightingMADUseless = 0;
         settings.buildingWeightingCrateUseless = 0.;
@@ -7445,10 +7445,10 @@
         addSetting("buildingClickPerTick", 50);
         addSetting("buildingWeightingNew", 3);
         addSetting("buildingWeightingUselessPowerPlant", 0);
-        addSetting("buildingWeightingNeedfulPowerPlant", 5);
-        addSetting("buildingWeightingUnderpowered", 0.5);
+        addSetting("buildingWeightingNeedfulPowerPlant", 3);
+        addSetting("buildingWeightingUnderpowered", 0.8);
         addSetting("buildingWeightingUselessKnowledge", 0.1);
-        addSetting("buildingWeightingNeedfulKnowledge", 4);
+        addSetting("buildingWeightingNeedfulKnowledge", 5);
         addSetting("buildingWeightingUnusedEjectors", 0.1);
         addSetting("buildingWeightingMADUseless", 0);
         addSetting("buildingWeightingCrateUseless", 0);
