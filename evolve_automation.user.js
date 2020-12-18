@@ -4221,7 +4221,7 @@
                 return this._definition;
             }
 
-            this._definition = game.arpaProjects[this.id];
+            this._definition = game.actions.arpa[this.id];
 
             return this._definition;
         }
@@ -8166,12 +8166,12 @@
                 // Once we've research shotgun sequencing we get boost and soon autoassemble genes so stop unassigning
                 if (!isIntelligentRace() && !isResearchUnlocked("shotgun_sequencing")) {
                     // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
-                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && resources.Knowledge.storageRatio > 0.98) {
+                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && resources.Knowledge.storageRatio > 0.99) {
                         jobsToAssign = 0;
                     }
 
                     // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our knowledge cap
-                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && resources.Knowledge.storageRatio > 0.98) {
+                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && resources.Knowledge.storageRatio > 0.99) {
                         jobsToAssign = 0;
                     }
                 }
@@ -9748,7 +9748,7 @@
                   numberOfContainersWeCanBuild = 0;
               }
               // Only build pre-mad crates when already have Plywood for next level of library
-              if (isLumberRace() && state.cityBuildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity) && state.cityBuildings.StorageYard.count > 1) {
+              if (isLumberRace() && state.cityBuildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity) && (state.cityBuildings.StorageYard.count > 1 || state.cityBuildings.Wharf.count > 1)) {
                   numberOfCratesWeCanBuild = 0;
               }
             }
@@ -13888,23 +13888,11 @@
 
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
     $(window).on('blur', function(e) {
-        let keyboardEvent = document.createEvent("KeyboardEvent");
-        // @ts-ignore
-        var initMethod = typeof keyboardEvent.initKeyboardEvent !== 'undefined' ? "initKeyboardEvent" : "initKeyEvent";
-
-        keyboardEvent[initMethod](
-          "keyup", // event type: keydown, keyup, keypress
-          true,      // bubbles
-          true,      // cancelable
-          window,    // view: should be window
-          false,     // ctrlKey
-          false,     // altKey
-          false,     // shiftKey
-          false,     // metaKey
-          0,        // keyCode: unsigned long - the virtual key code, else 0
-          0          // charCode: unsigned long - the Unicode character associated with the depressed key, else 0
-        );
-        document.dispatchEvent(keyboardEvent);
+        if (game !== undefined){
+            document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x10}));
+            document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x25}));
+            document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x100}));
+        }
     });
 
     window.addEventListener('loadAutoEvolveScript', mainAutoEvolveScript)
