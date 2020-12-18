@@ -6874,10 +6874,7 @@
                 production.enabled = false;
             }
             if (production.goods === FactoryGoods.Alloy) production.weighting = 2;
-            if (production.goods === FactoryGoods.Polymer) {
-                production.weighting = 2;
-                production.enabled = false;
-            }
+            if (production.goods === FactoryGoods.Polymer) production.weighting = 1;
             if (production.goods === FactoryGoods.NanoTube) production.weighting = 8;
             if (production.goods === FactoryGoods.Stanene) production.weighting = 8;
         }
@@ -7856,12 +7853,12 @@
         let govUnoccupyIndex = -1;
 
         // Check if there is an unoccupied foreign power that we can occupy
-        if (settings.foreignOccupy2 && !game.global.civic.foreign[`gov2`].occ) {
-            govOccupyIndex = 2;
+        if (settings.foreignOccupy0 && !game.global.civic.foreign[`gov0`].occ) {
+            govOccupyIndex = 0;
         } else if (settings.foreignOccupy1 && !game.global.civic.foreign[`gov1`].occ) {
             govOccupyIndex = 1;
-        } else if (settings.foreignOccupy0 && !game.global.civic.foreign[`gov0`].occ) {
-            govOccupyIndex = 0;
+        } else if (settings.foreignOccupy2 && !game.global.civic.foreign[`gov2`].occ) {
+            govOccupyIndex = 2;
         }
 
         // Find someone that we are allowed to attack. Only check non-occupied foreign powers
@@ -7875,12 +7872,12 @@
         }
 
         // Check if there is an already occupied foreign power that we can unoccupy, then attack to occupy again
-        if (settings.foreignOccupy0 && settings.foreignAttack0 && game.global.civic.foreign[`gov0`].occ) {
-            govUnoccupyIndex = 0;
+        if (settings.foreignOccupy2 && settings.foreignAttack2 && game.global.civic.foreign[`gov2`].occ) {
+            govUnoccupyIndex = 2;
         } else if (settings.foreignOccupy1 && settings.foreignAttack1 && game.global.civic.foreign[`gov1`].occ) {
             govUnoccupyIndex = 1;
-        } else if (settings.foreignOccupy2 && settings.foreignAttack2 && game.global.civic.foreign[`gov2`].occ) {
-            govUnoccupyIndex = 2;
+        } else if (settings.foreignOccupy0 && settings.foreignAttack0 && game.global.civic.foreign[`gov0`].occ) {
+            govUnoccupyIndex = 0;
         }
 
         // If there is no one to attack or occupy or we are not fully ready then return
