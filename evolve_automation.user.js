@@ -3586,7 +3586,7 @@
          * @return {boolean}
          */
         switchToBestAttackType(govOccupyIndex, govAttackIndex, govUnoccupyIndex) {
-            let attackRating = game.armyRating(this.maxCityGarrison, this._textArmy)
+            let attackRating = game.armyRating(this.currentBattalion, this._textArmy)
             this.selectedGovAttackIndex = -1;
 
             if (this.campaignList.length === 0 || game.global.civic.garrison.tactic === -1) {
@@ -7437,7 +7437,7 @@
         addSetting("userResearchTheology_2", "auto");
         addSetting("userResearchUnification", "auto");
 
-        addSetting("buildingBuildIfStorageFull", true);
+        addSetting("buildingBuildIfStorageFull", false);
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
         addSetting("buildingWeightingNew", 3);
@@ -9160,8 +9160,8 @@
                       continue;
                   }
 
-                  // Check if we're actually missing this resoure
-                  // It might be better to compare current value with sum of requirements of both buildings, but i've got questionable results with such approach.
+                  // Check if we're actually missing this resource
+                  // It might be better to compare current value against sum of requirements of both buildings, but i've got questionable results with such approach.
                   // Not really sure what's more optimal. Let's just assume that if we have enough resources for prioritized building - it's not something scarce, and won't needlessly delay building process
                   if (otherRequirement.resource.currentQuantity > otherRequirement.quantity) {
                       continue;
@@ -9173,7 +9173,7 @@
                       continue;
                   }
 
-                  // If we reached here - then we want to delay with our current building. Return all way back to main building loop, and check next building
+                  // If we reached here - then we want to delay with our current building. Return all way back to main loop, and try to build something else
                   building.extraDescription += `Conflicts with ${other.name} for ${otherRequirement.resource.name}<br>`;
                   continue buildingsLoop;
                 }
