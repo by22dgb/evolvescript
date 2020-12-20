@@ -3588,7 +3588,7 @@
          * @return {boolean}
          */
         switchToBestAttackType(govOccupyIndex, govAttackIndex, govUnoccupyIndex) {
-            let attackRating = game.armyRating(this.currentBattalion, this._textArmy)
+            let attackRating = game.armyRating(this.currentSoldiers, this._textArmy)
             this.selectedGovAttackIndex = -1;
 
             if (this.campaignList.length === 0 || game.global.civic.garrison.tactic === -1) {
