@@ -884,10 +884,12 @@
                 if (resourceType.resource === resources.Food && settings.autoJobs && state.jobs.Farmer.isManaged()) {
                     continue;
                 }
-                // Mass driver effect
+                // Adjust fuel
                 if (this._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    let spaceFuelMultiplier = 0.95 ** state.cityBuildings.MassDriver.stateOnCount;
-                    resourceType.rate = resourceType.initialRate * spaceFuelMultiplier;
+                    resourceType.rate = spaceFuelAdjust(resourceType.initialRate);
+                }
+                if (this._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && this !== state.spaceBuildings.AlphaFusion) {
+                    resourceType.rate = intFuelAdjust(resourceType.initialRate);
                 }
                 // It need something that we're lacking
                 if (resourceType.rate > 0 && resourceType.resource.calculatedRateOfChange < resourceType.rate) {
@@ -4570,10 +4572,6 @@
         /**
          * @param {Resource} resource
          */
-        // TODO: game.tradeRatio contains static rates for selling, buying rates can be affected
-        // by certain perks, and differ from that numbers. Fixing that would require importing
-        // calc_mastery(), or copypasting *a lot* of code from game script. Not script-breaking
-        // issue, but should be fixed eventually.
         getTradeRouteQuantity(resource) {
             return game.tradeRatio[resource.id];
         }
@@ -4738,7 +4736,7 @@
 
         // TODO: This value can be slightly inaccurate. Number is taken from UI tooltip, and it doesn't
         // updates in realtime when you getting plasmids(and bonus to storage) from gene sequencing.
-        // It can be worked around - importing crateValue() from game, importing calc_mastery() and
+        // It can be worked around - importing crateValue() from game, importing spatialReasoning() and
         // rewriting it, opening modal to redraw tooltip with actual data, etc... but that's all quite
         // tedious, and this issue probably doesn't worth such hussle, as inaccuracity inlikely will
         // be more than a couple of percents. And even that will be eventually fixed, when tooltips
@@ -6107,6 +6105,7 @@
 
         state.spaceBuildings.AlphaMegaFactory.addResourceConsumption(resources.Deuterium, 5);
 
+
         // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
         ////////////////////
         state.cityBuildings.TouristCenter.overridePowered = 0;
@@ -6427,6 +6426,7 @@
         settings.govManage = false;
         settings.govInterim = governmentTypes.democracy.id;
         settings.govFinal = governmentTypes.technocracy.id;
+        settings.govSpace = governmentTypes.corpocracy.id;
     }
 
     function resetEvolutionSettings() {
@@ -7374,6 +7374,7 @@
         addSetting("govManage", false);
         addSetting("govInterim", governmentTypes.democracy.id);
         addSetting("govFinal", governmentTypes.technocracy.id);
+        addSetting("govSpace", governmentTypes.corpocracy.id);
 
         addSetting("foreignSpyManage", true);
         addSetting("foreignAttackLivingSoldiersPercent", 100);
@@ -7740,19 +7741,27 @@
         let gm = state.governmentManager;
         if (!gm.isEnabled()) { return; }
 
-        // Check and set final government if possible
-        if (gm.currentGovernment === settings.govFinal) { return; }
+        // Check and set space government if possible
+        if (isResearchUnlocked("quantum_manufacturing") && gm.isGovernmentUnlocked(settings.govSpace)) {
+            if (gm.currentGovernment !== settings.govSpace) {
+                gm.setGovernment(settings.govSpace);
+            }
+            return;
+        }
 
-        if (gm.currentGovernment !== settings.govFinal && gm.isGovernmentUnlocked(settings.govFinal)) {
-            gm.setGovernment(settings.govFinal);
+        // Check and set second government if possible
+        if (gm.isGovernmentUnlocked(settings.govFinal)) {
+            if (gm.currentGovernment !== settings.govFinal) {
+                gm.setGovernment(settings.govFinal);
+            }
             return;
         }
 
         // Check and set interim government if possible
-        if (gm.currentGovernment === settings.govInterim) { return; }
-
-        if (gm.currentGovernment !== settings.govInterim && gm.isGovernmentUnlocked(settings.govInterim)) {
-            gm.setGovernment(settings.govInterim);
+        if (gm.isGovernmentUnlocked(settings.govInterim)) {
+            if (gm.currentGovernment !== settings.govInterim) {
+                gm.setGovernment(settings.govInterim);
+            }
             return;
         }
     }
@@ -9454,7 +9463,6 @@
 
         // Calculate the available power / resource rates of change that we have to work with
         let availablePower = parseFloat(availablePowerNode.textContent);
-        let spaceFuelMultiplier = 0.95 ** state.cityBuildings.MassDriver.stateOnCount;
 
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
@@ -9464,9 +9472,12 @@
             for (let j = 0; j < building.consumption.resourceTypes.length; j++) {
                 let resourceType = building.consumption.resourceTypes[j];
 
-                // Mass driver effect
+                // Fuel adjust
                 if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    resourceType.rate = resourceType.initialRate * spaceFuelMultiplier;
+                    resourceType.rate = spaceFuelAdjust(resourceType.initialRate);
+                }
+                if (building._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== state.spaceBuildings.AlphaFusion) {
+                    resourceType.rate = intFuelAdjust(resourceType.initialRate);
                 }
 
                 // Just like for power, get our total resources available
@@ -9875,7 +9886,7 @@
                   continue;
               }
 
-              // Calculate amount of traades we need
+              // Calculate amount of routes we need
               let amount = Math.ceil((cost.quantity - cost.resource.currentQuantity) / cost.resource.tradeRouteQuantity);
               if (!isFinite(amount) || amount < 1) {
                   continue;
@@ -10028,16 +10039,10 @@
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
             if (settings.autoEvolution && settings.autoAchievements && settings.evolutionBackup){
-                // Taken from alevel()
-                let a_level = 1;
-                if (game.global.race['no_plasmid'] || game.global.race['weak_mastery']){ a_level++; }
-                if (game.global.race['no_trade']){ a_level++; }
-                if (game.global.race['no_craft']){ a_level++; }
-                if (game.global.race['no_crispr']){ a_level++; }
-
+                let stars = alevel();
                 let newRace = races[game.global.race.species];
-                console.log("Race: " + newRace.name + ", " + (a_level-1) + "★ achievement: " + newRace.isMadAchievementUnlocked(a_level));
-                if (newRace.isMadAchievementUnlocked(a_level)) {
+                console.log("Race: " + newRace.name + ", " + (stars-1) + "★ achievement: " + newRace.isMadAchievementUnlocked(stars));
+                if (newRace.isMadAchievementUnlocked(stars)) {
                     let raceGroup = state.raceGroupAchievementList.findIndex(group => group.includes(newRace));
 
                     if (!settings.evolutionIgnore[raceGroup]) {
@@ -10073,19 +10078,19 @@
             resources[id].storageRequired = 0;
         }
 
-        // Add resources sold by trade routes, which can be reclaimed if needed
+        // Reset traded resources, so we can reuse it
+        // game.tradeRatio holds rates for selling, while amount of bought goods is affected by various multipliers, so we're using game.breakdown here to retrieve correct numbers
         if (settings.autoMarket) {
             let tradableResources = state.marketManager.getSortedTradeRouteSellList();
             for (let i = 0; i < tradableResources.length; i++) {
-                const resource = tradableResources[i];
-
-                if (resource.currentTradeRoutes > 0) {
-                    resources.Money.calculatedRateOfChange += resource.currentTradeRoutes * resource.currentTradeRouteBuyPrice;
-                } else {
-                    resources.Money.calculatedRateOfChange += resource.currentTradeRoutes * resource.currentTradeRouteSellPrice;
+                let resourceDiff = game.breakdown.p.consume[tradableResources[i].id];
+                if (resourceDiff.Trade) {
+                    tradableResources[i].calculatedRateOfChange -= resourceDiff.Trade;
                 }
-
-                resource.calculatedRateOfChange -= resource.currentTradeRoutes * resource.tradeRouteQuantity;
+            }
+            let moneyDiff = game.breakdown.p.consume["Money"];
+            if (moneyDiff.Trade){
+                resources.Money.calculatedRateOfChange -= moneyDiff.Trade;
             }
         }
 
@@ -11149,8 +11154,9 @@
         addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, 0, "govManage", "Manage changes of government", "Manage changes of government when they become available");
 
         // Government selector
-        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govInterim", "Interim Government", "Temporary low tier government until you research your final government choice");
-        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govFinal", "Final Government", "Final government choice. Can be the same as the interim government");
+        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govInterim", "Interim Government", "Temporary low tier government until you research other governments");
+        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govFinal", "Second Government", "Second government choice, chosen once becomes avaiable. Can be the same as above");
+        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govSpace", "Space Government", "Government for bioseed+. Chosen once you researced Quantum Manufacturing. Can be the same as above");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -13882,6 +13888,54 @@
     }
 
     //#endregion Utility Functions
+
+    // Polyfils for unexposed functions
+
+    function spaceFuelAdjust(fuel){ // export function fuel_adjust(fuel){
+        if (game.global.race.universe === 'heavy'){
+            fuel *= 1.25 + (0.5 * heavyDarkEffect());
+        }
+        if (state.cityBuildings.MassDriver.stateOnCount > 0){
+            fuel *= 0.95 ** state.cityBuildings.MassDriver.stateOnCount;
+        }
+        if (game.global.stats.achieve['heavyweight']){
+            fuel *= 0.96 ** game.global.stats.achieve['heavyweight'].l;
+        }
+        if (game.global.city.ptrait === 'dense'){
+            fuel *= 1.2;
+        }
+        if (game.global.race['cataclysm']){
+            fuel *= 0.2;
+        }
+        return fuel;
+    }
+
+    function intFuelAdjust(fuel){ // export function int_fuel_adjust(fuel)
+        if (game.global.race.universe === 'heavy'){
+            fuel *= 1.2 + (0.3 * heavyDarkEffect());
+        }
+        if (game.global.stats.achieve['heavyweight']){
+            fuel *= 0.96 ** game.global.stats.achieve['heavyweight'].l;
+        }
+        return fuel;
+    }
+
+    function heavyDarkEffect(){ // export function darkEffect("heavy")
+        let de = game.global.race.Dark.count;
+        if (game.global.race.Harmony.count > 0){
+            de *= 1 + (game.global.race.Harmony.count * 0.01);
+        }
+        return 0.995 ** de;
+    }
+
+    function alevel(){ // export function alevel()
+        let a_level = 1;
+        if (game.global.race['no_plasmid'] || game.global.race['weak_mastery']){ a_level++; }
+        if (game.global.race['no_trade']){ a_level++; }
+        if (game.global.race['no_craft']){ a_level++; }
+        if (game.global.race['no_crispr']){ a_level++; }
+        return a_level;
+    }
 
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
     $(window).on('blur', function(e) {
