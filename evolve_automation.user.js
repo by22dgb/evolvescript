@@ -8592,6 +8592,11 @@
                     }
                 });
 
+                // If we're going for bioseed - try to balance neutronium\nanotubes ratio
+                if (settings.prestigeBioseedConstruct && production.goods === FactoryGoods.NanoTube && resources.Neutronium.currentQuantity < 250) {
+                    actualRequiredFactories = 0;
+                }
+
                 if (actualRequiredFactories > 0){
                     remainingFactories -= actualRequiredFactories;
                     production.requiredFactories += actualRequiredFactories;
@@ -10318,17 +10323,17 @@
           ],[
               () => resources.Power.currentQuantity > 1,
               (building) => building.powered < 0,
-              () => "Too much energy",
+              () => "No need for more energy",
               () => settings.buildingWeightingUselessPowerPlant
           ],[
               () => resources.Power.currentQuantity < 1,
-              (building) => building.powered > 0,
-              () => "Need more energy",
+              (building) => building.powered > resources.Power.currentQuantity,
+              () => "Not enough energy",
               () => settings.buildingWeightingUnderpowered
           ],[
               () => state.knowledgeRequiredByTechs < resources.Knowledge.maxQuantity,
               (building) => building.is.knowledge,
-              () => "Too much knowledge",
+              () => "No need for more knowledge",
               () => settings.buildingWeightingUselessKnowledge
           ],[
               () => state.knowledgeRequiredByTechs > resources.Knowledge.maxQuantity,
