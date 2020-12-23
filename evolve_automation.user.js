@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.26
+// @version      3.2.1.27
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -28,7 +28,8 @@
 //   Pre-mad storage limit doesn't completely prevents constructing crates and containers, it just make it work above certain ratio(80%+ steel storage for containers, and more-than-you-need-for-next-library for crates)
 //   You can enable buying and selling of same resource at same time, depends on whether you're lacking something, or have a surplus. Works both with batch sell, and routes.
 //   Trigger can import missing resources via routes. When trigger requirements are met script will set trade routes for missing resources. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction - whatever you need.
-//   Restored "researched" trigger condition, and old "unlocked" condition now actually works too.
+//   Restored "researched" trigger condition, and old "unlocked" now actually works correctly.
+//   Added "built" trigger condition, and "build" action, to build exact amount of buildings at exact moment. Triggers ignore all autoBuild options, weighting, etc. It's designed to override regular settings. Like, when you'll want to have few belt stations as soon as possible, to expand elerium storage, and research elerium theory, even if you don't need provided Belt Support at that moment(normally script tries to avoid building useless buildings), and such cases.
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
 //   autoAchievements now check and pick conditional races.
 //   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
@@ -1271,7 +1272,7 @@
         }
 
         isUnlocked() {
-            if (this._isPopulation) {
+            if (game.global.resource[this.id]) {
                 return game.global.resource[this.id].display;
             }
 
@@ -1803,7 +1804,7 @@
                     return false;
                 } else {
                     return game.global.city.s_alter.rage < 3600 || game.global.city.s_alter.regen < 3600 || game.global.city.s_alter.mind < 3600
-                        || game.global.city.s_alter.mine < 3600 || (!game.global.race['kindling_kindred'] && game.global.city.s_alter.harvest < 3600);
+                        || game.global.city.s_alter.mine < 3600 || (!game.global.race[racialTraitKindlingKindred] && game.global.city.s_alter.harvest < 3600);
                 }
             }
 
@@ -4919,7 +4920,6 @@
         /**
          * @param {number} seq
          * @param {number} priority
-         * @param {string} type
          * @param {string} requirementType
          * @param {string} requirementId
          * @param {number} requirementCount
@@ -4927,11 +4927,9 @@
          * @param {string} actionId
          * @param {number} actionCount
          */
-        constructor(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
+        constructor(seq, priority, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
             this.seq = seq;
             this.priority = priority;
-
-            this.type = type;
 
             this.requirementType = requirementType;
             this.requirementId = requirementId;
@@ -4948,17 +4946,23 @@
             let label = "";
             // Actions
             if (this.actionType === "research") {
-                label += "Research " + tech[this.actionId].title;
+                label += `Research ${tech[this.actionId].title}`;
+            }
+            if (this.actionType === "build") {
+                label += `Build ${this.actionCount} ${buildingIds[this.actionId].name}`;
             }
 
-            label += " when ";
+            label += ` when `;
 
             // Requirements
             if (this.requirementType === "unlocked") {
-                label += tech[this.requirementId].title + " available";
+                label += `${tech[this.requirementId].title} available`;
             }
             if (this.requirementType === "researched") {
-                label += tech[this.requirementId].title + " researched";
+                label += `${tech[this.requirementId].title} researched`;
+            }
+            if (this.requirementType === "built") {
+                label += `${this.requirementCount} ${buildingIds[this.requirementId].name} built`;
             }
             return label;
         }
@@ -4967,12 +4971,18 @@
             if (this.actionType === "research") {
                 return tech[this.actionId].definition.cost;
             }
+            if (this.actionType === "build") {
+                return buildingIds[this.actionId].definition.cost;
+            }
         }
 
         isActionPossible() {
+            // check against MAX as we want to know if it is possible...
             if (this.actionType === "research") {
-                // check against MAX as we want to know if it is possible...
                 return tech[this.actionId].isUnlocked() && game.checkAffordable(tech[this.actionId].definition, true);
+            }
+            if (this.actionType === "build") {
+                return buildingIds[this.actionId].isUnlocked() && game.checkAffordable(buildingIds[this.actionId].definition, true);
             }
         }
 
@@ -4982,63 +4992,38 @@
                 return false;
             }
 
-            if (this.type === "tech") {
-                if (this.actionType === "research") {
-                    if (tech[this.actionId].isResearched()) {
-                        this.complete = true;
-                        return true;
-                    }
+            if (this.actionType === "research") {
+                if (tech[this.actionId].isResearched()) {
+                    this.complete = true;
+                    return true;
                 }
             }
-
+            if (this.actionType === "build") {
+                if (buildingIds[this.actionId].count >= this.actionCount) {
+                    this.complete = true;
+                    return true;
+                }
+            }
             return false;
         }
 
         areRequirementsMet() {
-            if (this.type === "tech") {
-                if (this.requirementType === "unlocked") {
-                    if (tech[this.requirementId].isUnlocked()) {
-                        return true;
-                    }
-                }
-                if (this.requirementType === "researched") {
-                    if (tech[this.requirementId].isResearched()) {
-                        return true;
-                    }
+            if (this.requirementType === "unlocked") {
+                if (tech[this.requirementId].isUnlocked()) {
+                    return true;
                 }
             }
-
+            if (this.requirementType === "researched") {
+                if (tech[this.requirementId].isResearched()) {
+                    return true;
+                }
+            }
+            if (this.requirementType === "built") {
+                if (buildingIds[this.requirementId].count >= this.requirementCount) {
+                    return true;
+                }
+            }
             return false;
-        }
-
-        /** @param {string} type */
-        updateType(type) {
-            if (type === this.type) {
-                return;
-            }
-
-            this.type = type;
-            this.complete = false;
-
-            if (this.type === "tech") {
-                this.requirementType = "unlocked";
-                this.requirementId = "club";
-                this.requirementCount = 0;
-                this.actionType = "research";
-                this.actionId = "club";
-                this.actionCount = 0;
-                return;
-            }
-
-            if (this.type === "bld") {
-                this.requirementType = "";
-                this.requirementId = "";
-                this.requirementCount = 0;
-                this.actionType = "";
-                this.actionId = "";
-                this.actionCount = 0;
-                return;
-            }
         }
 
         /** @param {string} requirementType */
@@ -5051,37 +5036,22 @@
             this.requirementType = requirementType;
             this.complete = false;
 
-            if (this.type === "tech") {
-                if ((this.requirementType === "unlocked" || this.requirementType === "researched") &&
-                    (oldType === "unlocked" || oldType === "researched")) {
-                    return; // Old ID is fine.
-                }
-
-                if (this.requirementType === "unlocked") {
-                    this.requirementId = "club";
-                    this.requirementCount = 0;
-                    this.actionType = "research";
-                    this.actionId = "club";
-                    this.actionCount = 0;
-                    return;
-                }
-
-                if (this.requirementType === "researched") {
-                    this.requirementId = "club";
-                    this.requirementCount = 0;
-                    this.actionType = "research";
-                    this.actionId = "club";
-                    this.actionCount = 0;
-                    return;
-                }
+            if ((this.requirementType === "unlocked" || this.requirementType === "researched") &&
+                (oldType === "unlocked" || oldType === "researched")) {
+                return; // Both researches, old ID is still valid, and preserved.
             }
 
-            this.requirementId = "";
-            this.requirementCount = 0;
-            this.actionType = "";
-            this.actionId = "";
-            this.actionCount = 0;
-            return;
+            if (this.requirementType === "unlocked" || this.requirementType === "researched") {
+                this.requirementId = "club";
+                this.requirementCount = 0;
+                return;
+            }
+
+            if (this.requirementType === "built") {
+                this.requirementId = "city-basic_housing";
+                this.requirementCount = 1;
+                return;
+            }
         }
 
         /** @param {string} requirementId */
@@ -5117,9 +5087,17 @@
             this.actionType = actionType;
             this.complete = false;
 
-            this.actionId = "";
-            this.actionCount = 0;
-            return;
+            if (this.actionType === "research") {
+                this.actionId = "club";
+                this.actionCount = 0;
+                return;
+            }
+
+            if (this.actionType === "build") {
+                this.actionId = "city-basic_housing";
+                this.actionCount = 1;
+                return;
+            }
         }
 
         /** @param {string} actionId */
@@ -5212,17 +5190,17 @@
         }
 
         /** @return {Trigger} */
-        AddTrigger(type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
-            let trigger = new Trigger(this.priorityList.length, this.priorityList.length, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
+        AddTrigger(requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
+            let trigger = new Trigger(this.priorityList.length, this.priorityList.length, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
             this.priorityList.push(trigger);
             return trigger;
         }
 
-        AddTriggerFromSetting(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
+        AddTriggerFromSetting(seq, priority, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
             let existingSequence = findArrayIndex(this.priorityList, "seq", seq);
 
             if (existingSequence === -1) {
-                let trigger = new Trigger(seq, priority, type, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
+                let trigger = new Trigger(seq, priority, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
                 this.priorityList.push(trigger);
             }
         }
@@ -5382,8 +5360,8 @@
     // Data attribtes have IDs in lower case for some reason, we're going to use it as lookup table
     var resLowIds = {};
 
-    // Lookup table for building popups
-    var buildingPopId = {}
+    // Lookup table for buildings
+    var buildingIds = {}
 
     function alwaysAllowed() {
         return true;
@@ -6922,7 +6900,7 @@
 
         state.triggerManager.clearPriorityList();
         settings.triggers.forEach(trigger => {
-            state.triggerManager.AddTriggerFromSetting(trigger.seq, trigger.priority, trigger.type, trigger.requirementType, trigger.requirementId, trigger.requirementCount, trigger.actionType, trigger.actionId, trigger.actionCount);
+            state.triggerManager.AddTriggerFromSetting(trigger.seq, trigger.priority, trigger.requirementType, trigger.requirementId, trigger.requirementCount, trigger.actionType, trigger.actionId, trigger.actionCount);
         });
 
         // Retrieve settings for battle
@@ -7202,6 +7180,13 @@
         updateStandAloneSettings();
 
         settings.triggers = state.triggerManager.priorityList;
+
+        // Hack for partial back compatibility with original script.
+        for (let i = 0; i < settings.triggers.length; i++) {
+            if (settings.triggers[i].requirementType === "unlocked" && settings.triggers[i].actionType === "research") {
+                settings.triggers[i].type = "tech";
+            }
+        }
 
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             let campaign = state.warManager.campaignList[i];
@@ -9135,7 +9120,29 @@
             }
         }
 
+        // Check for active build triggers
+        for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
+            const trigger = state.triggerManager.targetTriggers[i];
+            if (trigger.actionType === "build") {
+                const building = buildingIds[trigger.actionId];
+
+                // We don't care about autoBuild settings, weight, amount, etc - trigger overrides everything if we have a trigger, and can build - do it.
+                if (building.isClickable()) {
+                    building.click(1);
+                    if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
+                        removePoppers();
+                    }
+                    return;
+                }
+            }
+        }
+
         let buildingList = state.buildingManager.managedPriorityList();
+
+        // Sort array so we'll have prioritized buildings on top. We'll need that below to avoid deathlocks, when building 1 waits for building 2, and building 2 waits for building 3. That's something we don't want to happen when building 1 and building 3 doesn't conflicts with each other.
+        buildingList.sort((a, b) => b.weighting - a.weighting);
+
+        let estimatedTime = [];
 
         // Loop through the auto build list and try to buy them
         buildingsLoop:
@@ -9143,7 +9150,7 @@
             const building = buildingList[i];
 
             // Only go further if we can build it right now
-            if (!building.isClickable()) {
+            if (!game.checkAffordable(building.definition, false)) {
                 building.extraDescription += "Not enough resources<br>";
                 continue;
             }
@@ -9152,32 +9159,67 @@
             if (!settings.buildingBuildIfStorageFull || !building.resourceRequirements.some(requirement => requirement.resource.storageRatio > 0.98)) {
               for (let j = 0; j < buildingList.length; j++) {
                 let other = buildingList[j];
-                 // We only care about buildings with highter weight
-                if (building.weighting >= other.weighting){
+
+                // We only care about buildings with highter weight
+                // And we don't want to process clickable buildings - list was sorted by weight, and all buildings with highter priority should already been proccessed.
+                // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
+                if (building.weighting >= other.weighting || game.checkAffordable(other.definition, false)){
                     continue;
                 }
                 let weightDiffRatio = other.weighting / building.weighting;
 
+                // Calculate time to build for competing building, if it's not cached
+                if (!estimatedTime[other.id]){
+                    estimatedTime[other.id] = [];
+                    estimatedTime[other.id].total = 0;
+
+                    for (let k = 0; k < other.resourceRequirements.length; k++) {
+                        let resource = other.resourceRequirements[k].resource;
+                        let quantity = other.resourceRequirements[k].quantity;
+
+                        // Ignore locked and craftable
+                        if (!resource.isUnlocked()) {
+                            continue;
+                        }
+
+                        // Bought resources are not included in calculatedRateOfCharge, to prevent overusing them, but here they will make estimations more accurate with no negative consequences. That's the very reason why we're buying any resources after all - to construct things sooner.
+                        let totalRateOfCharge = resource.calculatedRateOfChange + (resource.currentTradeRoutes > 0 ? game.breakdown.p.consume[resource.id].Trade : 0);
+                        if (totalRateOfCharge <= 0) {
+                            // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
+                            estimatedTime[other.id][resource.id] = 0;
+                        } else {
+                            estimatedTime[other.id][resource.id] = (quantity - resource.currentQuantity) / totalRateOfCharge;
+                        }
+                        estimatedTime[other.id].total = Math.max(estimatedTime[other.id].total, estimatedTime[other.id][resource.id]);
+                    }
+                }
+
                 // Compare resource costs
                 for (let k = 0; k < building.resourceRequirements.length; k++) {
                   let thisRequirement = building.resourceRequirements[k];
+                  let resource = thisRequirement.resource;
 
                   // Ignore locked resources
-                  if (!thisRequirement.resource.isUnlocked()){
+                  if (!resource.isUnlocked()){
                       continue;
                   }
 
-                  let otherRequirement = other.resourceRequirements.find(otherRequirement => otherRequirement.resource === thisRequirement.resource);
-
-                  // Check if we're conflicting on this resource
+                  // Check if we're actually conflicting on this resource
+                  let otherRequirement = other.resourceRequirements.find(resourceRequirement => resourceRequirement.resource === resource);
                   if (otherRequirement === undefined){
                       continue;
                   }
 
-                  // Check if we're actually missing this resource
-                  // It might be better to compare current value against sum of requirements of both buildings, but i've got questionable results with such approach.
-                  // Not really sure what's more optimal. Let's just assume that if we have enough resources for prioritized building - it's not something scarce, and won't needlessly delay building process
-                  if (otherRequirement.resource.currentQuantity > otherRequirement.quantity) {
+                  // We have enought resources for both buildings, no need to preserve it
+                  if (resource.currentQuantity > (otherRequirement.quantity + thisRequirement.quantity)) {
+                      continue;
+                  }
+
+                  // We can use up to this amount of resources without delaying competing building
+                  // Not very accurate, as income can fluctuate wildly for foundry, factory, and such, but should work as bottom line
+                  let totalRateOfCharge = resource.calculatedRateOfChange + (resource.currentTradeRoutes > 0 ? game.breakdown.p.consume[resource.id].Trade : 0);
+                  let spareAmount = (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * totalRateOfCharge;
+                  if (thisRequirement.quantity <= spareAmount) {
                       continue;
                   }
 
@@ -9188,7 +9230,7 @@
                   }
 
                   // If we reached here - then we want to delay with our current building. Return all way back to main loop, and try to build something else
-                  building.extraDescription += `Conflicts with ${other.name} for ${otherRequirement.resource.name}<br>`;
+                  building.extraDescription += `Conflicts with ${other.name} for ${resource.name}<br>`;
                   continue buildingsLoop;
                 }
               }
@@ -9204,7 +9246,7 @@
         }
 
         $('.popper').each(function(){
-          let building = buildingPopId[this.id];
+          let building = buildingIds[this.id.substr(3)];
           if (building) {
             let desc_node = $(this).find("#extra_desc");
             if (desc_node.length){
@@ -9537,7 +9579,7 @@
                         } else if (resourceType.resource === resources.Coal || resourceType.resource === resources.Oil
                                 || resourceType.resource === resources.Uranium || resourceType.resource === resources.Helium_3
                                 || resourceType.resource === resources.Elerium || resourceType.resource === resources.Deuterium) {
-                            isStorageAvailable = resourceType.resource.storageRatio > 0.05;
+                            isStorageAvailable = resourceType.resource.storageRatio > 0.01;
                         }
 
                         if (!isStorageAvailable) {
@@ -10385,7 +10427,7 @@
         // And for buildings popups
         for (let i = 0; i < state.buildingManager.priorityList.length; i++){
             let building = state.buildingManager.priorityList[i];
-            buildingPopId["pop" + building.settingId] = building;
+            buildingIds[building.settingId] = building;
         }
 
         updateStateFromSettings();
@@ -10417,6 +10459,11 @@
     }
 
     function automate() {
+        // game.breakdown initializes during first game tick, dont tick script untill it happened
+        if (!game.breakdown.p.consume) {
+            return;
+        }
+
         // console.log("Loop: " + state.loopCounter + ", goal: " + state.goal);
         if (state.loopCounter < Number.MAX_SAFE_INTEGER) {
             state.loopCounter++;
@@ -11364,7 +11411,6 @@
         for (let i = 0; i < state.triggerManager.priorityList.length; i++) {
             const trigger = state.triggerManager.priorityList[i];
 
-            //buildTriggerType(trigger);
             buildTriggerRequirementType(trigger);
             buildTriggerRequirementId(trigger);
             buildTriggerRequirementCount(trigger);
@@ -11402,7 +11448,7 @@
 
 
     function addTriggerSetting() {
-        let trigger = state.triggerManager.AddTrigger("tech", "unlocked", "club", 0, "research", "club", 0);
+        let trigger = state.triggerManager.AddTrigger("unlocked", "club", 0, "research", "club", 0);
         updateSettingsFromState();
 
         let tableBodyNode = $('#script_triggerTableBody');
@@ -11413,7 +11459,6 @@
 
         tableBodyNode.append($(newTableBodyText));
 
-        //buildTriggerType(trigger);
         buildTriggerRequirementType(trigger);
         buildTriggerRequirementId(trigger);
         buildTriggerRequirementCount(trigger);
@@ -11436,26 +11481,23 @@
     /**
      * @param {Trigger} trigger
      */
-    function buildTriggerType(trigger) {
-        let triggerElement = $('#script_trigger_' + trigger.seq);
+    function buildTriggerRequirementType(trigger) {
+        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(0);
+        triggerElement.empty().off("*");
 
-        // Trigger Type
+        // Requirement Type
         let typeSelectNode = $('<select></select>');
-        let selected = trigger.type === "tech" ? ' selected="selected"' : "";
-        let typeOptionNode = $('<option value="tech"' + selected + '>Technology</option>');
-        typeSelectNode.append(typeOptionNode);
-
-        // selected = trigger.type === "bld" ? ' selected="selected"' : "";
-        // typeOptionNode = $('<option value="bld"' + selected + '>Building</option>');
-        // typeSelectNode.append(typeOptionNode);
+        typeSelectNode.append('<option value = "unlocked">Unlocked</option>');
+        typeSelectNode.append('<option value = "researched">Researched</option>');
+        typeSelectNode.append('<option value = "built">Built</option>');
+        typeSelectNode.val(trigger.requirementType);
 
         triggerElement.append(typeSelectNode);
 
         typeSelectNode.on('change', function() {
-            trigger.updateType(this.value);
+            trigger.updateRequirementType(this.value);
             state.triggerManager.resetTargetTriggers();
 
-            buildTriggerRequirementType(trigger);
             buildTriggerRequirementId(trigger);
             buildTriggerRequirementCount(trigger);
 
@@ -11465,48 +11507,8 @@
 
             updateSettingsFromState();
         });
-    }
 
-    /**
-     * @param {Trigger} trigger
-     */
-    function buildTriggerRequirementType(trigger) {
-        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(0);
-        triggerElement.empty().off("*");
-
-        if (trigger.type === "tech") {
-            let typeSelectNode = $('<select></select>');
-
-            let selected = trigger.requirementType === "unlocked" ? ' selected="selected"' : "";
-            let typeOptionNode = $('<option value = "unlocked"' + selected + '>Unlocked</option>');
-            typeSelectNode.append(typeOptionNode);
-
-            selected = trigger.requirementType === "researched" ? ' selected="selected"' : "";
-            typeOptionNode = $('<option value = "researched"' + selected + '>Researched</option>');
-            typeSelectNode.append(typeOptionNode);
-
-            triggerElement.append(typeSelectNode);
-
-            typeSelectNode.on('change', function() {
-                trigger.updateRequirementType(this.value);
-                state.triggerManager.resetTargetTriggers();
-
-                buildTriggerRequirementId(trigger);
-                buildTriggerRequirementCount(trigger);
-
-                buildTriggerActionType(trigger);
-                buildTriggerActionId(trigger);
-                buildTriggerActionCount(trigger);
-
-                updateSettingsFromState();
-            });
-
-            return;
-        }
-
-        if (trigger.type === "bld") {
-            // TODO: Building triggers
-        }
+        return;
     }
 
     /**
@@ -11516,75 +11518,11 @@
         let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(1);
         triggerElement.empty().off("*");
 
-        if (trigger.type === "tech") {
-            // Requirement Id
-            let typeSelectNode = $('<input style ="width:100%"></input>');
-
-            // Event handler
-            let onChange = function(event, ui) {
-              event.preventDefault();
-
-              // If it wasn't selected from list
-              if(ui.item === null){
-                let typedTech = Object.values(tech).find(technology => this.value === technology.title);
-                if (typedTech !== undefined){
-                  ui.item = {label: this.value, value: typedTech.id};
-                }
-              }
-
-              // We have a tech to switch
-              if (ui.item !== null && tech.hasOwnProperty(ui.item.value)) {
-                trigger.updateRequirementId(ui.item.value);
-                state.triggerManager.resetTargetTriggers();
-
-                buildTriggerRequirementCount(trigger);
-
-                buildTriggerActionType(trigger);
-                buildTriggerActionId(trigger);
-                buildTriggerActionCount(trigger);
-
-                updateSettingsFromState();
-
-                this.value = ui.item.label;
-                return;
-              }
-
-              // No tech selected, don't change trigger, just restore old title in text field
-              if (tech.hasOwnProperty(trigger.requirementId)) {
-                this.value = tech[trigger.requirementId].title;
-                return;
-              }
-            };
-
-            typeSelectNode.autocomplete({
-              delay: 0,
-              source: function(request, response) {
-              let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
-              let techList = [];
-              Object.values(tech).forEach(technology => {
-                let title = technology.title;
-                if(matcher.test(title)){
-                  techList.push({label: title, value: technology.id});
-                }
-              });
-              response(techList);
-              },
-              select: onChange, // Dropdown list click
-              focus: onChange, // Arrow keys press
-              change: onChange // Type
-            });
-
-            if (tech.hasOwnProperty(trigger.requirementId)) {
-              typeSelectNode.val(tech[trigger.requirementId].title);
-            }
-
-            triggerElement.append(typeSelectNode);
-
-            return;
+        if (trigger.requirementType === "researched" || trigger.requirementType === "unlocked") {
+            triggerElement.append(buildTriggerTechInput(trigger, "requirementId"));
         }
-
-        if (trigger.type === "bld") {
-            // TODO: Building triggers
+        if (trigger.requirementType === "built") {
+            triggerElement.append(buildTriggerBuildingInput(trigger, "requirementId"));
         }
     }
 
@@ -11592,9 +11530,12 @@
      * @param {Trigger} trigger
      */
     function buildTriggerRequirementCount(trigger) {
-        // let triggerElement = $('#script_trigger_' + trigger.seq);
-        // triggerElement = triggerElement.next().next().next();
-        //triggerElement.empty().off("*");
+        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(2);
+        triggerElement.empty().off("*");
+
+        if (trigger.requirementType === "built") {
+            triggerElement.append(buildTriggerCountInput(trigger, "requirementCount"));
+        }
     }
 
     /**
@@ -11604,31 +11545,25 @@
         let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(3);
         triggerElement.empty().off("*");
 
-        if (trigger.type === "tech") {
-            // Action Type
-            let typeSelectNode = $('<select></select>');
-            let selected = trigger.actionType === "research" ? ' selected="selected"' : "";
-            let typeOptionNode = $('<option value = "research"' + selected + '>Research</option>');
-            typeSelectNode.append(typeOptionNode);
+        // Action Type
+        let typeSelectNode = $('<select></select>');
+        typeSelectNode.append('<option value = "research">Research</option>');
+        typeSelectNode.append('<option value = "build">Build</option>');
+        typeSelectNode.val(trigger.actionType);
 
-            // selected = trigger.type === "build" ? ' selected="selected"' : "";
-            // typeOptionNode = $('<option value = "build"' + selected + '>Build</option>');
-            // typeSelectNode.append(typeOptionNode);
+        triggerElement.append(typeSelectNode);
 
-            triggerElement.append(typeSelectNode);
+        typeSelectNode.on('change', function() {
+            trigger.updateActionType(this.value);
+            state.triggerManager.resetTargetTriggers();
 
-            typeSelectNode.on('change', function() {
-                trigger.updateActionType(this.value);
-                state.triggerManager.resetTargetTriggers();
+            buildTriggerActionId(trigger);
+            buildTriggerActionCount(trigger);
 
-                buildTriggerActionId(trigger);
-                buildTriggerActionCount(trigger);
+            updateSettingsFromState();
+        });
 
-                updateSettingsFromState();
-            });
-
-            return;
-        }
+        return;
     }
 
     /**
@@ -11639,66 +11574,11 @@
         triggerElement.empty().off("*");
 
         if (trigger.actionType === "research") {
-            // Action Id
-            let typeSelectNode = $('<input style ="width:100%"></input>');
-
-            // Event handler
-            let onChange = function(event, ui) {
-              event.preventDefault();
-
-              // If it wasn't selected from list
-              if(ui.item === null){
-                let typedTech = Object.values(tech).find(technology => this.value === technology.title);
-                if (typedTech !== undefined){
-                  ui.item = {label: this.value, value: typedTech};
-                }
-              }
-
-              // We have a tech to switch
-              if (ui.item !== null && tech.hasOwnProperty(ui.item.value)) {
-                trigger.updateActionId(ui.item.value);
-                state.triggerManager.resetTargetTriggers();
-
-                buildTriggerActionCount(trigger);
-
-                updateSettingsFromState();
-
-                this.value = ui.item.label;
-                return;
-              }
-
-              // No tech selected, don't change trigger, just restore old title in text field
-              if (tech.hasOwnProperty(trigger.actionId)) {
-                this.value = tech[trigger.actionId].title;
-                return;
-              }
-            };
-
-            typeSelectNode.autocomplete({
-              delay: 0,
-              source: function(request, response) {
-              let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
-              let techList = [];
-              Object.values(tech).forEach(technology => {
-                let title = technology.title;
-                if(matcher.test(title)){
-                  techList.push({label: title, value: technology.id});
-                }
-              });
-              response(techList);
-              },
-              select: onChange, // Dropdown list click
-              focus: onChange, // Arrow keys press
-              change: onChange // Type
-            });
-
-            if (tech.hasOwnProperty(trigger.actionId)) {
-              typeSelectNode.val(tech[trigger.actionId].title);
-            }
-
-            triggerElement.append(typeSelectNode);
-
-            return;
+            let inputElement = buildTriggerTechInput(trigger, "actionId");
+            triggerElement.append(inputElement);
+        }
+        if (trigger.actionType === "build") {
+            triggerElement.append(buildTriggerBuildingInput(trigger, "actionId"));
         }
     }
 
@@ -11706,9 +11586,12 @@
      * @param {Trigger} trigger
      */
     function buildTriggerActionCount(trigger) {
-        //let triggerElement = $('#script_trigger_' + trigger.seq);
-        //triggerElement = triggerElement.next().next().next().next().next().next();
-        //triggerElement.empty().off("*");
+        let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(5);
+        triggerElement.empty().off("*");
+
+        if (trigger.actionType === "build") {
+            triggerElement.append(buildTriggerCountInput(trigger, "actionCount"));
+        }
     }
 
     /**
@@ -11732,6 +11615,151 @@
             // @ts-ignore
             content.style.height = content.offsetHeight + "px"
         });
+    }
+
+    function buildTriggerTechInput(trigger, property){
+        let typeSelectNode = $('<input style ="width:100%"></input>');
+
+        // Event handler
+        let onChange = function(event, ui) {
+            event.preventDefault();
+
+            // If it wasn't selected from list
+            if(ui.item === null){
+                let typedTech = Object.values(tech).find(technology => technology.title === this.value);
+                if (typedTech !== undefined){
+                    ui.item = {label: this.value, value: typedTech.id};
+                }
+            }
+
+            // We have a tech to switch
+            if (ui.item !== null && tech.hasOwnProperty(ui.item.value)) {
+                if (trigger[property] === ui.item.value) {
+                    return;
+                }
+
+                trigger[property] = ui.item.value;
+                trigger.complete = false;
+
+                state.triggerManager.resetTargetTriggers();
+                updateSettingsFromState();
+
+                this.value = ui.item.label;
+                return;
+            }
+
+            // No tech selected, don't change trigger, just restore old title in text field
+            if (tech.hasOwnProperty(trigger[property])) {
+                this.value = tech[trigger[property]].title;
+                return;
+            }
+        };
+
+        typeSelectNode.autocomplete({
+            delay: 0,
+            source: function(request, response) {
+            let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
+            let techList = [];
+            Object.values(tech).forEach(technology => {
+                let title = technology.title;
+                if(matcher.test(title)){
+                    techList.push({label: title, value: technology.id});
+                }
+            });
+            response(techList);
+            },
+            select: onChange, // Dropdown list click
+            focus: onChange, // Arrow keys press
+            change: onChange // Keyboard type
+        });
+
+        if (tech.hasOwnProperty(trigger[property])) {
+            typeSelectNode.val(tech[trigger[property]].title);
+        }
+
+        return typeSelectNode;
+    }
+
+    function buildTriggerBuildingInput(trigger, property){
+        let typeSelectNode = $('<input style ="width:100%"></input>');
+
+        // Event handler
+        let onChange = function(event, ui) {
+            event.preventDefault();
+
+            // If it wasn't selected from list
+            if(ui.item === null){
+                let typedBuilding = Object.values(buildingIds).find(building => building.name === this.value);
+                if (typedBuilding !== undefined){
+                    ui.item = {label: this.value, value: typedBuilding.settingId};
+                }
+            }
+
+            // We have a building to switch
+            if (ui.item !== null && buildingIds.hasOwnProperty(ui.item.value)) {
+                if (trigger[property] === ui.item.value) {
+                    return;
+                }
+
+                trigger[property] = ui.item.value;
+                trigger.complete = false;
+
+                state.triggerManager.resetTargetTriggers();
+                updateSettingsFromState();
+
+                this.value = ui.item.label;
+                return;
+            }
+
+            // No building selected, don't change trigger, just restore old name in text field
+            if (buildingIds.hasOwnProperty(trigger[property])) {
+                this.value = buildingIds[trigger[property]].name;
+                return;
+            }
+        };
+
+        typeSelectNode.autocomplete({
+            delay: 0,
+            source: function(request, response) {
+            let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
+            let buildingList = [];
+            Object.values(buildingIds).forEach(building => {
+                let name = building.name;
+                if(matcher.test(name)){
+                    buildingList.push({label: name, value: building.settingId});
+                }
+            });
+            response(buildingList);
+            },
+            select: onChange, // Dropdown list click
+            focus: onChange, // Arrow keys press
+            change: onChange // Keyboard type
+        });
+
+        if (buildingIds.hasOwnProperty(trigger[property])) {
+            typeSelectNode.val(buildingIds[trigger[property]].name);
+        }
+
+        return typeSelectNode;
+    }
+
+    function buildTriggerCountInput(trigger, property) {
+        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
+        textBox.val(trigger[property]);
+
+        textBox.on('change', function() {
+            let val = textBox.val();
+            let parsedValue = getRealNumber(val);
+            if (!isNaN(parsedValue)) {
+                trigger[property] = parsedValue;
+                trigger.complete = false;
+
+                state.triggerManager.resetTargetTriggers();
+                updateSettingsFromState();
+            }
+        });
+
+        return textBox;
     }
 
     function buildResearchSettings() {
@@ -12893,12 +12921,12 @@
                 return $clone.get(0);
             },
             update: function() {
-                let buildingIds = $('#script_buildingTableBody').sortable('toArray', {attribute: 'value'});
+                let buildingElements = $('#script_buildingTableBody').sortable('toArray', {attribute: 'value'});
 
-                for (let i = 0; i < buildingIds.length; i++) {
+                for (let i = 0; i < buildingElements.length; i++) {
                     // Building has been dragged... Update all building priorities
-                    if (buildingIds[i] !== "All") {
-                        state.buildingManager.priorityList[findArrayIndex(state.buildingManager.priorityList, "settingId", buildingIds[i])].priority = i - 1;
+                    if (buildingElements[i] !== "All") {
+                        state.buildingManager.priorityList[findArrayIndex(state.buildingManager.priorityList, "settingId", buildingElements[i])].priority = i - 1;
                     }
                 }
 
@@ -13940,6 +13968,18 @@
         if (game.global.race['no_craft']){ a_level++; }
         if (game.global.race['no_crispr']){ a_level++; }
         return a_level;
+    }
+
+    function getBuyRate(res) { // none, duplicated multiple times all around code
+        let rate = game.tradeRatio[res];
+        if (game.global.race['persuasive']){
+            rate *= 1 + (game.global.race['persuasive'] / 100);
+        }
+        if (game.global.genes['trader']){
+            let mastery = parseFloat(game.breakdown.p.Global.Mastery || 0);
+            rate *= 1 + (mastery / 100);
+        }
+        return rate;
     }
 
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
