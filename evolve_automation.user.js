@@ -10114,7 +10114,6 @@
         }
 
         state.buildingManager.updateResourceRequirements();
-        state.buildingManager.updateWeighting();
         state.projectManager.updateResourceRequirements();
         state.triggerManager.updateCompleteTriggers();
         state.triggerManager.resetTargetTriggers();
@@ -10200,6 +10199,9 @@
                 requirement.resource.storageRequired = Math.max(requirement.quantity*0.0103, requirement.resource.storageRequired);
             });
         });
+
+        // Should be called after calculating rate of change
+        state.buildingManager.updateWeighting();
 
         // If our script opened a modal window but it is now closed (and the script didn't close it) then the user did so don't continue
         // with whatever our script was doing with the open modal window.
