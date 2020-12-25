@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.27
+// @version      3.2.1.28
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -32,6 +32,7 @@
 //   Added "built" trigger condition, and "build" action, to build exact amount of buildings at exact moment. Triggers ignore all autoBuild options, weighting, etc. It's designed to override regular settings. Like, when you'll want to have few belt stations as soon as possible, to expand elerium storage, and research elerium theory, even if you don't need provided Belt Support at that moment(normally script tries to avoid building useless buildings), and such cases.
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
 //   autoAchievements now check and pick conditional races.
+//   Spies can annex\purchase foreign powers
 //   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
 //   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)
 //
@@ -2905,10 +2906,12 @@
     var espionageTypes =
     {
         none: { id: "none", name: function () { return "None"; } },
+        round_robin: { id: "rrobin", name: function () { return "Round Robin"; } },
         influence: { id: "influence", name: function () { return game.loc("civics_spy_influence"); } },
         sabotage: { id: "sabotage", name: function () { return game.loc("civics_spy_sabotage"); } },
         incite: { id: "incite", name: function () { return game.loc("civics_spy_incite"); } },
-        round_robin: { id: "rrobin", name: function () { return "Round Robin"; } },
+        annex: { id: "annex", name: function () { return game.loc("civics_spy_annex"); } },
+        purchase: { id: "purchase", name: function () { return game.loc("civics_spy_purchase"); } },
     };
 
     class SpyManager {
@@ -2966,6 +2969,11 @@
                     missionIndex++;
                     if (missionIndex > this._missions.length - 1) { missionIndex = 0; }
 
+                    // Don't purchase or annex during Round Robin
+                    if (this._missions[missionIndex] === espionageTypes.annex.id || this._missions[missionIndex] === espionageTypes.purchase.id ) {
+                        continue;
+                    }
+
                     // If we've attacked this foreign power within the last 10 minutes then don't run influence
                     if (this._missions[missionIndex] === espionageTypes.influence.id) {
                         if (state.loopCounter - this._lastAttackLoop[govIndex] < 600) {
@@ -2979,21 +2987,26 @@
                         break;
                     }
                 }
-            }
-
-            // User specified spy operation. If it is not already at miximum effect then proceed with it.
-            if (espionageId !== espionageTypes.round_robin.id) {
+            } else if (espionageId === espionageTypes.annex.id || espionageId === espionageTypes.purchase.id) {
+                // Occupation routine
                 if (this.isEspionageUseful(govIndex, espionageId)) {
+                    // If we can annex\purchase right now - do it
                     this._espionageToPerform = espionageId;
+                } else if (this.isEspionageUseful(govIndex, espionageTypes.influence.id) &&
+                           state.loopCounter - this._lastAttackLoop[govIndex] < 600) {
+                    // Influence goes second, as it always have clear indication when HSTL already at zero
+                    this._espionageToPerform = espionageTypes.influence.id;
+                } else if (this.isEspionageUseful(govIndex, espionageTypes.incite.id)) {
+                    // And now incite
+                    this._espionageToPerform = espionageTypes.incite.id;
                 }
+            } else if (this.isEspionageUseful(govIndex, espionageId)) {
+                // User specified spy operation. If it is not already at miximum effect then proceed with it.
+                this._espionageToPerform = espionageId;
             }
 
             if (this._espionageToPerform !== null) {
-                if (espionageId === espionageTypes.round_robin.id) {
-                    state.log.logSuccess(loggingTypes.spying, `Performing ${this._missions[this._roundRobinIndex[govIndex]]} covert operation against ${getGovName(govIndex)}.`)
-                } else {
-                    state.log.logSuccess(loggingTypes.spying, `Performing "${espionageId}" covert operation against ${getGovName(govIndex)}.`)
-                }
+                state.log.logSuccess(loggingTypes.spying, `Performing "${this._espionageToPerform}" covert operation against ${getGovName(govIndex)}.`)
                 let title = game.loc('civics_espionage_actions');
                 state.windowManager.openModalWindowWithCallback(title, this.performEspionageCallback, optionsNode);
             }
@@ -3045,6 +3058,21 @@
                     return true;
                 } else if (game.global.civic.foreign[govProp].unrest < 100) {
                     // We have enough spies to know the exact value. 100 is maximum so only useful if < 100
+                    return true;
+                }
+            }
+
+            if (espionageId === espionageTypes.annex.id) {
+                // Annex option shows up once hstl <= 50 && unrest >= 50
+                // And we're also checking morale, to make sure button not just showed, but can actually be clicked
+                if (game.global.civic.foreign[govProp].hstl <= 50 && game.global.civic.foreign[govProp].unrest >= 50 && game.global.city.morale.current >= (200 + game.global.civic.foreign[govProp].hstl - game.global.civic.foreign[govProp].unrest)){
+                    return true;
+                }
+            }
+
+            if (espionageId === espionageTypes.purchase.id) {
+                // Check if we have enough spies and money
+                if (game.global.civic.foreign[govProp].spy >= 3 && resources.Money.currentQuantity >= govPrice(govProp)){
                     return true;
                 }
             }
@@ -7863,6 +7891,10 @@
             govAttackIndex = 1;
         } else if (settings.foreignAttack0 && !game.global.civic.foreign[`gov0`].occ) {
             govAttackIndex = 0;
+        } else if (settings.foreignAttack1 && !game.global.civic.foreign[`gov1`].occ) {
+            govAttackIndex = 1;
+        } else if (settings.foreignAttack2 && !game.global.civic.foreign[`gov2`].occ) {
+            govAttackIndex = 2;
         }
 
         // Check if there is an already occupied foreign power that we can unoccupy, then attack to occupy again
@@ -11038,7 +11070,7 @@
             settings[settingName] = e.currentTarget.checked;
             updateSettingsFromState();
 
-            if (secondaryPrefix !== "") {
+            if (secondaryPrefix !== "" && settings.showSettings) {
                 // @ts-ignore
                 document.getElementById(mainSettingName).children[0].checked = e.currentTarget.checked;
             }
@@ -11068,7 +11100,7 @@
                 settings[settingName] = parsedValue;
                 updateSettingsFromState();
 
-                if (secondaryPrefix !== "") {
+                if (secondaryPrefix !== "" && settings.showSettings) {
                     let mainSetting = $('#' + mainSettingName);
                     mainSetting.val(settings[settingName]);
                 }
@@ -11241,7 +11273,7 @@
             settings[settingName] = value;
             updateSettingsFromState();
 
-            if (secondaryPrefix !== "") {
+            if (secondaryPrefix !== "" && settings.showSettings) {
                 // @ts-ignore
                 document.getElementById(mainSelectId).value = settings[settingName];
             }
@@ -11908,7 +11940,7 @@
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercCostLowerThan", "AND if cost lower than amount", "Combines with the money storage percent setting to determine when to hire mercenaries");
 
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Campaign</th><th class="has-text-warning" style="width:25%">Minimum Attack Rating</th><th class="has-text-warning" style="width:25%">Maximum Rating to Send</th><th class="has-text-warning" style="width:25%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Campaign</th><th class="has-text-warning" style="width:40%">Minimum Attack Rating</th><th class="has-text-warning" style="width:40%">Maximum Rating to Send</th></tr>
                 <tbody id="script_${secondaryPrefix}warTableBody" class="script-contenttbody"></tbody>
             </table>`);
 
@@ -11917,7 +11949,7 @@
 
         for (let i = 0; i < state.warManager.campaignList.length; i++) {
             const campaign = state.warManager.campaignList[i];
-            newTableBodyText += `<tr value="${campaign.id}"><td id="script_${secondaryPrefix}${campaign.id}Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>`;
+            newTableBodyText += `<tr value="${campaign.id}"><td id="script_${secondaryPrefix}${campaign.id}Toggle" style="width:20%"></td><td style="width:40%"></td><td style="width:40%"></td></tr>`;
         }
         warTableBody.append($(newTableBodyText));
 
@@ -11969,7 +12001,7 @@
             settings[settingName] = value;
             updateSettingsFromState();
 
-            if (secondaryPrefix !== "") {
+            if (secondaryPrefix !== "" && settings.showSettings) {
                 // @ts-ignore
                 document.getElementById(mainSelectId).value = settings[settingName];
             }
@@ -11993,7 +12025,7 @@
                 campaign.rating = rating;
                 updateSettingsFromState();
 
-                if (secondaryPrefix !== "") {
+                if (secondaryPrefix !== "" && settings.showSettings) {
                     let mainSetting = $('#' + mainSettingName);
                     mainSetting.val(rating);
                 }
@@ -12020,7 +12052,7 @@
                 campaign.maxRating = rating;
                 updateSettingsFromState();
 
-                if (secondaryPrefix !== "") {
+                if (secondaryPrefix !== "" && settings.showSettings) {
                     let mainSetting = $('#' + mainSettingName);
                     mainSetting.val(rating);
                 }
@@ -13982,6 +14014,13 @@
             rate *= 1 + (mastery / 100);
         }
         return rate;
+    }
+
+    function govPrice(gov){ // function govPrice(gov)
+        let price = game.global.civic.foreign[gov].eco * 15384;
+        price *= 1 + game.global.civic.foreign[gov].hstl * 1.6 / 100;
+        price *= 1 - game.global.civic.foreign[gov].unrest * 0.25 / 100;
+        return +price.toFixed(0);
     }
 
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
