@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.28
+// @version      3.2.1.29
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -55,6 +55,7 @@
     var racialTraitHiveMind = "hivemind";
     var racialTraitEvil = "evil";
     var racialTraitSlaver = "slaver";
+    var racialTraitCannibalize = "cannibalize";
     var racialTraitCreative = "creative";
     var techFactory = "factory";
     var techSuperstar = "superstar";
@@ -895,17 +896,17 @@
                 }
                 // It need something that we're lacking
                 if (resourceType.rate > 0 && resourceType.resource.calculatedRateOfChange < resourceType.rate) {
-                    return resourceType.resource;
+                    return resourceType;
                 }
 
                 // It provides support which we don't need
                 if (resourceType.rate < 0 && resourceType.resource.isSupport && resourceType.resource.calculatedRateOfChange > 0) {
-                    return resourceType.resource;
+                    return resourceType;
                 }
 
                 // BeltSpaceStation is special case, as it provide jobs, which provides support, thus we can have 0 support even with powered buildings, if jobs not filled
                 if (this === state.spaceBuildings.BeltSpaceStation && resourceType.resource === resources.Belt_Support && state.jobs.SpaceMiner.count < state.jobs.SpaceMiner.max){
-                    return resources.Population;
+                    return {resource: resources.Population, rate: 1};
                 }
             }
             return false; // false means we have all we need for this to operate
@@ -1770,85 +1771,6 @@
         }
 
         //#endregion Standard resource
-    }
-
-    class SacrificialAlter extends Action {
-        constructor() {
-            super("Sacrificial Altar", "city", "s_alter", "");
-        }
-
-        get autoMax() {
-            // Always allow more unless auto max is set to 0
-            return this._autoMax === 0 ? 0 : Number.MAX_SAFE_INTEGER;
-        }
-
-        // Not overriden but required if overridding the getter
-        set autoMax(value) {
-            if (value < 0) value = -1;
-            this._autoMax = value;
-        }
-
-        // Whether the action is clickable is determined by whether it is unlocked and affordable
-        // The sacrifical alter can be used to sacrifice population to it for a bonues
-        // Only allow this when population is full, is greater than 19 and we have less than an hour of each bonus
-        isClickable() {
-            if (!this.isUnlocked()) {
-                return false;
-            }
-
-            if (this.count === 0) {
-                if (!game.checkAffordable(this.definition, false)) {
-                    return false;
-                }
-            } else {
-                if (resources.Population.currentQuantity < 20 || resources.Population.currentQuantity !== resources.Population.maxQuantity) {
-                    return false;
-                } else {
-                    return game.global.city.s_alter.rage < 3600 || game.global.city.s_alter.regen < 3600 || game.global.city.s_alter.mind < 3600
-                        || game.global.city.s_alter.mine < 3600 || (!game.global.race[racialTraitKindlingKindred] && game.global.city.s_alter.harvest < 3600);
-                }
-            }
-
-            return true;
-        }
-    }
-
-    class SlaveMarket extends Action {
-        constructor() {
-            super("Slave Market", "city", "slave_market", "");
-        }
-
-        get autoMax() {
-            // Always allow more unless auto max is set to 0
-            return this._autoMax === 0 ? 0 : Number.MAX_SAFE_INTEGER;
-        }
-
-        // Not overriden but required if overridding the getter
-        set autoMax(value) {
-            if (value < 0) value = -1;
-            this._autoMax = value;
-        }
-
-        // Whether the action is clickable is determined by whether it is unlocked and affordable
-        // The slave market can always be clicked so lets only do it when we have 90%+ money (or over 10mil in which case the cost is pretty irrelevent)
-        isClickable() {
-            if (!this.isUnlocked()) {
-                return false;
-            }
-
-            // If we have over 90% money... or we've got over 10mil
-            if ((resources.Money.storageRatio > 0.9 || resources.Money.currentQuantity > 10000000) && game.checkAffordable(this.definition, false)) {
-                // and we are a slaver with the slave pen unlocked...
-                if (game.global.race[racialTraitSlaver] && state.cityBuildings.SlavePen.isUnlocked()){
-                    // and we are less than max slaves then we can click!
-                    if (state.cityBuildings.SlavePen.count * 4 > game.global.city.slave_pen.slaves) {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
     }
 
     const SmelterFuelTypes = {
@@ -2969,11 +2891,6 @@
                     missionIndex++;
                     if (missionIndex > this._missions.length - 1) { missionIndex = 0; }
 
-                    // Don't purchase or annex during Round Robin
-                    if (this._missions[missionIndex] === espionageTypes.annex.id || this._missions[missionIndex] === espionageTypes.purchase.id ) {
-                        continue;
-                    }
-
                     // If we've attacked this foreign power within the last 10 minutes then don't run influence
                     if (this._missions[missionIndex] === espionageTypes.influence.id) {
                         if (state.loopCounter - this._lastAttackLoop[govIndex] < 600) {
@@ -2993,7 +2910,7 @@
                     // If we can annex\purchase right now - do it
                     this._espionageToPerform = espionageId;
                 } else if (this.isEspionageUseful(govIndex, espionageTypes.influence.id) &&
-                           state.loopCounter - this._lastAttackLoop[govIndex] < 600) {
+                           state.loopCounter - this._lastAttackLoop[govIndex] >= 600) {
                     // Influence goes second, as it always have clear indication when HSTL already at zero
                     this._espionageToPerform = espionageTypes.influence.id;
                 } else if (this.isEspionageUseful(govIndex, espionageTypes.incite.id)) {
@@ -4134,7 +4051,7 @@
                     let result = activeRules[j][1](building);
                     // Rule passed
                     if (result) {
-                      building.extraDescription += activeRules[j][2](result) + "<br>";
+                      building.extraDescription += activeRules[j][2](result, building) + "<br>";
                       building.weighting *= activeRules[j][3](result);
 
 
@@ -5754,7 +5671,7 @@
             Stone: new Action("Stone", "city", "stone", ""),
 
             Slaughter: new Action("Slaughter", "city", "slaughter", ""),
-            SacrificialAltar: new SacrificialAlter(), // special click properties
+            SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
 
             University: new Action("University", "city", "university", "", {knowledge: true}),
             Wardenclyffe: new Action("Wardenclyffe", "city", "wardenclyffe", "", {knowledge: true}),
@@ -5800,7 +5717,7 @@
             Wharf: new Action("Wharf", "city", "wharf", ""),
             MetalRefinery: new Action("Metal Refinery", "city", "metal_refinery", ""),
             SlavePen: new Action("Slave Pen", "city", "slave_pen", ""),
-            SlaveMarket: new SlaveMarket(),
+            SlaveMarket: new Action("Slave Market", "city", "slave_market", ""),
             Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
             Shrine: new Action ("Shrine", "city", "shrine", ""),
             CompostHeap: new Action ("Compost Heap", "city", "compost", ""),
@@ -6025,7 +5942,7 @@
         resetJobState();
 
         // Construct city builds list
-        state.cityBuildings.SacrificialAltar.gameMax = 1;
+        //state.cityBuildings.SacrificialAltar.gameMax = 1; // Although it is technically limited to single altar, we don't care about that, as we're going to click it to make sacrifices
         state.spaceBuildings.GasSpaceDock.gameMax = 1;
         state.spaceBuildings.DwarfWorldController.gameMax = 1;
         state.spaceBuildings.GasSpaceDockShipSegment.gameMax = 100;
@@ -9069,19 +8986,6 @@
 
     //#region Auto Building
 
-    /**
-     * @param {Action} building
-     * @param {Resource} requiredResource
-     * @param {number} requiredProduction
-     */
-    function buildIfEnoughProduction(building, requiredResource, requiredProduction) {
-        if (building.autoBuildEnabled && building.count < building.autoMax && requiredResource.calculatedRateOfChange > requiredProduction) {
-            return building.click(1);
-        }
-
-        return false;
-    }
-
     function getResourcesPerClick() {
       let amount = 1;
       if (game.global.race['strong']) {
@@ -10336,10 +10240,10 @@
 
     function initialiseWeightingRules(){
         // Weighting rules consists of 4 lambdas: generic condition, weighting condition, note, and multiplier
-        // Generic condition will be checked just once per tick, before calculating weights. They take nothing and return bool - whether this rule is applicable, or not
+        // Generic condition will be checked just once per tick, before calculating weights. They takes nothing and return bool - whether this rule is applicable, or not
         // Passed rules will be checked against each building. Weighting condition takes current building, and return any value, if value casts to true - rule aplies
-        // Return value of second lambda goes in third lambda, which return a note displayed when rule applied
-        // Forth lambda return multiplier. Rules returning x1 multipliers wont ever be applied.
+        // Return value of second lambda and building goes in third lambda, which return a note displayed when rule applied
+        // Forth lambda return multiplier. Rules returning x1 multipliers won't ever be checked, thus it doesn't take any arguments, so it can be called without context
 
         weightingRules = [[
               () => true,
@@ -10362,14 +10266,51 @@
               () => "Not enough storage",
               () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
           ],[
+              () => game.global.race[racialTraitSlaver],
+              (building) => {
+                  if (building === state.cityBuildings.SlaveMarket) {
+                      if (resources.Slave.currentQuantity >= resources.Slave.maxQuantity) {
+                          return "Slave pens already full";
+                      }
+                      if (resources.Money.storageRatio < 0.9 && resources.Money.currentQuantity < 10000000){
+                          return "Buying slaves only with excess money";
+                      }
+                  }
+              },
+              (note) => note,
+              () => 0 // Slave Market
+          ],[
+              () => game.global.race[racialTraitCannibalize],
+              (building) => {
+                  if (building === state.cityBuildings.SacrificialAltar && building.count > 0) {
+                      if (resources.Population.currentQuantity < 20) {
+                          return "Too low population";
+                      }
+                      if (resources.Population.currentQuantity !== resources.Population.maxQuantity) {
+                          return "Sacrifices performed only with full population";
+                      }
+                      if (game.global.city.s_alter.rage >= 3600 && game.global.city.s_alter.regen >= 3600 &&
+                          game.global.city.s_alter.mind >= 3600 && game.global.city.s_alter.mine >= 3600 &&
+                          (game.global.race[racialTraitKindlingKindred] || game.global.city.s_alter.harvest >= 3600)){
+                          return "Sacrifice bonus already high enough";
+                      }
+                  }
+              },
+              (note) => note,
+              () => 0 // Sacrificial Altar
+          ],[
               () => true,
               (building) => state.triggerManager.buildingConflicts(building),
-              (trigger) => "Conflicts with trigger: " + trigger.desc,
+              (trigger, building) => trigger.actionType === "build" && trigger.actionId === building.settingId ?
+                          `Processing trigger: ${trigger.desc}` :
+                          `Conflicts with trigger: ${trigger.desc}`,
               () => settings.buildingWeightingTriggerConflict
           ],[
               () => true,
               (building) => building.missingSupply(),
-              (resource) => "Missing " + resource.name + " to operate",
+              (supply) => supply.rate > 0 ?
+                          `Missing ${supply.resource.name} to operate` :
+                          `Provided ${supply.resource.name} not currently needed`,
               () => settings.buildingWeightingMissingSupply
           ],[
               () => true,
