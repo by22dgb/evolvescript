@@ -613,12 +613,7 @@
 
             this.autoBuildEnabled = true;
             this.autoStateEnabled = true;
-
-            if (this._elementId === "spcdock-probes") { // Can't use buildings in the constructor as we are still creating them!
-                this._autoMax = 4; // Max of 4 Probes by default
-            } else {
-                this._autoMax = -1;
-            }
+            this._autoMax = -1;
 
             this._weighting = 100;
             this.weighting = 0;
@@ -6575,7 +6570,7 @@
 
             building.autoBuildEnabled = true;
             building.autoStateEnabled = true;
-            building._autoMax = ( building.settingId === "spcdock-probes" ? 4 : -1 );
+            building._autoMax = -1;
             building._weighting = 100;
         }
     }
@@ -9135,8 +9130,8 @@
                   let thisRequirement = building.resourceRequirements[k];
                   let resource = thisRequirement.resource;
 
-                  // Ignore locked resources
-                  if (!resource.isUnlocked()){
+                  // Ignore locked and capped resources
+                  if (!resource.isUnlocked() || resource.storageRatio > 0.98){
                       continue;
                   }
 
@@ -12807,7 +12802,7 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
-        addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Overrides weighting to still build if resources are full, preventing wasting them by overflowing");
+        addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
 
         // Add table
         currentNode.append(
