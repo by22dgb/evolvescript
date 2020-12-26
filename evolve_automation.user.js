@@ -9850,39 +9850,30 @@
         if (settings.triggerRequest) {
           let demandedTrades = [];
           for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
-
-            // Only works with research trigger (And that's only trigger we have at the momvent...)
             let trigger = state.triggerManager.targetTriggers[i];
-            if (trigger.actionType !== "research") {
-                continue;
-            }
+            let costs = game.adjustCosts(trigger.cost);
 
-            let triggerTech = tech[trigger.actionId];
-            triggerTech.updateResourceRequirements();
+            // Check resources required for trigger
+            Object.keys(costs).forEach((resourceName) => {
+                let resource = resources[resourceName];
+                let required = Number(costs[resourceName]()) || 0;
 
-            // Check resources required for trigger tech
-            for (let j = 0; j < triggerTech.resourceRequirements.length; j++){
-              let cost = triggerTech.resourceRequirements[j];
+                // We only care about missing tradeable resources
+                if (resource.currentQuantity >= required || !resource.isTradable){
+                    return;
+                }
 
-              // We only care for missing tradeable resources
-              if (cost.resource.currentQuantity > cost.quantity || !cost.resource.isTradable){
-                  continue;
-              }
+                // Calculate amount of routes we need
+                let routes = Math.ceil((required - resource.currentQuantity) / resource.tradeRouteQuantity);
 
-              // Calculate amount of routes we need
-              let amount = Math.ceil((cost.quantity - cost.resource.currentQuantity) / cost.resource.tradeRouteQuantity);
-              if (!isFinite(amount) || amount < 1) {
-                  continue;
-              }
-
-              // Add routes
-              demandedTrades.push( {
-                  resource: cost.resource,
-                  requiredTradeRoutes: amount,
-                  completed: false,
-                  index: findArrayIndex(tradableResources, "id", cost.resource.id),
-              } );
-            }
+                // Add routes
+                demandedTrades.push( {
+                    resource: resource,
+                    requiredTradeRoutes: routes,
+                    completed: false,
+                    index: findArrayIndex(tradableResources, "id", resource.id),
+                } );
+            });
           }
           if (demandedTrades.length > 0) {
               // Override regular routes, to get demanded sooner
