@@ -10431,6 +10431,9 @@
             massEjectorProcessed = true;
         }
 
+        if (settings.buildingAlwaysClick || settings.autoBuild){
+            autoGatherResources();
+        }
         if (settings.autoMarket) {
             autoMarket();
         }
@@ -10442,9 +10445,6 @@
         }
         if (settings.autoARPA) {
             autoArpa();
-        }
-        if (settings.buildingAlwaysClick || settings.autoBuild){
-            autoGatherResources();
         }
         if (settings.autoBuild) {
             autoBuild();
