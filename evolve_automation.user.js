@@ -3274,13 +3274,10 @@
          * @param {number} campaignMinimumRating
          */
         updateCampaign(campaignId, campaignMinimumRating) {
-            let index = findArrayIndex(this.campaignList, "id", campaignId);
-
-            if (index === -1) {
-                return;
+            let campaign = this.campaignList.find(campaign => campaign.id === campaignId);
+            if (campaign) {
+                campaign.rating = campaignMinimumRating;
             }
-
-            this.campaignList[index].rating = campaignMinimumRating;
         }
 
         isUnlocked() {
@@ -4242,14 +4239,12 @@
             }
 
             if (!this.ignoreMinimumMoneySetting) {
-                let moneyFloor = 0;
                 let moneyRequirement = this.resourceRequirements.find(requirement => requirement.resource === resources.Money);
-                if (moneyRequirement !== undefined) {
-                    moneyFloor = moneyRequirement.quantity / 100; // We are building in steps of 1%
-                }
-
-                if (wouldBreakMoneyFloor(moneyFloor)) {
-                    return false;
+                if (moneyRequirement && moneyRequirement.quantity > 0) {
+                    let moneyFloor = moneyRequirement.quantity / 100; // We are building in steps of 1%
+                    if (resources.Money.currentQuantity - moneyFloor < state.minimumMoneyAllowed) {
+                        return false;
+                    }
                 }
             }
 
@@ -4683,7 +4678,7 @@
         // be more than a couple of percents. And even that will be eventually fixed, when tooltips
         // will be redrawn. But if there will be easier way to fix it eventually - it would be nice to do so.
         getCrateVolume() {
-            let crateDescNumbers = $(".crate .tooltip-content").text().match(/(\d+)/g);
+            let crateDescNumbers = $("div#createHead .crate .tooltip-content").text().match(/(\d+)/g);
             if (crateDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
               return crateDescNumbers[1];
             } else {
@@ -4693,7 +4688,7 @@
 
         // Same as above
         getContainerVolume() {
-            let containerDescNumbers = $(".container .tooltip-content").text().match(/(\d+)/g);
+            let containerDescNumbers = $("div#createHead .container .tooltip-content").text().match(/(\d+)/g);
             if (containerDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
               return containerDescNumbers[1];
             } else {
@@ -5112,13 +5107,7 @@
          * @return {Trigger}
          */
         getTrigger(seq) {
-            let index = findArrayIndex(this.priorityList, "seq", seq);
-
-            if (index === -1) {
-                return null;
-            }
-
-            return this.priorityList[index];
+            return this.priorityList.find(trigger => trigger.seq === seq);
         }
 
         clearPriorityList() {
@@ -5137,9 +5126,8 @@
         }
 
         AddTriggerFromSetting(seq, priority, requirementType, requirementId, requirementCount, actionType, actionId, actionCount) {
-            let existingSequence = findArrayIndex(this.priorityList, "seq", seq);
-
-            if (existingSequence === -1) {
+            let existingSequence = this.priorityList.some(trigger => trigger.seq === seq);
+            if (!existingSequence) {
                 let trigger = new Trigger(seq, priority, requirementType, requirementId, requirementCount, actionType, actionId, actionCount);
                 this.priorityList.push(trigger);
             }
@@ -5147,7 +5135,7 @@
 
         /** @param {number} seq */
         RemoveTrigger(seq) {
-            let indexToRemove = findArrayIndex(this.priorityList, "seq", seq);
+            let indexToRemove = this.priorityList.findIndex(trigger => trigger.seq === seq);
 
             if (indexToRemove === -1) {
                 return;
@@ -6368,7 +6356,7 @@
     function resetResearchSettings() {
         settings.userResearchTheology_1 = "auto";
         settings.userResearchTheology_2 = "auto";
-        settings.userResearchUnification = "auto";
+        settings.userResearchUnification = true;
     }
 
     function resetMarketState() {
@@ -7361,7 +7349,7 @@
 
         addSetting("userResearchTheology_1", "auto");
         addSetting("userResearchTheology_2", "auto");
-        addSetting("userResearchUnification", "auto");
+        addSetting("userResearchUnification", true);
 
         addSetting("buildingBuildIfStorageFull", false);
         addSetting("buildingAlwaysClick", false);
@@ -7454,6 +7442,13 @@
                         }
                     }
 
+                    // If we have Mass Extinction perk, and not affected by randomness - prioritize conditional races
+                    if (game.global.stats.achieve['mass_extinction'] && remainingAchievements > 0 && remainingRace.evolutionConditionText !== '') {
+                        targetedGroup.group = raceGroup;
+                        targetedGroup.race = remainingRace;
+                        targetedGroup.remainingPercent = 100;
+                    }
+
                     // We'll target the group with the highest percentage chance of getting an achievement
                     let remainingPercent = remainingAchievements / raceGroup.length;
 
@@ -7470,8 +7465,8 @@
 
             // Still no target. autoAchievements either disabled, or failed to pick race. Checking user specified race
             if (state.evolutionTarget === null && settings.userEvolutionTargetName != "auto") {
-                let userRace = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
-                if (userRace.evolutionCondition()){
+                let userRace = raceAchievementList.find(race => race.name === settings.userEvolutionTargetName);
+                if (userRace && userRace.evolutionCondition()){
                     // Race specified, and condition is met
                     state.evolutionTarget = userRace
                 }
@@ -8168,7 +8163,7 @@
             });
 
             // Bring them all up to breakpoint 0 one each at a time
-            while (availableEmployees >= 1 && findArrayIndex(splitJobs, "completed", false) != -1) {
+            while (availableEmployees >= 1 && splitJobs.some(job => !job.completed)) {
                 splitJobs.forEach(jobDetails => {
                     if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(0, true)) {
                         jobDetails.completed = true;
@@ -8185,7 +8180,7 @@
             splitJobs.forEach(jobDetails => { jobDetails.completed = false; });
 
             // Bring them all up to breakpoint 1 one each at a time
-            while (availableEmployees >= 1 && findArrayIndex(splitJobs, "completed", false) != -1) {
+            while (availableEmployees >= 1 && splitJobs.some(job => !job.completed)) {
                 splitJobs.forEach(jobDetails => {
                     if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(1, true)) {
                         jobDetails.completed = true;
@@ -8484,7 +8479,7 @@
         let allProduction = factory.productionOptions;
         let remainingFactories = state.cityBuildings.Factory.maxOperating;
 
-        while (remainingFactories > 0 && findArrayIndex(allProduction, "completed", false) != -1) {
+        while (remainingFactories > 0 && allProduction.some(production => !production.completed)) {
             let maxOperatingFactories = remainingFactories;
             let totalWeight = allProduction.reduce((sum, production) => sum + (production.completed ? 0 : production.weighting), 0);
 
@@ -8539,29 +8534,30 @@
         }
 
         // If we have any remaining factories and the user wants to allocate unallocated factories to money then do it
-        let luxuryGoodsIndex = findArrayIndex(allProduction, "goods", FactoryGoods.LuxuryGoods);
-        if (settings.productionMoneyIfOnly && remainingFactories > 0 && allProduction[luxuryGoodsIndex].resource.storageRatio < 0.99 ) {
-            let actualRequiredFactories = remainingFactories;
-            let production = allProduction[luxuryGoodsIndex];
-            let productionCosts = state.cityBuildings.Factory.productionCosts(FactoryGoods.LuxuryGoods);
+        if (settings.productionMoneyIfOnly && remainingFactories > 0) {
+            let luxuryGoods = allProduction.find(production => production.goods === FactoryGoods.LuxuryGoods);
+            if (luxuryGoods.resource.storageRatio < 0.99) {
+                let actualRequiredFactories = remainingFactories;
+                let productionCosts = state.cityBuildings.Factory.productionCosts(FactoryGoods.LuxuryGoods);
 
-            productionCosts.forEach(resourceCost => {
-                let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
-                let currentCost = production.requiredFactories * resourceCost.quantity;
-                let rate = resourceCost.resource.calculatedRateOfChange + previousCost - currentCost;
-                if (resourceCost.resource.storageRatio < 0.98) {
-                    rate -= resourceCost.minRateOfChange;
-                }
+                productionCosts.forEach(resourceCost => {
+                    let previousCost = state.cityBuildings.Factory.currentProduction(luxuryGoods.goods) * resourceCost.quantity;
+                    let currentCost = luxuryGoods.requiredFactories * resourceCost.quantity;
+                    let rate = resourceCost.resource.calculatedRateOfChange + previousCost - currentCost;
+                    if (resourceCost.resource.storageRatio < 0.98) {
+                        rate -= resourceCost.minRateOfChange;
+                    }
 
-                // If we can't afford it (it's above our minimum rate of change) then remove a factory
-                // UNLESS we've got over 80% storage full. In that case lets go wild!
-                if (resourceCost.resource.storageRatio < 0.8){
-                    let affordableAmount = Math.floor(rate / resourceCost.quantity);
-                    actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
-                }
-            });
+                    // If we can't afford it (it's above our minimum rate of change) then remove a factory
+                    // UNLESS we've got over 80% storage full. In that case lets go wild!
+                    if (resourceCost.resource.storageRatio < 0.8){
+                        let affordableAmount = Math.floor(rate / resourceCost.quantity);
+                        actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
+                    }
+                });
 
-            production.requiredFactories += actualRequiredFactories;
+                luxuryGoods.requiredFactories += actualRequiredFactories;
+            }
         }
 
         // First decrease any production so that we have room to increase others
@@ -9108,7 +9104,7 @@
                         let resource = other.resourceRequirements[k].resource;
                         let quantity = other.resourceRequirements[k].quantity;
 
-                        // Ignore locked and craftable
+                        // Ignore locked
                         if (!resource.isUnlocked()) {
                             continue;
                         }
@@ -9235,8 +9231,7 @@
                 continue;
             }
 
-            if (itemId !== "tech-anthropology" && itemId !== "tech-fanaticism" && itemId !== "tech-wc_reject"
-                && itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest"
+            if (itemId !== "tech-anthropology" && itemId !== "tech-fanaticism" && itemId !== "tech-unification2"
                 && itemId !== "tech-study" && itemId !== "tech-deify") {
                     click = true;
             } else {
@@ -9247,12 +9242,12 @@
                 }
 
                 if (settings.userResearchTheology_1 === "auto") {
-                    if (!settings.autoSpace && itemId === "tech-anthropology") {
+                    if (settings.autoMAD && itemId === "tech-anthropology") {
                         // If we're not going to space then research anthropology
                         log("autoResearch", "Picking: " + itemId);
                         click = true;
                     }
-                    if (settings.autoSpace && itemId === "tech-fanaticism") {
+                    if (!settings.autoMAD && itemId === "tech-fanaticism") {
                         // If we're going to space then research fanatacism
                         log("autoResearch", "Picking: " + itemId);
                         click = true;
@@ -9273,29 +9268,16 @@
                     }
                 }
 
-                if (itemId === settings.userResearchUnification) {
-                    // use the user's override choice if it is "researchable"
-                    if (isUnificationPossible(itemId)) {
-                        log("autoResearch", "Picking user's choice of unification: " + itemId);
-                        click = true;
-                    }
-                }
-
-                if (settings.userResearchUnification === "auto") {
-                    // Don't reject world unity. We want the +25% resource bonus
-                    if (itemId === "tech-wc_money" || itemId === "tech-wc_morale"|| itemId === "tech-wc_conquest") {
-                        if (isUnificationPossible(itemId)) {
-                            log("autoResearch", "Picking: " + itemId);
-                            click = true;
-                        }
-                    }
-                }
-
                 // Hey, we can get both theology researches
                 if (itemId === "tech-anthropology" && isResearchUnlocked("fanaticism")) {
                     click = true;
                 }
                 if (itemId === "tech-fanaticism" && isResearchUnlocked("anthropology")) {
+                    click = true;
+                }
+
+                // Unify, if allowed
+                if (itemId === "tech-unification2" && settings.userResearchUnification) {
                     click = true;
                 }
             }
@@ -9473,17 +9455,6 @@
                     // Building needs power and we don't have any
                     if ((availablePower <= 0 && building.powered > 0) || (availablePower - building.powered < 0)) {
                         continue;
-                    }
-                }
-
-                if (building === state.spaceBuildings.BeltEleriumShip) {
-                    if (resources.Elerium.storageRatio >= 0.99 && resources.Elerium.calculatedRateOfChange >= 0) {
-                        if (state.spaceBuildings.DwarfEleriumReactor.autoStateEnabled) {
-                            let required = (state.spaceBuildings.DwarfEleriumReactor.count + 1) * 2;
-                            if (requiredStateOn >= required) {
-                                continue;
-                            }
-                        }
                     }
                 }
 
@@ -9831,7 +9802,7 @@
                     resource: resource,
                     requiredTradeRoutes: resource.autoTradeBuyRoutes,
                     completed: false,
-                    index: findArrayIndex(tradableResources, "id", resource.id),
+                    index: tradableResources.findIndex(tradeable => tradeable.id === resource.id),
                 } );
             }
         }
@@ -9866,7 +9837,7 @@
                     resource: resource,
                     requiredTradeRoutes: routes,
                     completed: false,
-                    index: findArrayIndex(tradableResources, "id", resource.id),
+                    index: tradableResources.findIndex(tradeable => tradeable.id === resource.id),
                 } );
             });
           }
@@ -9881,7 +9852,7 @@
         }
 
 
-        while (findArrayIndex(resourcesToTrade, "completed", false) != -1) {
+        while (resourcesToTrade.some(resource => !resource.completed)) {
             for (let i = 0; i < resourcesToTrade.length; i++) {
                 const resourceToTrade = resourcesToTrade[i];
                 //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " testing...")
@@ -10681,6 +10652,10 @@
             .ui-autocomplete {
                 background-color: #000;
             }
+
+            .ui-helper-hidden-accessible {
+                display:none;
+            }
         `
 
         // Create style document
@@ -11279,8 +11254,8 @@
             selectNode.append(raceNode);
         }
 
-        let race = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
-        if (race !== null && race !== undefined && race.evolutionConditionText !== '') {
+        let race = raceAchievementList.find(race => race.name === settings.userEvolutionTargetName);
+        if (race && race.evolutionConditionText !== '') {
             $("#script_race_warning").html(`<span class="${race.evolutionCondition() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.evolutionConditionText}. This condition is currently ${race.evolutionCondition() ? "met" : "not met"}.</span>`);
         }
 
@@ -11291,8 +11266,8 @@
             updateSettingsFromState();
             //console.log("Chosen evolution target of " + value);
 
-            let race = raceAchievementList[findArrayIndex(raceAchievementList, "name", settings.userEvolutionTargetName)];
-            if (race !== null && race !== undefined && race.evolutionConditionText !== '') {
+            let race = raceAchievementList.find(race => race.name === settings.userEvolutionTargetName);
+            if (race && race.evolutionConditionText !== '') {
                 $("#script_race_warning").html(`<span class="${race.evolutionCondition() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.evolutionConditionText}. This condition is currently ${race.evolutionCondition() ? "met" : "not met"}.</span>`);
             } else {
                 $("#script_race_warning").empty();
@@ -11791,36 +11766,7 @@
         });
 
         // Unification
-        let unificationNode = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchUnification">Target Unification:</label><select id="script_userResearchUnification" style="width: 150px; float: right;"></select></div>');
-        currentNode.append(unificationNode);
-
-        selectNode = $('#script_userResearchUnification');
-        selected = settings.userResearchUnification === "auto" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "auto"' + selected + '>Script Managed</option>');
-        selectNode.append(optionNode);
-
-        selected = settings.userResearchUnification === "tech-wc_reject" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "tech-wc_reject"' + selected + '>Reject</option>');
-        selectNode.append(optionNode);
-
-        selected = settings.userResearchUnification === "tech-wc_money" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "tech-wc_money"' + selected + '>Money</option>');
-        selectNode.append(optionNode);
-
-        selected = settings.userResearchUnification === "tech-wc_morale" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "tech-wc_morale"' + selected + '>Morale</option>');
-        selectNode.append(optionNode);
-
-        selected = settings.userResearchUnification === "tech-wc_conquest" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "tech-wc_conquest"' + selected + '>Conquest</option>');
-        selectNode.append(optionNode);
-
-        selectNode.on('change', function() {
-            let value = $("#script_userResearchUnification :selected").val();
-            settings.userResearchUnification = value;
-            updateSettingsFromState();
-            //console.log("Chosen unification target of " + value);
-        });
+        addStandardSectionSettingsToggle(currentNode, "userResearchUnification", "Perform unification", "Perform unification once it's alwailable. This option won't occupy foreign forces by itself! You need to configure that in Foreign Affairs Settings, if needed.");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -12147,7 +12093,7 @@
 
                 for (let i = 0; i < marketIds.length; i++) {
                     // Market has been dragged... Update all market priorities
-                    state.marketManager.priorityList[findArrayIndex(state.marketManager.priorityList, "id", marketIds[i])].marketPriority = i;
+                    state.marketManager.priorityList.find(resource => resource.id === marketIds[i]).marketPriority = i;
                 }
 
                 state.marketManager.sortByPriority();
@@ -12253,7 +12199,7 @@
 
                 for (let i = 0; i < storageIds.length; i++) {
                     // Storage has been dragged... Update all storage priorities
-                    state.storageManager.priorityList[findArrayIndex(state.storageManager.priorityList, "id", storageIds[i])].storagePriority = i;
+                    state.storageManager.priorityList.find(resource => resource.id === storageIds[i]).storagePriority = i;
                 }
 
                 state.storageManager.sortByPriority();
@@ -12355,7 +12301,7 @@
 
                 for (let i = 0; i < minorTraitNames.length; i++) {
                     // MinorTrait has been dragged... Update all minorTrait priorities
-                    state.minorTraitManager.priorityList[findArrayIndex(state.minorTraitManager.priorityList, "traitName", minorTraitNames[i])].priority = i;
+                    state.minorTraitManager.priorityList.find(trait => trait.traitName === minorTraitNames[i]).priority = i;
                 }
 
                 state.minorTraitManager.sortByPriority();
@@ -12462,7 +12408,7 @@
 
                 for (let i = 0; i < fuelIds.length; i++) {
                     // Fuel has been dragged... Update all fuel priorities
-                    state.cityBuildings.Smelter._fuelPriorityList[findArrayIndex(state.cityBuildings.Smelter._fuelPriorityList, "id", fuelIds[i])].priority = i;
+                    state.cityBuildings.Smelter._fuelPriorityList.find(fuel => fuel.id === fuelIds[i]).priority = i;
                 }
 
                 state.cityBuildings.Smelter.sortByPriority();
@@ -12658,7 +12604,7 @@
 
                 for (let i = 0; i < jobIds.length; i++) {
                     // Job has been dragged... Update all job priorities
-                    state.jobManager.priorityList[findArrayIndex(state.jobManager.priorityList, "_originalId", jobIds[i])].priority = i + 1; // farmers is always 0
+                    state.jobManager.priorityList.find(job => job._originalId === jobIds[i]).priority = i + 1; // farmers is always 0
                 }
 
                 state.jobManager.sortByPriority();
@@ -12887,7 +12833,7 @@
                 for (let i = 0; i < buildingElements.length; i++) {
                     // Building has been dragged... Update all building priorities
                     if (buildingElements[i] !== "All") {
-                        state.buildingManager.priorityList[findArrayIndex(state.buildingManager.priorityList, "settingId", buildingElements[i])].priority = i - 1;
+                        state.buildingManager.priorityList.find(building => building.settingId === buildingElements[i]).priority = i - 1;
                     }
                 }
 
@@ -13102,7 +13048,7 @@
 
                 for (let i = 0; i < projectIds.length; i++) {
                     // Project has been dragged... Update all project priorities
-                    state.projectManager.priorityList[findArrayIndex(state.projectManager.priorityList, "id", projectIds[i])].priority = i;
+                    state.projectManager.priorityList.find(project => project.id === projectIds[i]).priority = i;
                 }
 
                 state.projectManager.sortByPriority();
@@ -13187,20 +13133,18 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function createQuickOptions(optionsElementId, optionsDisplayName, buildOptionsFunction) {
-        let container = $('#autoScriptContainer');
+    function createQuickOptions(node, optionsElementId, optionsDisplayName, buildOptionsFunction) {
         let optionsDiv = $(`<div style="cursor: pointer;" id="${optionsElementId}">${optionsDisplayName} Options</div>`);
-        container.append(optionsDiv);
+        node.append(optionsDiv);
 
         addOptionUI(optionsElementId + "_btn", `#${optionsElementId}`, optionsDisplayName, buildOptionsFunction);
         addOptionUiClickHandler(optionsDiv, optionsDisplayName, buildOptionsFunction);
     }
 
-    function createSettingToggle(name, title, enabledCallBack, disabledCallBack) {
-        let elm = $('#autoScriptContainer');
+    function createSettingToggle(node, name, title, enabledCallBack, disabledCallBack) {
         let checked = settings[name] ? " checked" : "";
         let toggle = $(`<label tabindex="0" class="switch" id="${name}" style="" title="${title}"><input type="checkbox" value=${settings[name]}${checked}/> <span class="check"></span><span>${name}</span></label></br>`);
-        elm.append(toggle);
+        node.append(toggle);
 
         if (settings[name]) {
             if (enabledCallBack !== undefined) {
@@ -13325,136 +13269,70 @@
         let resetScrollPositionRequired = false;
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        if ($('#autoScriptContainer').length === 0) {
-            let autoScriptContainer = $('<div id="autoScriptContainer"></div>');
-            $('#resources').append(autoScriptContainer);
-            resetScrollPositionRequired = true;
-        }
-
         createOptionsModal();
         updateOptionsUI();
 
-        let autoScriptContainerNode = document.querySelector('#autoScriptContainer');
-        if (autoScriptContainerNode.nextSibling !== null) {
-            autoScriptContainerNode.parentNode.appendChild(autoScriptContainerNode);
+        let scriptNode = $('#autoScriptContainer');
+        if (scriptNode.length === 0) {
+            scriptNode = $('<div id="autoScriptContainer"></div>');
+            $('#resources').append(scriptNode);
             resetScrollPositionRequired = true;
-        }
-        if ($('#autoScriptInfo').length === 0) {
-            let elm = $('#autoScriptContainer');
-            let span = $('<label id="autoScriptInfo">More script options available in Settings tab</label></br>');
-            elm.append(span);
-        }
-        if ($('#masterScriptToggle').length === 0) {
-            createSettingToggle('masterScriptToggle', 'Stop taking any actions on behalf of the player.');
-        }
 
-        // Dirty performance patch. Settings have a lot of elements, and they stress JQuery selectors way too much. This toggle allow to remove them from DOM completely, when they aren't needed.
-        // It doesn't have such huge impact anymore, as used to before rewriting trigger's tech selectors, but still won't hurt to have an option to increase performance a bit more
-        if ($('#showSettings').length === 0) {
-            createSettingToggle('showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
-        } else if (settings.showSettings && $("#script_settings").length === 0) {
-            buildScriptSettings();
-        }
+            scriptNode.append('<label id="autoScriptInfo">More script options available in Settings tab</label></br>');
 
-        if ($('#autoEvolution').length === 0) {
-            createSettingToggle('autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids. See autoAchievements to target races that you don\'t have extinction achievements for yet.');
-        }
-        if ($('#autoAchievements').length === 0) {
-            createSettingToggle('autoAchievements', 'Works through all evolution paths until all race\'s extinction achievements have been completed. Also works with autoChallenge for starred achievements.');
-        }
-        if ($('#autoChallenge').length === 0) {
-            createSettingToggle('autoChallenge', 'Chooses challenge options during evolution.');
-        }
-        if ($('#autoFight').length === 0) {
-            createSettingToggle('autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
-        }
-        if ($('#autoHell').length === 0) {
-            createSettingToggle('autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
-        }
-        if ($('#autoTax').length === 0) {
-            createSettingToggle('autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
-        }
-        if ($('#autoCraft').length === 0) {
-            createSettingToggle('autoCraft', 'Craft when a specified crafting ratio is met. This changes throughout the game - lower in the beginning and rising as the game progresses.', createCraftToggles, removeCraftToggles);
-        } else if (settings.autoCraft && $('.ea-craft-toggle').length === 0) {
-            createCraftToggles();
-        }
-        if ($('#autoBuild').length === 0) {
-            createSettingToggle('autoBuild', 'Builds city and space building when it can an production allows (eg. Won\'t build a Fission Reactor if you don\'t have enough uranium production). Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker.', createBuildingToggles, removeBuildingToggles);
-        } else if (settings.autoBuild && $('.ea-building-toggle').length === 0) {
-            createBuildingToggles();
-        }
-        if ($('#autoPower').length === 0) {
-            createSettingToggle('autoPower', 'Manages power based on a priority order of buildings. Starts with city based building then space based.');
-        }
-        if ($('#autoStorage').length === 0) {
-            createSettingToggle('autoStorage', 'Assigns crates to allow storage of resources.');
-        }
-        if ($('#autoMarket').length === 0) {
-            createSettingToggle('autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes.', createMarketToggles, removeMarketToggles);
-        } else if (settings.autoMarket > 0 && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
-            createMarketToggles();
-        }
-        if ($('#autoResearch').length === 0) {
-            createSettingToggle('autoResearch', 'Performs research when minimum requirements are met. ');
-        }
-        if ($('#autoARPA').length === 0) {
-            createSettingToggle('autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
-        } else if (settings.autoARPA && $('.ea-arpa-toggle').length === 0) {
-            createArpaToggles();
-        }
+            createSettingToggle(scriptNode, 'masterScriptToggle', 'Stop taking any actions on behalf of the player.');
 
-        if ($('#autoJobs').length === 0) {
-            createSettingToggle('autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
-        }
-        if ($('#autoCraftsmen').length === 0) {
-            createSettingToggle('autoCraftsmen', 'Enable this when performing challenge runs and autoJobs will also manage craftsmen.');
-        }
+            // Dirty performance patch. Settings have a lot of elements, and they stress JQuery selectors way too much. This toggle allow to remove them from DOM completely, when they aren't needed.
+            // It doesn't have such huge impact anymore, as used to before rewriting trigger's tech selectors, but still won't hurt to have an option to increase performance a bit more
+            createSettingToggle(scriptNode, 'showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
 
-        if ($('#autoSmelter').length === 0) {
-            createSettingToggle('autoSmelter', 'Manages smelter output at different stages at the game.');
-        }
-        if ($('#autoFactory').length === 0) {
-            createSettingToggle('autoFactory', 'Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.');
-        }
-        if ($('#autoMiningDroid').length === 0) {
-            createSettingToggle('autoMiningDroid', 'Manages mining droid production based on power and consumption. Produces Adamantite only. Not currently user configurable.');
-        }
-        if ($('#autoGraphenePlant').length === 0) {
-            createSettingToggle('autoGraphenePlant', 'Uses what fuel it can to fuel the graphene plant. Not currently user configurable.');
-        }
-        if ($('#autoAssembleGene').length === 0) {
-            createSettingToggle('autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.');
-        }
-        if ($('#autoMinorTrait').length === 0) {
-            createSettingToggle('autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings.');
-        }
+            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids. See autoAchievements to target races that you don\'t have extinction achievements for yet.');
+            createSettingToggle(scriptNode, 'autoAchievements', 'Works through all evolution paths until all race\'s extinction achievements have been completed. Also works with autoChallenge for starred achievements.');
+            createSettingToggle(scriptNode, 'autoChallenge', 'Chooses challenge options during evolution.');
+            createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
+            createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
+            createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
+            createSettingToggle(scriptNode, 'autoCraft', 'Craft when a specified crafting ratio is met. This changes throughout the game - lower in the beginning and rising as the game progresses.', createCraftToggles, removeCraftToggles);
+            createSettingToggle(scriptNode, 'autoBuild', 'Builds city and space building when it can an production allows (eg. Won\'t build a Fission Reactor if you don\'t have enough uranium production). Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker.', createBuildingToggles, removeBuildingToggles);
+            createSettingToggle(scriptNode, 'autoPower', 'Manages power based on a priority order of buildings. Starts with city based building then space based.');
+            createSettingToggle(scriptNode, 'autoStorage', 'Assigns crates to allow storage of resources.');
+            createSettingToggle(scriptNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes.', createMarketToggles, removeMarketToggles);
+            createSettingToggle(scriptNode, 'autoResearch', 'Performs research when minimum requirements are met. ');
+            createSettingToggle(scriptNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
+            createSettingToggle(scriptNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
+            createSettingToggle(scriptNode, 'autoCraftsmen', 'Enable this when performing challenge runs and autoJobs will also manage craftsmen.');
+            createSettingToggle(scriptNode, 'autoSmelter', 'Manages smelter output at different stages at the game.');
+            createSettingToggle(scriptNode, 'autoFactory', 'Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.');
+            createSettingToggle(scriptNode, 'autoMiningDroid', 'Manages mining droid production based on power and consumption. Produces Adamantite only. Not currently user configurable.');
+            createSettingToggle(scriptNode, 'autoGraphenePlant', 'Uses what fuel it can to fuel the graphene plant. Not currently user configurable.');
+            createSettingToggle(scriptNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.');
+            createSettingToggle(scriptNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings.');
 
-        if (document.getElementById("s-quick-prestige-options") === null) { createQuickOptions("s-quick-prestige-options", "Prestige", buildPrestigeSettings); }
+            createQuickOptions(scriptNode, "s-quick-prestige-options", "Prestige", buildPrestigeSettings);
 
-        if (showLogging && $('#autoLogging').length === 0) {
-           createSettingToggle('autoLogging', 'autoLogging');
+            if (showLogging) {
+                createSettingToggle(scriptNode, 'autoLogging', 'autoLogging');
 
-           let settingsDiv = $('<div id="ea-logging"></div>');
-           let logTypeTxt = $('<div>Logging Type:</div>')
-           let logTypeInput = $('<input type="text" class="input is-small" style="width:100%"/>');
-           logTypeInput.val(loggingType);
-           let setBtn = $('<a class="button is-dark is-small" id="set-loggingType"><span>set</span></a>');
-           settingsDiv.append(logTypeTxt).append(logTypeInput).append(setBtn);
-           $('#autoScriptContainer').append(settingsDiv);
+                let settingsDiv = $('<div id="ea-logging"></div>');
+                let logTypeTxt = $('<div>Logging Type:</div>')
+                let logTypeInput = $('<input type="text" class="input is-small" style="width:100%"/>');
+                logTypeInput.val(loggingType);
+                let setBtn = $('<a class="button is-dark is-small" id="set-loggingType"><span>set</span></a>');
+                settingsDiv.append(logTypeTxt).append(logTypeInput).append(setBtn);
+                scriptNode.append(settingsDiv);
 
-           setBtn.on('mouseup', function() {
-               let val = logTypeInput.val();
-               loggingType = val;
-           });
-        }
-        if ($('#bulk-sell').length === 0 && isMarketUnlocked()) {
+                setBtn.on('mouseup', function() {
+                   let val = logTypeInput.val();
+                   loggingType = val;
+                });
+            }
+
             let bulkSell = $('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
-            $('#autoScriptContainer').append(bulkSell);
+            scriptNode.append(bulkSell);
             bulkSell.on('mouseup', function(e) {
                 autoMarket(true, true);
             });
-        } if ($('#ea-settings').length === 0) {
+
             let settingsDiv = $('<div id="ea-settings"></div>');
             let minMoneyTxt = $('<div>Minimum money to keep :</div>')
             let minMoneyInput = $('<input type="text" class="input is-small" style="width:100%"/>');
@@ -13463,7 +13341,7 @@
             let setBtn = $('<a class="button is-dark is-small" id="set-min-money"><span>Set</span></a>');
             let setPercentBtn = $('<a class="button is-dark is-small" id="set-min-money" title="eg. 10 equals 10%"><span>Set %</span></a>');
             settingsDiv.append(minMoneyTxt).append(minMoneyInput).append(setBtn).append(setPercentBtn);
-            $('#autoScriptContainer').append(settingsDiv);
+            scriptNode.append(settingsDiv);
 
             setBtn.on('click', function() {
                 let val = minMoneyInput.val();
@@ -13486,6 +13364,27 @@
                     updateSettingsFromState();
                 }
             });
+        }
+
+        if (scriptNode.next().length) {
+            resetScrollPositionRequired = true;
+            scriptNode.parent().append(scriptNode);
+        }
+
+        if (settings.showSettings && $("#script_settings").length === 0) {
+            buildScriptSettings();
+        }
+        if (settings.autoCraft && $('.ea-craft-toggle').length === 0) {
+            createCraftToggles();
+        }
+        if (settings.autoBuild && $('.ea-building-toggle').length === 0) {
+            createBuildingToggles();
+        }
+        if (settings.autoMarket > 0 && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
+            createMarketToggles();
+        }
+        if (settings.autoARPA && $('.ea-arpa-toggle').length === 0) {
+            createArpaToggles();
         }
 
         if (resetScrollPositionRequired) {
@@ -13693,14 +13592,6 @@
 
     //#region Utility Functions
 
-    function isNoPlasmidChallenge() {
-        return game.global.race['no_plasmid'] > 0;
-    }
-
-    function isLowPlasmidCount() {
-        return resources.Plasmid.currentQuantity < 500 || isNoPlasmidChallenge()
-    }
-
     var numberSuffix = {
         K: 1000,
         M: 1000000,
@@ -13746,18 +13637,6 @@
     }
 
     /**
-     * @param {number} buyValue
-     * @return {boolean}
-     */
-    function wouldBreakMoneyFloor(buyValue) {
-        if (buyValue <= 0) {
-            return false;
-        }
-
-        return resources.Money.currentQuantity - buyValue < state.minimumMoneyAllowed;
-    }
-
-    /**
      * @return {string}
      */
     function getRaceId() {
@@ -13767,9 +13646,9 @@
             return "";
         }
 
-        let index = findArrayIndex(raceAchievementList, "name", raceNameNode.textContent);
+        let race = raceAchievementList.find(race => race.name === raceNameNode.textContent);
 
-        if (index === -1) {
+        if (!race) {
             if (game !== null) {
                 return game.global.race.species;
             } else {
@@ -13777,7 +13656,7 @@
             }
         }
 
-        return raceAchievementList[index].id;
+        return race.id;
     }
 
     function isHunterRace() {
@@ -13826,21 +13705,6 @@
         for (let i = 0; i < poppers.length; i++) {
             poppers[i].remove();
         }
-    }
-
-    /**
-     * @param {any[]} array
-     * @param {string} propertyName
-     * @param {any} propertyValue
-     */
-    function findArrayIndex(array, propertyName, propertyValue) {
-        for (let i = 0; i < array.length; i++) {
-            if (array[i][propertyName] === propertyValue) {
-                return i;
-            }
-        }
-
-        return -1;
     }
 
     function modifierKeyPressed() {
