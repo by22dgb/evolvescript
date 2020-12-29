@@ -6543,6 +6543,7 @@
         settings.buildingWeightingMADUseless = 0;
         settings.buildingWeightingCrateUseless = 0.;
         settings.buildingWeightingMissingFuel = 10;
+        settings.buildingWeightingNonOperatingCity = 1;
         settings.buildingWeightingNonOperating = 0;
         settings.buildingWeightingTriggerConflict = 0;
         settings.buildingWeightingMissingSupply = 0;
@@ -7364,6 +7365,7 @@
         addSetting("buildingWeightingMADUseless", 0);
         addSetting("buildingWeightingCrateUseless", 0);
         addSetting("buildingWeightingMissingFuel", 10);
+        addSetting("buildingWeightingNonOperatingCity", 1);
         addSetting("buildingWeightingNonOperating", 0);
         addSetting("buildingWeightingTriggerConflict", 0);
         addSetting("buildingWeightingMissingSupply", 0);
@@ -10288,7 +10290,12 @@
               () => settings.buildingWeightingMissingSupply
           ],[
               () => true,
-              (building) => building.stateOffCount > 0,
+              (building) => building._tab === "city" && building.stateOffCount > 0,
+              () => "Still have some non operating buildings",
+              () => settings.buildingWeightingNonOperatingCity
+          ],[
+              () => true,
+              (building) => building._tab !== "city" && building.stateOffCount > 0,
               () => "Still have some non operating buildings",
               () => settings.buildingWeightingNonOperating
           ],[
@@ -10744,7 +10751,7 @@
     }
 
     function buildImportExport() {
-        let importExportNode = $(".importExport");
+        let importExportNode = $(".importExport").last();
         if (importExportNode === null) {
             return;
         }
@@ -12716,7 +12723,8 @@
         addWeighingRule(tableBodyNode, "Not housing or barrack", "MAD presige enabled, and affordable", "buildingWeightingMADUseless");
         addWeighingRule(tableBodyNode, "Freight Yard, Container Port", "Have unused crates or containers", "buildingWeightingCrateUseless");
         addWeighingRule(tableBodyNode, "All fuel depots", "Missing Oil or Helium for mission", "buildingWeightingMissingFuel");
-        addWeighingRule(tableBodyNode, "Building with state", "Some instances of this building are not working", "buildingWeightingNonOperating");
+        addWeighingRule(tableBodyNode, "Building with state (city)", "Some instances of this building are not working", "buildingWeightingNonOperatingCity");
+        addWeighingRule(tableBodyNode, "Building with state (space)", "Some instances of this building are not working", "buildingWeightingNonOperating");
         addWeighingRule(tableBodyNode, "Any", "Conflicts for some resource with active trigger", "buildingWeightingTriggerConflict");
         addWeighingRule(tableBodyNode, "Any", "Missing consumables or support to operate", "buildingWeightingMissingSupply");
 
