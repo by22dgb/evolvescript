@@ -10307,17 +10307,17 @@
               () => "New building",
               () => settings.buildingWeightingNew
           ],[
-              () => resources.Power.currentQuantity < 1,
+              () => resources.Power.isUnlocked() && resources.Power.currentQuantity < 1,
               (building) => building.powered < 0,
               () => "Need more energy",
               () => settings.buildingWeightingNeedfulPowerPlant
           ],[
-              () => resources.Power.currentQuantity > 1,
+              () => resources.Power.isUnlocked() && resources.Power.currentQuantity > 1,
               (building) => building.powered < 0,
               () => "No need for more energy",
               () => settings.buildingWeightingUselessPowerPlant
           ],[
-              () => resources.Power.currentQuantity < 1,
+              () => resources.Power.isUnlocked() && resources.Power.currentQuantity < 1,
               (building) => building.powered > resources.Power.currentQuantity,
               () => "Not enough energy",
               () => settings.buildingWeightingUnderpowered
