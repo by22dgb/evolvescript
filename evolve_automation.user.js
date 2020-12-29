@@ -7737,6 +7737,12 @@
         }
     }
 
+    function isPowerSubdued(power){
+        return game.global.civic.foreign[`gov${power}`].occ ||
+               game.global.civic.foreign[`gov${power}`].buy ||
+               game.global.civic.foreign[`gov${power}`].anx;
+    }
+
     //#region Auto Battle
 
     function autoBattle() {
@@ -7768,15 +7774,26 @@
             state.log.logSuccess(loggingTypes.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`);
         }
 
-        // Now that we've hired mercenaries we can continue to check the rest of the autofight logic
-        if (!state.warManager.isUnlocked()) { return; }
-
         // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
         if (state.goal === "PreparingMAD") {
             state.warManager.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
             return;
         }
 
+        // Now that we've hired mercenaries we can continue to check the rest of the autofight logic
+        if (!state.warManager.isUnlocked()) { return; }
+/*
+        let bestTarget = 0;
+        let powers = [];
+        for (let i = 0; i < 3; i++){
+            if (getGovPower(i) > settings.foreignPowerRequired) {
+                powers[i] = "superior";
+            } else {
+                powers[i] = "inferior";
+                bestTarget = i;
+            }
+        }
+*/
         let govOccupyIndex = -1;
         let govAttackIndex = -1;
         let govUnoccupyIndex = -1;
@@ -13699,6 +13716,43 @@
         return namePart1.replace("%0", game.global.civic.foreign[govProp].name.s1) + " (" + (govIndex + 1) + ")";
     }
 
+    function getGovPower(govIndex) {
+        if (game.global.civic.foreign[govProp].spy > 1) {
+            // With 2+ spies we know exact number
+            return game.global.civic.foreign[govProp].mil;
+        } else if (game.global.civic.foreign[govProp].spy === 1) { // Breakpoints taken from foreignGov() -> military(m,i)
+            // With 1 spy we know aproximate value, let's assume worst in given range
+            let mil = game.global.civic.foreign[govProp].mil;
+            if (mil < 50) {
+                return 50;
+            }
+            if (mil < 75) {
+                return 75;
+            }
+            if (mil > 200) {
+                return 300;
+            }
+            if (mil > 160) {
+                return 200;
+            }
+            if (mil > 125) {
+                return 160;
+            }
+            return 125
+        } else { // Breakpoints taken from clearStates()
+            // No information, assume worst for certain gov
+            if (govIndex === 0) {
+                return 125;
+            }
+            if (govIndex === 1) {
+                return 175;
+            }
+            if (govIndex === 2) {
+                return 300;
+            }
+        }
+    }
+
     function removePoppers() {
         let poppers = document.querySelectorAll('[id^="pop"]'); // popspace_ and // popspc
 
@@ -13795,10 +13849,13 @@
         return a_level;
     }
 
-    function getBuyRate(res) { // none, duplicated multiple times all around code
+    function getBuyRate(res) { // function fastLoop() -> trade routes
         let rate = game.tradeRatio[res];
         if (game.global.race['persuasive']){
             rate *= 1 + (game.global.race['persuasive'] / 100);
+        }
+        if (game.global.race['merchant']){
+            rate *= 1 + (traits.merchant.vars[1] / 100);
         }
         if (game.global.genes['trader']){
             let mastery = parseFloat(game.breakdown.p.Global.Mastery || 0);
@@ -13807,16 +13864,16 @@
         return rate;
     }
 
-    function govPrice(gov){ // function govPrice(gov)
-        let price = game.global.civic.foreign[gov].eco * 15384;
-        price *= 1 + game.global.civic.foreign[gov].hstl * 1.6 / 100;
-        price *= 1 - game.global.civic.foreign[gov].unrest * 0.25 / 100;
+    function govPrice(govIndex){ // function govPrice(gov)
+        let price = game.global.civic.foreign[govIndex].eco * 15384;
+        price *= 1 + game.global.civic.foreign[govIndex].hstl * 1.6 / 100;
+        price *= 1 - game.global.civic.foreign[govIndex].unrest * 0.25 / 100;
         return +price.toFixed(0);
     }
 
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
     $(window).on('blur', function(e) {
-        if (game !== undefined){
+        if (game !== undefined && game.keyMultiplier() > 1){
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x10}));
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x25}));
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x100}));
