@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.29
+// @version      3.2.1.30
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -22,17 +22,15 @@
 //   Remade autoBuild, all buildings now can have individual weights, plus dynamic coefficients to weights(like, increasing weights of power plants when you need more energy), plus additional safe-guards checking for resource usage, available support, and such. You can fine-tune script to build what you actually need, and save resources for further constructions.
 //   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
 //   Remade autoCraftsmen, it assigns all crafters to same resource at once, to utilize apprentice bonus, and rotates them between resources aiming to desired ratio of stored resources
-//   Slightly tuned pre-mad autoCraft, so it won't use resources such greedy, as it used to do. You'll still have resources for everything you need, you just won't stuck with hounders of thousands of plywood... and no lumber to build university.
+//   Slightly tuned pre-mad autoCraft, so it won't use resources such greedy, as it used to do. You'll still have resources for everything you need, you just won't stuck with hundreds of thousands of plywood... and no lumber to build university.
 //   Remade autoStorage, it calculates required storages, based on available techs and buildings, and assign storages to make them all affordable. Weighting option is gone as it not needed anymore, just rearrange list to change filling order when storages are scarce. Max crate\containers for individual reources still exist, and respected by adjustments.
 //   Required amount of resources also taken in account by autoCraftsmen(they can prioritize what's actually needed), and ARPA got an option("-1" craftables to keep) to keep required amount of craftables, instead of some static number
 //   Pre-mad storage limit doesn't completely prevents constructing crates and containers, it just make it work above certain ratio(80%+ steel storage for containers, and more-than-you-need-for-next-library for crates)
-//   You can enable buying and selling of same resource at same time, depends on whether you're lacking something, or have a surplus. Works both with batch sell, and routes.
-//   Trigger can import missing resources via routes. When trigger requirements are met script will set trade routes for missing resources. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction - whatever you need.
-//   Restored "researched" trigger condition, and old "unlocked" now actually works correctly.
-//   Added "built" trigger condition, and "build" action, to build exact amount of buildings at exact moment. Triggers ignore all autoBuild options, weighting, etc. It's designed to override regular settings. Like, when you'll want to have few belt stations as soon as possible, to expand elerium storage, and research elerium theory, even if you don't need provided Belt Support at that moment(normally script tries to avoid building useless buildings), and such cases.
+//   You can enable buying and selling of same resource at same time, depends on whether you're lacking something, or have a surplus. Works both with regular trade, and routes.
+//   Expanded triggers, they got "researched" and "built" conditions, and "build" action. And an option to import missing resources required to perform chosen action. Once condition is met and action is available script will set trade routes for what it missing. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction, and same for buildings - whatever you need.
+//   Reworked fighting\spying. At first glance it have less configurable options now, but range of possible outcomes is wider, and route to them is more optimal. With default settings it'll sabotage, plunder, and then annex all foreign powers, gradually moving from top to bottom of the list, as they becomes weak enough, and then occupy last city to finish unification. By tweaking settings it's possible to configure script to get any unification achievment(annex\purchase\occupy\reject, with or without pacifism).
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
-//   autoAchievements now check and pick conditional races.
-//   Spies can annex\purchase foreign powers
+//   autoAchievements now check and pick conditional races, adding them to the pool of options. With mass extinction perk such conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one.
 //   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
 //   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)
 //
@@ -2822,28 +2820,27 @@
 
     var espionageTypes =
     {
-        none: { id: "none", name: function () { return "None"; } },
-        round_robin: { id: "rrobin", name: function () { return "Round Robin"; } },
-        influence: { id: "influence", name: function () { return game.loc("civics_spy_influence"); } },
-        sabotage: { id: "sabotage", name: function () { return game.loc("civics_spy_sabotage"); } },
-        incite: { id: "incite", name: function () { return game.loc("civics_spy_incite"); } },
-        annex: { id: "annex", name: function () { return game.loc("civics_spy_annex"); } },
-        purchase: { id: "purchase", name: function () { return game.loc("civics_spy_purchase"); } },
+        Influence: { id: "influence" },
+        Sabotage: { id: "sabotage" },
+        Incite: { id: "incite" },
+        Annex: { id: "annex" },
+        Purchase: { id: "purchase" },
+        Occupy: { id: "occupy" },
     };
 
     class SpyManager {
         constructor() {
             this._espionageToPerform = null;
-            this._missions = [ "influence", "sabotage", "incite" ];
-            this._roundRobinIndex = [ this._missions.length - 1, this._missions.length - 1, this._missions.length - 1 ];
 
             /** @type {number[]} */
             this._lastAttackLoop = [ -1000, -1000, -1000 ]; // Last loop counter than we attacked. Don't want to run influence when we are attacking foreign powers
         }
 
         isUnlocked() {
+            if (!game.global.tech['spy']) { return false; }
+
             let node = document.getElementById("foreign");
-            if (!game.global.tech['spy'] || node === null || node.style.display === "none") { return false; }
+            if (node === null || node.style.display === "none") { return false; }
 
             let foreignVue = getVueById("foreign");
             if (foreignVue === undefined || !foreignVue.vis()) { return false; }
@@ -2864,7 +2861,6 @@
          */
         performEspionage(govIndex, espionageId) {
             if (!this.isUnlocked()) { return; }
-            if (espionageId === espionageTypes.none.id) { return; }
             if (state.windowManager.isOpen()) { return; } // Don't try anything if a window is already open
 
             let optionsSpan = document.querySelector(`#gov${govIndex} div span:nth-child(3)`);
@@ -2874,43 +2870,22 @@
             let optionsNode = document.querySelector(`#gov${govIndex} div span:nth-child(3) button`);
             if (optionsNode === null || optionsNode.getAttribute("disabled") === "disabled") { return; }
 
-            if (espionageId === espionageTypes.round_robin.id) {
-                // Round Robin our spy operations. Increment the current spy operation and check if it is useful to perform
-                // (It is useful if it will have any effect. If it is already at maximum effect then there is no point in performing it)
-                // Keep going until we find a useful operation or we don't have any useful operations to perform
-                let missionIndex = this._roundRobinIndex[govIndex];
-
-                // We're NOT looping througn the missions here. We are just looping through the number of missions that there are.
-                // Round Robin is keeping track of the current mission itself in this._govMissionIndex[]
-                for (let i = 0; i < this._missions.length; i++) {
-                    missionIndex++;
-                    if (missionIndex > this._missions.length - 1) { missionIndex = 0; }
-
-                    // If we've attacked this foreign power within the last 10 minutes then don't run influence
-                    if (this._missions[missionIndex] === espionageTypes.influence.id) {
-                        if (state.loopCounter - this._lastAttackLoop[govIndex] < 600) {
-                            continue;
-                        }
-                    }
-
-                    if (this.isEspionageUseful(govIndex, this._missions[missionIndex])) {
-                        this._espionageToPerform = this._missions[missionIndex];
-                        this._roundRobinIndex[govIndex] = missionIndex;
-                        break;
-                    }
+            if (espionageId === espionageTypes.Occupy.id) {
+                if (this.isEspionageUseful(govIndex, espionageTypes.Sabotage.id)) {
+                    this._espionageToPerform = espionageTypes.Sabotage.id;
                 }
-            } else if (espionageId === espionageTypes.annex.id || espionageId === espionageTypes.purchase.id) {
+            } else if (espionageId === espionageTypes.Annex.id || espionageId === espionageTypes.Purchase.id) {
                 // Occupation routine
                 if (this.isEspionageUseful(govIndex, espionageId)) {
                     // If we can annex\purchase right now - do it
                     this._espionageToPerform = espionageId;
-                } else if (this.isEspionageUseful(govIndex, espionageTypes.influence.id) &&
+                } else if (this.isEspionageUseful(govIndex, espionageTypes.Influence.id) &&
                            state.loopCounter - this._lastAttackLoop[govIndex] >= 600) {
                     // Influence goes second, as it always have clear indication when HSTL already at zero
-                    this._espionageToPerform = espionageTypes.influence.id;
-                } else if (this.isEspionageUseful(govIndex, espionageTypes.incite.id)) {
+                    this._espionageToPerform = espionageTypes.Influence.id;
+                } else if (this.isEspionageUseful(govIndex, espionageTypes.Incite.id)) {
                     // And now incite
-                    this._espionageToPerform = espionageTypes.incite.id;
+                    this._espionageToPerform = espionageTypes.Incite.id;
                 }
             } else if (this.isEspionageUseful(govIndex, espionageId)) {
                 // User specified spy operation. If it is not already at miximum effect then proceed with it.
@@ -2931,7 +2906,11 @@
         isEspionageUseful(govIndex, espionageId) {
             let govProp = "gov" + govIndex;
 
-            if (espionageId === espionageTypes.influence.id) {
+            if (espionageId === espionageTypes.Occupy.id) {
+                return this.isEspionageUseful(govIndex, espionageTypes.Sabotage.id);
+            }
+
+            if (espionageId === espionageTypes.Influence.id) {
                 // MINIMUM hstl (relation) is 0 so if we are already at 0 then don't perform this operation
                 if (game.global.civic.foreign[govProp].spy < 1 && game.global.civic.foreign[govProp].hstl > 10) {
                     // With less than one spy we can only see general relations. If relations are worse than Good then operation is useful
@@ -2943,7 +2922,7 @@
                 }
             }
 
-            if (espionageId === espionageTypes.sabotage.id) {
+            if (espionageId === espionageTypes.Sabotage.id) {
                 // MINIMUM mil (military) is 50 so if we are already at 50 then don't perform this operation
                 if (game.global.civic.foreign[govProp].spy < 1) {
                     // With less than one spy we don't have any indication of military strength so return that operation is useful
@@ -2958,7 +2937,7 @@
                 }
             }
 
-            if (espionageId === espionageTypes.incite.id) {
+            if (espionageId === espionageTypes.Incite.id) {
                 // MAXIMUM unrest (discontent) is 100 so if we are already at 100 then don't perform this operation
                 // Discontent requires at least 4 spies to see the value
                 if (game.global.civic.foreign[govProp].spy < 3) {
@@ -2974,7 +2953,7 @@
                 }
             }
 
-            if (espionageId === espionageTypes.annex.id) {
+            if (espionageId === espionageTypes.Annex.id) {
                 // Annex option shows up once hstl <= 50 && unrest >= 50
                 // And we're also checking morale, to make sure button not just showed, but can actually be clicked
                 if (game.global.civic.foreign[govProp].hstl <= 50 && game.global.civic.foreign[govProp].unrest >= 50 && game.global.city.morale.current >= (200 + game.global.civic.foreign[govProp].hstl - game.global.civic.foreign[govProp].unrest)){
@@ -2982,7 +2961,7 @@
                 }
             }
 
-            if (espionageId === espionageTypes.purchase.id) {
+            if (espionageId === espionageTypes.Purchase.id) {
                 // Check if we have enough spies and money
                 if (game.global.civic.foreign[govProp].spy >= 3 && resources.Money.currentQuantity >= govPrice(govProp)){
                     return true;
@@ -3522,10 +3501,9 @@
         /**
          * @param {number} govOccupyIndex
          * @param {number} govAttackIndex
-         * @param {number} govUnoccupyIndex
          * @return {boolean}
          */
-        switchToBestAttackType(govOccupyIndex, govAttackIndex, govUnoccupyIndex) {
+        switchToBestAttackType(govOccupyIndex, govAttackIndex) {
             let attackRating = game.armyRating(this.currentSoldiers, this._textArmy)
             this.selectedGovAttackIndex = -1;
 
@@ -3549,9 +3527,6 @@
                     maxCampaignIndex = this.campaignList.length - 2; // Limit attack to assault so that we don't occupy with a siege
                     this.selectedGovAttackIndex = govAttackIndex;
                     //console.log("setting gov index to govAttackIndex")
-                } else if (govUnoccupyIndex >= 0) {
-                    this.selectedGovAttackIndex = govUnoccupyIndex;
-                    //console.log("setting gov index to govUnoccupyIndex")
                 }
             }
 
@@ -6246,29 +6221,20 @@
     }
 
     function resetWarSettings() {
-        settings.foreignSpyManage = true;
         settings.foreignAttackLivingSoldiersPercent = 100;
         settings.foreignAttackHealthySoldiersPercent = 100;
         settings.foreignHireMercMoneyStoragePercent = 90;
         settings.foreignHireMercCostLowerThan = 50000;
 
-        settings.foreignAttack0 = true;
-        settings.foreignOccupy0 = true;
-        settings.foreignSpy0 = true;
-        settings.foreignSpyMax0 = 3;
-        settings.foreignSpyOp0 = "rrobin";
-
-        settings.foreignAttack1 = true;
-        settings.foreignOccupy1 = true;
-        settings.foreignSpy1 = true;
-        settings.foreignSpyMax1 = 3;
-        settings.foreignSpyOp1 = "rrobin";
-
-        settings.foreignAttack2 = true;
-        settings.foreignOccupy2 = true;
-        settings.foreignSpy2 = true;
-        settings.foreignSpyMax2 = 3;
-        settings.foreignSpyOp2 = "rrobin";
+        settings.foreignPacifist = false;
+        settings.foreignUnification = true;
+        settings.foreignForceSabotage = true;
+        settings.foreignOccupyLast = true;
+        settings.foreignTrainSpy = true;
+        settings.foreignSpyMax = 2;
+        settings.foreignPowerRequired = 75;
+        settings.foreignPolicyInferior = "Annex";
+        settings.foreignPolicySuperior = "Sabotage";
     }
 
     function resetWarState() {
@@ -6356,7 +6322,6 @@
     function resetResearchSettings() {
         settings.userResearchTheology_1 = "auto";
         settings.userResearchTheology_2 = "auto";
-        settings.userResearchUnification = true;
     }
 
     function resetMarketState() {
@@ -6477,7 +6442,7 @@
     }
 
     function resetJobSettings() {
-        settings.jobSetDefault = false;
+        settings.jobSetDefault = true;
         settings.jobLumberWeighting = 50;
         settings.jobQuarryWeighting = 50;
         settings.jobScavengerWeighting = 50;
@@ -6543,7 +6508,7 @@
         settings.buildingWeightingMADUseless = 0;
         settings.buildingWeightingCrateUseless = 0.;
         settings.buildingWeightingMissingFuel = 10;
-        settings.buildingWeightingNonOperatingCity = 1;
+        settings.buildingWeightingNonOperatingCity = 0.2;
         settings.buildingWeightingNonOperating = 0;
         settings.buildingWeightingTriggerConflict = 0;
         settings.buildingWeightingMissingSupply = 0;
@@ -7224,7 +7189,7 @@
         addSetting("productionMoneyIfOnly", true);
         addSetting("productionPrioritizeDemanded", true);
 
-        addSetting("jobSetDefault", false);
+        addSetting("jobSetDefault", true);
         addSetting("jobLumberWeighting", 50);
         addSetting("jobQuarryWeighting", 50);
         addSetting("jobScavengerWeighting", 50);
@@ -7290,29 +7255,20 @@
         addSetting("govFinal", governmentTypes.technocracy.id);
         addSetting("govSpace", governmentTypes.corpocracy.id);
 
-        addSetting("foreignSpyManage", true);
         addSetting("foreignAttackLivingSoldiersPercent", 100);
         addSetting("foreignAttackHealthySoldiersPercent", 100);
         addSetting("foreignHireMercMoneyStoragePercent", 90);
         addSetting("foreignHireMercCostLowerThan", 50000);
 
-        addSetting("foreignAttack0", true);
-        addSetting("foreignOccupy0", true);
-        addSetting("foreignSpy0", true);
-        addSetting("foreignSpyMax0", 3);
-        addSetting("foreignSpyOp0", "rrobin");
-
-        addSetting("foreignAttack1", true);
-        addSetting("foreignOccupy1", true);
-        addSetting("foreignSpy1", true);
-        addSetting("foreignSpyMax1", 3);
-        addSetting("foreignSpyOp1", "rrobin");
-
-        addSetting("foreignAttack2", true);
-        addSetting("foreignOccupy2", true);
-        addSetting("foreignSpy2", true);
-        addSetting("foreignSpyMax2", 3);
-        addSetting("foreignSpyOp2", "rrobin");
+        addSetting("foreignPacifist", false);
+        addSetting("foreignUnification", true);
+        addSetting("foreignForceSabotage", true);
+        addSetting("foreignOccupyLast", true);
+        addSetting("foreignTrainSpy", true);
+        addSetting("foreignSpyMax", 2);
+        addSetting("foreignPowerRequired", 75);
+        addSetting("foreignPolicyInferior", "Annex");
+        addSetting("foreignPolicySuperior", "Sabotage");
 
         addSetting("hellTurnOffLogMessages", true);
         addSetting("hellHandlePatrolCount", true);
@@ -7350,7 +7306,6 @@
 
         addSetting("userResearchTheology_1", "auto");
         addSetting("userResearchTheology_2", "auto");
-        addSetting("userResearchUnification", true);
 
         addSetting("buildingBuildIfStorageFull", false);
         addSetting("buildingAlwaysClick", false);
@@ -7365,7 +7320,7 @@
         addSetting("buildingWeightingMADUseless", 0);
         addSetting("buildingWeightingCrateUseless", 0);
         addSetting("buildingWeightingMissingFuel", 10);
-        addSetting("buildingWeightingNonOperatingCity", 1);
+        addSetting("buildingWeightingNonOperatingCity", 0.2);
         addSetting("buildingWeightingNonOperating", 0);
         addSetting("buildingWeightingTriggerConflict", 0);
         addSetting("buildingWeightingMissingSupply", 0);
@@ -7691,58 +7646,86 @@
     //#endregion Manage Government
 
     function manageSpies() {
-        if (!settings.foreignSpyManage) { return; }
-
-        let foreignVue = getVueById("foreign");
-
-        if (foreignVue === undefined) { return; }
-        if (!game.global.tech['spy'] || !foreignVue.vis()) { return; }
-
-        buySpyWithMyLittleEye(foreignVue, 0);
-        buySpyWithMyLittleEye(foreignVue, 1);
-        buySpyWithMyLittleEye(foreignVue, 2);
-
         if (!state.spyManager.isUnlocked()) { return; }
 
-        performEspionageOperation(0);
-        performEspionageOperation(1);
-        performEspionageOperation(2);
-    }
-
-    /**
-     * @param {{ spy_disabled: (arg0: any) => any; spy: (arg0: any) => void; }} foreignVue
-     * @param {number} govIndex
-     */
-    function buySpyWithMyLittleEye(foreignVue, govIndex) {
-        let govProp = "gov" + govIndex;
-        if (!settings[`foreignSpy${govIndex}`]) { return; } // Setting not enabled
-        if (game.global.civic.foreign[govProp].occ) { return; } // Government is occupied
-        if (foreignVue.spy_disabled(govIndex)) { return; } // We can't train a spy as the button is disabled (cost or already training)
-
-        // If we haven't reached the max number of spies allowed
-        if (settings[`foreignSpyMax${govIndex}`] < 0 || (game.global.civic.foreign[govProp].spy < settings[`foreignSpyMax${govIndex}`])) {
-            state.log.logSuccess(loggingTypes.spying, `Training a spy to send against ${getGovName(govIndex)}.`);
-            foreignVue.spy(govIndex);
+        // Find out Inferiors, Superiors, and current target
+        let rank = [];
+        let bestTarget = 0;
+        for (let i = 0; i < 3; i++){
+            if (getGovPower(i) <= settings.foreignPowerRequired) {
+                rank[i] = "Inferior";
+                bestTarget = i;
+            } else {
+                rank[i] = "Superior";
+            }
         }
-    }
-
-    /**
-     * @param {number} govIndex
-     */
-    function performEspionageOperation(govIndex) {
-        let govProp = "gov" + govIndex;
-        if (game.global.tech['spy'] < 2) { return; } // Is espionage unlocked?
-        if (game.global.civic.foreign[govProp].occ) { return; }
-
-        if (settings[`foreignSpyOp${govIndex}`] !== espionageTypes.none.id && game.global.civic.foreign[govProp].spy > 0) {
-            state.spyManager.performEspionage(govIndex, settings[`foreignSpyOp${govIndex}`]);
+        if (settings.foreignPacifist) {
+            bestTarget = -1;
         }
-    }
 
-    function isPowerSubdued(power){
-        return game.global.civic.foreign[`gov${power}`].occ ||
-               game.global.civic.foreign[`gov${power}`].buy ||
-               game.global.civic.foreign[`gov${power}`].anx;
+        // Train spies
+        if (settings.foreignTrainSpy) {
+            let foreignVue = getVueById("foreign");
+            for (let i = 0; i < 3; i++){
+                let gov = game.global.civic.foreign[`gov${i}`]
+
+                // Government is subdued
+                if (gov.occ || gov.anx || gov.buy) {
+                    continue;
+                }
+                // We can't train a spy as the button is disabled (cost or already training)
+                if (foreignVue.spy_disabled(i)) {
+                    continue;
+                }
+
+                let spiesRequired = settings[`foreignSpyMax`];
+                if (spiesRequired < 0) {
+                    spiesRequired = Math.MAX_SAFE_INTEGER;
+                }
+                // We need 3 spies to purchase
+                if (settings[`foreignPolicy${rank[i]}`] === "Purchase" && spiesRequired < 3) {
+                    spiesRequired = 3;
+                }
+
+                // We reached the max number of spies allowed
+                if (gov.spy >= spiesRequired){
+                    continue;
+                }
+
+                state.log.logSuccess(loggingTypes.spying, `Training a spy to send against ${getGovName(i)}.`);
+                foreignVue.spy(i);
+            }
+        }
+
+        // We can't use out spies yet
+        if (game.global.tech['spy'] < 2) {
+            return;
+        }
+
+        for (let i = 0; i < 3; i++){
+            // Do we have any spies?
+            let gov = game.global.civic.foreign[`gov${i}`];
+            if (gov.spy < 1) {
+                continue;
+            }
+
+            let espionageMission = espionageTypes[settings[`foreignPolicy${rank[i]}`]];
+            if (espionageMission) {
+                // Force sabotage, if needed, and we know it's useful
+                if (i === bestTarget && settings.foreignForceSabotage && gov.spy > 1 && gov.mil > 50) {
+                    espionageMission = espionageTypes.Sabotage;
+                }
+
+                // Unoccupy power it's subdued, but we want something different
+                if ((gov.anx && espionageMission !== espionageTypes.Annex) ||
+                    (gov.buy && espionageMission !== espionageTypes.Purchase) ||
+                    (gov.occ && espionageMission !== espionageTypes.Occupy && (i !== bestTarget || !settings.foreignOccupyLast))){
+                    getVueById("garrison").campaign(i);
+                } else if (!gov.anx && !gov.buy && !gov.occ) {
+                    state.spyManager.performEspionage(i, espionageMission.id);
+                }
+            }
+        }
     }
 
     //#region Auto Battle
@@ -7784,66 +7767,64 @@
 
         // Now that we've hired mercenaries we can continue to check the rest of the autofight logic
         if (!state.warManager.isUnlocked()) { return; }
-/*
+
+        // Stop here, if we don't want to attack anything
+        if (settings.foreignPacifist) { return ; }
+
+        // If we are not fully ready then return
+        if (state.warManager.maxCityGarrison <= 0 ||
+            state.warManager.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * state.warManager.maxCityGarrison ||
+            state.warManager.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * state.warManager.maxCityGarrison) {
+            return;
+        }
+
+        // Find out Inferiors, Superiors, and current target
+        let rank = [];
         let bestTarget = 0;
-        let powers = [];
         for (let i = 0; i < 3; i++){
-            if (getGovPower(i) > settings.foreignPowerRequired) {
-                powers[i] = "superior";
-            } else {
-                powers[i] = "inferior";
+            if (getGovPower(i) <= settings.foreignPowerRequired) {
+                rank[i] = "Inferior";
                 bestTarget = i;
+            } else {
+                rank[i] = "Superior";
             }
         }
-*/
+
         let govOccupyIndex = -1;
-        let govAttackIndex = -1;
-        let govUnoccupyIndex = -1;
 
-        // Check if there is an unoccupied foreign power that we can occupy
-        if (settings.foreignOccupy0 && !game.global.civic.foreign[`gov0`].occ) {
-            govOccupyIndex = 0;
-        } else if (settings.foreignOccupy1 && !game.global.civic.foreign[`gov1`].occ) {
-            govOccupyIndex = 1;
-        } else if (settings.foreignOccupy2 && !game.global.civic.foreign[`gov2`].occ) {
-            govOccupyIndex = 2;
+        // Occupy, if needed
+        for (let i = 0; i < 3; i++){
+            if (settings[`foreignPolicy${rank[i]}`] === "Occupy" && !game.global.civic.foreign[`gov${i}`].occ) {
+                govOccupyIndex = i;
+            }
         }
 
-        // Find someone that we are allowed to attack. Only check non-occupied foreign powers
-        // prioritizes powers in order 3 > 2 > 1 as long as powers 2 and 3 have been sabotaged to 50 (by pokemonfreak97)
-        if (settings.foreignAttack2 && !game.global.civic.foreign[`gov2`].occ && game.global.civic.foreign[`gov2`].mil == 50) {
-            govAttackIndex = 2;
-        } else if (settings.foreignAttack1 && !game.global.civic.foreign[`gov1`].occ && game.global.civic.foreign[`gov1`].mil == 50) {
-            govAttackIndex = 1;
-        } else if (settings.foreignAttack0 && !game.global.civic.foreign[`gov0`].occ) {
-            govAttackIndex = 0;
-        } else if (settings.foreignAttack1 && !game.global.civic.foreign[`gov1`].occ) {
-            govAttackIndex = 1;
-        } else if (settings.foreignAttack2 && !game.global.civic.foreign[`gov2`].occ) {
-            govAttackIndex = 2;
+        // Check if we want and can unify
+        if (settings.foreignUnification && isResearchUnlocked("unification") && bestTarget !== govOccupyIndex){
+            let subdued = 0;
+            for (let i = 0; i < 3; i++){
+                if (bestTarget !== i &&
+                   (game.global.civic.foreign[`gov${i}`].anx ||
+                    game.global.civic.foreign[`gov${i}`].buy ||
+                    game.global.civic.foreign[`gov${i}`].occ)) {
+                    subdued++;
+                }
+            }
+            if (subdued == 2) {
+                if (settings.foreignOccupyLast) {
+                    // Occupy last force
+                    govOccupyIndex = bestTarget;
+                } else if (settings[`foreignPolicy${rank[bestTarget]}`] === "Annex" || settings[`foreignPolicy${rank[bestTarget]}`] === "Purchase") {
+                    // We want to Annex or Purchase last one, stop attacking so we can influence it
+                    bestTarget = -1;
+                }
+            }
         }
-
-        // Check if there is an already occupied foreign power that we can unoccupy, then attack to occupy again
-        if (settings.foreignOccupy2 && settings.foreignAttack2 && game.global.civic.foreign[`gov2`].occ) {
-            govUnoccupyIndex = 2;
-        } else if (settings.foreignOccupy1 && settings.foreignAttack1 && game.global.civic.foreign[`gov1`].occ) {
-            govUnoccupyIndex = 1;
-        } else if (settings.foreignOccupy0 && settings.foreignAttack0 && game.global.civic.foreign[`gov0`].occ) {
-            govUnoccupyIndex = 0;
-        }
-
-        // If there is no one to attack or occupy or we are not fully ready then return
-        if (govOccupyIndex === -1 && govAttackIndex === -1 && govUnoccupyIndex === -1) { return; }
-        if (state.warManager.maxCityGarrison <= 0
-            || state.warManager.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * state.warManager.maxCityGarrison
-            || state.warManager.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * state.warManager.maxCityGarrison) {
-                return;
-           }
 
         // We've got the soldiers, they're not wounded and they're ready to go, so charge!
         // switchToBestAttackType returns true when the best attack type is set
         // If we are allowed to occupy a foreign power then we can perform attacks up to seige; otherwise we can only go up to assault so that we don't occupy them
-        if (!state.warManager.switchToBestAttackType(govOccupyIndex, govAttackIndex, govUnoccupyIndex)) { return; }
+        if (!state.warManager.switchToBestAttackType(govOccupyIndex, bestTarget)) { return; }
         if (state.warManager.selectedGovAttackIndex === -1) { return; }
 
         // Best attack type is set. Now adjust our battalion size to fit between our campaign attack rating ranges
@@ -7869,10 +7850,8 @@
             // Log the interaction
             if (govOccupyIndex >= 0 && state.warManager.campaignList[game.global.civic.garrison.tactic].id === "Siege") {
                 state.log.logSuccess(loggingTypes.attack, `Launching ${state.warManager.campaignList[game.global.civic.garrison.tactic].name} campaign for occupation against ${getGovName(govOccupyIndex)}.`)
-            } else if (govAttackIndex >= 0) {
-                state.log.logSuccess(loggingTypes.attack, `Launching ${state.warManager.campaignList[game.global.civic.garrison.tactic].name} campaign against ${getGovName(govAttackIndex)}.`)
-            } else {
-                state.log.logSuccess(loggingTypes.attack, `Unoccupying ${getGovName(govUnoccupyIndex)}.`)
+            } else if (bestTarget >= 0) {
+                state.log.logSuccess(loggingTypes.attack, `Launching ${state.warManager.campaignList[game.global.civic.garrison.tactic].name} campaign against ${getGovName(bestTarget)}.`)
             }
 
             state.warManager.launchCampaign(state.warManager.selectedGovAttackIndex);
@@ -8052,6 +8031,8 @@
                     return true;
                 }
             });
+
+            //TODO: Prioritize craftables for triggers
 
             // Try to filter out excess resources, if we're prioritizing demanded
             if (settings.productionPrioritizeDemanded) {
@@ -8852,29 +8833,17 @@
     function autoSeederPrestige() {
         if (!isBioseederPrestigeAvailable()) { return; } // ship completed and probe requirements met
 
-        if (state.goal === "Standard") {
-            if (state.spaceBuildings.GasSpaceDockPrepForLaunch.isUnlocked()) {
-                state.spaceBuildings.GasSpaceDockPrepForLaunch.click(1);
-                state.goal = "ReadyLaunch";
-                return;
-            } else {
-                // Open the modal to update the options
-                state.spaceBuildings.GasSpaceDock.cacheOptions();
-                return;
-            }
+        if (state.spaceBuildings.GasSpaceDockLaunch.isUnlocked()) {
+            console.log("Soft resetting game with BioSeeder ship");
+            state.goal = "GameOverMan";
+            state.spaceBuildings.GasSpaceDockLaunch.click(1);
+        } else if (state.spaceBuildings.GasSpaceDockPrepForLaunch.isUnlocked()) {
+            state.spaceBuildings.GasSpaceDockPrepForLaunch.click(1);
+        } else {
+            // Open the modal to update the options
+            state.spaceBuildings.GasSpaceDock.cacheOptions();
         }
 
-        if (state.goal === "ReadyLaunch") {
-            if (state.spaceBuildings.GasSpaceDockLaunch.isUnlocked()) {
-                console.log("Soft resetting game with BioSeeder ship");
-                state.goal = "GameOverMan";
-                state.spaceBuildings.GasSpaceDockLaunch.click(1);
-            } else {
-                // Open the modal to update the options
-                state.spaceBuildings.GasSpaceDock.cacheOptions();
-                return;
-            }
-        }
     }
 
     function isBioseederPrestigeAvailable() {
@@ -9296,7 +9265,7 @@
                 }
 
                 // Unify, if allowed
-                if (itemId === "tech-unification2" && settings.userResearchUnification) {
+                if (itemId === "tech-unification2" && settings.foreignUnification) {
                     click = true;
                 }
             }
@@ -9305,9 +9274,7 @@
                 // The unification techs are special as they are always "clickable" even if they can't be afforded.
                 // We don't want to continually remove the poppers if the script is clicking one every second that
                 // it can't afford
-                if (itemId !== "tech-wc_money" && itemId !== "tech-wc_morale" && itemId !== "tech-wc_conquest" && itemId !== "tech-wc_reject") {
-                    removePoppers();
-                }
+                removePoppers();
                 return;
             }
         }
@@ -9439,6 +9406,14 @@
         if (buildingList.length === 0) {
             return;
         }
+
+        // Disable underpowered buildings
+        $("span.on.warn").each(function(){
+            let vue = this.parentNode.__vue__;
+            if (vue && vue.power_off) {
+                vue.power_off();
+            }
+        });
 
         // Calculate the available power / resource rates of change that we have to work with
         let availablePower = parseFloat(availablePowerNode.textContent);
@@ -10265,6 +10240,12 @@
                       if (resources.Population.currentQuantity !== resources.Population.maxQuantity) {
                           return "Sacrifices performed only with full population";
                       }
+
+                      let sacrifices = game.global.civic.d_job !== 'unemployed' ? game.global.civic[game.global.civic.d_job].workers : game.global.civic.free;
+                      if (sacrifices < 1) {
+                          return "No default workers to sacrifice";
+                      }
+
                       if (game.global.city.s_alter.rage >= 3600 && game.global.city.s_alter.regen >= 3600 &&
                           game.global.city.s_alter.mind >= 3600 && game.global.city.s_alter.mine >= 3600 &&
                           (game.global.race[racialTraitKindlingKindred] || game.global.city.s_alter.harvest >= 3600)){
@@ -10466,6 +10447,7 @@
         }
         if (settings.autoFight) {
             autoBattle();
+            manageSpies();
         }
         if (settings.autoARPA) {
             autoArpa();
@@ -10520,9 +10502,6 @@
         }
         if (settings.autoMAD) {
             autoMadPrestige();
-        }
-        if (settings.autoFight) {
-            manageSpies();
         }
 
         if (!massEjectorProcessed) {
@@ -11789,9 +11768,6 @@
             //console.log("Chosen theology 2 target of " + value);
         });
 
-        // Unification
-        addStandardSectionSettingsToggle(currentNode, "userResearchUnification", "Perform unification", "Perform unification once it's alwailable. This option won't occupy foreign forces by itself! You need to configure that in Foreign Affairs Settings, if needed.");
-
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
@@ -11825,9 +11801,20 @@
         currentNode.append(foreignPowerNode);
 
         addStandardSectionHeader1(foreignPowerNode, "Foreign Powers");
-        updateForeignPowerPanel(secondaryPrefix, foreignPowerNode, 0);
-        updateForeignPowerPanel(secondaryPrefix, foreignPowerNode, 1);
-        updateForeignPowerPanel(secondaryPrefix, foreignPowerNode, 2);
+        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignPacifist", "Pacifist", "Turns attacks off and on");
+
+        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignUnification", "Perform unification", "Perform unification once all three powers are subdued. autoResearch should be enabled for this to work.");
+        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignOccupyLast", "Occupy last foreign power", "Occupy last foreign power once other two are subdued, and unification is researched. That can speed up unification, if you don't need unification achievements");
+
+        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignTrainSpy", "Train spies", "Train spies to use against foreign powers");
+        addStandardSectionSettingsNumber2(secondaryPrefix, foreignPowerNode, 0, "foreignSpyMax", "Maximum spies", "Maximum spies per foreign power");
+
+        addStandardSectionSettingsNumber2(secondaryPrefix, foreignPowerNode, 0, "foreignPowerRequired", "Military Power to switch target", "Switches to attack next foreign power once its power lowered down to this number. When exact numbers not know script tries to approximate it. `weak` power will be recognized as ≤75, and such. Thus, it's not recomended to set it down to 50, unless you'll increase amount of spies, to ensure you'll still see that exact value even when one of your spies is captured on mission.");
+
+        let policyOptions = ["Ignore", "Influence", "Sabotage", "Incite", "Annex", "Purchase", "Occupy"];
+        buildStandartSettingsSelector2(secondaryPrefix, foreignPowerNode, "foreignPolicyInferior", "Inferior Power", "Perform this against inferior foreign power, with military power equal or below given threshold. Complex actions includes required preparation - Annex and Purchase will incite and influence, Occupy will sabotage, until said options will be available.", policyOptions);
+        buildStandartSettingsSelector2(secondaryPrefix, foreignPowerNode, "foreignPolicySuperior", "Superior Power", "Perform this against superior foreign power, with military power above given threshold. Complex actions includes required preparation - Annex and Purchase will incite and influence, Occupy will sabotage, until said options will be available.", policyOptions);
+        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignForceSabotage", "Sabotage foreign power when useful", "Perform sabotage against current target if it's useful(power above 50), regardless of required power, and default action defined above");
 
         // Campaign panel
         addStandardSectionHeader1(currentNode, "Campaigns");
@@ -11868,16 +11855,7 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function updateForeignPowerPanel(secondaryPrefix, parentNode, govIndex) {
-        addStandardSectionHeader2(parentNode, getGovName(govIndex))
-        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignAttack" + govIndex, "Attack", "Allow attacks against this foreign power. If occupied it will unoccupy just before attacking");
-        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignOccupy" + govIndex, "Occupy when possible", "Attempts to occupy this foreign power when available");
-        addStandardSectionSettingsToggle2(secondaryPrefix, parentNode, 0, "foreignSpy" + govIndex, "Train spies", "Train spies to use against foreign powers");
-        addStandardSectionSettingsNumber2(secondaryPrefix, parentNode, 0, "foreignSpyMax" + govIndex, "Maximum spies", "Maximum spies send against this foreign power");
-        buildSpyOperationSelectorSetting(secondaryPrefix, parentNode, "foreignSpyOp" + govIndex, "Espionage Mission", "Perform this espionage mission whenever available");
-    }
-
-    function buildSpyOperationSelectorSetting(secondaryPrefix, parentNode, settingName, displayName, hintText) {
+    function buildStandartSettingsSelector2(secondaryPrefix, parentNode, settingName, displayName, hintText, optionsList) {
         let computedSelectId = `script_${secondaryPrefix}${settingName}`;
         let mainSelectId = `script_${settingName}`;
         let div = $(`<div style="margin-top: 5px; display: inline-block; width: 80%; text-align: left;"><label title="${hintText}" for="${computedSelectId}">${displayName}:</label><select id="${computedSelectId}" style="width: 150px; float: right;"></select></div>`);
@@ -11885,13 +11863,12 @@
 
         let selectNode = $('#' + computedSelectId);
 
-        Object.keys(espionageTypes).forEach(espionageKey => {
-            let espionageType = espionageTypes[espionageKey];
-
-            let selected = settings[settingName] === espionageType.id ? 'selected="selected"' : "";
-            let optionNode = $(`<option value="${espionageType.id}" ${selected}>${espionageType.name()}</option>`);
+        for (var i = 0; i < optionsList.length; i++) {
+            let value = optionsList[i];
+            let selected = settings[settingName] === optionsList[i] ? ' selected="selected"' : "";
+            let optionNode = $(`<option value="${optionsList[i]}" ${selected}>${optionsList[i]}</option>`);
             selectNode.append(optionNode);
-        });
+        }
 
         selectNode.on('change', function() {
             let value = $(`#${computedSelectId} :selected`).val();
@@ -13725,11 +13702,12 @@
     }
 
     function getGovPower(govIndex) {
+        let govProp = "gov" + govIndex;
         if (game.global.civic.foreign[govProp].spy > 1) {
             // With 2+ spies we know exact number
             return game.global.civic.foreign[govProp].mil;
         } else if (game.global.civic.foreign[govProp].spy === 1) { // Breakpoints taken from foreignGov() -> military(m,i)
-            // With 1 spy we know aproximate value, let's assume worst in given range
+            // With 1 spy we know approximate value, let's assume worst in given range
             let mil = game.global.civic.foreign[govProp].mil;
             if (mil < 50) {
                 return 50;
