@@ -8000,6 +8000,9 @@
 
             if (requiredJobs[farmerIndex] < 0) { requiredJobs[farmerIndex] = 0; }
 
+            // Wendigo will eat any stockpiles in instant, only assign hunters if storage about to hit zero
+            if ( game.global.race['ravenous'] && resources.Food.storageRatio > 0.01 ) { requiredJobs[farmerIndex] = 0; }
+
             jobAdjustments[farmerIndex] = requiredJobs[farmerIndex] - state.jobs.Farmer.count;
             availableEmployees -= requiredJobs[farmerIndex];
         }
