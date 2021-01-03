@@ -10309,7 +10309,7 @@
               () => settings.buildingWeightingUselessPowerPlant
           ],[
               () => resources.Power.isUnlocked() && resources.Power.currentQuantity < 1,
-              (building) => building.powered > resources.Power.currentQuantity,
+              (building) => building.powered > 0 && building.powered > resources.Power.currentQuantity,
               () => "Not enough energy",
               () => settings.buildingWeightingUnderpowered
           ],[
