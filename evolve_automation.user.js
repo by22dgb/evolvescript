@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.30
+// @version      3.2.1.31
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -29,6 +29,7 @@
 //   You can enable buying and selling of same resource at same time, depends on whether you're lacking something, or have a surplus. Works both with regular trade, and routes.
 //   Expanded triggers, they got "researched" and "built" conditions, and "build" action. And an option to import missing resources required to perform chosen action. Once condition is met and action is available script will set trade routes for what it missing. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction, and same for buildings - whatever you need.
 //   Reworked fighting\spying. At first glance it have less configurable options now, but range of possible outcomes is wider, and route to them is more optimal. With default settings it'll sabotage, plunder, and then annex all foreign powers, gradually moving from top to bottom of the list, as they becomes weak enough, and then occupy last city to finish unification. By tweaking settings it's possible to configure script to get any unification achievment(annex\purchase\occupy\reject, with or without pacifism).
+//   Added basic support for magic universe
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
 //   autoAchievements now check and pick conditional races, adding them to the pool of options. With mass extinction perk such conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one.
 //   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
