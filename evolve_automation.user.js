@@ -5481,6 +5481,7 @@
             Farmer: new Job("farmer", "Farmer"),
             Lumberjack: new Job("lumberjack", "Lumberjack"),
             QuarryWorker: new Job("quarry_worker", "Quarry Worker"),
+            CrystalMiner: new Job("crystal_miner", "Crystal Miner"),
             Scavenger: new Job("scavenger", "Scavenger"),
 
             Miner: new Job("miner", "Miner"),
@@ -5679,6 +5680,8 @@
             Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
             Shrine: new Action ("Shrine", "city", "shrine", ""),
             CompostHeap: new Action ("Compost Heap", "city", "compost", ""),
+
+            Pylon: new Action ("Pylon", "city", "pylon", "")
         },
 
         spaceBuildings: {
@@ -5921,7 +5924,11 @@
 
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Coal, 0.25, 1.25);
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Iron, 2, 6);
-        state.cityBuildings.CoalPower.addResourceConsumption(resources.Coal, 0.35);
+        if (game.global.race.universe == "magic"){
+            state.cityBuildings.CoalPower.addResourceConsumption(resources.Mana, 0.05);
+        } else {
+            state.cityBuildings.CoalPower.addResourceConsumption(resources.Coal, 0.35);
+        }
         state.cityBuildings.OilPower.addResourceConsumption(resources.Oil, 0.65);
         state.cityBuildings.FissionPower.addResourceConsumption(resources.Uranium, 0.1);
         state.cityBuildings.TouristCenter.addResourceConsumption(resources.Food, 50);
@@ -6445,6 +6452,7 @@
         settings.jobSetDefault = true;
         settings.jobLumberWeighting = 50;
         settings.jobQuarryWeighting = 50;
+        settings.jobCrystalWeighting = 50;
         settings.jobScavengerWeighting = 50;
 
         for (let i = 0; i < state.Jobs.length; i++){
@@ -6458,6 +6466,7 @@
         state.jobManager.addJobToPriorityList(state.jobs.Farmer);
         state.jobManager.addJobToPriorityList(state.jobs.Lumberjack);
         state.jobManager.addJobToPriorityList(state.jobs.QuarryWorker);
+        state.jobManager.addJobToPriorityList(state.jobs.CrystalMiner);
         state.jobManager.addJobToPriorityList(state.jobs.Scavenger);
         state.jobManager.addJobToPriorityList(state.jobs.Entertainer);
         state.jobManager.addJobToPriorityList(state.jobs.Scientist);
@@ -6480,9 +6489,10 @@
         state.jobManager.addJobToPriorityList(state.jobs.Scarletite);
 
         state.jobs.Farmer.breakpointMaxs = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
-        state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
-        state.jobs.QuarryWorker.breakpointMaxs = [5, 10, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
-        state.jobs.Scavenger.breakpointMaxs = [0, 0, 10]; // Lumberjacks, scavengers and quarry workers are special - remaining worker divided between them
+        state.jobs.Lumberjack.breakpointMaxs = [5, 10, 10]; // Basic jobs are special - remaining workers divided between them
+        state.jobs.QuarryWorker.breakpointMaxs = [5, 10, 10]; // Basic jobs are special - remaining workers divided between them
+        state.jobs.CrystalMiner.breakpointMaxs = [5, 10, 10]; // Basic jobs are special - remaining workers divided between them
+        state.jobs.Scavenger.breakpointMaxs = [0, 0, 10]; // Basic jobs are special - remaining workers divided between them
 
         state.jobs.Scientist.breakpointMaxs = [3, 6, -1];
         state.jobs.Professor.breakpointMaxs = [6, 10, -1];
@@ -6612,6 +6622,7 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Graveyard); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shrine); // Celestial only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CompostHeap); // Moldling only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Pylon); // Magic Universe only
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
@@ -7192,6 +7203,7 @@
         addSetting("jobSetDefault", true);
         addSetting("jobLumberWeighting", 50);
         addSetting("jobQuarryWeighting", 50);
+        addSetting("jobCrystalWeighting", 50);
         addSetting("jobScavengerWeighting", 50);
 
         addSetting("masterScriptToggle", true);
@@ -7702,6 +7714,16 @@
             return;
         }
 
+        let subdued = 0;
+        for (let i = 0; i < 3; i++){
+            if (bestTarget !== i &&
+               (game.global.civic.foreign[`gov${i}`].anx ||
+                game.global.civic.foreign[`gov${i}`].buy ||
+                game.global.civic.foreign[`gov${i}`].occ)) {
+                subdued++;
+            }
+        }
+
         for (let i = 0; i < 3; i++){
             // Do we have any spies?
             let gov = game.global.civic.foreign[`gov${i}`];
@@ -7709,21 +7731,30 @@
                 continue;
             }
 
+            // No missions means we're explicitly ignoring it. So be it.
             let espionageMission = espionageTypes[settings[`foreignPolicy${rank[i]}`]];
-            if (espionageMission) {
-                // Force sabotage, if needed, and we know it's useful
-                if (i === bestTarget && settings.foreignForceSabotage && gov.spy > 1 && gov.mil > 50) {
-                    espionageMission = espionageTypes.Sabotage;
-                }
+            if (!espionageMission) {
+                continue;
+            }
 
-                // Unoccupy power it's subdued, but we want something different
-                if ((gov.anx && espionageMission !== espionageTypes.Annex) ||
-                    (gov.buy && espionageMission !== espionageTypes.Purchase) ||
-                    (gov.occ && espionageMission !== espionageTypes.Occupy && (i !== bestTarget || !settings.foreignOccupyLast))){
-                    getVueById("garrison").campaign(i);
-                } else if (!gov.anx && !gov.buy && !gov.occ) {
-                    state.spyManager.performEspionage(i, espionageMission.id);
-                }
+            // Force sabotage, if needed, and we know it's useful
+            if (i === bestTarget && settings.foreignForceSabotage && gov.spy > 1 && gov.mil > 50) {
+                espionageMission = espionageTypes.Sabotage;
+            }
+
+            // Don't waste time and money on last foreign power, if we're going to occupy it
+            if (i === bestTarget && subdued == 2 && settings.foreignOccupyLast &&
+                espionageMission !== espionageTypes.Sabotage && espionageMission !== espionageTypes.Occupy){
+                continue;
+            }
+
+            // Unoccupy power if it's subdued, but we want something different
+            if ((gov.anx && espionageMission !== espionageTypes.Annex) ||
+                (gov.buy && espionageMission !== espionageTypes.Purchase) ||
+                (gov.occ && espionageMission !== espionageTypes.Occupy && (i !== bestTarget || !settings.foreignOccupyLast))){
+                getVueById("garrison").campaign(i);
+            } else if (!gov.anx && !gov.buy && !gov.occ) {
+                state.spyManager.performEspionage(i, espionageMission.id);
             }
         }
     }
@@ -7897,6 +7928,7 @@
 
         let farmerIndex = jobList.indexOf(state.jobs.Farmer);
         let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
+        let crystalMinerIndex = jobList.indexOf(state.jobs.CrystalMiner);
         let scavengerIndex = jobList.indexOf(state.jobs.Scavenger);
 
         let lumberjackIndex = -1;
@@ -7940,6 +7972,7 @@
         if (state.jobs.Farmer.isManaged()) {
             if (!state.jobs.Lumberjack.isUnlocked()
                     && !state.jobs.QuarryWorker.isUnlocked()
+                    && !state.jobs.CrystalMiner.isUnlocked()
                     && !state.jobs.Scavenger.isUnlocked()
                     && !state.jobs.Miner.isUnlocked()
                     && !state.jobs.CoalMiner.isUnlocked()
@@ -8144,6 +8177,7 @@
         let splitJobs = [];
         if (lumberjackIndex !== -1) splitJobs.push( { jobIndex: lumberjackIndex, job: state.jobs.Lumberjack, weighting: settings.jobLumberWeighting, completed: false } );
         if (quarryWorkerIndex !== -1) splitJobs.push( { jobIndex: quarryWorkerIndex, job: state.jobs.QuarryWorker, weighting: settings.jobQuarryWeighting, completed: false });
+        if (crystalMinerIndex !== -1) splitJobs.push( { jobIndex: crystalMinerIndex, job: state.jobs.CrystalMiner, weighting: settings.jobCrystalWeighting, completed: false });
         if (scavengerIndex !== -1) splitJobs.push( { jobIndex: scavengerIndex, job: state.jobs.Scavenger, weighting: settings.jobScavengerWeighting, completed: false });
 
         // Balance lumberjacks, quarry workers and scavengers if they are unlocked
@@ -8273,6 +8307,8 @@
                 if (!state.jobs.QuarryWorker.isDefault()) { state.jobs.QuarryWorker.setAsDefault(); }
             } else if (state.jobs.Lumberjack.isUnlocked() && state.jobs.Lumberjack.count > 0) {
                 if (!state.jobs.Lumberjack.isDefault()) { state.jobs.Lumberjack.setAsDefault(); }
+            } else if (state.jobs.CrystalMiner.isUnlocked() && state.jobs.CrystalMiner.count > 0) {
+                if (!state.jobs.CrystalMiner.isDefault()) { state.jobs.CrystalMiner.setAsDefault(); }
             } else if (state.jobs.Scavenger.isUnlocked() && state.jobs.Scavenger.count > 0) {
                 if (!state.jobs.Scavenger.isDefault()) { state.jobs.Scavenger.setAsDefault(); }
             } else if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0) {
@@ -9474,7 +9510,12 @@
                         // That can cause massive loss of life if turning off space habitats :-)
                         // We'll turn power producing structures off one at a time below if they are below xx% storage
                         if (resourceType.resource === resources.Food) {
-                            isStorageAvailable = resourceType.resource.storageRatio > 0.1;
+                            // Wendigo doesn't store food. Let's assume it's always available.
+                            if (game.global.race['ravenous']) {
+                                isStorageAvailable = true;
+                            } else {
+                                isStorageAvailable = resourceType.resource.storageRatio > 0.1;
+                            }
                         } else if (resourceType.resource === resources.Coal || resourceType.resource === resources.Oil
                                 || resourceType.resource === resources.Uranium || resourceType.resource === resources.Helium_3
                                 || resourceType.resource === resources.Elerium || resourceType.resource === resources.Deuterium) {
@@ -12560,9 +12601,10 @@
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_jobPreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "jobSetDefault", "Set default job", "Automatically sets the default job in order of Quarry Worker -> Lumberjack -> Scavenger -> Farmer");
-        addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
-        addStandardSectionSettingsNumber(preTableNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
-        addStandardSectionSettingsNumber(preTableNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers and scavengers");
+        addStandardSectionSettingsNumber(preTableNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
+        addStandardSectionSettingsNumber(preTableNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
+        addStandardSectionSettingsNumber(preTableNode, "jobCrystalWeighting", "Final Crystal Miner Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
+        addStandardSectionSettingsNumber(preTableNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
 
         // Add table
         currentNode.append(
@@ -12643,7 +12685,7 @@
      * @param {number} breakpoint
      */
     function buildJobSettingsInput(job, breakpoint) {
-        if (job === state.jobs.Farmer || job.isCraftsman() || (breakpoint === 3 && (job === state.jobs.Lumberjack || job === state.jobs.QuarryWorker || job === state.jobs.Scavenger))) {
+        if (job === state.jobs.Farmer || job.isCraftsman() || (breakpoint === 3 && (job === state.jobs.Lumberjack || job === state.jobs.QuarryWorker || job === state.jobs.CrystalMiner || job === state.jobs.Scavenger))) {
             let span = $('<span>Managed</span>');
             return span;
         }
