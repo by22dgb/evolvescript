@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.31
+// @version      3.2.1.32
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4719,6 +4719,9 @@
                 case 'micro':
                     universe = "m";
                     break;
+                case 'magic':
+                    universe = "mg";
+                    break;
             }
 
             if (game.global.stats.achieve[madAchievement] && game.global.stats.achieve[madAchievement][universe]) {
@@ -5358,7 +5361,7 @@
         races.yeti, races.wendigo, races.tuskin, races.kamel, races.custom
     ];
 
-    var universes = ['standard','heavy','antimatter','evil','micro'];
+    var universes = ['standard','heavy','antimatter','evil','micro', 'magic'];
 
     var resources = {
         // Evolution resources
@@ -7513,11 +7516,6 @@
         if (settings.userUniverseTargetName === 'none') { return; }
 
         var action = document.getElementById(`uni-${settings.userUniverseTargetName}`);
-        //standard
-        //heavy
-        //antimatter
-        //evil
-        //micro
 
         if (action !== null) {
             logClick(action.children[0], `Select universe: ${settings.userUniverseTargetName}`);
