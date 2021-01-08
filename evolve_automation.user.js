@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.32
+// @version      3.2.1.33
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -46,6 +46,7 @@
 
     var speciesProtoplasm = "protoplasm";
     var challengeNoCraft = "no_craft";
+    var challengeDecay = "decay";
     var racialTraitCarnivore = "carnivore";
     var racialTraitSoulEater = "soul_eater";
     var racialTraitKindlingKindred = "kindling_kindred";
@@ -877,10 +878,16 @@
             for (let j = 0; j < this.consumption.resourceTypes.length; j++) {
                 let resourceType = this.consumption.resourceTypes[j];
 
+                // If we're decaying we can't rely on rate of change. Ignore non-support consumption.
+                if (game.global.race[challengeDecay] && resourceType.rate > 0 && !resourceType.resource.isSupport) {
+                    continue;
+                }
+
                 // Food fluctuate a lot, ignore it, assuming we always can get more
                 if (resourceType.resource === resources.Food && settings.autoJobs && state.jobs.Farmer.isManaged()) {
                     continue;
                 }
+
                 // Adjust fuel
                 if (this._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
                     resourceType.rate = spaceFuelAdjust(resourceType.initialRate);
@@ -888,6 +895,7 @@
                 if (this._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && this !== state.spaceBuildings.AlphaFusion) {
                     resourceType.rate = intFuelAdjust(resourceType.initialRate);
                 }
+
                 // It need something that we're lacking
                 if (resourceType.rate > 0 && resourceType.resource.calculatedRateOfChange < resourceType.rate) {
                     return resourceType;
@@ -1191,7 +1199,6 @@
             this._prefix = prefix;
             this.name = name;
             this._id = id;
-            this._isPopulation = (id === "Population"); // We can't store the full elementId because we don't know the name of the population node until later
             this.autoCraftEnabled = true;
 
             this._isTradable = isTradable;
@@ -1259,12 +1266,7 @@
         }
 
         get id() {
-            // The population node is special and its id is actually the race name rather than a static name
-            if (!this._isPopulation) {
-                return this._id;
-            }
-
-            return getRaceId();
+            return this._id;
         }
 
         isUnlocked() {
@@ -1578,10 +1580,6 @@
 
         //#region Standard resource
 
-        get id() {
-            return this._id;
-        }
-
         hasOptions() {
             return false;
         }
@@ -1617,10 +1615,6 @@
         }
 
         //#region Standard resource
-
-        get id() {
-            return this._id;
-        }
 
         hasOptions() {
             return false;
@@ -1672,10 +1666,6 @@
         }
 
         //#region Standard resource
-
-        get id() {
-            return this._id;
-        }
 
         hasOptions() {
             return false;
@@ -1729,10 +1719,6 @@
 
         //#region Standard resource
 
-        get id() {
-            return this._id;
-        }
-
         isUnlocked() {
             return true;
         }
@@ -1765,6 +1751,17 @@
         }
 
         //#endregion Standard resource
+    }
+
+    class Population extends Resource {
+        constructor() {
+            super("Population", "res", "Population", false, false, -1, false, -1, false);
+        }
+
+        get id() {
+            // The population node is special and its id will change to the race name
+            return getRaceId();
+        }
     }
 
     const SmelterFuelTypes = {
@@ -5361,7 +5358,7 @@
         races.yeti, races.wendigo, races.tuskin, races.kamel, races.custom
     ];
 
-    var universes = ['standard','heavy','antimatter','evil','micro', 'magic'];
+    var universes = ['standard','heavy','antimatter','evil','micro','magic'];
 
     var resources = {
         // Evolution resources
@@ -5370,7 +5367,7 @@
 
         // Base resources
         Money: new Resource("Money", "res", "Money", false, false, -1, false, -1, false),
-        Population: new Resource("Population", "res", "Population", false, false, -1, false, -1, false), // The population node is special and its id will change to the race name
+        Population: new Population(), // We can't store the full elementId because we don't know the name of the population node until later
         Slave: new Resource("Slave", "res", "Slave", false, false, -1, false, -1, false),
         Mana: new Resource("Mana", "res", "Mana", false, false, -1, false, -1, false),
         Knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1, false),
@@ -5385,8 +5382,8 @@
 
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
         Power: new Power(),
-        HellArmy: new HellArmy(),
-        Luxury_Goods: new LuxuryGoods(),
+        //HellArmy: new HellArmy(),
+        //Luxury_Goods: new LuxuryGoods(),
         Moon_Support: new Support("Moon Support", "srspc_moon", "space", "spc_moon"),
         Red_Support: new Support("Red Support", "srspc_red", "space", "spc_red"),
         Sun_Support: new Support("Sun Support", "srspc_sun", "space", "spc_sun"),
@@ -7670,8 +7667,15 @@
                 rank[i] = "Superior";
             }
         }
+
+        let lastTarget = bestTarget;
+        if (settings.foreignPolicySuperior === "Occupy" || settings.foreignPolicySuperior === "Sabotage"){
+            lastTarget = 2;
+        }
+
         if (settings.foreignPacifist) {
             bestTarget = -1;
+            lastTarget = -1;
         }
 
         // Train spies
@@ -7713,16 +7717,6 @@
             return;
         }
 
-        let subdued = 0;
-        for (let i = 0; i < 3; i++){
-            if (bestTarget !== i &&
-               (game.global.civic.foreign[`gov${i}`].anx ||
-                game.global.civic.foreign[`gov${i}`].buy ||
-                game.global.civic.foreign[`gov${i}`].occ)) {
-                subdued++;
-            }
-        }
-
         for (let i = 0; i < 3; i++){
             // Do we have any spies?
             let gov = game.global.civic.foreign[`gov${i}`];
@@ -7742,7 +7736,7 @@
             }
 
             // Don't waste time and money on last foreign power, if we're going to occupy it
-            if (i === bestTarget && subdued == 2 && settings.foreignOccupyLast &&
+            if (i === lastTarget && settings.foreignOccupyLast &&
                 espionageMission !== espionageTypes.Sabotage && espionageMission !== espionageTypes.Occupy){
                 continue;
             }
@@ -8429,6 +8423,9 @@
                 if (resource.storageRatio < 0.98) {
                     remainingRateOfChange -= productionCost.minRateOfChange;
                 }
+                if (game.global.race[challengeDecay]) {
+                    remainingRateOfChange = resource.currentQuantity / 2;
+                }
                 let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
                 let maxAllowedUnits = Math.min(affordableAmount, remainingSmelters);
                 if (maxAllowedUnits > 0) {
@@ -8472,6 +8469,9 @@
             // No need to preserve minimum income when storage is full
             if (resource.storageRatio < 0.98) {
                 remainingRateOfChange -= productionCost.minRateOfChange;
+            }
+            if (game.global.race[challengeDecay]) {
+                remainingRateOfChange = resource.currentQuantity / 2;
             }
             let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
             maxAllowedSteel = Math.min(maxAllowedSteel, affordableAmount);
@@ -8545,6 +8545,9 @@
                     if (resourceCost.resource.storageRatio < 0.98) {
                         rate -= resourceCost.minRateOfChange;
                     }
+                    if (game.global.race[challengeDecay]) {
+                        rate = resourceCost.resource.currentQuantity / 2;
+                    }
 
                     // If we can't afford it (it's above our minimum rate of change) then remove a factory
                     // UNLESS we've got over 80% storage full. In that case lets go wild!
@@ -8585,7 +8588,9 @@
                     if (resourceCost.resource.storageRatio < 0.98) {
                         rate -= resourceCost.minRateOfChange;
                     }
-
+                    if (game.global.race[challengeDecay]) {
+                        rate = resourceCost.resource.currentQuantity / 2;
+                    }
                     // If we can't afford it (it's above our minimum rate of change) then remove a factory
                     // UNLESS we've got over 80% storage full. In that case lets go wild!
                     if (resourceCost.resource.storageRatio < 0.8){
@@ -8673,6 +8678,9 @@
             let rateOfChange = consumption.resource.calculatedRateOfChange + (consumption.quantity * currentFuelCount);
             if (consumption.resource.storageRatio < 0.98) {
                 rateOfChange -= consumption.minRateOfChange;
+            }
+            if (game.global.race[challengeDecay]) {
+                rateOfChange = consumption.resource.currentQuantity / 2;
             }
 
             let maxFueledForConsumption = remainingPlants;
