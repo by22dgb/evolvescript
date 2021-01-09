@@ -6240,7 +6240,7 @@
     }
 
     function resetMarketSettings() {
-        settings.queueRequest = false;
+        settings.queueRequest = true;
         settings.tradeRouteMinimumMoneyPerSecond = 300;
         settings.tradeRouteMinimumMoneyPercentage = 5;
     }
@@ -7124,7 +7124,7 @@
 
         addSetting("minimumMoney", 0);
         addSetting("minimumMoneyPercentage", 0);
-        addSetting("queueRequest", false);
+        addSetting("queueRequest", true);
         addSetting("tradeRouteMinimumMoneyPerSecond", 300);
         addSetting("tradeRouteMinimumMoneyPercentage", 5);
         addSetting("generalMinimumTaxRate", 20);
@@ -8007,12 +8007,17 @@
                     let currentCementWorkers = job.count;
                     log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.calculatedRateOfChange " + resources.Stone.calculatedRateOfChange);
 
+                    let stoneRateOfChange = resources.Stone.calculatedRateOfChange;
+                    if (game.global.race[challengeDecay]) {
+                        stoneRateOfChange += resources.Stone.decayRate;
+                    }
+
                     if (jobsToAssign < currentCementWorkers) {
                         // great, remove workers as we want less than we have
-                    } else if (jobsToAssign >= currentCementWorkers && resources.Stone.calculatedRateOfChange < 5) {
+                    } else if (jobsToAssign >= currentCementWorkers && stoneRateOfChange < 5) {
                         // If we're making less than 5 stone then lets remove a cement worker even if we want more
                         jobsToAssign = job.count - 1;
-                    } else if (jobsToAssign > job.count && resources.Stone.calculatedRateOfChange > 8) {
+                    } else if (jobsToAssign > job.count && stoneRateOfChange > 8) {
                         // If we want more cement workers and we're making more than 8 stone then add a cement worker
                         jobsToAssign = job.count + 1;
                     } else {
@@ -9732,6 +9737,9 @@
             for (let i = 0; i < game.global.queue.queue.length; i ++) {
                 let queue = game.global.queue.queue[i];
                 overrideTradesFor.push(queue.id);
+                if (!game.global.settings.qAny) {
+                    break;
+                }
             }
         }
 
@@ -9740,6 +9748,9 @@
             for (let i = 0; i < game.global.r_queue.queue.length; i ++) {
                 let queue = game.global.r_queue.queue[i];
                 overrideTradesFor.push(queue.id);
+                if (!game.global.settings.qAny) {
+                    break;
+                }
             }
         }
 
