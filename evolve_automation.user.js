@@ -134,7 +134,10 @@
                 return false;
             }
 
-            if (this._remainder >= 25000) {
+            if (!game.global.settings.mKeys) {
+                // Multiplier disabled? Mkay... Let's take a long road.
+                this._remainder -= 1;
+            } else if (this._remainder >= 25000) {
                 game.keyMap.x100 = true;
                 game.keyMap.x25 = true;
                 game.keyMap.x10 = true;
@@ -713,7 +716,7 @@
         }
 
         isUnlocked() {
-            return document.getElementById(this._elementId) !== null && this.vue !== undefined;
+            return this.vue !== undefined;
         }
 
         hasConsumption() {
@@ -878,11 +881,6 @@
             for (let j = 0; j < this.consumption.resourceTypes.length; j++) {
                 let resourceType = this.consumption.resourceTypes[j];
 
-                // If we're decaying we can't rely on rate of change. Ignore non-support consumption.
-                if (game.global.race[challengeDecay] && resourceType.rate > 0 && !resourceType.resource.isSupport) {
-                    continue;
-                }
-
                 // Food fluctuate a lot, ignore it, assuming we always can get more
                 if (resourceType.resource === resources.Food && settings.autoJobs && state.jobs.Farmer.isManaged()) {
                     continue;
@@ -896,13 +894,19 @@
                     resourceType.rate = intFuelAdjust(resourceType.initialRate);
                 }
 
+                let rateOfChange = resourceType.resource.calculatedRateOfChange;
+                // Adjust decay
+                if (game.global.race[challengeDecay]) {
+                    rateOfChange += resourceType.resource.decayRate;
+                }
+
                 // It need something that we're lacking
-                if (resourceType.rate > 0 && resourceType.resource.calculatedRateOfChange < resourceType.rate) {
+                if (resourceType.rate > 0 && rateOfChange < resourceType.rate) {
                     return resourceType;
                 }
 
                 // It provides support which we don't need
-                if (resourceType.rate < 0 && resourceType.resource.isSupport && resourceType.resource.calculatedRateOfChange > 0) {
+                if (resourceType.rate < 0 && resourceType.resource.isSupport() && rateOfChange > 0) {
                     return resourceType;
                 }
 
@@ -1186,23 +1190,13 @@
     class Resource {
         /**
          * @param {string} name
-         * @param {string} prefix
          * @param {string} id
-         * @param {boolean} hasStorage
-         * @param {boolean} isTradable
-         * @param {number} tradeRouteQuantity
-         * @param {boolean} isCraftable
-         * @param {number} craftRatio
-         * @param {boolean} isSupport
          */
-        constructor(name, prefix, id, hasStorage, isTradable, tradeRouteQuantity, isCraftable, craftRatio, isSupport) {
-            this._prefix = prefix;
+        constructor(name, id) {
             this.name = name;
             this._id = id;
             this.autoCraftEnabled = true;
 
-            this._isTradable = isTradable;
-            this.tradeRouteQuantity = tradeRouteQuantity;
             this.currentTradeRouteBuyPrice = 0;
             this.currentTradeRouteSellPrice = 0;
             this.currentTradeRoutes = 0;
@@ -1217,18 +1211,13 @@
             this.autoTradeSellEnabled = true;
             this.autoTradeSellMinPerSecond = 0;
 
-            this.hasStorage = hasStorage;
             this.storagePriority = 0;
             this.storageRequired = 0;
             this.autoStorageEnabled = true;
             this._autoCratesMax = -1;
             this._autoContainersMax = -1;
 
-            this._isCraftable = isCraftable;
-            this.craftRatio = craftRatio;
             this.weighting = 1;
-
-            this.isSupport = isSupport;
 
             this.calculatedRateOfChange = 0;
 
@@ -1237,18 +1226,10 @@
 
             this._instance = null;
 
-            this.cachedId = "";
             this.setupCache();
         }
 
         setupCache() {
-            this._cachedId = this.id;
-            this._elementId = this._prefix + this.id;
-            this._extraStorageId = "stack-" + this.id;
-            this._storageCountId = "cnt" + this.id;
-
-            this._craftAllId = "inc" + this.id + "A";
-
             this._vueBinding = "res" + this.id;
             this._stackVueBinding = "stack-" + this.id;
             this._ejectorVueBinding = "eject" + this.id;
@@ -1270,16 +1251,11 @@
         }
 
         isUnlocked() {
-            if (game.global.resource[this.id]) {
-                return game.global.resource[this.id].display;
-            }
-
-            let containerNode = document.getElementById(this._elementId);
-            return containerNode !== null && containerNode.style.display !== "none";
+            return this.instance.display;
         }
 
         isManagedStorage() {
-            return this.autoStorageEnabled && this.isUnlocked() && this.hasOptions();
+            return this.hasStorage() && this.autoStorageEnabled;
         }
 
         isEjectable() {
@@ -1288,11 +1264,7 @@
 
         /** @return {number} */
         get atomicMass() {
-            if (!game.atomic_mass.hasOwnProperty(this.id)) {
-                return 0;
-            }
-
-            return game.atomic_mass[this.id];
+            return game.atomic_mass[this.id] || 0;
         }
 
         /**
@@ -1356,80 +1328,45 @@
             this._autoContainersMax = maxContainers;
         }
 
-        hasOptions() {
-            // Options is currently the + button for accessing crates and containers
-            if (!this.isUnlocked()) {
-                return false;
-            }
-
-            let storageNode = document.getElementById(this._extraStorageId);
-            return storageNode !== null && storageNode.style.display !== "none";
+        isSupport() {
+            return false;
         }
 
-        get isTradable() {
-            return this._isTradable;
+        isTradable() {
+            return this.instance ? this.instance.hasOwnProperty("trade") : false;
         }
 
-        get isCraftable() {
-            return this._isCraftable;
+        isCraftable() {
+            return game.craftCost().hasOwnProperty(this.id);
+        }
+
+        hasStorage() {
+            return this.instance ? this.instance.stackable : false;
         }
 
         get currentQuantity() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            if (this.instance !== undefined) {
-                return this.instance.hasOwnProperty("amount") ? this.instance.amount : 0;
-            }
-
-            if (game.global.race[this.id]) {
-                return game.global.race[this.id].count;
-            }
-
-            return 0;
+            return this.instance.amount;
         }
 
         get maxQuantity() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
+            return this.instance.max >= 0 ? this.instance.max : Number.MAX_SAFE_INTEGER;
+        }
 
-            if (this.instance !== undefined && this.instance.hasOwnProperty("max")) {
-                return this.instance.max >= 0 ? this.instance.max : Number.MAX_SAFE_INTEGER;
-            }
-
-            // Doesn't have max? Do some tinkering...
-            let storageNode = document.getElementById(this._storageCountId);
-
-            // 2 possibilities:
-            // eg. "3124.16" there is no max quantity
-            // eg. in "1234 / 10.2K" the current quantity is 1234
-            if (storageNode === null || storageNode.textContent.indexOf("/") === -1) {
-                return Number.MAX_SAFE_INTEGER;
-            }
-
-            // eg. in "1234 / 10.2K" the max quantity is 10.2K
-            return getRealNumber(storageNode.textContent.split(" / ")[1]);
+        get tradeRouteQuantity() {
+            return game.tradeRatio[this.id] || -1;
         }
 
         get storageRatio() {
             // If "326 / 1204" then storage ratio would be 0.27 (ie. storage is 27% full)
-            let max = this.maxQuantity;
-
             if (this.maxQuantity === 0) {
                 return 0;
             }
 
-            return this.currentQuantity / max;
+            return this.currentQuantity / this.maxQuantity;
         }
 
         get rateOfChange() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            return this.instance !== undefined && this.instance.hasOwnProperty("diff") ? this.instance.diff : 0;
+            return this.instance ? this.instance.diff : 0;
         }
 
         get timeToFull() {
@@ -1437,9 +1374,16 @@
                 return 0; // Already full.
             }
             if (this.calculatedRateOfChange <= 0) {
-                return Infinity; // Won't ever fill with current rate.
+                return Number.MAX_SAFE_INTEGER; // Won't ever fill with current rate.
             }
             return (this.maxQuantity - this.currentQuantity) / this.calculatedRateOfChange;
+        }
+
+        get decayRate() {
+            if (this.tradeRouteQuantity <= 0 || this.currentQuantity < 50) {
+                return 0;
+            }
+            return (this.currentQuantity - 50) * (0.001 * this.tradeRouteQuantity);
         }
 
         //#endregion Standard resource
@@ -1469,13 +1413,11 @@
         }
 
         get currentCrates() {
-            let crates = this.instance.crates;
-            return crates !== undefined ? crates : 0;
+            return this.instance ? this.instance.crates : 0;
         }
 
         get currentContainers() {
-            let containers = this.instance.containers;
-            return containers !== undefined ? containers : 0;
+            return this.instance ? this.instance.containers : 0;
         }
 
         /**
@@ -1546,14 +1488,6 @@
 
         //#region Craftable resource
 
-        isCraftingUnlocked() {
-            if (!this.isUnlocked()) {
-                return false
-            }
-
-            return document.getElementById(this._craftAllId) !== null;
-        }
-
         /**
          * @param {number} count
          */
@@ -1575,70 +1509,21 @@
     class Power extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
-            super("Power", "", "powerMeter", false, false, -1, false, -1, false);
+            super("Power", "powerMeter");
         }
 
         //#region Standard resource
 
-        hasOptions() {
-            return false;
+        isUnlocked() {
+            return game.global.city.powered;
         }
 
         get currentQuantity() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
             return game.global.city.power; // game.global.city.power_total is the total of all power currently being generated
         }
 
         get maxQuantity() {
             return Number.MAX_SAFE_INTEGER;
-        }
-
-        get storageRatio() {
-            return this.currentQuantity / this.maxQuantity;
-        }
-
-        get rateOfChange() {
-            // This isn't really a resource so we'll be super tricky here and set the rate of change to be the available quantity
-            return this.currentQuantity;
-        }
-
-        //#endregion Standard resource
-    }
-
-    class HellArmy extends Resource {
-        // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
-        constructor() {
-            super("Hell Army", "", "dummyHellArmy", false, false, -1, false, -1, false);
-        }
-
-        //#region Standard resource
-
-        hasOptions() {
-            return false;
-        }
-
-        isUnlocked() {
-            return game.global['portal'] && game.global.portal['fortress'] && game.global.portal.fortress['garrison'];
-        }
-
-        get currentQuantity() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            let vue = getVueById('fort');
-            return vue === undefined ? 0 : vue.$options.filters.patrolling(game.global.portal.fortress.garrison);
-        }
-
-        get maxQuantity() {
-            return Number.MAX_SAFE_INTEGER;
-        }
-
-        get storageRatio() {
-            return this.currentQuantity / this.maxQuantity;
         }
 
         get rateOfChange() {
@@ -1659,7 +1544,7 @@
          * @param {string} inRegionId
          */
         constructor(name, id, region, inRegionId) {
-            super(name, "", id, false, false, -1, false, -1, true);
+            super(name, id);
 
             this._region = region;
             this._inRegionId = inRegionId;
@@ -1667,8 +1552,13 @@
 
         //#region Standard resource
 
-        hasOptions() {
-            return false;
+        isUnlocked() {
+            let containerNode = document.getElementById(this.id);
+            return containerNode !== null && containerNode.style.display !== "none";
+        }
+
+        isSupport() {
+            return true;
         }
 
         get currentQuantity() {
@@ -1711,51 +1601,27 @@
         //#endregion Standard resource
     }
 
-    class LuxuryGoods extends Resource {
-        // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
-        constructor() {
-            super("Luxury Goods", "", "LuxuryGoods", false, false, -1, false, -1, false);
+    class SpecialResource extends Resource {
+        constructor(name, id) {
+            super(name, id);
         }
-
-        //#region Standard resource
 
         isUnlocked() {
-            return true;
-        }
-
-        hasOptions() {
-            return false;
+            return this.currentQuantity > 0;
         }
 
         get currentQuantity() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            // "43/47"
-            return 0;
+            return this.id === "AntiPlasmid" ? game.global.race[this.id].anti : game.global.race[this.id].count;
         }
 
         get maxQuantity() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            // "43/47"
             return Number.MAX_SAFE_INTEGER;
         }
-
-        get rateOfChange() {
-            // This isn't really a resource so we'll be super tricky here and set the rate of change to be the available quantity
-            return 0;
-        }
-
-        //#endregion Standard resource
     }
 
     class Population extends Resource {
         constructor() {
-            super("Population", "res", "Population", false, false, -1, false, -1, false);
+            super("Population", "Population");
         }
 
         get id() {
@@ -4304,7 +4170,7 @@
          * @param {Resource} resource
          */
         addResourceToPriorityList(resource) {
-            if (resource.isTradable) {
+            if (resource.isTradable()) {
                 resource.marketPriority = this.priorityList.length;
                 this.priorityList.push(resource);
             }
@@ -4578,7 +4444,7 @@
          * @param {Resource} resource
          */
         addResourceToPriorityList(resource) {
-            if (resource.hasStorage) {
+            if (resource.hasStorage()) {
                 resource.storagePriority = this.priorityList.length;
                 this.priorityList.push(resource);
             }
@@ -5362,28 +5228,26 @@
 
     var resources = {
         // Evolution resources
-        RNA: new Resource("RNA", "res", "RNA", false, false, -1, false, -1, false),
-        DNA: new Resource("DNA", "res", "DNA", false, false, -1, false, -1, false),
+        RNA: new Resource("RNA", "RNA"),
+        DNA: new Resource("DNA", "DNA"),
 
         // Base resources
-        Money: new Resource("Money", "res", "Money", false, false, -1, false, -1, false),
+        Money: new Resource("Money", "Money"),
         Population: new Population(), // We can't store the full elementId because we don't know the name of the population node until later
-        Slave: new Resource("Slave", "res", "Slave", false, false, -1, false, -1, false),
-        Mana: new Resource("Mana", "res", "Mana", false, false, -1, false, -1, false),
-        Knowledge: new Resource("Knowledge", "res", "Knowledge", false, false, -1, false, -1, false),
-        Crates: new Resource("Crates", "res", "Crates", false, false, -1, false, -1, false),
-        Containers: new Resource("Containers", "res", "Containers", false, false, -1, false, -1, false),
-        Plasmid: new Resource("Plasmid", "res", "Plasmid", false, false, -1, false, -1, false),
-        Antiplasmid: new Resource("Anti-Plasmid", "res", "AntiPlasmid", false, false, -1, false, -1, false),
-        Phage: new Resource("Phage", "res", "Phage", false, false, -1, false, -1, false),
-        Dark: new Resource("Dark", "res", "Dark", false, false, -1, false, -1, false),
-        Harmony: new Resource("Harmony", "res", "Harmony", false, false, -1, false, -1, false),
-        Genes: new Resource("Genes", "res", "Genes", false, false, -1, false, -1, false),
+        Slave: new Resource("Slave", "Slave"),
+        Mana: new Resource("Mana", "Mana"),
+        Knowledge: new Resource("Knowledge", "Knowledge"),
+        Crates: new Resource("Crates", "Crates"),
+        Containers: new Resource("Containers", "Containers"),
+        Plasmid: new SpecialResource("Plasmid", "Plasmid"),
+        Antiplasmid: new SpecialResource("Anti-Plasmid", "AntiPlasmid"),
+        Phage: new SpecialResource("Phage", "Phage"),
+        Dark: new SpecialResource("Dark", "Dark"),
+        Harmony: new SpecialResource("Harmony", "Harmony"),
+        Genes: new Resource("Genes", "Genes"),
 
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
         Power: new Power(),
-        //HellArmy: new HellArmy(),
-        //Luxury_Goods: new LuxuryGoods(),
         Moon_Support: new Support("Moon Support", "srspc_moon", "space", "spc_moon"),
         Red_Support: new Support("Red Support", "srspc_red", "space", "spc_red"),
         Sun_Support: new Support("Sun Support", "srspc_sun", "space", "spc_sun"),
@@ -5392,59 +5256,59 @@
         Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
 
         // Basic resources (can trade for these)
-        Food: new Resource("Food", "res", "Food", true, true, 2, false, -1, false),
-        Lumber: new Resource("Lumber", "res", "Lumber", true, true, 2,false, -1, false),
-        Stone: new Resource("Stone", "res", "Stone", true, true, 2, false, -1, false),
-        Crystal: new Resource("Crystal", "res", "Crystal", true, true, 1, false, -1, false),
-        Furs: new Resource("Furs", "res", "Furs", true, true, 1, false, -1, false),
-        Copper: new Resource("Copper", "res", "Copper", true, true, 1, false, -1, false),
-        Iron: new Resource("Iron", "res", "Iron", true, true, 1, false, -1, false),
-        Aluminium: new Resource("Aluminium", "res", "Aluminium", true, true, 1, false, -1, false),
-        Cement: new Resource("Cement", "res", "Cement", true, true, 1, false, -1, false),
-        Coal: new Resource("Coal", "res", "Coal", true, true, 1, false, -1, false),
-        Oil: new Resource("Oil", "res", "Oil", false, true, 0.5, false, -1, false),
-        Uranium: new Resource("Uranium", "res", "Uranium", false, true, 0.25, false, -1, false),
-        Steel: new Resource("Steel", "res", "Steel", true, true, 0.5, false, -1, false),
-        Titanium: new Resource("Titanium", "res", "Titanium", true, true, 0.25, false, -1, false),
-        Alloy: new Resource("Alloy", "res", "Alloy", true, true, 0.2, false, -1, false),
-        Polymer: new Resource("Polymer", "res", "Polymer", true, true, 0.2, false, -1, false),
-        Iridium: new Resource("Iridium", "res", "Iridium", true, true, 0.1, false, -1, false),
-        Helium_3: new Resource("Helium-3", "res", "Helium_3", false, true, 0.1, false, -1, false),
+        Food: new Resource("Food", "Food"),
+        Lumber: new Resource("Lumber", "Lumber"),
+        Stone: new Resource("Stone", "Stone"),
+        Crystal: new Resource("Crystal", "Crystal"),
+        Furs: new Resource("Furs", "Furs"),
+        Copper: new Resource("Copper", "Copper"),
+        Iron: new Resource("Iron", "Iron"),
+        Aluminium: new Resource("Aluminium", "Aluminium"),
+        Cement: new Resource("Cement", "Cement"),
+        Coal: new Resource("Coal", "Coal"),
+        Oil: new Resource("Oil", "Oil"),
+        Uranium: new Resource("Uranium", "Uranium"),
+        Steel: new Resource("Steel", "Steel"),
+        Titanium: new Resource("Titanium", "Titanium"),
+        Alloy: new Resource("Alloy", "Alloy"),
+        Polymer: new Resource("Polymer", "Polymer"),
+        Iridium: new Resource("Iridium", "Iridium"),
+        Helium_3: new Resource("Helium-3", "Helium_3"),
 
         // Advanced resources (can't trade for these)
-        Elerium: new Resource("Elerium", "res", "Elerium", false, false, 0.02, false, -1, false),
-        Neutronium: new Resource("Neutronium", "res", "Neutronium", false, false, 0.05, false, -1, false),
-        Nano_Tube: new Resource("Nano Tube", "res", "Nano_Tube", false, false, 0.1, false, -1, false),
+        Elerium: new Resource("Elerium", "Elerium"),
+        Neutronium: new Resource("Neutronium", "Neutronium"),
+        Nano_Tube: new Resource("Nano Tube", "Nano_Tube"),
 
         // Interstellar
-        Deuterium: new Resource("Deuterium", "res", "Deuterium", false, false, 0.1, false, -1, false),
-        Adamantite: new Resource("Adamantite", "res", "Adamantite", true, false, 0.05, false, -1, false),
-        Infernite: new Resource("Infernite", "res", "Infernite", false, false, 0.01, false, -1, false),
-        Graphene: new Resource("Graphene", "res", "Graphene", true, false, 0.1, false, -1, false),
-        Stanene: new Resource("Stanene", "res", "Stanene", true, false, 0.1, false, -1, false),
-        Soul_Gem: new Resource("Soul Gem", "res", "Soul_Gem", false, false, -1, false, -1, false),
+        Deuterium: new Resource("Deuterium", "Deuterium"),
+        Adamantite: new Resource("Adamantite", "Adamantite"),
+        Infernite: new Resource("Infernite", "Infernite"),
+        Graphene: new Resource("Graphene", "Graphene"),
+        Stanene: new Resource("Stanene", "Stanene"),
+        Soul_Gem: new Resource("Soul Gem", "Soul_Gem"),
 
         // Andromeda
-        Bolognium: new Resource("Bolognium", "res", "Bolognium", true, false, 0.1, false, -1, false),
-        Vitreloy: new Resource("Vitreloy", "res", "Vitreloy", true, false, 0.1, false, -1, false),
-        Orichalcum: new Resource("Orichalcum", "res", "Orichalcum", true, false, 0.1, false, -1, false),
+        Bolognium: new Resource("Bolognium", "Bolognium"),
+        Vitreloy: new Resource("Vitreloy", "Vitreloy"),
+        Orichalcum: new Resource("Orichalcum", "Orichalcum"),
 
         // Craftable resources
-        Plywood: new Resource("Plywood", "res", "Plywood", false, false, -1, true, 0.5, false),
-        Brick: new Resource("Brick", "res", "Brick", false, false, -1, true, 0.5, false),
-        Wrought_Iron: new Resource("Wrought Iron", "res", "Wrought_Iron", false, false, -1, true, 0.5, false),
-        Sheet_Metal: new Resource("Sheet Metal", "res", "Sheet_Metal", false, false, -1, true, 0.5, false),
-        Mythril: new Resource("Mythril", "res", "Mythril", false, false, -1, true, 0.5, false),
-        Aerogel: new Resource("Aerogel", "res", "Aerogel", false, false, -1, true, 0.5, false),
-        Nanoweave: new Resource("Nanoweave", "res", "Nanoweave", false, false, -1, true, 0.5, false),
-        Scarletite: new Resource("Scarletite", "res", "Scarletite", false, false, -1, true, 0.5, false),
+        Plywood: new Resource("Plywood", "Plywood"),
+        Brick: new Resource("Brick", "Brick"),
+        Wrought_Iron: new Resource("Wrought Iron", "Wrought_Iron"),
+        Sheet_Metal: new Resource("Sheet Metal", "Sheet_Metal"),
+        Mythril: new Resource("Mythril", "Mythril"),
+        Aerogel: new Resource("Aerogel", "Aerogel"),
+        Nanoweave: new Resource("Nanoweave", "Nanoweave"),
+        Scarletite: new Resource("Scarletite", "Scarletite"),
 
         // Magic universe update
-        Corrupt_Gem: new Resource("Corrupt Gem", "res", "Corrupt_Gem", false, false, -1, false, -1, false),
-        Codex: new Resource("Codex", "res", "Codex", false, false, -1, false, -1, false),
-        Demonic_Essence: new Resource("Demonic Essence", "res", "Demonic_Essence", false, false, -1, false, -1, false),
-        Blood_Stone: new Resource("Blood Stone", "res", "Blood_Stone", false, false, -1, false, -1, false),
-        Artifact: new Resource("Artifact", "res", "Artifact", false, false, -1, false, -1, false),
+        Corrupt_Gem: new Resource("Corrupt Gem", "Corrupt_Gem"),
+        Codex: new Resource("Codex", "Codex"),
+        Demonic_Essence: new Resource("Demonic Essence", "Demonic_Essence"),
+        Blood_Stone: new Resource("Blood Stone", "Blood_Stone"),
+        Artifact: new Resource("Artifact", "Artifact"),
     }
 
     var state = {
@@ -6354,24 +6218,24 @@
         state.marketManager.addResourceToPriorityList(resources.Lumber);
         state.marketManager.addResourceToPriorityList(resources.Food);
 
-        resources.Food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.Lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.Stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
-        resources.Crystal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.Furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.Copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.Iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 20);
-        resources.Aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.Cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 10);
-        resources.Coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.Oil.updateMarketState(false, 0.5, false, 0.9, true, 5, false, 10);
-        resources.Uranium.updateMarketState(false, 0.5, false, 0.9, true, 2, false, 10);
-        resources.Steel.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 10);
-        resources.Titanium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        resources.Alloy.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        resources.Polymer.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        resources.Iridium.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
-        resources.Helium_3.updateMarketState(false, 0.8, false, 0.9, true, 50, false, 10);
+        resources.Food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Crystal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 1);
+        resources.Coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Oil.updateMarketState(false, 0.5, false, 0.9, true, 5, true, 1);
+        resources.Uranium.updateMarketState(false, 0.5, false, 0.9, true, 2, true, 1);
+        resources.Steel.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Titanium.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
+        resources.Alloy.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
+        resources.Polymer.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
+        resources.Iridium.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
+        resources.Helium_3.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
     }
 
     function resetMarketSettings() {
@@ -7568,14 +7432,13 @@
             }
 
             if (craftable.autoCraftEnabled) {
-                updateCraftRatio(craftable);
-
+                let craftRatio = getCraftRatio(craftable);
                 let tryCraft = true;
 
                 //console.log("resource: " + craftable.id + ", length: " + craftable.requiredResources.length);
                 for (let i = 0; i < craftable.resourceRequirements.length; i++) {
                     //console.log("resource: " + craftable.id + " required resource: " + craftable.requiredResources[i].id);
-                    if (craftable.resourceRequirements[i].resource.storageRatio < craftable.craftRatio) {
+                    if (craftable.resourceRequirements[i].resource.storageRatio < craftRatio) {
                         tryCraft = false;
                     }
                 }
@@ -7600,22 +7463,24 @@
     /**
      * @param {Resource} craftable
      */
-    function updateCraftRatio(craftable) {
-        craftable.craftRatio = 0.9;
+    function getCraftRatio(craftable) {
+        let craftRatio = 0.9;
         // We want to get to a healthy number of buildings that require craftable materials so leaving crafting ratio low early
         if (missResourceForBuilding(state.cityBuildings.Library, 20, craftable)) {
-            craftable.craftRatio = 0.5;
+            craftRatio = 0.5;
         }
         if (missResourceForBuilding(state.cityBuildings.Cottage, 20, craftable)) {
-            craftable.craftRatio = 0.5;
+            craftRatio = 0.5;
         }
         if (missResourceForBuilding(state.cityBuildings.Wardenclyffe, 20, craftable)) {
-            craftable.craftRatio = 0.5;
+            craftRatio = 0.5;
         }
         // Iron tends to be in high demand, make sure we have enough wrought for at least one coal mine, to start collecting coal for researches as soon as possible
         if (missResourceForBuilding(state.cityBuildings.CoalMine, 1, craftable)) {
-            craftable.craftRatio = 0;
+            craftRatio = 0;
         }
+
+        return craftRatio;
     }
 
     //#endregion Auto Crafting
@@ -8424,7 +8289,7 @@
                     remainingRateOfChange -= productionCost.minRateOfChange;
                 }
                 if (game.global.race[challengeDecay]) {
-                    remainingRateOfChange = resource.currentQuantity / 2;
+                    remainingRateOfChange += resource.decayRate;
                 }
                 let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
                 let maxAllowedUnits = Math.min(affordableAmount, remainingSmelters);
@@ -8471,7 +8336,7 @@
                 remainingRateOfChange -= productionCost.minRateOfChange;
             }
             if (game.global.race[challengeDecay]) {
-                remainingRateOfChange = resource.currentQuantity / 2;
+                remainingRateOfChange += resource.decayRate;
             }
             let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
             maxAllowedSteel = Math.min(maxAllowedSteel, affordableAmount);
@@ -8546,7 +8411,7 @@
                         rate -= resourceCost.minRateOfChange;
                     }
                     if (game.global.race[challengeDecay]) {
-                        rate = resourceCost.resource.currentQuantity / 2;
+                        rate += resourceCost.resource.decayRate;
                     }
 
                     // If we can't afford it (it's above our minimum rate of change) then remove a factory
@@ -8589,7 +8454,7 @@
                         rate -= resourceCost.minRateOfChange;
                     }
                     if (game.global.race[challengeDecay]) {
-                        rate = resourceCost.resource.currentQuantity / 2;
+                        rate += resourceCost.resource.decayRate;
                     }
                     // If we can't afford it (it's above our minimum rate of change) then remove a factory
                     // UNLESS we've got over 80% storage full. In that case lets go wild!
@@ -8680,7 +8545,7 @@
                 rateOfChange -= consumption.minRateOfChange;
             }
             if (game.global.race[challengeDecay]) {
-                rateOfChange = consumption.resource.currentQuantity / 2;
+                rateOfChange += consumption.resource.decayRate;
             }
 
             let maxFueledForConsumption = remainingPlants;
@@ -8950,7 +8815,7 @@
         for (let i = 0; i < m.priorityList.length; i++) {
             let resource = m.priorityList[i];
 
-            if (!resource.isTradable || !resource.isUnlocked() || !m.isBuySellUnlocked(resource)) {
+            if (!resource.isTradable() || !resource.isUnlocked() || !m.isBuySellUnlocked(resource)) {
                 continue;
             }
 
@@ -9405,7 +9270,7 @@
                     break;
                 }
 
-                if (!requirement.resource.isCraftable && requirement.resource.storageRatio <= 0.98) {
+                if (!requirement.resource.isCraftable() && requirement.resource.storageRatio <= 0.98) {
                     log("autoARPA", "break: storage < 98%");
                     allowBuild = false;
                     break;
@@ -9417,7 +9282,7 @@
                     break;
                 }
 
-                if (requirement.resource.isCraftable) {
+                if (requirement.resource.isCraftable()) {
                     let amountToKeep = (settings.arpaBuildIfStorageFullCraftableMin === -1 ? requirement.resource.storageRequired : settings.arpaBuildIfStorageFullCraftableMin);
                     if (requirement.resource.currentQuantity - onePercentOfRequirementQuantity < amountToKeep){
                         log("autoARPA", "break: craftables < setting");
@@ -9870,7 +9735,7 @@
                 let required = Number(costs[resourceName]()) || 0;
 
                 // We only care about missing tradeable resources
-                if (resource.currentQuantity >= required || !resource.isTradable){
+                if (resource.currentQuantity >= required || !resource.isTradable()){
                     return;
                 }
 
@@ -10145,10 +10010,6 @@
         // with whatever our script was doing with the open modal window.
         if (state.windowManager.openedByScript && !state.windowManager.isOpenHtml()) {
             state.windowManager.resetWindowManager();
-        }
-
-        if (resources.Population.cachedId !== resources.Population.id) {
-            resources.Population.setupCache();
         }
 
         if (isLumberRace()) {
@@ -13893,7 +13754,7 @@
             rate *= 1 + (game.global.race['persuasive'] / 100);
         }
         if (game.global.race['merchant']){
-            rate *= 1 + (traits.merchant.vars[1] / 100);
+            rate *= 1 + (game.traits.merchant.vars[1] / 100);
         }
         if (game.global.genes['trader']){
             let mastery = parseFloat(game.breakdown.p.Global.Mastery || 0);
