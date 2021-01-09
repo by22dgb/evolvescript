@@ -28,6 +28,7 @@
 //   Pre-mad storage limit doesn't completely prevents constructing crates and containers, it just make it work above certain ratio(80%+ steel storage for containers, and more-than-you-need-for-next-library for crates)
 //   You can enable buying and selling of same resource at same time, depends on whether you're lacking something, or have a surplus. Works both with regular trade, and routes.
 //   Expanded triggers, they got "researched" and "built" conditions, and "build" action. And an option to import missing resources required to perform chosen action. Once condition is met and action is available script will set trade routes for what it missing. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction, and same for buildings - whatever you need.
+//   Added option to import resources for queued buildings and researches
 //   Reworked fighting\spying. At first glance it have less configurable options now, but range of possible outcomes is wider, and route to them is more optimal. With default settings it'll sabotage, plunder, and then annex all foreign powers, gradually moving from top to bottom of the list, as they becomes weak enough, and then occupy last city to finish unification. By tweaking settings it's possible to configure script to get any unification achievment(annex\purchase\occupy\reject, with or without pacifism).
 //   Added basic support for magic universe
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
@@ -6239,8 +6240,9 @@
     }
 
     function resetMarketSettings() {
-        settings.tradeRouteMinimumMoneyPerSecond = 300
-        settings.tradeRouteMinimumMoneyPercentage = 5
+        settings.queueRequest = false;
+        settings.tradeRouteMinimumMoneyPerSecond = 300;
+        settings.tradeRouteMinimumMoneyPercentage = 5;
     }
 
     function resetStorageState() {
@@ -7122,6 +7124,7 @@
 
         addSetting("minimumMoney", 0);
         addSetting("minimumMoneyPercentage", 0);
+        addSetting("queueRequest", false);
         addSetting("tradeRouteMinimumMoneyPerSecond", 300);
         addSetting("tradeRouteMinimumMoneyPercentage", 5);
         addSetting("generalMinimumTaxRate", 20);
@@ -9722,45 +9725,85 @@
         minimumAllowedMoneyPerSecond = Math.min(minimumAllowedMoneyPerSecond, resources.Money.maxQuantity - resources.Money.currentQuantity);
         //console.log("minimum money per second: " + minimumAllowedMoneyPerSecond + " based on current money per second of " + currentMoneyPerSecond)
 
-        // Import resources demanded by trigger
-        if (settings.triggerRequest) {
-          let demandedTrades = [];
-          for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
-            let trigger = state.triggerManager.targetTriggers[i];
-            let costs = game.adjustCosts(trigger.cost);
+        let overrideTradesFor = [];
 
-            // Check resources required for trigger
-            Object.keys(costs).forEach((resourceName) => {
-                let resource = resources[resourceName];
-                let required = Number(costs[resourceName]()) || 0;
-
-                // We only care about missing tradeable resources
-                if (resource.currentQuantity >= required || !resource.isTradable()){
-                    return;
-                }
-
-                // Calculate amount of routes we need
-                let routes = Math.ceil((required - resource.currentQuantity) / resource.tradeRouteQuantity);
-
-                // Add routes
-                demandedTrades.push( {
-                    resource: resource,
-                    requiredTradeRoutes: routes,
-                    completed: false,
-                    index: tradableResources.findIndex(tradeable => tradeable.id === resource.id),
-                } );
-            });
-          }
-          if (demandedTrades.length > 0) {
-              // Override regular routes, to get demanded sooner
-              resourcesToTrade = demandedTrades;
-              // Drop minimum income, if we have something on demand, but can't trade with our income
-              if (minimumAllowedMoneyPerSecond > resources.Money.calculatedRateOfChange){
-                  minimumAllowedMoneyPerSecond = 0;
-              }
-          }
+        // Buildings queue
+        if (settings.queueRequest && game.global.queue.display) {
+            for (let i = 0; i < game.global.queue.queue.length; i ++) {
+                let queue = game.global.queue.queue[i];
+                overrideTradesFor.push(queue.id);
+            }
         }
 
+        // Research queue
+        if (settings.queueRequest && game.global.r_queue.display) {
+            for (let i = 0; i < game.global.r_queue.queue.length; i ++) {
+                let queue = game.global.r_queue.queue[i];
+                overrideTradesFor.push(queue.id);
+            }
+        }
+
+        // Active triggers
+        if (settings.triggerRequest) {
+            for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
+                let trigger = state.triggerManager.targetTriggers[i];
+                overrideTradesFor.push(trigger.actionId);
+            }
+        }
+
+        if (overrideTradesFor.length > 0) {
+            let demandedTrades = [];
+            for (let i = 0; i < overrideTradesFor.length; i++){
+                let id = overrideTradesFor[i];
+
+                // Look for building, tech, or project. We have no lookup table for arpa, but it shouldn't be the issue, as there's only 5 of them
+                let demandedObject = buildingIds[id] || tech[id] || state.projectManager.priorityList.find(project => ("arpa" + project.id) === id);
+
+                // Got something
+                if (demandedObject) {
+                    if (demandedObject instanceof Technology) {
+                        // Techs doesn't updates automatically, unlike buildings or projects, we need to do it explicitly
+                        demandedObject.updateResourceRequirements();
+                    }
+                    for (let j = 0; j < demandedObject.resourceRequirements.length; j++) {
+                        let resource = demandedObject.resourceRequirements[j].resource;
+                        let required = demandedObject.resourceRequirements[j].quantity;
+
+                        // We need to check storage ratio here, as queued buildings may be unaffordable(especially arpa, as it check full cost, not just 1%), and we don't want to import capped resources, or drop imports having full banks
+                        if (resource.currentQuantity >= required || resource.storageRatio > 0.98){
+                            continue;
+                        }
+                        // Need more money, drop old buyings even if won't set new trades
+                        if (resource === resources.Money) {
+                            resourcesToTrade = [];
+                            continue;
+                        }
+                        if (!resource.isTradable()) {
+                            continue;
+                        }
+
+                        // Calculate amount of routes we need
+                        let routes = Math.ceil((required - resource.currentQuantity) / resource.tradeRouteQuantity);
+
+                        // Add routes
+                        demandedTrades.push({
+                            resource: resource,
+                            requiredTradeRoutes: routes,
+                            completed: false,
+                            index: tradableResources.findIndex(tradeable => tradeable.id === resource.id),
+                        });
+                    }
+                }
+            }
+            if (demandedTrades.length > 0) {
+                // Override regular routes, to get demanded sooner
+                resourcesToTrade = demandedTrades;
+                // Drop minimum income, if we have something on demand, but can't trade with our income
+                if (minimumAllowedMoneyPerSecond > resources.Money.calculatedRateOfChange){
+                    minimumAllowedMoneyPerSecond = 0;
+                }
+            }
+        }
 
         while (resourcesToTrade.some(resource => !resource.completed)) {
             for (let i = 0; i < resourcesToTrade.length; i++) {
@@ -11938,6 +11981,7 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketPreTable"></div>');
+        addStandardSectionSettingsToggle(preTableNode, "queueRequest", "Request resources for queue", "Automatically set routes to import resources missing by buildings in queue");
         addStandardSectionSettingsNumber(preTableNode, "tradeRouteMinimumMoneyPerSecond", "Trade minimum money /s", "Uses the highest per second amount of these two values. Will trade for resources until this minimum money per second amount is hit");
         addStandardSectionSettingsNumber(preTableNode, "tradeRouteMinimumMoneyPercentage", "Trade minimum money percentage /s", "Uses the highest per second amount of these two values. Will trade for resources until this percentage of your money per second amount is hit");
 
