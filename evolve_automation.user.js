@@ -1216,6 +1216,7 @@
             this.autoTradeSellEnabled = true;
             this.autoTradeSellMinPerSecond = 0;
 
+            this.storeOverflow = false;
             this.storagePriority = 0;
             this.storageRequired = 0;
             this.autoStorageEnabled = true;
@@ -1329,6 +1330,7 @@
          */
         updateStorageState(enabled, maxCrates, maxContainers) {
             this.autoStorageEnabled = enabled;
+            this.storeOverflow = false;
             this._autoCratesMax = maxCrates;
             this._autoContainersMax = maxContainers;
         }
@@ -4501,7 +4503,7 @@
         getCrateVolume() {
             let crateDescNumbers = $("div#createHead .crate .tooltip-content").text().match(/(\d+)/g);
             if (crateDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
-              return crateDescNumbers[1];
+              return Number(crateDescNumbers[1]);
             } else {
               return 350;
             }
@@ -4511,7 +4513,7 @@
         getContainerVolume() {
             let containerDescNumbers = $("div#createHead .container .tooltip-content").text().match(/(\d+)/g);
             if (containerDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
-              return containerDescNumbers[1];
+              return Number(containerDescNumbers[1]);
             } else {
               return 800;
             }
@@ -6275,26 +6277,26 @@
         state.storageManager.addResourceToPriorityList(resources.Lumber);
         state.storageManager.addResourceToPriorityList(resources.Food);
 
-        resources.Food.updateStorageState(true, -1, -1);
-        resources.Lumber.updateStorageState(true, -1, -1);
-        resources.Stone.updateStorageState(true, -1, -1);
-        resources.Furs.updateStorageState(true, -1, -1);
-        resources.Copper.updateStorageState(true, -1, -1);
-        resources.Iron.updateStorageState(true, -1, -1);
-        resources.Aluminium.updateStorageState(true, -1, -1);
-        resources.Cement.updateStorageState(true, -1, -1);
-        resources.Coal.updateStorageState(true, -1, -1);
-        resources.Steel.updateStorageState(true, -1, -1);
-        resources.Titanium.updateStorageState(true, -1, -1);
-        resources.Alloy.updateStorageState(true, -1, -1);
-        resources.Polymer.updateStorageState(true, -1, -1);
-        resources.Iridium.updateStorageState(true, -1, -1);
-        resources.Adamantite.updateStorageState(true, -1, -1);
-        resources.Graphene.updateStorageState(true, -1, -1);
-        resources.Stanene.updateStorageState(true, -1, -1);
-        resources.Bolognium.updateStorageState(true, -1, -1);
-        resources.Vitreloy.updateStorageState(true, -1, -1);
-        resources.Orichalcum.updateStorageState(true, -1, -1);
+        resources.Food.updateStorageState(true, false, -1, -1);
+        resources.Lumber.updateStorageState(true, false, -1, -1);
+        resources.Stone.updateStorageState(true, false, -1, -1);
+        resources.Furs.updateStorageState(true, false, -1, -1);
+        resources.Copper.updateStorageState(true, false, -1, -1);
+        resources.Iron.updateStorageState(true, false, -1, -1);
+        resources.Aluminium.updateStorageState(true, false, -1, -1);
+        resources.Cement.updateStorageState(true, false, -1, -1);
+        resources.Coal.updateStorageState(true, false, -1, -1);
+        resources.Steel.updateStorageState(true, false, -1, -1);
+        resources.Titanium.updateStorageState(true, false, -1, -1);
+        resources.Alloy.updateStorageState(true, false, -1, -1);
+        resources.Polymer.updateStorageState(true, false, -1, -1);
+        resources.Iridium.updateStorageState(true, false, -1, -1);
+        resources.Adamantite.updateStorageState(true, false, -1, -1);
+        resources.Graphene.updateStorageState(true, false, -1, -1);
+        resources.Stanene.updateStorageState(true, false, -1, -1);
+        resources.Bolognium.updateStorageState(true, false, -1, -1);
+        resources.Vitreloy.updateStorageState(true, false, -1, -1);
+        resources.Orichalcum.updateStorageState(true, false, -1, -1);
     }
 
     function resetStorageSettings() {
@@ -6750,6 +6752,10 @@
             if (settings.hasOwnProperty(settingKey)) { resource.autoStorageEnabled = settings[settingKey]; }
             else { settings[settingKey] = resource.autoStorageEnabled; }
 
+            settingKey = 'res_storage_o_' + resource.id;
+            if (settings.hasOwnProperty(settingKey)) { resource.storeOverflow = settings[settingKey]; }
+            else { settings[settingKey] = resource.storeOverflow; }
+
             settingKey = 'res_storage_p_' + resource.id;
             if (settings.hasOwnProperty(settingKey)) { resource.storagePriority = parseFloat(settings[settingKey]); }
             else { settings[settingKey] = resource.storagePriority; }
@@ -7013,6 +7019,7 @@
         for (let i = 0; i < state.storageManager.priorityList.length; i++) {
             const resource = state.storageManager.priorityList[i];
             settings['res_storage' + resource.id] = resource.autoStorageEnabled;
+            settings['res_storage_o_' + resource.id] = resource.storeOverflow;
             settings['res_storage_p_' + resource.id] = resource.storagePriority;
             settings['res_crates_m_' + resource.id] = resource._autoCratesMax;
             settings['res_containers_m_' + resource.id] = resource._autoContainersMax;
@@ -9499,7 +9506,12 @@
             let freeStorage = resource.maxQuantity - resource.currentQuantity;
             let extraStorageRequired = resource.storageRequired - rawStorage;
 
-            // We don't need any extra storage here, and don't care about overflowing, just remove everything and go to next resource
+            // If we're overflowing, and want to store more - just request one more crate volume
+            if (resource.storeOverflow) {
+                extraStorageRequired = Math.max(extraStorageRequired, resource.currentQuantity * 1.01 - rawStorage);
+            }
+
+            // We don't need any extra storage here, and don't care about wasting, just remove everything and go to next resource
             if (!settings.storageSafeReassign && extraStorageRequired <= 0){
                 totalCrates += storageAdjustments[i].calculatedCrates;
                 totalContainers += storageAdjustments[i].calculatedContainers;
@@ -9515,7 +9527,7 @@
                 let overcapContainers = storageAdjustments[i].calculatedContainers - resource.autoContainersMax;
                 let removedContainers = Math.max(overcapContainers, extraContainers);
 
-                if (settings.storageSafeReassign) {
+                if (settings.storageSafeReassign || resource.storeOverflow) {
                     let emptyContainers = Math.floor(freeStorage / containerVolume);
                     removedContainers = Math.min(removedContainers, emptyContainers);
                 }
@@ -9533,7 +9545,7 @@
                 let overcapCrates = storageAdjustments[i].calculatedCrates - resource.autoCratesMax;
                 let removedCrates = Math.max(overcapCrates, extraCrates);
 
-                if (settings.storageSafeReassign) {
+                if (settings.storageSafeReassign || resource.storeOverflow) {
                     let emptyCrates = Math.floor(freeStorage / crateVolume);
                     removedCrates = Math.min(removedCrates, emptyCrates);
                 }
@@ -9560,7 +9572,7 @@
                             let missingCrates = Math.ceil(missingStorage / crateVolume);
                             let cratesToUnassign = Math.min(storageAdjustments[j].calculatedCrates, missingCrates);
 
-                            if (settings.storageSafeReassign) {
+                            if (settings.storageSafeReassign || storageList[j].storeOverflow) {
                                 let emptyCrates = Math.floor(otherFreeStorage / containerVolume);
                                 cratesToUnassign = Math.min(cratesToUnassign, emptyCrates);
                             }
@@ -9577,7 +9589,7 @@
                             let missingContainers = Math.ceil(missingStorage / containerVolume);
                             let containersToUnassign = Math.min(storageAdjustments[j].calculatedContainers, missingContainers);
 
-                            if (settings.storageSafeReassign) {
+                            if (settings.storageSafeReassign || storageList[j].storeOverflow) {
                                 let emptyContainers = Math.floor(otherFreeStorage / containerVolume);
                                 containersToUnassign = Math.min(containersToUnassign, emptyContainers);
                             }
@@ -11025,6 +11037,27 @@
         return textBox;
     }
 
+    function buildStandartSettingsToggle(entity, property, toggleId, syncToggleId) {
+        let checked = entity[property] ? " checked" : "";
+        let toggle = $('<label id="' + toggleId + '" tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
+
+        toggle.on('change', function(e) {
+            let input = e.currentTarget.children[0];
+            let state = input.checked;
+            entity[property] = state;
+
+            if (syncToggleId) {
+                let otherCheckbox = document.querySelector('#' + syncToggleId + ' input');
+                if (otherCheckbox !== null) {
+                    otherCheckbox.checked = state;
+                }
+            }
+            updateSettingsFromState();
+        });
+
+        return toggle;
+    }
+
     function buildGeneralSettings() {
         let sectionId = "general";
         let sectionName = "General";
@@ -12047,25 +12080,25 @@
             marketElement.append(toggle);
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsToggle(resource, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id));
+            marketElement.append(buildStandartSettingsToggle(resource, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id));
 
             marketElement = marketElement.next();
             marketElement.append(buildStandartSettingsInput(resource, "res_buy_r_" + resource.id, "autoBuyRatio"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsToggle(resource, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id));
+            marketElement.append(buildStandartSettingsToggle(resource, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id));
 
             marketElement = marketElement.next();
             marketElement.append(buildStandartSettingsInput(resource, "res_sell_r_" + resource.id, "autoSellRatio"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsToggle(resource, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id));
+            marketElement.append(buildStandartSettingsToggle(resource, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id));
 
             marketElement = marketElement.next();
             marketElement.append(buildStandartSettingsInput(resource, "res_trade_buy_mtr_" + resource.id, "autoTradeBuyRoutes"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildMarketSettingsToggle(resource, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id));
+            marketElement.append(buildStandartSettingsToggle(resource, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id));
 
             marketElement = marketElement.next();
             marketElement.append(buildStandartSettingsInput(resource, "res_trade_sell_mps_" + resource.id, "autoTradeSellMinPerSecond"));
@@ -12097,30 +12130,6 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    /**
-     * @param {Resource} resource
-     */
-    function buildMarketSettingsToggle(resource, property, toggleId, syncToggleId) {
-        let checked = resource[property] ? " checked" : "";
-        let toggle = $('<label id="' + toggleId + '" tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            resource[property] = state;
-
-            let otherCheckbox =  document.querySelector('#' + syncToggleId + ' input');
-            if (otherCheckbox !== null) {
-                // @ts-ignore
-                otherCheckbox.checked = state;
-            }
-            updateSettingsFromState();
-            //console.log(resource.name + " changed enabled to " + state);
-        });
-
-        return toggle;
-    }
-
     function buildStorageSettings() {
         let sectionId = "storage";
         let sectionName = "Storage";
@@ -12147,7 +12156,7 @@
         addStandardSectionSettingsToggle(preTableNode, "storageSafeReassign", "Reassign only empty storages", "Wait until storage is empty before reassigning containers to another resource, to prevent overflowing and wasting resources");
 
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:50%">Resource</th><th class="has-text-warning" style="width:15%">Enabled</th><th class="has-text-warning" style="width:15%">Max Crates</th><th class="has-text-warning" style="width:15%">Max Containers</th><th style="width:5%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:15%">Enabled</th><th class="has-text-warning" style="width:15%">Store Overflow</th><th class="has-text-warning" style="width:15%">Max Crates</th><th class="has-text-warning" style="width:15%">Max Containers</th><th style="width:5%"></th></tr>
                 <tbody id="script_storageTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12158,7 +12167,7 @@
         for (let i = 0; i < state.storageManager.priorityList.length; i++) {
             const resource = state.storageManager.priorityList[i];
             let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_storage_' + resource.id + 'Toggle" style="width:50%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_storage_' + resource.id + 'Toggle" style="width:50%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12171,7 +12180,10 @@
             storageElement.append(toggle);
 
             storageElement = storageElement.next();
-            storageElement.append(buildStorageSettingsEnabledToggle(resource));
+            storageElement.append(buildStandartSettingsToggle(resource, "autoStorageEnabled", "script_res_storage_" + resource.id));
+
+            storageElement = storageElement.next();
+            storageElement.append(buildStandartSettingsToggle(resource, "storeOverflow", "script_res_overflow_" + resource.id));
 
             storageElement = storageElement.next();
             storageElement.append(buildStandartSettingsInput(resource, "res_crates_m_" + resource.id, "_autoCratesMax"));
@@ -12201,24 +12213,6 @@
         } );
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    /**
-     * @param {Resource} resource
-     */
-    function buildStorageSettingsEnabledToggle(resource) {
-        let checked = resource.autoStorageEnabled ? " checked" : "";
-        let toggle = $('<label id=script_res_storage_' + resource.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            resource.autoStorageEnabled = state;
-            updateSettingsFromState();
-            //console.log(resource.name + " changed enabled to " + state);
-        });
-
-        return toggle;
     }
 
     function buildMinorTraitSettings() {
@@ -12273,7 +12267,7 @@
             minorTraitElement.append(toggle);
 
             minorTraitElement = minorTraitElement.next();
-            minorTraitElement.append(buildMinorTraitSettingsEnabledToggle(trait));
+            minorTraitElement.append(buildStandartSettingsToggle(trait, "autoMinorTraitEnabled", "script_mTrait_" + trait.traitName));
 
             minorTraitElement = minorTraitElement.next();
             minorTraitElement.append(buildStandartSettingsInput(trait, "mTrait_w_" + trait.traitName, "autoMinorTraitWeighting"));
@@ -12301,23 +12295,6 @@
                 updateSettingsFromState();
             },
         } );
-    }
-
-    /**
-     * @param {MinorTrait} minorTrait
-     */
-    function buildMinorTraitSettingsEnabledToggle(minorTrait) {
-        let checked = minorTrait.autoMinorTraitEnabled ? " checked" : "";
-        let toggle = $('<label id=script_mTrait_' + minorTrait.traitName + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            minorTrait.autoMinorTraitEnabled = state;
-            updateSettingsFromState();
-        });
-
-        return toggle;
     }
 
     function buildProductionSettings() {
@@ -12445,7 +12422,7 @@
             productionElement.append(toggle);
 
             productionElement = productionElement.next();
-            productionElement.append(buildProductionSettingsEnabledToggle(production));
+            productionElement.append(buildStandartSettingsToggle(production, "enabled", "script_factory_" + production.resource.id));
 
             productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsInput(production, "production_w_" + production.resource.id, "weighting"));
@@ -12484,47 +12461,11 @@
             productionElement.append(toggle);
 
             productionElement = productionElement.next();
-            productionElement.append(buildFoundrySettingsEnabledToggle(resource));
+            productionElement.append(buildStandartSettingsToggle(resource, "autoCraftEnabled", "script_craft2_" + resource.id, "script_craft1_" + resource.id));
 
             productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsInput(resource, "foundry_w_" + resource.id, "weighting"));
         }
-    }
-
-    /**
-     * @param {{ enabled: any; resource: Resource; }} production
-     */
-    function buildProductionSettingsEnabledToggle(production) {
-        let checked = production.enabled ? " checked" : "";
-        let toggle = $('<label id=script_factory_' + production.resource.id + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            production.enabled = state;
-            updateSettingsFromState();
-            //console.log(resource.name + " changed enabled to " + state);
-        });
-
-        return toggle;
-    }
-
-    function buildFoundrySettingsEnabledToggle(resource) {
-        let checked = resource.autoCraftEnabled ? " checked" : "";
-        let toggle = $(`<label id=script_craft2_${resource.id} tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"${checked}> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>`);
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            resource.autoCraftEnabled = state;
-            let otherCheckbox = document.querySelector(`#script_craft1_${resource.id} input`);
-            if (otherCheckbox !== null) {
-                otherCheckbox.checked = state;
-            }
-            updateSettingsFromState();
-        });
-
-        return toggle;
     }
 
     function buildJobSettings() {
@@ -12802,8 +12743,7 @@
             buildingElement.append(toggle);
 
             buildingElement = buildingElement.next();
-            toggle = buildBuildingEnabledSettingsToggle(building);
-            buildingElement.append(toggle);
+            buildingElement.append(buildStandartSettingsToggle(building, "autoBuildEnabled", "script_bat2_" + building.settingId, "script_bat1_" + building.settingId));
 
             buildingElement = buildingElement.next();
             buildingElement.append(buildStandartSettingsInput(building, "bld_m_" + building.settingId, "autoMax"));
@@ -12812,8 +12752,7 @@
             buildingElement.append(buildStandartSettingsInput(building, "bld_w_" + building.settingId, "_weighting"));
 
             buildingElement = buildingElement.next();
-            toggle = buildBuildingStateSettingsToggle(building);
-            buildingElement.append(toggle);
+            buildingElement.append(buildBuildingStateSettingsToggle(building));
         }
 
         $('#script_buildingTableBody').sortable( {
@@ -12864,29 +12803,6 @@
         let content = document.querySelector('#script_buildingSettings .script-content');
         content.style.height = null;
         content.style.height = content.offsetHeight + "px"
-    }
-
-    /**
-     * @param {Action} building
-     */
-    function buildBuildingEnabledSettingsToggle(building) {
-        let checked = building.autoBuildEnabled ? " checked" : "";
-        let toggle = $('<label id=script_bat2_' + building.settingId + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            building.autoBuildEnabled = state;
-            let otherCheckbox =  document.querySelector('#script_bat1_' + building.settingId + ' input');
-            if (otherCheckbox !== null) {
-                // @ts-ignore
-                otherCheckbox.checked = state;
-            }
-            updateSettingsFromState();
-            //console.log(building.name + " changed enabled to " + state);
-        });
-
-        return toggle;
     }
 
     /**
@@ -13022,14 +12938,13 @@
             const project = state.projectManager.priorityList[i];
             let projectElement = $('#script_' + project.id + 'Toggle');
 
-            let toggle = buildProjectSettingsToggle(project);
-            projectElement.append(toggle);
+            projectElement.append(buildStandartSettingsToggle(project, "autoBuildEnabled", "script_arpa2_" + project.id, "script_arpa1_" + project.id));
 
             projectElement = projectElement.next();
             projectElement.append(buildStandartSettingsInput(project, "arpa_m_" + project.id, "autoMax"));
 
             projectElement = projectElement.next();
-            projectElement.append(buildProjectIgnoreMinMoneySettingsToggle(project));
+            projectElement.append(buildStandartSettingsToggle(project, "ignoreMinimumMoneySetting", "script_arpa_ignore_money_" + project.id));
         }
 
         $('#script_projectTableBody').sortable( {
@@ -13053,44 +12968,6 @@
         } );
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    /**
-     * @param {Project} project
-     */
-    function buildProjectSettingsToggle(project) {
-        let checked = project.autoBuildEnabled ? " checked" : "";
-        let toggle = $('<label id="script_arpa2_' + project.id + '" tabindex="0" class="switch" style="position:absolute; margin-top: 4px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span class="has-text-info" style="margin-left: 20px;">' + project.name + '</span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            project.autoBuildEnabled = state;
-            // @ts-ignore
-            let otherCheckbox = document.querySelector('#script_arpa1_' + project.id + ' input');
-            if (otherCheckbox !== null) {
-                // @ts-ignore
-                otherCheckbox.checked = state;
-            }
-            updateSettingsFromState();
-            //console.log(project.name + " changed enabled to " + state);
-        });
-
-        return toggle;
-    }
-
-    function buildProjectIgnoreMinMoneySettingsToggle(project) {
-        let checked = project.ignoreMinimumMoneySetting ? " checked" : "";
-        let toggle = $('<label id="script_arpa_ignore_money_' + project.id + '" tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            project.ignoreMinimumMoneySetting = state;
-            updateSettingsFromState();
-        });
-
-        return toggle;
     }
 
     function buildLoggingSettings(parentNode, isMainSettings) {
