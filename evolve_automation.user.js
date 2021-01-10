@@ -5170,6 +5170,31 @@
         return game.global.city.biome === 'tundra' || game.global.blood['unbound'];
     }
 
+    function customAllowed() {
+        if (!game.races.custom.hasOwnProperty('type')) {
+            return false;
+        }
+
+        switch (game.races.custom.type) {
+            case 'aquatic':
+                return aquaticAllowed();
+            case 'fey':
+                return feyAllowed();
+            case 'sand':
+                return sandAllowed();
+            case 'heat':
+                return heatAllowed();
+            case 'polar':
+                return polarAllowed();
+            case 'demonic':
+                return demonicAllowed();
+            case 'angelic':
+                return celestialAllowed();
+            default:
+                return true;
+        }
+    }
+
     var races = {
         antid: new Race("antid", "Antid", alwaysAllowed, "", "Ophiocordyceps Unilateralis"),
         mantis: new Race("mantis", "Mantis", alwaysAllowed, "", "Praying Unanswered"),
@@ -5213,7 +5238,7 @@
         wendigo: new Race("wendigo", "Wendigo", polarAllowed, "Tundra planet", "Soulless Abomination"),
         tuskin: new Race("tuskin", "Tuskin", sandAllowed, "Desert planet", "Startled"),
         kamel: new Race("kamel", "Kamel", sandAllowed, "Desert planet", "No Oasis"),
-        custom: new Race("custom", "Custom", neverAllowed, "Custom designed race", "Lab Failure"),
+        custom: new Race("custom", "Custom", customAllowed, "Custom designed race", "Lab Failure"),
     }
 
     /** @type {Race[]} */
@@ -6600,6 +6625,7 @@
     function resetProductionSettings() {
         settings.productionMoneyIfOnly = true;
         settings.productionPrioritizeDemanded = true;
+        settings.productionMinRatio = 0.1;
     }
 
     function resetProductionState() {
@@ -7066,6 +7092,7 @@
 
         addSetting("productionMoneyIfOnly", true);
         addSetting("productionPrioritizeDemanded", true);
+        addSetting("productionMinRatio", 0.1);
 
         addSetting("jobSetDefault", true);
         addSetting("jobLumberWeighting", 50);
@@ -7909,34 +7936,40 @@
             let costMod = speed * craft_costs / 140;
 
             // Get list of craftabe resources
-            let availableJobs = state.jobManager.craftingJobs.filter(job => {
+
+            let availableJobs = [];
+            let demandedJobs = [];
+
+            for (let i = 0; i < state.jobManager.craftingJobs.length; i++) {
+                let job = state.jobManager.craftingJobs[i];
                 // Check if we're allowed to craft this resource
                 if (!job.isManaged() || !job.resource.autoCraftEnabled) {
-                    return false;
+                    continue;
                 }
 
                 // And have enough resources to craft it for at least 2 seconds
                 let afforableAmount = availableCraftsmen;
+                let lowestRatio = 1;
                 job.resource.resourceRequirements.forEach(requirement => {
                     afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / (requirement.quantity * costMod) / 2);
+                    lowestRatio = Math.min(lowestRatio, requirement.resource.storageRatio);
                   }
                 );
 
-                if (afforableAmount < availableCraftsmen){
-                    return false;
-                } else {
-                    return true;
+                if (afforableAmount < availableCraftsmen || lowestRatio < settings.productionMinRatio){
+                    continue;
                 }
-            });
 
-            //TODO: Prioritize craftables for triggers
-
-            // Try to filter out excess resources, if we're prioritizing demanded
-            if (settings.productionPrioritizeDemanded) {
-                let demandedJobs = availableJobs.filter(job => job.resource.currentQuantity < job.resource.storageRequired);
-                if (demandedJobs.length > 0){
-                    availableJobs = demandedJobs;
+                //TODO: Prioritize craftables for triggers
+                if (job.resource.currentQuantity < job.resource.storageRequired) {
+                    demandedJobs.push(job);
                 }
+
+                availableJobs.push(job);
+            }
+
+            if (settings.productionPrioritizeDemanded && demandedJobs.length > 0) {
+                availableJobs = demandedJobs;
             }
 
             // Sort them by amount and weight. Yes, it can be empty, not a problem.
@@ -9776,9 +9809,14 @@
                         // Techs doesn't updates automatically, unlike buildings or projects, we need to do it explicitly
                         demandedObject.updateResourceRequirements();
                     }
+                    let costMod = 1;
+                    if (demandedObject instanceof Project) {
+                        // For project let's check what percent of it already constructed
+                        costMod = 1 - demandedObject.instance.complete * 0.01;
+                    }
                     for (let j = 0; j < demandedObject.resourceRequirements.length; j++) {
                         let resource = demandedObject.resourceRequirements[j].resource;
-                        let required = demandedObject.resourceRequirements[j].quantity;
+                        let required = demandedObject.resourceRequirements[j].quantity * costMod;
 
                         // We need to check storage ratio here, as queued buildings may be unaffordable(especially arpa, as it check full cost, not just 1%), and we don't want to import capped resources, or drop imports having full banks
                         if (resource.currentQuantity >= required || resource.storageRatio > 0.98){
@@ -12432,6 +12470,7 @@
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFoundry"></div>');
         addStandardHeading(preTableNode, "Foundry");
         addStandardSectionSettingsToggle(preTableNode, "productionPrioritizeDemanded", "Prioritize demanded craftables", "Resources above amount required for constructions won't be crafted, if there's better options enabled and available, ignoring weighted ratio");
+        addStandardSectionSettingsNumber(preTableNode, "productionMinRatio", "Preserve ingredients up to ratio", "Craft resources only when storages of all ingridients above given ratio");
 
         // Add table
         currentNode.append(
