@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.33
+// @version      3.2.1.34
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -326,10 +326,6 @@
          * @param {number} employees
          */
         setBreakpoint(breakpoint, employees) {
-            if (this.jobOverride !== null) {
-               this.jobOverride.setBreakpoint(breakpoint, employees);
-            }
-
             this.breakpointMaxs[breakpoint - 1] = employees;
         }
 
@@ -337,23 +333,14 @@
          * @param {number} breakpoint
          */
         getBreakpoint(breakpoint) {
-            if (this.jobOverride !== null) {
-                return this.jobOverride.getBreakpoint(breakpoint);
-            }
-
             return this.breakpointMaxs[breakpoint - 1];
         }
 
         /**
          * @param {number} breakpoint
-         * @param {boolean} [ignoreOverride]
          */
-        breakpointEmployees(breakpoint, ignoreOverride) {
-            if (this.jobOverride !== null && !ignoreOverride) {
-                return this.jobOverride.breakpointEmployees(breakpoint, ignoreOverride);
-            }
-
-            if ((breakpoint >= 0 && this.breakpointMaxs.length === 0) || breakpoint < 0 || breakpoint > this.breakpointMaxs.length - 1) {
+        breakpointEmployees(breakpoint) {
+            if (breakpoint < 0 || breakpoint > this.breakpointMaxs.length - 1) {
                 return 0;
             }
 
@@ -437,6 +424,10 @@
         }
 
         isDefault() {
+            if (this.jobOverride !== null) {
+                return this.jobOverride.isDefault();
+            }
+
             if (game.global.civic['d_job']) {
                 return game.global.civic.d_job === this.id;
             }
@@ -445,14 +436,17 @@
         }
 
         setAsDefault() {
-            if (this.id !== 'farmer' && this.id !== 'lumberjack' && this.id !== 'quarry_worker' && this.id !== 'scavenger') {
-                return false; // Only these jobs can be set as default
+            if (this.jobOverride !== null) {
+                return this.jobOverride.setAsDefault();
             }
 
-            let vue = getVueById(this._vueBinding);
-            if (vue !== undefined) {
-                vue.setDefault(this.id);
-                return true;
+            if (this.id === 'farmer' || this.id === 'lumberjack' || this.id === 'quarry_worker' || this.id === 'crystal_miner' || this.id === 'scavenger') {
+                // Only these jobs can be set as default
+                let vue = getVueById(this._vueBinding);
+                if (vue !== undefined) {
+                    vue.setDefault(this.id);
+                    return true;
+                }
             }
 
             return false;
@@ -591,6 +585,16 @@
          * @param {number} count
          */
         removeWorkers(count) {
+            return false;
+        }
+
+        setAsDefault() {
+            let vue = getVueById(this._vueBinding);
+            if (vue !== undefined) {
+                vue.setDefault();
+                return true;
+            }
+
             return false;
         }
     }
@@ -3775,29 +3779,6 @@
             return employees;
         }
 
-        get breakpointCount() {
-            // We're getting the count of how many breakpoints we have so just use the normal list and get the first one
-            return this.priorityList[0].breakpointMaxs.length;
-        }
-
-        /**
-         * @param {number} breakpoint
-         */
-        actualForBreakpoint(breakpoint) {
-            if (breakpoint < 0 || breakpoint > 1) {
-                return 0;
-            }
-
-            let total = 0;
-            let jobList = this.managedPriorityList();
-
-            for (let i = 0; i < jobList.length; i++) {
-                total += Math.max(0, jobList[i].breakpointEmployees(breakpoint, false));
-            }
-
-            return total;
-        }
-
         isFoundryUnlocked() {
             let containerNode = document.getElementById("foundry");
             return containerNode !== null && containerNode.style.display !== "none" && containerNode.children.length > 0 && this.maxCraftsmen > 0;
@@ -6347,8 +6328,8 @@
         settings.jobCrystalWeighting = 50;
         settings.jobScavengerWeighting = 50;
 
-        for (let i = 0; i < state.Jobs.length; i++){
-            state.Jobs[i].autoJobEnabled = true;
+        for (let i = 0; i < state.jobManager.priorityList.length; i++){
+            state.jobManager.priorityList[i].autoJobEnabled = true;
         }
     }
 
@@ -7833,8 +7814,8 @@
         if (isHunterRace()) {
             for (let i = 0; i < jobList.length; i++) {
                 const job = jobList[i];
-                breakpoint0Max += job.breakpointEmployees(0, false);
-                breakpoint1Max += job.breakpointEmployees(1, false);
+                breakpoint0Max += job.breakpointEmployees(0);
+                breakpoint1Max += job.breakpointEmployees(1);
             }
 
             log("autoJobs", "Max breakpoint 0: " + breakpoint0Max)
@@ -7908,14 +7889,14 @@
                 log("autoJobs", "Leaving current farmers")
             }
 
-            log("autoJobs", "currentQuantity " + resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1, false) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0, false))
+            log("autoJobs", "currentQuantity " + resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0))
             if (isEvilRace() && !isEvilUniverse()) {
-                if (resources.Population.currentQuantity > breakpoint0Max && requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(1, false)) {
+                if (resources.Population.currentQuantity > breakpoint0Max && requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(1)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
-                    requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(1, false);
-                } else if (requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(0, false)) {
+                    requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(1);
+                } else if (requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(0)) {
                     log("autoJobs", "Setting required hunters to breakpoint 0")
-                    requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(0, false);
+                    requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(0);
                 }
             }
 
@@ -8013,8 +7994,8 @@
                     availableEmployees += requiredJobs[j];
                 }
 
-                log("autoJobs", "job " + job._originalId + " job.breakpointEmployees(i) " + job.breakpointEmployees(i, false) + " availableEmployees " + availableEmployees);
-                let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i, false));
+                log("autoJobs", "job " + job._originalId + " job.breakpointEmployees(i) " + job.breakpointEmployees(i) + " availableEmployees " + availableEmployees);
+                let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
                 if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.Money.storageRatio > 0.98) {
@@ -8101,7 +8082,7 @@
             // Bring them all up to breakpoint 0 one each at a time
             while (availableEmployees >= 1 && splitJobs.some(job => !job.completed)) {
                 splitJobs.forEach(jobDetails => {
-                    if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(0, true)) {
+                    if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(0)) {
                         jobDetails.completed = true;
                         return;
                     }
@@ -8118,7 +8099,7 @@
             // Bring them all up to breakpoint 1 one each at a time
             while (availableEmployees >= 1 && splitJobs.some(job => !job.completed)) {
                 splitJobs.forEach(jobDetails => {
-                    if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(1, true)) {
+                    if (availableEmployees <= 0 || requiredJobs[jobDetails.jobIndex] >= jobDetails.job.breakpointEmployees(1)) {
                         jobDetails.completed = true;
                         return; // forEach return
                     }
@@ -8170,10 +8151,15 @@
         } else {
             // No lumberjacks, quarry workers or scavengers...
             if (state.jobs.Farmer.isManaged()) {
-                requiredJobs[0] += availableEmployees;
-                jobAdjustments[0] += availableEmployees;
+                requiredJobs[farmerIndex] += availableEmployees;
+                jobAdjustments[farmerIndex] += availableEmployees;
                 availableEmployees = 0;
             }
+        }
+
+        // Force default hunter job for hunter races, we'll have issues with assigning otherwise
+        if (isHunterRace() && !state.jobs.Farmer.isDefault()) {
+            state.jobs.Farmer.setAsDefault();
         }
 
         for (let i = 0; i < jobAdjustments.length; i++) {
@@ -8201,8 +8187,11 @@
         state.lastPopulationCount = resources.Population.currentQuantity;
         state.lastFarmerCount = state.jobs.Farmer.count;
 
+        // After reassignments adjust default job to something with workers, we need that for sacrifices.
         if (settings.jobSetDefault) {
-            if (state.jobs.QuarryWorker.isUnlocked() && state.jobs.QuarryWorker.count > 0) {
+            if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0) {
+                if (!state.jobs.Farmer.isDefault()) { state.jobs.Farmer.setAsDefault(); }
+            } else if (state.jobs.QuarryWorker.isUnlocked() && state.jobs.QuarryWorker.count > 0) {
                 if (!state.jobs.QuarryWorker.isDefault()) { state.jobs.QuarryWorker.setAsDefault(); }
             } else if (state.jobs.Lumberjack.isUnlocked() && state.jobs.Lumberjack.count > 0) {
                 if (!state.jobs.Lumberjack.isDefault()) { state.jobs.Lumberjack.setAsDefault(); }
@@ -8210,8 +8199,6 @@
                 if (!state.jobs.CrystalMiner.isDefault()) { state.jobs.CrystalMiner.setAsDefault(); }
             } else if (state.jobs.Scavenger.isUnlocked() && state.jobs.Scavenger.count > 0) {
                 if (!state.jobs.Scavenger.isDefault()) { state.jobs.Scavenger.setAsDefault(); }
-            } else if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0) {
-                if (!state.jobs.Farmer.isDefault()) { state.jobs.Farmer.setAsDefault(); }
             }
         }
     }
@@ -9735,7 +9722,7 @@
             const resource = tradableResources[i];
             requiredTradeRoutes.push(0);
 
-            if (resource.autoTradeSellEnabled && resource.storageRatio > 0.98 && tradeRoutesUsed < maxTradeRoutes){
+            if (tradeRoutesUsed < maxTradeRoutes && resource.autoTradeSellEnabled && resource.storageRatio > 0.98){
               let freeRoutes = maxTradeRoutes - tradeRoutesUsed;
               let routesToLimit = Math.floor((resource.calculatedRateOfChange - resource.autoTradeSellMinPerSecond) / resource.tradeRouteQuantity);
               let routesToAssign = Math.min(freeRoutes, routesToLimit);
