@@ -11058,6 +11058,12 @@
         return toggle;
     }
 
+    function buildStandartLabel(note, highlight) {
+        let classAttribute = highlight ? ' class="has-text-danger"' : ' class="has-text-info"';
+        let label = $('<span' + classAttribute + '">' + note + '</span>');
+        return label;
+    }
+
     function buildGeneralSettings() {
         let sectionId = "general";
         let sectionName = "General";
@@ -11866,8 +11872,7 @@
             const campaign = state.warManager.campaignList[i];
             let warElement = $(`#script_${secondaryPrefix}${campaign.id}Toggle`);
 
-            let toggle = $('<span class="has-text-info">' + campaign.name + '</span>');
-            warElement.append(toggle);
+            warElement.append(buildStandartLabel(campaign.name));
 
             warElement = warElement.next();
             warElement.append(buildCampaignRatingSettingsInput(secondaryPrefix, campaign));
@@ -12076,8 +12081,7 @@
             const resource = state.marketManager.priorityList[i];
             let marketElement = $('#script_market_' + resource.id + 'Toggle');
 
-            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + resource.name + '</span>');
-            marketElement.append(toggle);
+            marketElement.append(buildStandartLabel(resource.name));
 
             marketElement = marketElement.next();
             marketElement.append(buildStandartSettingsToggle(resource, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id));
@@ -12176,8 +12180,7 @@
             const resource = state.storageManager.priorityList[i];
             let storageElement = $('#script_storage_' + resource.id + 'Toggle');
 
-            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + resource.name + '</span>');
-            storageElement.append(toggle);
+            storageElement.append(buildStandartLabel(resource.name));
 
             storageElement = storageElement.next();
             storageElement.append(buildStandartSettingsToggle(resource, "autoStorageEnabled", "script_res_storage_" + resource.id));
@@ -12359,8 +12362,7 @@
             const fuel = smelterFuels[i];
             let productionElement = $('#script_smelter_' + fuel.resource.id);
 
-            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + fuel.resource.name + '</span>');
-            productionElement.append(toggle);
+            productionElement.append(buildStandartLabel(fuel.resource.name));
 
             productionElement = productionElement.next();
             productionElement.append($('<span class="script-lastcolumn"></span>'));
@@ -12418,8 +12420,7 @@
             const production = productionSettings[i];
             let productionElement = $('#script_factory_' + production.resource.id + 'Toggle');
 
-            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + production.resource.name + '</span>');
-            productionElement.append(toggle);
+            productionElement.append(buildStandartLabel(production.resource.name));
 
             productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsToggle(production, "enabled", "script_factory_" + production.resource.id));
@@ -12457,8 +12458,7 @@
             const resource = state.craftableResourceList[i];
             let productionElement = $('#script_foundry_' + resource.id + 'Toggle');
 
-            let toggle = $('<span class="has-text-info" style="margin-left: 20px;">' + resource.name + '</span>');
-            productionElement.append(toggle);
+            productionElement.append(buildStandartLabel(resource.name));
 
             productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsToggle(resource, "autoCraftEnabled", "script_craft2_" + resource.id, "script_craft1_" + resource.id));
@@ -12738,9 +12738,7 @@
             const building = state.buildingManager.priorityList[i];
             let buildingElement = $('#script_' + building.settingId + 'Toggle');
 
-            let classAttribute = building._tab === "city" ? ' class="has-text-info"' : ' class="has-text-danger"';
-            let toggle = $('<span' + classAttribute + ' style="margin-left: 20px;">' + building.name + '</span>');
-            buildingElement.append(toggle);
+            buildingElement.append(buildStandartLabel(building.name, building._tab !== "city"));
 
             buildingElement = buildingElement.next();
             buildingElement.append(buildStandartSettingsToggle(building, "autoBuildEnabled", "script_bat2_" + building.settingId, "script_bat1_" + building.settingId));
@@ -12918,7 +12916,7 @@
 
         // Add table section
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:25%">Ignore Min Money</th><th class="has-text-warning" style="width:25%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Enabled</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:25%">Ignore Min Money</th></tr>
                 <tbody id="script_projectTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12929,7 +12927,7 @@
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
             let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + project.id + '"' + classAttribute + '><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
+            newTableBodyText += '<tr value="' + project.id + '"' + classAttribute + '><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12938,6 +12936,9 @@
             const project = state.projectManager.priorityList[i];
             let projectElement = $('#script_' + project.id + 'Toggle');
 
+            projectElement.append(buildStandartLabel(project.name));
+
+            projectElement = projectElement.next();
             projectElement.append(buildStandartSettingsToggle(project, "autoBuildEnabled", "script_arpa2_" + project.id, "script_arpa1_" + project.id));
 
             projectElement = projectElement.next();
