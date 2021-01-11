@@ -32,7 +32,7 @@
 //   Reworked fighting\spying. At first glance it have less configurable options now, but range of possible outcomes is wider, and route to them is more optimal. With default settings it'll sabotage, plunder, and then annex all foreign powers, gradually moving from top to bottom of the list, as they becomes weak enough, and then occupy last city to finish unification. By tweaking settings it's possible to configure script to get any unification achievment(annex\purchase\occupy\reject, with or without pacifism).
 //   Added basic support for magic universe
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
-//   autoAchievements now check and pick conditional races, adding them to the pool of options. With mass extinction perk such conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one.
+//   Standalone autoAchievements option is gone. It's now selectable in evolution settings. Conditional races now can be chosen by auto achievments during random evolution. With mass extinction perk conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one.
 //   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
 //   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)
 //
@@ -7091,7 +7091,6 @@
         addSetting("masterScriptToggle", true);
         addSetting("showSettings", true);
         addSetting("autoEvolution", false);
-        addSetting("autoAchievements", false);
         addSetting("autoChallenge", false);
         addSetting("autoMarket", false);
         addSetting("autoFight", false);
@@ -7264,7 +7263,7 @@
 
         if (state.evolutionTarget === null) {
             // Try to pick race for achievment first
-            if (settings.autoAchievements) {
+            if (settings.userEvolutionTargetName === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
                 let achievementLevel = 1;
 
@@ -7315,8 +7314,8 @@
                 if (targetedGroup.group != null) { state.evolutionTarget = targetedGroup.race; }
             }
 
-            // Still no target. autoAchievements either disabled, or failed to pick race. Checking user specified race
-            if (state.evolutionTarget === null && settings.userEvolutionTargetName != "auto") {
+            // Auto Achievements disabled, checking user specified race
+            if (settings.userEvolutionTargetName !== "auto") {
                 let userRace = raceAchievementList.find(race => race.name === settings.userEvolutionTargetName);
                 if (userRace && userRace.evolutionCondition()){
                     // Race specified, and condition is met
@@ -9979,33 +9978,39 @@
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
-            if (settings.autoEvolution && settings.autoAchievements && settings.evolutionBackup){
+            if (settings.autoEvolution && settings.userEvolutionTargetName == "auto" && settings.evolutionBackup){
                 let stars = alevel();
                 let newRace = races[game.global.race.species];
+
                 console.log("Race: " + newRace.name + ", " + (stars-1) + "★ achievement: " + newRace.isMadAchievementUnlocked(stars));
                 if (newRace.isMadAchievementUnlocked(stars)) {
                     let raceGroup = state.raceGroupAchievementList.findIndex(group => group.includes(newRace));
 
                     if (!settings.evolutionIgnore[raceGroup]) {
-                      state.goal = "GameOverMan";
-                      state.log.logSuccess(loggingTypes.special, `${newRace} achievment already earned, ignoring group, and restoring backup.`);
+                      // Let's double check it's actually *soft* reset
+                      let resetButton = document.querySelector(".reset .button:not(.right)");
+                      if (resetButton.innerText === game.loc("reset_soft")) {
+                          state.log.logSuccess(loggingTypes.special, `${newRace} achievment already earned, ignoring group, and restoring backup.`);
 
-                      // Restoring backup reloads page, so we need to store list of ignored groups in settings
-                      settings.evolutionIgnore[raceGroup] = true;
-                      updateSettingsFromState();
-                      document.querySelector(".importExport .right").click();
-                      return;
+                          // Restoring backup reloads page, so we need to store list of ignored groups in settings
+                          settings.evolutionIgnore[raceGroup] = true;
+                          updateSettingsFromState();
+
+                          state.goal = "GameOverMan";
+                          resetButton.click();
+                          return;
+                      }
                     } else {
                       // Group already ignored - probably we tried all available options, and using fallback race now.
                       state.log.logSuccess(loggingTypes.special, `Couldn't select race with unearned achievements. Continuing with ${newRace}.`);
                     }
                 }
             }
-            // Succesfully evolved, clear ignore list
-            settings.evolutionIgnore = {};
             state.goal = "Standard";
             updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
         }
+        // Not evolving anymore, clear ignore list
+        settings.evolutionIgnore = {};
 
         state.buildingManager.updateResourceRequirements();
         state.projectManager.updateResourceRequirements();
@@ -11276,7 +11281,7 @@
         selectNode = $('#script_userEvolutionTargetName');
 
         selected = settings.userEvolutionTargetName === "auto" ? ' selected="selected"' : "";
-        node = $('<option value = "auto"' + selected + '>Script Managed</option>');
+        node = $('<option value = "auto"' + selected + '>Auto Achievements</option>');
         selectNode.append(node);
 
         for (let i = 0; i < raceAchievementList.length; i++) {
@@ -11312,7 +11317,7 @@
             content.style.height = content.offsetHeight + "px"
         });
 
-        addStandardSectionSettingsToggle(currentNode, "evolutionBackup", "Restore Backups", "If autoEvolution and autoAchievements enabled script will restore last backup if evolved as a race with already earned MAD achievement.");
+        addStandardSectionSettingsToggle(currentNode, "evolutionBackup", "Restore Backups", "If Auto Achievements enabled script will restore last backup if evolved as a race with already earned MAD achievement.");
         // Challenges
         addStandardSectionSettingsToggle(currentNode, "challenge_plasmid", "No Plasmids", "Challenge mode - no plasmids");
         addStandardSectionSettingsToggle(currentNode, "challenge_mastery", "Weak Mastery", "Challenge mode - weak mastery");
@@ -13160,8 +13165,7 @@
             // It doesn't have such huge impact anymore, as used to before rewriting trigger's tech selectors, but still won't hurt to have an option to increase performance a bit more
             createSettingToggle(scriptNode, 'showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
 
-            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. With no other modifiers it will target Antids. See autoAchievements to target races that you don\'t have extinction achievements for yet.');
-            createSettingToggle(scriptNode, 'autoAchievements', 'Works through all evolution paths until all race\'s extinction achievements have been completed. Also works with autoChallenge for starred achievements.');
+            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In "Auto Achievements" mode will target races that you don\'t have extinction achievements for yet.');
             createSettingToggle(scriptNode, 'autoChallenge', 'Chooses challenge options during evolution.');
             createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
             createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
