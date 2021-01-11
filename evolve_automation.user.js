@@ -8677,6 +8677,7 @@
                 let ejectableAmount = Math.ceil(resource.calculatedRateOfChange);
 
                 if (remaining <= 0) {
+                    resourceRequirement.requirement = 0;
                     return;
                 }
 
