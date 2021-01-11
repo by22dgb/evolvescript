@@ -6169,6 +6169,7 @@
         settings.prestigeWhiteholeMinMass = 8;
         settings.prestigeWhiteholeStabiliseMass = true;
         settings.prestigeWhiteholeEjectEnabled = true;
+        settings.prestigeWhiteholeDecayRate = 0.2;
         settings.prestigeWhiteholeEjectAllCount = 5;
     }
 
@@ -7131,6 +7132,7 @@
         addSetting("prestigeWhiteholeMinMass", 8);
         addSetting("prestigeWhiteholeStabiliseMass", true);
         addSetting("prestigeWhiteholeEjectEnabled", true);
+        addSetting("prestigeWhiteholeDecayRate", 0.2);
         addSetting("prestigeWhiteholeEjectAllCount", 5);
 
         addSetting("autoAssembleGene", false);
@@ -8238,10 +8240,6 @@
             maxMorale += state.jobs.Entertainer.count;
         }
 
-        if (currentTaxRate < 20) {
-            maxMorale += 10 - Math.floor(currentTaxRate / 2);
-        }
-
         if (game.global.stats.achieve['joyless']){
             maxMorale += game.global.stats.achieve['joyless'].l * 2;
         }
@@ -8262,6 +8260,10 @@
             minTaxRate = 0;
         }
 
+        if (minTaxRate < 20) {
+            maxMorale += 10 - Math.floor(minTaxRate / 2);
+        }
+
         // Noble race adjustments to min and max tax rate calculations - can only set tax between 10 and 20 inclusive unless in oligarchy
         let nobleMaxTaxRate = game.global.civic.govern.type === 'oligarchy' ? 40 : 20;
         if (game.global.race['noble']) {
@@ -8275,14 +8277,14 @@
 
         if (currentTaxRate < maxTaxRate &&
                 ((currentTaxRate < settings.generalMinimumTaxRate && resources.Money.storageRatio < 0.98)
-                || (currentMorale > settings.generalMinimumMorale && currentMorale >= maxMorale)
+                || (currentMorale > settings.generalMinimumMorale && currentMorale > maxMorale)
                 || (currentMorale <= settings.generalMinimumMorale && currentTaxRate < 26))) {
             taxVue.add();
         }
 
         if (currentTaxRate > minTaxRate
                 && (currentTaxRate > settings.generalMinimumTaxRate || resources.Money.storageRatio >= 0.98)
-                && (currentMorale < maxMorale - 1 || (currentMorale < settings.generalMinimumMorale && currentTaxRate > 26))) {
+                && (currentMorale < maxMorale || (currentMorale < settings.generalMinimumMorale && currentTaxRate > 26))) {
             taxVue.sub();
         }
     }
@@ -8672,15 +8674,22 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let roundedRateOfChange = Math.ceil(resource.calculatedRateOfChange);
+                let ejectableAmount = Math.ceil(resource.calculatedRateOfChange);
 
-                if (remaining <= 0 || resource.storageRatio < 0.98) {
-                    resourceRequirement.requirement = 0;
+                if (remaining <= 0) {
                     return;
                 }
 
-                resourceRequirement.requirement = Math.min(remaining, Math.max(0, roundedRateOfChange));
+                if (resource.storageRatio < 0.98) {
+                    // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject 20% of decayed amount, unless we're buying it.
+                    if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0) {
+                        ejectableAmount = Math.floor(resource.decayRate * settings.prestigeWhiteholeDecayRate);
+                    } else {
+                        ejectableAmount = 0;
+                    }
+                }
 
+                resourceRequirement.requirement = Math.min(remaining, Math.max(0, ejectableAmount));
                 remaining -= resourceRequirement.requirement;
             });
         }
@@ -9398,6 +9407,11 @@
                 }
 
                 if (settings.autoHell && settings.hellHandleAttractors && building === state.spaceBuildings.PortalAttractor && requiredStateOn >= state.warManager.hellAttractorMax) {
+                    continue;
+                }
+
+                if (building === state.cityBuildings.TouristCenter && resources.Money.storageRatio > 0.98) {
+                    requiredStateOn = Math.max(0, building.stateOnCount - 1);
                     continue;
                 }
 
@@ -11142,6 +11156,7 @@
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 1, "prestigeWhiteholeMinMass", "Required minimum solar mass", "Required minimum solar mass of blackhole before prestiging");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 1, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole until minimum solar mass reached", "Stabilises the blackhole with exotic materials until minimum solar mass is reached");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectEnabled", "Enable mass ejector", "If not enabled the mass ejector will not be managed by the script");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeDecayRate", "Decay eject rate", "Set amount of ejected resources up to this percent of decay rate. Only useful during Decay Challenge, normally only resources with full storages will be ejected until below option is activated.");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
