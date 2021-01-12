@@ -11417,6 +11417,8 @@
                     sortedQueue.push(settings.evolutionQueue[id]);
                 }
                 settings.evolutionQueue = sortedQueue;
+                updateSettingsFromState();
+                updateEvolutionSettingsContent();
             },
         } );
 
