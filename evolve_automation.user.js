@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.34
+// @version      3.2.1.35
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -30,9 +30,10 @@
 //   Expanded triggers, they got "researched" and "built" conditions, and "build" action. And an option to import missing resources required to perform chosen action. Once condition is met and action is available script will set trade routes for what it missing. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction, and same for buildings - whatever you need.
 //   Added option to import resources for queued buildings and researches
 //   Reworked fighting\spying. At first glance it have less configurable options now, but range of possible outcomes is wider, and route to them is more optimal. With default settings it'll sabotage, plunder, and then annex all foreign powers, gradually moving from top to bottom of the list, as they becomes weak enough, and then occupy last city to finish unification. By tweaking settings it's possible to configure script to get any unification achievment(annex\purchase\occupy\reject, with or without pacifism).
-//   Added basic support for magic universe
+//   Added basic support for magic universe - managing crystal miners, and autobuilding pylons
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
-//   Standalone autoAchievements option is gone. It's now selectable in evolution settings. Conditional races now can be chosen by auto achievments during random evolution. With mass extinction perk conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one.
+//   Added evolution queue. If queue enabled and not empty, settings from top of the list will be applied before next evolution, and then removed from queue. When you add new evolution to queue script stores currently configured race, prestige type, and challenges. Evolution settings can also be edited manualy, and can store any settings, but be very careful doing that, as those data will be imported intro script settings without any validation, except for synthax check.
+//   Standalone autoAchievements option is gone. It's now selectable as a race. Conditional races now can be chosen by auto achievments during random evolution. With mass extinction perk conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one.
 //   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
 //   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)
 //
@@ -6158,14 +6159,12 @@
     }
 
     function resetPrestigeSettings() {
-        settings.autoMAD = false;
+        settings.prestigeType = "none";
 
         settings.autoSpace = false;
         settings.prestigeBioseedConstruct = false;
-        settings.autoSeeder = false;
         settings.prestigeBioseedProbes = 3;
 
-        settings.prestigeWhiteholeReset = false;
         settings.prestigeWhiteholeMinMass = 8;
         settings.prestigeWhiteholeStabiliseMass = true;
         settings.prestigeWhiteholeEjectEnabled = true;
@@ -6185,8 +6184,10 @@
 
     function resetEvolutionSettings() {
         settings.userUniverseTargetName = "none";
-        settings.userEvolutionTargetName = "auto";
+        settings.userEvolutionTarget = "auto";
         settings.evolutionIgnore = {};
+        settings.evolutionQueue = [];
+        settings.evolutionQueueEnabled = false;
         settings.evolutionBackup = false;
         settings.challenge_plasmid = false;
         settings.challenge_trade = false;
@@ -7072,6 +7073,8 @@
         settings['scriptName'] = "TMVictor";
 
         addSetting("evolutionIgnore", {});
+        addSetting("evolutionQueue", []);
+        addSetting("evolutionQueueEnabled", false);
 
         addSetting("storageLimitPreMad", true);
         addSetting("storageSafeReassign", true);
@@ -7092,7 +7095,6 @@
         addSetting("masterScriptToggle", true);
         addSetting("showSettings", true);
         addSetting("autoEvolution", false);
-        addSetting("autoChallenge", false);
         addSetting("autoMarket", false);
         addSetting("autoFight", false);
         addSetting("autoCraft", false);
@@ -7123,12 +7125,10 @@
         addSetting("autoFactory", false);
         addSetting("autoMiningDroid", false);
         addSetting("autoGraphenePlant", false);
-        addSetting("autoMAD", false);
+        addSetting("prestigeType", "none");
         addSetting("autoSpace", false);
         addSetting("prestigeBioseedConstruct", false);
-        addSetting("autoSeeder", false);
         addSetting("prestigeBioseedProbes", 3);
-        addSetting("prestigeWhiteholeReset", false);
         addSetting("prestigeWhiteholeMinMass", 8);
         addSetting("prestigeWhiteholeStabiliseMass", true);
         addSetting("prestigeWhiteholeEjectEnabled", true);
@@ -7190,7 +7190,7 @@
         addSetting("hellAttractorBottomThreat", 1300);
 
         addSetting("userUniverseTargetName", "none")
-        addSetting("userEvolutionTargetName", "auto");
+        addSetting("userEvolutionTarget", "auto");
 
         for (let i = 0; i < state.evolutionChallengeList.length; i++) {
             const challenge = state.evolutionChallengeList[i];
@@ -7246,35 +7246,41 @@
         // If we have performed a soft reset with a bioseeded ship then we get to choose our planet
         autoPlanetSelection();
 
-        if (settings.autoChallenge) {
-            for (let i = 0; i < state.evolutionChallengeList.length; i++) {
-                const challenge = state.evolutionChallengeList[i];
+        for (let i = 0; i < state.evolutionChallengeList.length; i++) {
+            const challenge = state.evolutionChallengeList[i];
 
-                if (challenge === state.evolutions.Bunker || settings["challenge_" + challenge.id]) {
-                    if (!game.global.race[challenge.effectId] || game.global.race[challenge.effectId] !== 1) {
-                        challenge.click(1)
-                    }
+            if (challenge === state.evolutions.Bunker || settings["challenge_" + challenge.id]) {
+                if (!game.global.race[challenge.effectId] || game.global.race[challenge.effectId] !== 1) {
+                    challenge.click(1)
                 }
             }
         }
 
-        if (state.resetEvolutionTarget) {
+        if (state.resetEvolutionTarget && !settings.evolutionQueueEnabled) {
             state.evolutionTarget = null;
             state.resetEvolutionTarget = false;
         }
 
+        if (state.evolutionTarget === null && settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
+            let queuedEvolution = settings.evolutionQueue.shift();
+            for (let [settingName, settingValue] of Object.entries(queuedEvolution)) {
+                settings[settingName] = settingValue;
+            }
+            updateStateFromSettings();
+            updateSettingsFromState();
+            buildScriptSettings();
+        }
+
         if (state.evolutionTarget === null) {
             // Try to pick race for achievment first
-            if (settings.userEvolutionTargetName === "auto") {
+            if (settings.userEvolutionTarget === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
                 let achievementLevel = 1;
 
-                if (settings.autoChallenge) {
-                    if (settings.challenge_plasmid || settings.challenge_mastery) achievementLevel++;
-                    if (settings.challenge_trade) achievementLevel++;
-                    if (settings.challenge_craft) achievementLevel++;
-                    if (settings.challenge_crispr) achievementLevel++;
-                }
+                if (settings.challenge_plasmid || settings.challenge_mastery) achievementLevel++;
+                if (settings.challenge_trade) achievementLevel++;
+                if (settings.challenge_craft) achievementLevel++;
+                if (settings.challenge_crispr) achievementLevel++;
 
                 let targetedGroup = { group: null, race: null, remainingPercent: 0 };
 
@@ -7317,8 +7323,8 @@
             }
 
             // Auto Achievements disabled, checking user specified race
-            if (settings.userEvolutionTargetName !== "auto") {
-                let userRace = raceAchievementList.find(race => race.name === settings.userEvolutionTargetName);
+            if (settings.userEvolutionTarget !== "auto") {
+                let userRace = races[settings.userEvolutionTarget];
                 if (userRace && userRace.evolutionCondition()){
                     // Race specified, and condition is met
                     state.evolutionTarget = userRace
@@ -8682,8 +8688,8 @@
                 }
 
                 if (resource.storageRatio < 0.98) {
-                    // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject 20% of decayed amount, unless we're buying it.
-                    if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0) {
+                    // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it, or it's Adamantite(we need it to get more ejectors).
+                    if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
                         ejectableAmount = Math.floor(resource.decayRate * settings.prestigeWhiteholeDecayRate);
                     } else {
                         ejectableAmount = 0;
@@ -9185,13 +9191,13 @@
                 }
 
                 if (settings.userResearchTheology_1 === "auto") {
-                    if (settings.autoMAD && itemId === "tech-anthropology") {
+                    if (settings.prestigeType === "mad" && itemId === "tech-anthropology") {
                         // If we're not going to space then research anthropology
                         log("autoResearch", "Picking: " + itemId);
                         click = true;
                     }
-                    if (!settings.autoMAD && itemId === "tech-fanaticism") {
-                        // If we're going to space then research fanatacism
+                    if (settings.prestigeType !== "mad" && itemId === "tech-fanaticism") {
+                        // If we're going to space then research fanaticism
                         log("autoResearch", "Picking: " + itemId);
                         click = true;
                     }
@@ -9993,7 +9999,7 @@
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
-            if (settings.autoEvolution && settings.userEvolutionTargetName == "auto" && settings.evolutionBackup){
+            if (settings.autoEvolution && settings.userEvolutionTarget === "auto" && settings.evolutionBackup){
                 let stars = alevel();
                 let newRace = races[game.global.race.species];
 
@@ -10005,7 +10011,7 @@
                       // Let's double check it's actually *soft* reset
                       let resetButton = document.querySelector(".reset .button:not(.right)");
                       if (resetButton.innerText === game.loc("reset_soft")) {
-                          state.log.logSuccess(loggingTypes.special, `${newRace} achievment already earned, ignoring group, and restoring backup.`);
+                          state.log.logSuccess(loggingTypes.special, `${newRace.name} extinction achievement already earned, ignoring group, and restoring backup.`);
 
                           // Restoring backup reloads page, so we need to store list of ignored groups in settings
                           settings.evolutionIgnore[raceGroup] = true;
@@ -10308,7 +10314,7 @@
               () => "Bioseed prestige disabled",
               () => 0
           ],[
-              () => settings.autoMAD && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true)),
+              () => settings.prestigeType === "mad" && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true)),
               (building) => !building.is.housing && !building.is.garrison,
               () => "Awaiting MAD prestige",
               () => settings.buildingWeightingMADUseless
@@ -10368,8 +10374,7 @@
     function initialiseScript() {
         let tempTech = {};
         //@ts-ignore
-        let technologies = Object.entries(game.actions.tech);
-        for (const [technology, action] of technologies) {
+        for (let [technology, action] of Object.entries(game.actions.tech)) {
             tempTech[technology] = new Technology(action);
             techIds[action.id] = tempTech[technology];
         }
@@ -10517,13 +10522,13 @@
         if (settings.autoMinorTrait) {
             autoMinorTrait();
         }
-        if (settings.prestigeWhiteholeReset) {
+        if (settings.prestigeType === "whitehole") {
             autoWhiteholePrestige();
         }
-        if (settings.autoSeeder) {
+        if (settings.prestigeType === "bioseed") {
             autoSeederPrestige();
         }
-        if (settings.autoMAD) {
+        if (settings.prestigeType === "mad") {
             autoMadPrestige();
         }
 
@@ -10978,23 +10983,6 @@
         }
 
         toggleNode.on('change', function(e) {
-            // Special processing for prestige options. If they are ready to prestige then warn the user about enabling them.
-            let confirmationText = "";
-            if (settingName === "autoMAD" && e.currentTarget.checked && isResearchUnlocked("mad")) {
-                confirmationText = "MAD has already been researched. This may MAD immediately. Are you sure you want to enable MAD prestige?";
-            } else if (settingName === "autoSeeder" && isBioseederPrestigeAvailable()) {
-                confirmationText = "Bioseeder ship is ready to launch and may launch immediately. Are you sure you want to enable bioseeder prestige?";
-            } else if (settingName === "" && isWhiteholePrestigeAvailable()) {
-                confirmationText = "Whitehole exotic infusion is ready and may prestige immediately. Are you sure you want to enable whitehole prestige?";
-            }
-
-            if (confirmationText !== "") {
-                if (!confirm(confirmationText)) {
-                    e.currentTarget.checked = false;
-                    return;
-                }
-            }
-
             settings[settingName] = e.currentTarget.checked;
             updateSettingsFromState();
 
@@ -11136,28 +11124,59 @@
         let currentNode = $(`#script_${secondaryPrefix}prestigeContent`);
         currentNode.empty().off("*");
 
-        // Foreign powers panel
+        // Prestige panel
         let prestigeHeaderNode = $(`<div id="script_${secondaryPrefix}prestige"></div>`);
         currentNode.append(prestigeHeaderNode);
 
-        // MAD
-        addStandardSectionHeader1(prestigeHeaderNode, "Mutual Assured Destruction");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "autoMAD", "Perform MAD prestige", "MAD prestige once MAD has been researched and all soldiers are home");
+        let typeSelectNodeID = "script_" + secondaryPrefix + "prestigeType";
+        prestigeHeaderNode.append(`<div style="display: inline-block; width: 80%; text-align: left; margin-bottom: 10px;">
+                                      <label for="${typeSelectNodeID}">Prestige Type:</label>
+                                      <select id="${typeSelectNodeID}" style="text-align: right; height: 18px; width: 150px; float: right;">
+                                        <option value = "none">None</option>
+                                        <option value = "mad" title = "MAD prestige once MAD has been researched and all soldiers are home">Mutual Assured Destruction</option>
+                                        <option value = "bioseed" title = "Launches the bioseeder ship to perform prestige when required probes have been constructed">Bioseed</option>
+                                        <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
+                                      </select>
+                                    </div>`);
+        let typeSelectNode = $("#" + typeSelectNodeID);
+
+        typeSelectNode.val(settings.prestigeType);
+        typeSelectNode.on('change', function(e) {
+            // Special processing for prestige options. If they are ready to prestige then warn the user about enabling them.
+            let confirmationText = "";
+            if (this.value === "mad" && isResearchUnlocked("mad")) {
+                confirmationText = "MAD has already been researched. This may MAD immediately. Are you sure you want to enable MAD prestige?";
+            } else if (this.value === "bioseed" && isBioseederPrestigeAvailable()) {
+                confirmationText = "Bioseeder ship is ready to launch and may launch immediately. Are you sure you want to enable bioseeder prestige?";
+            } else if (this.value === "whitehole" && isWhiteholePrestigeAvailable()) {
+                confirmationText = "Whitehole exotic infusion is ready and may prestige immediately. Are you sure you want to enable whitehole prestige?";
+            }
+
+            if (confirmationText !== "" && !confirm(confirmationText)) {
+                this.value = "none";
+            }
+
+            if (!isMainSettings && settings.showSettings) {
+                let mainSetting = $("#script_prestigeType");
+                mainSetting.val(this.value);
+            }
+
+            settings.prestigeType = this.value;
+            updateSettingsFromState();
+        });
 
         // Bioseed
         addStandardSectionHeader1(prestigeHeaderNode, "Bioseed");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "autoSpace", "Construct Launch Facility", "Constructs the Launch Facility when it becomes available regardless of other settings");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Constructs Bioseeder Ship Segments and Probes", "Construct the bioseeder ship segments and probes in preparation for bioseeding");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "autoSeeder", "Perform bioseeder ship prestige", "Launches the bioseeder ship to perform prestige when required probes have been constructed");
-        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 1, "prestigeBioseedProbes", "Required probes", "Required number of probes before launching bioseeder ship");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedProbes", "Required probes", "Required number of probes before launching bioseeder ship");
 
         // Whitehole
         addStandardSectionHeader1(prestigeHeaderNode, "Whitehole");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeReset", "Perform whitehole prestige", "Infuses the blackhole with exotic materials to perform prestige");
-        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 1, "prestigeWhiteholeMinMass", "Required minimum solar mass", "Required minimum solar mass of blackhole before prestiging");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 1, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole until minimum solar mass reached", "Stabilises the blackhole with exotic materials until minimum solar mass is reached");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeMinMass", "Required minimum solar mass", "Required minimum solar mass of blackhole before prestiging");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole until minimum solar mass reached", "Stabilises the blackhole with exotic materials until minimum solar mass is reached");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectEnabled", "Enable mass ejector", "If not enabled the mass ejector will not be managed by the script");
-        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeDecayRate", "Decay eject rate", "Set amount of ejected resources up to this percent of decay rate. Only useful during Decay Challenge, normally only resources with full storages will be ejected until below option is activated.");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate. Only useful during Decay Challenge, normally only resources with full storages will be ejected, until below option is activated.");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -11291,36 +11310,36 @@
         });
 
         // Target evolution
-        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTargetName">Target Evolution:</label><select id="script_userEvolutionTargetName" style="width: 150px; float: right;"></select></div><div><span id="script_race_warning"></span></div>');
+        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTarget">Target Evolution:</label><select id="script_userEvolutionTarget" style="width: 150px; float: right;"></select></div><div><span id="script_race_warning"></span></div>');
         currentNode.append(targetEvolutionNode);
 
-        selectNode = $('#script_userEvolutionTargetName');
+        selectNode = $('#script_userEvolutionTarget');
 
-        selected = settings.userEvolutionTargetName === "auto" ? ' selected="selected"' : "";
-        node = $('<option value = "auto"' + selected + '>Auto Achievements</option>');
+        selected = settings.userEvolutionTarget === "auto" ? ' selected="selected"' : "";
+        node = $('<option value = "auto"' + selected + '>Auto MAD Achievements</option>');
         selectNode.append(node);
 
         for (let i = 0; i < raceAchievementList.length; i++) {
-            const race = raceAchievementList[i];
-            let selected = settings.userEvolutionTargetName === race.name ? ' selected="selected"' : "";
+            let race = raceAchievementList[i];
+            let selected = settings.userEvolutionTarget === race.id ? ' selected="selected"' : "";
 
-            let raceNode = $('<option value = "' + race.name + '"' + selected + '>' + race.name + '</option>');
+            let raceNode = $('<option value = "' + race.id + '"' + selected + '>' + race.name + '</option>');
             selectNode.append(raceNode);
         }
 
-        let race = raceAchievementList.find(race => race.name === settings.userEvolutionTargetName);
+        let race = races[settings.userEvolutionTarget];
         if (race && race.evolutionConditionText !== '') {
             $("#script_race_warning").html(`<span class="${race.evolutionCondition() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.evolutionConditionText}. This condition is currently ${race.evolutionCondition() ? "met" : "not met"}.</span>`);
         }
 
         selectNode.on('change', function() {
-            let value = $("#script_userEvolutionTargetName :selected").val();
-            settings.userEvolutionTargetName = value;
+            let value = $("#script_userEvolutionTarget :selected").val();
+            settings.userEvolutionTarget = value;
             state.resetEvolutionTarget = true;
             updateSettingsFromState();
             //console.log("Chosen evolution target of " + value);
 
-            let race = raceAchievementList.find(race => race.name === settings.userEvolutionTargetName);
+            let race = races[settings.userEvolutionTarget];
             if (race && race.evolutionConditionText !== '') {
                 $("#script_race_warning").html(`<span class="${race.evolutionCondition() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.evolutionConditionText}. This condition is currently ${race.evolutionCondition() ? "met" : "not met"}.</span>`);
             } else {
@@ -11347,7 +11366,159 @@
         addStandardSectionSettingsToggle(currentNode, "challenge_cataclysm", "Cataclysm", "Challenge mode - shattered world (no homeworld)");
         addStandardSectionSettingsToggle(currentNode, "challenge_junker", "Junker", "Challenge mode - junker");
 
+        addStandardHeading(currentNode, "Evolution Queue");
+        addStandardSectionSettingsToggle(currentNode, "evolutionQueueEnabled", "Queue Enabled", "When enabled script with evolve with queued settings, from top to bottom. During that script settings will be overriden with settings stored in queue. Queued target will be removed from list after evolution.");
+
+        let addButton = $('<div style="margin-top: 10px;"><button id="script_evlution_add" class="button">Add New Evolution</button></div>');
+        currentNode.append(addButton);
+        $("#script_evlution_add").on("click", addEvolutionSetting);
+
+        currentNode.append(
+            `<table style="width:100%"><tr>
+                    <th class="has-text-warning" style="width:15%">Race</th>
+                    <th class="has-text-warning" style="width:80%">Settings</th>
+                    <th style="width:5%"></th>
+                </tr><tbody id="script_evolutionQueueTable" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_evolutionQueueTable');
+        for (let i = 0; i < settings.evolutionQueue.length; i++) {
+            tableBodyNode.append(buildEvolutionQueueItem(i));
+        }
+
+        $('#script_evolutionQueueTable').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let evolutionIds = $('#script_evolutionQueueTable').sortable('toArray', {attribute: 'value'});
+
+                let sortedQueue = [];
+                for (let i = 0; i < evolutionIds.length; i++) {
+                    let id = parseInt(evolutionIds[i]);
+                    sortedQueue.push(settings.evolutionQueue[id]);
+                }
+                settings.evolutionQueue = sortedQueue;
+            },
+        } );
+
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function buildEvolutionQueueItem(id) {
+        let queuedEvolution = settings.evolutionQueue[id];
+
+        let raceName = "";
+        let nameClass = "";
+
+        let race = races[queuedEvolution.userEvolutionTarget];
+        if (race) {
+            raceName = race.name;
+            nameClass = "has-text-info";
+
+            // Check if we can evolve intro it
+            if (!race.evolutionCondition()) {
+                nameClass = "has-text-danger";
+            }
+        } else if (queuedEvolution.userEvolutionTarget === "auto") {
+            raceName = "Auto MAD Achievements";
+            nameClass = "has-text-warning";
+        } else {
+            raceName = "Unrecognized race!";
+            nameClass = "has-text-danger";
+        }
+
+        let queueNode = $(`<tr id="script_evolution_${id}" value="${id}" class="script-draggable">
+                              <td style="width:15%"><span class="${nameClass}">${raceName}</span></td>
+                              <td style="width:80%"><textarea class="textarea">${JSON.stringify(queuedEvolution, null, 4)}</textarea></td>
+                              <td style="width:5%"><a class="button is-dark is-small"><span>X</span></a></td>
+                          </tr>`);
+
+        // Delete button
+        queueNode.find(".button").on('click', function() {
+            settings.evolutionQueue.splice(id, 1);
+            updateSettingsFromState();
+            updateEvolutionSettingsContent();
+
+            let content = document.querySelector('#script_evolutionSettings .script-content');
+            content.style.height = null;
+            content.style.height = content.offsetHeight + "px"
+        });
+
+
+        // Settings textarea
+        queueNode.find(".textarea").on('change', function() {
+            try {
+                let queuedEvolution = JSON.parse(this.value);
+                settings.evolutionQueue[id] = queuedEvolution;
+            } catch (error) {
+                alert(error);
+                settings.evolutionQueue.splice(id, 1);
+            }
+            updateSettingsFromState();
+            updateEvolutionSettingsContent();
+
+            let content = document.querySelector('#script_evolutionSettings .script-content');
+            content.style.height = null;
+            content.style.height = content.offsetHeight + "px"
+        });
+
+        return queueNode;
+    }
+
+    function addEvolutionSetting() {
+        let settingsToStore = ["userEvolutionTarget", "prestigeType", "challenge_plasmid", "challenge_mastery", "challenge_trade", 
+                              "challenge_craft", "challenge_crispr", "challenge_joyless", "challenge_decay", "challenge_steelen",
+                              "challenge_emfield", "challenge_cataclysm", "challenge_junker"];
+
+        let queuedEvolution = {};
+        for (let i = 0; i < settingsToStore.length; i++){
+            let settingName = settingsToStore[i];
+            let settingValue = settings[settingName];
+            queuedEvolution[settingName] = settingValue;
+        }
+
+        let queueLength = settings.evolutionQueue.push(queuedEvolution);
+        updateSettingsFromState();
+
+        let tableBodyNode = $('#script_evolutionQueueTable');
+        tableBodyNode.append(buildEvolutionQueueItem(queueLength-1));
+
+        let content = document.querySelector('#script_evolutionSettings .script-content');
+        content.style.height = null;
+        content.style.height = content.offsetHeight + "px"
+    }
+
+    function isItQueuedRun() {
+        if (settings.evolutionQueue.length < 0) {
+            return false;
+        }
+
+        let queuedEvolution = settings.evolutionQueue[0];
+
+        // Challenge stored in game.global.race as either 1 or undefined, with !! we're casting them to booleans
+        if ((queuedEvolution.userEvolutionTarget === "auto" || queuedEvolution.userEvolutionTarget === game.global.race.species) &&
+            (game.global.race.universe === 'antimatter' || queuedEvolution.challenge_plasmid === !!game.global.race['no_plasmid']) &&
+            (game.global.race.universe !== 'antimatter' || queuedEvolution.challenge_mastery === !!game.global.race['weak_mastery']) &&
+            queuedEvolution.challenge_trade === !!game.global.race['no_trade'] &&
+            queuedEvolution.challenge_craft === !!game.global.race['no_craft'] &&
+            queuedEvolution.challenge_crispr === !!game.global.race['no_crispr'] &&
+            queuedEvolution.challenge_joyless === !!game.global.race['joyless'] &&
+            queuedEvolution.challenge_decay === !!game.global.race['decay'] &&
+            queuedEvolution.challenge_steelen === !!game.global.race['steelen'] &&
+            queuedEvolution.challenge_emfield === !!game.global.race['emfield'] &&
+            queuedEvolution.challenge_cataclysm === !!game.global.race['cataclysm'] &&
+            queuedEvolution.challenge_junker === !!game.global.race['junker'] &&
+            queuedEvolution.prestigeType === settings.prestigeType) {
+            // Same race and challenges as in queue. That's our run.
+            return true;
+        }
+
+        return false;
     }
 
     function buildTriggerSettings() {
@@ -11476,10 +11647,11 @@
         triggerElement.empty().off("*");
 
         // Requirement Type
-        let typeSelectNode = $('<select></select>');
-        typeSelectNode.append('<option value = "unlocked">Unlocked</option>');
-        typeSelectNode.append('<option value = "researched">Researched</option>');
-        typeSelectNode.append('<option value = "built">Built</option>');
+        let typeSelectNode = $(`<select>
+                                  <option value = "unlocked">Unlocked</option>
+                                  <option value = "researched">Researched</option>
+                                  <option value = "built">Built</option>
+                                </select>`);
         typeSelectNode.val(trigger.requirementType);
 
         triggerElement.append(typeSelectNode);
@@ -11536,9 +11708,10 @@
         triggerElement.empty().off("*");
 
         // Action Type
-        let typeSelectNode = $('<select></select>');
-        typeSelectNode.append('<option value = "research">Research</option>');
-        typeSelectNode.append('<option value = "build">Build</option>');
+        let typeSelectNode = $(`<select>
+                                  <option value = "research">Research</option>
+                                  <option value = "build">Build</option>
+                                </select>`);
         typeSelectNode.val(trigger.actionType);
 
         triggerElement.append(typeSelectNode);
@@ -13038,7 +13211,7 @@
 
     function createSettingToggle(node, name, title, enabledCallBack, disabledCallBack) {
         let checked = settings[name] ? " checked" : "";
-        let toggle = $(`<label tabindex="0" class="switch" id="${name}" style="" title="${title}"><input type="checkbox" value=${settings[name]}${checked}/> <span class="check"></span><span>${name}</span></label></br>`);
+        let toggle = $(`<label tabindex="0" class="switch" id="${name}" style="" title="${title}"><input type="checkbox" value="${settings[name]}"${checked}/> <span class="check"></span><span>${name}</span></label></br>`);
         node.append(toggle);
 
         if (settings[name]) {
@@ -13050,14 +13223,6 @@
         toggle.on('change', function(e) {
             let input = e.currentTarget.children[0];
             let state = !(input.getAttribute('value') === "true");
-
-            if (name === "autoMAD" && input.checked && isResearchUnlocked("mad")) {
-                let confirmation = confirm("MAD has already been researched. This may MAD immediately. Are you sure you want to enable autoMAD?");
-                if (!confirmation) {
-                    input.checked = false;
-                    return;
-                }
-            }
 
             input.setAttribute('value', state);
             settings[name] = state;
@@ -13181,8 +13346,7 @@
             // It doesn't have such huge impact anymore, as used to before rewriting trigger's tech selectors, but still won't hurt to have an option to increase performance a bit more
             createSettingToggle(scriptNode, 'showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
 
-            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In "Auto Achievements" mode will target races that you don\'t have extinction achievements for yet.');
-            createSettingToggle(scriptNode, 'autoChallenge', 'Chooses challenge options during evolution.');
+            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto MAD Achievements mode will target races that you don\'t have extinction achievements for yet.');
             createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
             createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
             createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
@@ -13467,6 +13631,9 @@
     }
 
     function createMarketToggles() {
+        // TODO: Find out *why* it draws twice sometimes, and remove this
+        removeMarketToggles();
+
         $("#market .market-item .res").width("5rem");
         $("#market .market-item .trade > :first-child").text("R:");
         $("#market .trade .zero").text("x").css("margin-right", 12);
