@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.35
+// @version      3.2.1.36
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5473,7 +5473,6 @@
                                 Moldling: new EvolutionAction("", "evo", "moldling", ""),
 
 
-            //Bunker: new EvolutionAction("", "evo", "bunker", ""),
             Bunker: new ChallengeEvolutionAction("", "evo", "bunker", "", ""),
             Plasmid: new ChallengeEvolutionAction("Plasmid", "evo", "plasmid", "", "no_plasmid"),
             Trade: new ChallengeEvolutionAction("Trade", "evo", "trade", "", "no_trade"),
@@ -5482,7 +5481,7 @@
             Mastery: new ChallengeEvolutionAction("Mastery", "evo", "mastery", "", "weak_mastery"),
             Joyless: new ChallengeEvolutionAction("Joyless", "evo", "joyless", "", "joyless"),
             Decay: new ChallengeEvolutionAction("Decay", "evo", "decay", "", "decay"),
-            Junker: new ChallengeEvolutionAction("Junker", "evo", "junker", "", ""),
+            Junker: new ChallengeEvolutionAction("Junker", "evo", "junker", "", "junker"),
             Steelen: new ChallengeEvolutionAction("Steelen", "evo", "steelen", "", "steelen"),
             EmField: new ChallengeEvolutionAction("EM Field", "evo", "emfield", "", "emfield"),
             Cataclysm: new ChallengeEvolutionAction("Cataclysm", "evo", "cataclysm", "", "cataclysm"),
@@ -6351,10 +6350,10 @@
         state.jobManager.addJobToPriorityList(state.jobs.CementWorker);
         state.jobManager.addJobToPriorityList(state.jobs.Miner);
         state.jobManager.addJobToPriorityList(state.jobs.CoalMiner);
-        state.jobManager.addJobToPriorityList(state.jobs.Banker);
-        state.jobManager.addJobToPriorityList(state.jobs.Colonist);
         state.jobManager.addJobToPriorityList(state.jobs.SpaceMiner);
+        state.jobManager.addJobToPriorityList(state.jobs.Colonist);
         state.jobManager.addJobToPriorityList(state.jobs.HellSurveyor);
+        state.jobManager.addJobToPriorityList(state.jobs.Banker);
         state.jobManager.addJobToPriorityList(state.jobs.Priest);
         state.jobManager.addJobToPriorityList(state.jobs.Plywood);
         state.jobManager.addJobToPriorityList(state.jobs.Brick);
@@ -7241,38 +7240,41 @@
             return;
         }
 
-        autoUniverseSelection();
-
-        // If we have performed a soft reset with a bioseeded ship then we get to choose our planet
-        autoPlanetSelection();
-
-        for (let i = 0; i < state.evolutionChallengeList.length; i++) {
-            const challenge = state.evolutionChallengeList[i];
-
-            if (challenge === state.evolutions.Bunker || settings["challenge_" + challenge.id]) {
-                if (!game.global.race[challenge.effectId] || game.global.race[challenge.effectId] !== 1) {
-                    challenge.click(1)
-                }
-            }
-        }
-
-        if (state.resetEvolutionTarget && !settings.evolutionQueueEnabled) {
-            state.evolutionTarget = null;
-            state.resetEvolutionTarget = false;
-        }
-
+        // Load queued settings first, before choosing universe or planet
         if (state.evolutionTarget === null && settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
             let queuedEvolution = settings.evolutionQueue.shift();
             for (let [settingName, settingValue] of Object.entries(queuedEvolution)) {
-                settings[settingName] = settingValue;
+                if (typeof settings[settingName] === typeof settingValue) {
+                    settings[settingName] = settingValue;
+                } else {
+                    console.log(`Type mismatch during loading queued settings: 
+                        settings.${settingName} type: ${typeof settings[settingName]}, value: ${settings[settingName]}; 
+                        queuedEvolution.${settingName} type: ${typeof settingValue}, value: ${settingValue};`);
+                }
             }
+            state.evolutionTarget = races.antid; // That's a hack to not pull another evolution from queue while player selecting universe
+            state.resetEvolutionTarget = true;
             updateStateFromSettings();
             updateSettingsFromState();
             buildScriptSettings();
         }
 
+        autoUniverseSelection();
+        // If we have performed a soft reset with a bioseeded ship then we get to choose our planet
+        autoPlanetSelection();
+
+        // Wait for universe and planet, we don't want to run auto achievement until we'll decide with planet
+        if (game.global.race.universe === 'bigbang' || (game.global.race.seeded && !game.global.race['chose'])) {
+            return;
+        }
+
+        if (state.resetEvolutionTarget) {
+            state.resetEvolutionTarget = false;
+            state.evolutionTarget = null;
+        }
+
         if (state.evolutionTarget === null) {
-            // Try to pick race for achievment first
+            // Try to pick race for achievement first
             if (settings.userEvolutionTarget === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
                 let achievementLevel = 1;
@@ -7336,6 +7338,17 @@
                 state.evolutionTarget = races.antid;
             }
             state.log.logSuccess(loggingTypes.special, `Attempting evolution of ${state.evolutionTarget.name}.`);
+        }
+
+        // Apply challenges
+        for (let i = 0; i < state.evolutionChallengeList.length; i++) {
+            let challenge = state.evolutionChallengeList[i];
+
+            if (challenge === state.evolutions.Bunker || settings["challenge_" + challenge.id]) {
+                if (!game.global.race[challenge.effectId] || game.global.race[challenge.effectId] !== 1) {
+                    challenge.click(1)
+                }
+            }
         }
 
         // Calculate the maximum RNA and DNA required to evolve and don't build more than that
@@ -10029,6 +10042,7 @@
             }
             state.goal = "Standard";
             updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
+            resources.Population._instance = game.global.resource[resources.Population.id]; // We need to update cached population instance
         }
         // Not evolving anymore, clear ignore list
         settings.evolutionIgnore = {};
@@ -11491,34 +11505,6 @@
         let content = document.querySelector('#script_evolutionSettings .script-content');
         content.style.height = null;
         content.style.height = content.offsetHeight + "px"
-    }
-
-    function isItQueuedRun() {
-        if (settings.evolutionQueue.length < 0) {
-            return false;
-        }
-
-        let queuedEvolution = settings.evolutionQueue[0];
-
-        // Challenge stored in game.global.race as either 1 or undefined, with !! we're casting them to booleans
-        if ((queuedEvolution.userEvolutionTarget === "auto" || queuedEvolution.userEvolutionTarget === game.global.race.species) &&
-            (game.global.race.universe === 'antimatter' || queuedEvolution.challenge_plasmid === !!game.global.race['no_plasmid']) &&
-            (game.global.race.universe !== 'antimatter' || queuedEvolution.challenge_mastery === !!game.global.race['weak_mastery']) &&
-            queuedEvolution.challenge_trade === !!game.global.race['no_trade'] &&
-            queuedEvolution.challenge_craft === !!game.global.race['no_craft'] &&
-            queuedEvolution.challenge_crispr === !!game.global.race['no_crispr'] &&
-            queuedEvolution.challenge_joyless === !!game.global.race['joyless'] &&
-            queuedEvolution.challenge_decay === !!game.global.race['decay'] &&
-            queuedEvolution.challenge_steelen === !!game.global.race['steelen'] &&
-            queuedEvolution.challenge_emfield === !!game.global.race['emfield'] &&
-            queuedEvolution.challenge_cataclysm === !!game.global.race['cataclysm'] &&
-            queuedEvolution.challenge_junker === !!game.global.race['junker'] &&
-            queuedEvolution.prestigeType === settings.prestigeType) {
-            // Same race and challenges as in queue. That's our run.
-            return true;
-        }
-
-        return false;
     }
 
     function buildTriggerSettings() {
@@ -13892,21 +13878,6 @@
         if (game.global.race['no_craft']){ a_level++; }
         if (game.global.race['no_crispr']){ a_level++; }
         return a_level;
-    }
-
-    function getBuyRate(res) { // function fastLoop() -> trade routes
-        let rate = game.tradeRatio[res];
-        if (game.global.race['persuasive']){
-            rate *= 1 + (game.global.race['persuasive'] / 100);
-        }
-        if (game.global.race['merchant']){
-            rate *= 1 + (game.traits.merchant.vars[1] / 100);
-        }
-        if (game.global.genes['trader']){
-            let mastery = parseFloat(game.breakdown.p.Global.Mastery || 0);
-            rate *= 1 + (mastery / 100);
-        }
-        return rate;
     }
 
     function govPrice(govIndex){ // function govPrice(gov)
