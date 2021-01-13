@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.36
+// @version      3.2.1.37
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -7254,7 +7254,7 @@
             }
             state.evolutionTarget = races.antid; // That's a hack to not pull another evolution from queue while player selecting universe
             state.resetEvolutionTarget = true;
-            updateStateFromSettings();
+            //updateStateFromSettings();
             updateSettingsFromState();
             buildScriptSettings();
         }
