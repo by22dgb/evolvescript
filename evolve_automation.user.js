@@ -4544,41 +4544,7 @@
          * @param {number} [level]
          */
         isMadAchievementUnlocked(level) {
-            // Can't get these in a micro universe - can only get micro specific achievements
-            if (game.global.race.universe === 'micro') {
-                return true;
-            }
-
-            // check if achievement exists and what star level
-            // Levels 1,2,3,4,5
-            let madAchievement = "extinct_" + this.id;
-
-            let universe = "l";
-            switch (game.global.race.universe){
-                case 'antimatter':
-                    universe = "a";
-                    break;
-                case 'heavy':
-                    universe = "h";
-                    break;
-                case 'evil':
-                    universe = "e";
-                    break;
-                case 'micro':
-                    universe = "m";
-                    break;
-                case 'magic':
-                    universe = "mg";
-                    break;
-            }
-
-            if (game.global.stats.achieve[madAchievement] && game.global.stats.achieve[madAchievement][universe]) {
-                if (game.global.stats.achieve[madAchievement][universe] >= level) {
-                    return true;
-                }
-            }
-
-            return false;
+            return isAchievementUnlocked("extinct_" + this.id, level);
         }
     }
 
@@ -5127,7 +5093,7 @@
     }
 
     function demonicAllowed() {
-        return game.global.city.biome === 'hellscape' || game.global.blood['unbound'] && game.global.blood.unbound >= 3
+        return game.global.city.biome === 'hellscape' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
     }
 
     function celestialAllowed() {
@@ -5235,6 +5201,22 @@
     ];
 
     var universes = ['standard','heavy','antimatter','evil','micro','magic'];
+
+    var planetBiomes = ["grassland", "forest", "oceanic", "desert", "volcanic", "tundra", "hellscape", "eden"];
+    var planetTraits = ["rage", "elliptical", "stormy", "toxic", "magnetic", "ozone", "mellow", "trashed", "flare", "unstable", "dense"];
+    var planetBiomeRaces = {
+        hellscape: ["balorg", "imp"],
+        eden: ["seraph", "unicorn"],
+        oceanic: ["sharkin", "octigoran"],
+        forest: ["dryad", "satyr"],
+        desert: ["tuskin", "kamel"],
+        volcanic: ["phoenix", "salamander"],
+        tundra: ["yeti", "wendigo"]
+    }
+
+    var evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", "challenge_plasmid", "challenge_mastery", "challenge_trade",
+                                    "challenge_craft", "challenge_crispr", "challenge_joyless", "challenge_decay", "challenge_steelen",
+                                    "challenge_emfield", "challenge_cataclysm", "challenge_junker"];
 
     var resources = {
         // Evolution resources
@@ -6183,6 +6165,7 @@
 
     function resetEvolutionSettings() {
         settings.userUniverseTargetName = "none";
+        settings.userPlanetTargetName = "none";
         settings.userEvolutionTarget = "auto";
         settings.evolutionIgnore = {};
         settings.evolutionQueue = [];
@@ -7188,7 +7171,8 @@
         addSetting("hellAttractorTopThreat", 3000);
         addSetting("hellAttractorBottomThreat", 1300);
 
-        addSetting("userUniverseTargetName", "none")
+        addSetting("userUniverseTargetName", "none");
+        addSetting("userPlanetTargetName", "none");
         addSetting("userEvolutionTarget", "auto");
 
         for (let i = 0; i < state.evolutionChallengeList.length; i++) {
@@ -7235,12 +7219,43 @@
 
     //#region Auto Evolution
 
+    function getConfiguredAchievementLevel() {
+        let a_level = 1;
+        if (settings.challenge_plasmid || settings.challenge_mastery) { a_level++; }
+        if (settings.challenge_trade) { a_level++; }
+        if (settings.challenge_craft) { a_level++; }
+        if (settings.challenge_crispr) { a_level++; }
+        return a_level;
+    }
+
+    function isAchievementUnlocked(id, level) {
+        let universe = "l";
+        switch (game.global.race.universe){
+            case 'antimatter':
+                universe = "a";
+                break;
+            case 'heavy':
+                universe = "h";
+                break;
+            case 'evil':
+                universe = "e";
+                break;
+            case 'micro':
+                universe = "m";
+                break;
+            case 'magic':
+                universe = "mg";
+                break;
+        }
+        return game.global.stats.achieve[id] && game.global.stats.achieve[id][universe] && game.global.stats.achieve[id][universe] >= level;
+    }
+
     function autoEvolution() {
         if (game.global.race.species !== speciesProtoplasm) {
             return;
         }
 
-        // Load queued settings first, before choosing universe or planet
+        // Load queued settings first, before choosing universe or planet - in case if they're need to be overriden
         if (state.evolutionTarget === null && settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
             let queuedEvolution = settings.evolutionQueue.shift();
             for (let [settingName, settingValue] of Object.entries(queuedEvolution)) {
@@ -7263,7 +7278,7 @@
         // If we have performed a soft reset with a bioseeded ship then we get to choose our planet
         autoPlanetSelection();
 
-        // Wait for universe and planet, we don't want to run auto achievement until we'll decide with planet
+        // Wait for universe and planet, we don't want to run auto achievement until we'll land somewhere
         if (game.global.race.universe === 'bigbang' || (game.global.race.seeded && !game.global.race['chose'])) {
             return;
         }
@@ -7277,13 +7292,7 @@
             // Try to pick race for achievement first
             if (settings.userEvolutionTarget === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
-                let achievementLevel = 1;
-
-                if (settings.challenge_plasmid || settings.challenge_mastery) achievementLevel++;
-                if (settings.challenge_trade) achievementLevel++;
-                if (settings.challenge_craft) achievementLevel++;
-                if (settings.challenge_crispr) achievementLevel++;
-
+                let achievementLevel = getConfiguredAchievementLevel();
                 let targetedGroup = { group: null, race: null, remainingPercent: 0 };
 
                 for (let i = 0; i < state.raceGroupAchievementList.length; i++) {
@@ -7422,22 +7431,98 @@
     }
 
     function autoPlanetSelection() {
-        // This section is for if we bioseeded life and we get to choose our path a little bit
-        let potentialPlanets = document.querySelectorAll('#evolution .action');
-        let selectedPlanet = "";
+        if (!game.global.race.seeded || game.global.race['chose']) { return; }
+        if (settings.userPlanetTargetName === 'none') { return; }
 
-        selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Grassland");
-        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Forest"); }
-        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Oceanic"); }
-        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Desert"); }
-        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Volcanic"); }
-        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Tundra"); }
-        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Hellscape"); }
-        if (selectedPlanet === "") { selectedPlanet = evolutionPlanetSelection(potentialPlanets, "Eden"); }
+        // This section is for if we bioseeded life and we get to choose our path a little bit
+        let planetNodes = document.querySelectorAll('#evolution .action');
+
+        let planets = [];
+        for (let i = 0; i < planetNodes.length; i++) {
+            let planetNode = planetNodes[i];
+            try {
+                let planetTitle = planetNode.innerText.split(" ");
+                let planet = {id: planetNode.id};
+
+                let planetTraitName = null;
+                let planetBiomeName = null;
+
+                // Planets titles consists of two or three parts: [Optional trait] Biome ID
+                if (planetTitle.length === 3) {
+                    planetTraitName = planetTitle[0];
+                    planetBiomeName = planetTitle[1];
+                } else {
+                    planetBiomeName = planetTitle[0];
+                }
+
+                // Parsing titles
+                for (let j = 0; j < planetBiomes.length; j++){
+                    if (planetBiomeName === game.loc("biome_" +  planetBiomes[j] + "_name")) {
+                        planet.biome = planetBiomes[j];
+                        break;
+                    }
+                }
+                if (!planet.biome) { throw true; }
+
+                if (planetTraitName) {
+                    for (let j = 0; j < planetTraits.length; j++){
+                        if (planetTraitName === game.loc("planet_" + planetTraits[j])) {
+                            planet.trait = planetTraits[j];
+                            break;
+                        }
+                    }
+                    if (!planet.trait) { throw true; }
+                }
+
+                planets.push(planet);
+            } catch {
+                console.log("Failed to parse planet: " + planetNode.innerText);
+                continue;
+            }
+        }
+
+        if (settings.userPlanetTargetName === "habitable") {
+            planets.sort((a, b) => (planetBiomes.indexOf(a.biome) + planetTraits.indexOf(a.trait)) - 
+                                   (planetBiomes.indexOf(b.biome) + planetTraits.indexOf(b.trait)));
+        }
+
+        if (settings.userPlanetTargetName === "achieve") {
+            // Let's try to calculate how many achievements we can get here
+            let alevel = getConfiguredAchievementLevel();
+            for (let i = 0; i < planets.length; i++){
+                let planet = planets[i];
+                planet.achieve = 0;
+
+                if (!isAchievementUnlocked("biome_" + planet.biome, alevel)) {
+                    planet.achieve++;
+                }
+                if (!isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
+                    planet.achieve++;
+                }
+                if (planetBiomeRaces[planet.biome]) {
+                    for (let j = 0; j < planetBiomeRaces[planet.biome].length; j++) {
+                        let race = planetBiomeRaces[planet.biome][j];
+                        if (!isAchievementUnlocked("extinct_" + race, alevel)) {
+                            planet.achieve++;
+                        }
+                    }
+                    // Both races have same genus, no need to check both
+                    let genus = game.races[planetBiomeRaces[planet.biome][0]].type;
+                    if (!isAchievementUnlocked("genus_" + genus, alevel)) {
+                        planet.achieve++;
+                    }
+                }
+            }
+
+            planets.sort((a, b) => a.achieve !== b.achieve ? b.achieve - a.achieve : 
+                                   (planetBiomes.indexOf(a.biome) + planetTraits.indexOf(a.trait)) - 
+                                   (planetBiomes.indexOf(b.biome) + planetTraits.indexOf(b.trait)));
+        }
 
         // This one is a little bit special. We need to trigger the "mouseover" first as it creates a global javascript varaible
         // that is then destroyed in the "click"
-        if (selectedPlanet !== "") {
+        if (planets.length > 0) {
+            let selectedPlanet = planets[0].id;
             let evObj = document.createEvent("Events");
             evObj.initEvent("mouseover", true, false);
             document.getElementById(selectedPlanet).dispatchEvent(evObj);
@@ -7505,13 +7590,13 @@
         let craftRatio = 0.9;
         // We want to get to a healthy number of buildings that require craftable materials so leaving crafting ratio low early
         if (missResourceForBuilding(state.cityBuildings.Library, 20, craftable)) {
-            craftRatio = 0.5;
+            craftRatio = state.cityBuildings.Library.count * 0.025;
         }
         if (missResourceForBuilding(state.cityBuildings.Cottage, 20, craftable)) {
-            craftRatio = 0.5;
+            craftRatio = state.cityBuildings.Cottage.count * 0.025;
         }
         if (missResourceForBuilding(state.cityBuildings.Wardenclyffe, 20, craftable)) {
-            craftRatio = 0.5;
+            craftRatio = state.cityBuildings.Wardenclyffe.count * 0.025;
         }
         // Iron tends to be in high demand, make sure we have enough wrought for at least one coal mine, to start collecting coal for researches as soon as possible
         if (missResourceForBuilding(state.cityBuildings.CoalMine, 1, craftable)) {
@@ -11289,57 +11374,60 @@
         currentNode.empty().off("*");
 
         // Target universe
-        let targetUniverseNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userUniverseTargetName">Target Universe:</label><select id="script_userUniverseTargetName" style="width: 150px; float: right;"></select></div>');
-        currentNode.append(targetUniverseNode);
+        currentNode.append(`<div style="margin-top: 5px; width: 400px;">
+                              <label for="script_userUniverseTargetName">Target Universe:</label>
+                              <select id="script_userUniverseTargetName" style="width: 150px; float: right;">
+                                <option value = "none">None</option>
+                              </select>
+                            </div>`);
 
         let selectNode = $('#script_userUniverseTargetName');
 
-        let selected = settings.userUniverseTargetName === "none" ? ' selected="selected"' : "";
-        let node = $('<option value = "none"' + selected + '>None</option>');
-        selectNode.append(node);
-
-        // TODO: Add in auto when script manages this
-        // selected = settings.userUniverseTargetName === "auto" ? ' selected="selected"' : "";
-        // node = $('<option value = "auto"' + selected + '>Script Managed</option>');
-        // selectNode.append(node);
-
         universes.forEach(universeName => {
-            let selected = settings.userUniverseTargetName === universeName ? ' selected="selected"' : "";
-
-            let universeNode = $('<option value = "' + universeName + '"' + selected + '>' + universeName.charAt(0).toUpperCase() + universeName.slice(1) + '</option>');
-            selectNode.append(universeNode);
+            selectNode.append('<option value = "' + universeName + '">' + universeName.charAt(0).toUpperCase() + universeName.slice(1) + '</option>');
         });
+        selectNode.val(settings.userUniverseTargetName);
 
         selectNode.on('change', function() {
             let value = $("#script_userUniverseTargetName :selected").val();
             settings.userUniverseTargetName = value;
             updateSettingsFromState();
-            //console.log("Chosen universe target of " + value);
+        });
 
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            // @ts-ignore
-            content.style.height = null;
-            // @ts-ignore
-            content.style.height = content.offsetHeight + "px"
+        // Target planet
+        currentNode.append(`<div style="margin-top: 5px; width: 400px;">
+                              <label for="script_userPlanetTargetName">Target Planet:</label>
+                              <select id="script_userPlanetTargetName" style="width: 150px; float: right;">
+                                <option value = "none">None</option>
+                                <option value = "habitable" title = "Picks most habitable planet, based on biome and trait">Most habitable</option>
+                                <option value = "achieve" title = "Picks planet with most unearned achievements. Takes in account extinction achievements for planet exclusive races, and greatness achievements for planet biome, trait, and exclusive genus.">Most achievements</option>
+                              </select>
+                            </div>`);
+
+        selectNode = $('#script_userPlanetTargetName');
+
+        selectNode.val(settings.userPlanetTargetName);
+        selectNode.on('change', function() {
+            let value = $("#script_userPlanetTargetName :selected").val();
+            settings.userPlanetTargetName = value;
+            updateSettingsFromState();
         });
 
         // Target evolution
-        let targetEvolutionNode = $('<div style="margin-top: 5px; width: 400px;"><label for="script_userEvolutionTarget">Target Evolution:</label><select id="script_userEvolutionTarget" style="width: 150px; float: right;"></select></div><div><span id="script_race_warning"></span></div>');
-        currentNode.append(targetEvolutionNode);
+        currentNode.append(`<div style="margin-top: 5px; width: 400px;">
+                              <label for="script_userEvolutionTarget">Target Evolution:</label>
+                              <select id="script_userEvolutionTarget" style="width: 150px; float: right;">
+                                <option value = "auto">Auto MAD Achievements</option>
+                              </select>
+                            </div><div><span id="script_race_warning"></span></div>`);
 
         selectNode = $('#script_userEvolutionTarget');
 
-        selected = settings.userEvolutionTarget === "auto" ? ' selected="selected"' : "";
-        node = $('<option value = "auto"' + selected + '>Auto MAD Achievements</option>');
-        selectNode.append(node);
-
         for (let i = 0; i < raceAchievementList.length; i++) {
             let race = raceAchievementList[i];
-            let selected = settings.userEvolutionTarget === race.id ? ' selected="selected"' : "";
-
-            let raceNode = $('<option value = "' + race.id + '"' + selected + '>' + race.name + '</option>');
-            selectNode.append(raceNode);
+            selectNode.append('<option value = "' + race.id + '">' + race.name + '</option>');
         }
+        selectNode.val(settings.userEvolutionTarget);
 
         let race = races[settings.userEvolutionTarget];
         if (race && race.evolutionConditionText !== '') {
@@ -11351,7 +11439,6 @@
             settings.userEvolutionTarget = value;
             state.resetEvolutionTarget = true;
             updateSettingsFromState();
-            //console.log("Chosen evolution target of " + value);
 
             let race = races[settings.userEvolutionTarget];
             if (race && race.evolutionConditionText !== '') {
@@ -11360,9 +11447,7 @@
                 $("#script_race_warning").empty();
             }
             let content = document.querySelector('#script_evolutionSettings .script-content');
-            // @ts-ignore
             content.style.height = null;
-            // @ts-ignore
             content.style.height = content.offsetHeight + "px"
         });
 
@@ -11487,13 +11572,9 @@
     }
 
     function addEvolutionSetting() {
-        let settingsToStore = ["userEvolutionTarget", "prestigeType", "challenge_plasmid", "challenge_mastery", "challenge_trade", 
-                              "challenge_craft", "challenge_crispr", "challenge_joyless", "challenge_decay", "challenge_steelen",
-                              "challenge_emfield", "challenge_cataclysm", "challenge_junker"];
-
         let queuedEvolution = {};
-        for (let i = 0; i < settingsToStore.length; i++){
-            let settingName = settingsToStore[i];
+        for (let i = 0; i < evolutionSettingsToStore.length; i++){
+            let settingName = evolutionSettingsToStore[i];
             let settingValue = settings[settingName];
             queuedEvolution[settingName] = settingValue;
         }
