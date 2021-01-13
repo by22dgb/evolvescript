@@ -6154,9 +6154,9 @@
     }
 
     function resetGovernmentSettings() {
-        settings.generalMinimumTaxRate = 20;
+        settings.generalMinimumTaxRate = 0;
         settings.generalMinimumMorale = 105;
-        settings.generalMaximumMorale = 200;
+        settings.generalMaximumMorale = 500;
         settings.govManage = false;
         settings.govInterim = governmentTypes.democracy.id;
         settings.govFinal = governmentTypes.technocracy.id;
@@ -7125,9 +7125,9 @@
         addSetting("queueRequest", true);
         addSetting("tradeRouteMinimumMoneyPerSecond", 300);
         addSetting("tradeRouteMinimumMoneyPercentage", 5);
-        addSetting("generalMinimumTaxRate", 20);
+        addSetting("generalMinimumTaxRate", 0);
         addSetting("generalMinimumMorale", 105)
-        addSetting("generalMaximumMorale", 200);
+        addSetting("generalMaximumMorale", 500);
         addSetting("govManage", false);
         addSetting("govInterim", governmentTypes.democracy.id);
         addSetting("govFinal", governmentTypes.technocracy.id);
@@ -8348,8 +8348,6 @@
             maxMorale += game.global.stats.achieve['joyless'].l * 2;
         }
 
-        maxMorale = Math.min(maxMorale, settings.generalMaximumMorale);
-
         // Max tax rate calculation
         let extreme = game.global.tech['currency'] && game.global.tech['currency'] >= 5 ? true : false;
         let maxTaxRate = game.global.civic.govern.type === 'oligarchy' ? 50 : 30;
@@ -8379,16 +8377,20 @@
             }
         }
 
-        if (currentTaxRate < maxTaxRate &&
-                ((currentTaxRate < settings.generalMinimumTaxRate && resources.Money.storageRatio < 0.98)
-                || (currentMorale > settings.generalMinimumMorale && currentMorale > maxMorale)
-                || (currentMorale <= settings.generalMinimumMorale && currentTaxRate < 26))) {
+        if (resources.Money.storageRatio < 0.98) {
+            minTaxRate = Math.max(minTaxRate, settings.generalMinimumTaxRate);
+            maxMorale = Math.min(maxMorale, settings.generalMaximumMorale);
+        }
+
+        let optimalTax = Math.round((maxTaxRate - minTaxRate) * (1 - resources.Money.storageRatio)) + minTaxRate;
+
+        if (currentTaxRate < maxTaxRate && currentMorale > settings.generalMinimumMorale + 1 && 
+            (currentTaxRate < optimalTax || currentMorale > maxMorale + 1)) {
             taxVue.add();
         }
 
-        if (currentTaxRate > minTaxRate
-                && (currentTaxRate > settings.generalMinimumTaxRate || resources.Money.storageRatio >= 0.98)
-                && (currentMorale < maxMorale || (currentMorale < settings.generalMinimumMorale && currentTaxRate > 26))) {
+        if (currentTaxRate > minTaxRate && currentMorale < maxMorale && 
+            (currentTaxRate > optimalTax || currentMorale < settings.generalMinimumMorale)) {
             taxVue.sub();
         }
     }
