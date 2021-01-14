@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.39
+// @version      3.2.1.40
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3243,30 +3243,24 @@
             if (!targetRating || targetRating <= 0) {
                 return 0;
             }
-            let singleSoldierAttackRating = 0;
+            // Getting the rating for 1000 soldiers and dividing it by number of soldiers
+            // If we have wounded soldiers this value can be wrong, so we're looking for negative soldiers, to avoid that
+            let singleSoldierAttackRating = game.armyRating(-1000, this._textArmy, 0) / -1000;
+            let maxSoldiers = Math.ceil(targetRating / singleSoldierAttackRating);
 
             if (!game.global.race[racialTraitHiveMind]) {
-                // No hivemind so take the army rating to 1 decimal place by getting the rating for 10 soldiers and dividing it by number of soldiers
-                // eg. single soldier = 3.8657. armyRating(1) = floor(3.8657) = 3. armyRating(100) / 100 = 386 / 100 = 3.86
-                let soldiers = 10;
-                singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy, 0) / soldiers;
-
-                return Math.ceil(targetRating / singleSoldierAttackRating);
+                return maxSoldiers;
             }
 
             // Ok, we've done no hivemind. Hivemind is trickier because each soldier gives attack rating and a bonus to all other soldiers.
             // I'm sure there is an exact mathematical calculation for this but...
             // Just loop through and remove 1 at a time until we're under the max rating.
-            let soldiers = 10;
-            singleSoldierAttackRating = game.armyRating(soldiers, this._textArmy, 0) / soldiers;
-            let maxSoldiers = Math.ceil(targetRating / singleSoldierAttackRating);
+
             // At 10 soldiers there's no hivemind bonus or malus, and the malus gets up to 50%, so start with up to 2x soldiers below 10
             if (maxSoldiers < 10) maxSoldiers = Math.min(10, 2 * maxSoldiers);
-            let testMaxSoldiers = maxSoldiers - 1;
 
-            while (testMaxSoldiers > 0 && game.armyRating(testMaxSoldiers, this._textArmy, 0) > targetRating) {
-                maxSoldiers = testMaxSoldiers;
-                testMaxSoldiers -= 1;
+            while (maxSoldiers > 1 && game.armyRating(maxSoldiers - 1, this._textArmy, 0) > targetRating) {
+                maxSoldiers--;
             }
 
             return maxSoldiers;
@@ -5912,12 +5906,12 @@
     }
 
     function resetWarSettings() {
-        settings.foreignAttackLivingSoldiersPercent = 100;
-        settings.foreignAttackHealthySoldiersPercent = 100;
+        settings.foreignAttackLivingSoldiersPercent = 90;
+        settings.foreignAttackHealthySoldiersPercent = 90;
         settings.foreignHireMercMoneyStoragePercent = 90;
         settings.foreignHireMercCostLowerThan = 50000;
-        settings.foreignMinAdvantage = 70;
-        settings.foreignMaxAdvantage = 80;
+        settings.foreignMinAdvantage = 40;
+        settings.foreignMaxAdvantage = 50;
 
         settings.foreignPacifist = false;
         settings.foreignUnification = true;
@@ -6928,12 +6922,12 @@
         addSetting("govFinal", governmentTypes.technocracy.id);
         addSetting("govSpace", governmentTypes.corpocracy.id);
 
-        addSetting("foreignAttackLivingSoldiersPercent", 100);
-        addSetting("foreignAttackHealthySoldiersPercent", 100);
+        addSetting("foreignAttackLivingSoldiersPercent", 90);
+        addSetting("foreignAttackHealthySoldiersPercent", 90);
         addSetting("foreignHireMercMoneyStoragePercent", 90);
         addSetting("foreignHireMercCostLowerThan", 50000);
-        addSetting("foreignMinAdvantage", 70);
-        addSetting("foreignMaxAdvantage", 80);
+        addSetting("foreignMinAdvantage", 40);
+        addSetting("foreignMaxAdvantage", 50);
 
         addSetting("foreignPacifist", false);
         addSetting("foreignUnification", true);
@@ -7542,7 +7536,7 @@
     function autoBattle() {
         let m = state.warManager;
 
-        // mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
+        // Mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
         let mercenariesHired = 0;
         while (m.currentSoldiers < m.maxSoldiers && resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100) {
             let mercenaryCost = m.getMercenaryCost();
@@ -7586,33 +7580,36 @@
             return;
         }
 
+        let bestAttackRating = game.armyRating(m.currentSoldiers, m._textArmy);
+        let attackIndex = 0;
+        let requiredTactic = 0;
+
         // Find out Inferiors, Superiors, and current target
         let rank = [];
-        let bestTarget = 0;
         for (let i = 0; i < 3; i++){
             if (getGovPower(i) <= settings.foreignPowerRequired) {
                 rank[i] = "Inferior";
-                bestTarget = i;
+                attackIndex = i;
             } else {
                 rank[i] = "Superior";
             }
         }
 
-        let occupyTarget = -1;
-
-        // Occupy, if needed
+        // Check if there's something that we want and can occupy, and switch to that target if found
         for (let i = 0; i < 3; i++){
-            if (settings[`foreignPolicy${rank[i]}`] === "Occupy" && !game.global.civic.foreign[`gov${i}`].occ) {
-                occupyTarget = i;
+            if (settings[`foreignPolicy${rank[i]}`] === "Occupy" && !game.global.civic.foreign[`gov${i}`].occ 
+                && getAdvantage(bestAttackRating, 4, i) >= settings.foreignMinAdvantage) {
+                attackIndex = i;
+                requiredTactic = 4;
                 break;
             }
         }
 
-        // Check if we want and can unify
-        if (settings.foreignUnification && isResearchUnlocked("unification") && bestTarget !== occupyTarget){
+        // Check if we want and can unify, unless we're already about to occupy something
+        if (requiredTactic !== 4 && settings.foreignUnification && isResearchUnlocked("unification")){
             let subdued = 0;
             for (let i = 0; i < 3; i++){
-                if (bestTarget !== i &&
+                if (attackIndex !== i &&
                    (game.global.civic.foreign[`gov${i}`].anx ||
                     game.global.civic.foreign[`gov${i}`].buy ||
                     game.global.civic.foreign[`gov${i}`].occ)) {
@@ -7620,44 +7617,25 @@
                 }
             }
             if (subdued == 2) {
-                if (settings.foreignOccupyLast) {
+                if (settings.foreignOccupyLast && getAdvantage(bestAttackRating, 4, attackIndex) >= settings.foreignMinAdvantage) {
                     // Occupy last force
-                    occupyTarget = bestTarget;
-                } else if (settings[`foreignPolicy${rank[bestTarget]}`] === "Annex" || settings[`foreignPolicy${rank[bestTarget]}`] === "Purchase") {
+                    requiredTactic = 4;
+                }
+                if (!settings.foreignOccupyLast && settings[`foreignPolicy${rank[requiredTactic]}`] === "Annex" || settings[`foreignPolicy${rank[requiredTactic]}`] === "Purchase") {
                     // We want to Annex or Purchase last one, stop attacking so we can influence it
-                    bestTarget = -1;
+                    return;
                 }
             }
         }
 
-        // We don't have any target to attack
-        if (occupyTarget === -1 && bestTarget === -1) {
-            return;
-        }
-
-        // If we are allowed to occupy a foreign power then we can perform attacks up to seige; otherwise we can only go up to assault so that we don't occupy them
-        let bestAttackRating = game.armyRating(m.currentSoldiers, m._textArmy);
-        let attackIndex = -1;
-        let requiredTactic = 0;
-
-        if (occupyTarget >= 0 && getAdvantage(bestAttackRating, 4, occupyTarget) >= settings.foreignMinAdvantage) {
-            attackIndex = occupyTarget;
-            requiredTactic = 4;
-        }
-
-        if (attackIndex === -1 && bestTarget >= 0) {
-            attackIndex = bestTarget;
+        // If we aren't going to occupy our target, then let's find best tactic for plundering
+        if (requiredTactic !== 4) {
             for (let i = 3; i > 0; i--) {
                 if (getAdvantage(bestAttackRating, i, attackIndex) >= settings.foreignMinAdvantage) {
                     requiredTactic = i;
                     break;
                 }
             }
-        }
-
-        // We don't have enough power
-        if (attackIndex === -1) {
-            return;
         }
 
         while (requiredTactic > game.global.civic.garrison.tactic) {
@@ -7668,8 +7646,15 @@
         }
 
         // Best attack type is set. Now adjust our battalion size to fit between our campaign attack rating ranges
+        let minRating = getRatingForAdvantage(settings.foreignMinAdvantage, requiredTactic, attackIndex);
         let maxRating = getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex);
+        let minSoldiers = m.getSoldiersForAttackRating(minRating);
         let maxSoldiers = m.getSoldiersForAttackRating(maxRating);
+
+        if (maxSoldiers > minSoldiers) {
+            maxSoldiers--;
+        }
+
         if (m.currentBattalion < maxSoldiers && m.currentCityGarrison > m.currentBattalion) {
             let soldiersToAdd = Math.min(maxSoldiers - m.currentBattalion, m.currentCityGarrison - m.currentBattalion);
 
@@ -7691,12 +7676,7 @@
             if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.woundedSoldiers) { return; }
 
             // Log the interaction
-            if (occupyTarget >= 0 && requiredTactic === 4) {
-                state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign for occupation against ${getGovName(occupyTarget)} with ${getAdvantage(batalionRating, requiredTactic, bestTarget).toFixed(1)}% advantage.`)
-            } else if (bestTarget >= 0) {
-                state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(bestTarget)} with ${getAdvantage(batalionRating, requiredTactic, bestTarget).toFixed(1)}% advantage.`)
-            }
-
+            state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${getAdvantage(batalionRating, requiredTactic, attackIndex).toFixed(1)}% advantage.`);
             m.launchCampaign(attackIndex);
 
             if (m.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison
@@ -9141,8 +9121,8 @@
                 }
 
                 if (settings.userResearchTheology_2 === "auto") {
-                    if (itemId === "tech-deify") {
-                        // Just pick deify for now
+                    if (itemId === "tech-study") {
+                        // Just pick study for now
                         log("autoResearch", "Picking: " + itemId);
                         click = true;
                     }
@@ -13595,7 +13575,7 @@
         } else {
             // We're going to use another trick here. We know minimum and maximum power for gov
             // If current power is below minimum, that means we sabotaged it already, but spy died since that
-            // We know seen it for sure, so let's just peek inside, imitating memory
+            // We know we seen it for sure, so let's just peek inside, imitating memory
             // We could cache those values, but making it persistent in between of page reloads would be a pain
             // Especially considering that player can not only reset, but also import different save at any moment
             let minPower = [75, 125, 200];
@@ -13604,7 +13584,7 @@
             if (game.global.civic.foreign[govProp].mil < minPower[govIndex]) {
                 return game.global.civic.foreign[govProp].mil;
             } else {
-                // Above minimum. Even if ever sabotaged it, unfortunately we can't prove it. Not peeking inside, and assuming worst.
+                // Above minimum. Even if we ever sabotaged it, unfortunately we can't prove it. Not peeking inside, and assuming worst.
                 return maxPower[govIndex];
             }
         }
