@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.38
+// @version      3.2.1.39
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1329,9 +1329,9 @@
          * @param {number} maxCrates
          * @param {number} maxContainers
          */
-        updateStorageState(enabled, maxCrates, maxContainers) {
+        updateStorageState(enabled, storeOverflow, maxCrates, maxContainers) {
             this.autoStorageEnabled = enabled;
-            this.storeOverflow = false;
+            this.storeOverflow = storeOverflow;
             this._autoCratesMax = maxCrates;
             this._autoContainersMax = maxContainers;
         }
@@ -3032,103 +3032,14 @@
         }
     }
 
-    class Campaign {
-        /**
-         * @param {string} name
-         * @param {string} id
-         * @param {number} rating
-         * @param {number} maxRating
-         */
-        constructor(name, id, rating, maxRating) {
-            this.name = name;
-            this.id = id;
-            this.rating = rating;
-            this.maxRating = maxRating;
-        }
-
-        /**
-         * @param {number} govIndex
-         */
-        getRatingForGov(govIndex) {
-            if (govIndex < 0) { return this.rating; }
-            return this.rating * this.getMultiplierForGov(govIndex);
-        }
-
-        /**
-         * @param {number} govIndex
-         */
-        getMaxRatingForGov(govIndex) {
-            if (govIndex < 0) { return this.maxRating; }
-            return this.maxRating * this.getMultiplierForGov(govIndex);
-        }
-
-        getMultiplierForGov(govIndex) {
-            let govProp = "gov" + govIndex;
-            if (game.global.civic.foreign[govProp].spy >= 2) {
-                // We know the exact number
-                return game.global.civic.foreign[govProp].mil / 100;
-            } else if (game.global.civic.foreign[govProp].spy === 1) {
-                // We know the general range - be conservative and go for the top of the range
-                if (game.global.civic.foreign[govProp].mil < 50){
-                    return 0.5;
-                }
-                else if (game.global.civic.foreign[govProp].mil < 75){
-                    return 0.75;
-                }
-                else if (game.global.civic.foreign[govProp].mil > 200){
-                    return 2.2;
-                }
-                else if (game.global.civic.foreign[govProp].mil > 160){
-                    return 2;
-                }
-                else if (game.global.civic.foreign[govProp].mil > 125){
-                    return 1.6;
-                }
-                else {
-                    return 1.25;
-                }
-            } else {
-                // We know nothing - return the worst case scenario
-                return 2;
-            }
-        }
-    }
-
     class WarManager {
         constructor() {
-            /** @type {Campaign[]} */
-            this.campaignList = [];
             this._vueBinding = "garrison";
             this._hellVueBinding = "gFort";
 
             this._textArmy = "army";
 
-            this.selectedGovAttackIndex = -1;
             this.hellAttractorMax = 0;
-        }
-
-        clearCampaignList() {
-            this.campaignList = [];
-        }
-
-        /**
-         * @param {string} name
-         * @param {number} rating
-         * @param {number} maxRating
-         */
-        addToCampaignList(name, rating, maxRating) {
-            this.campaignList.push(new Campaign(name, name, rating, maxRating));
-        }
-
-        /**
-         * @param {string} campaignId
-         * @param {number} campaignMinimumRating
-         */
-        updateCampaign(campaignId, campaignMinimumRating) {
-            let campaign = this.campaignList.find(campaign => campaign.id === campaignId);
-            if (campaign) {
-                campaign.rating = campaignMinimumRating;
-            }
         }
 
         isUnlocked() {
@@ -3144,7 +3055,6 @@
                 return false;
             }
 
-            // launch against first external city for now
             state.spyManager.updateLastAttackLoop(govIndex);
             getVueById(this._vueBinding).campaign(govIndex);
             return true;
@@ -3360,87 +3270,6 @@
             }
 
             return maxSoldiers;
-        }
-
-        /**
-         * @param {number} govIndex
-         */
-        getMaxSoldiersForAttackType(govIndex) {
-            let campaign = this.campaignList[game.global.civic.garrison.tactic];
-            return this.getSoldiersForAttackRating(campaign.getMaxRatingForGov(govIndex));
-        }
-
-        /**
-         * @param {number} govOccupyIndex
-         * @param {number} govAttackIndex
-         * @return {boolean}
-         */
-        switchToBestAttackType(govOccupyIndex, govAttackIndex) {
-            let attackRating = game.armyRating(this.currentSoldiers, this._textArmy)
-            this.selectedGovAttackIndex = -1;
-
-            if (this.campaignList.length === 0 || game.global.civic.garrison.tactic === -1) {
-                return false;
-            }
-
-            let maxCampaignIndex = this.campaignList.length - 1;
-
-            if (govOccupyIndex >= 0) {
-                let siegeCampaign = this.campaignList[this.campaignList.length - 1];
-                if (attackRating > siegeCampaign.getRatingForGov(govOccupyIndex)) {
-                    //console.log("setting gov index to govOccupyIndex")
-                    this.selectedGovAttackIndex = govOccupyIndex;
-                }
-            }
-
-            if (this.selectedGovAttackIndex === -1) {
-                // We can't siege our preferred target so keep looking
-                if (govAttackIndex >= 0) {
-                    maxCampaignIndex = this.campaignList.length - 2; // Limit attack to assault so that we don't occupy with a siege
-                    this.selectedGovAttackIndex = govAttackIndex;
-                    //console.log("setting gov index to govAttackIndex")
-                }
-            }
-
-            // There isn't anyone suitable to attack
-            if (this.selectedGovAttackIndex === -1) { return false; }
-
-            let requiredTactic = game.global.civic.garrison.tactic;
-
-            for (let i = maxCampaignIndex; i >= 0; i--) {
-                let campaign = this.campaignList[i];
-                let campaignAttackRating = campaign.getRatingForGov(this.selectedGovAttackIndex);
-                let campaignMaxAttackRating = campaign.getMaxRatingForGov(this.selectedGovAttackIndex);
-
-                // We are within our ranges so this is the required tactic
-                if (attackRating >= campaignAttackRating && attackRating < campaignMaxAttackRating) {
-                    requiredTactic = i;
-                    break;
-                }
-
-                // We have more than the maximum required for this attack. Since we are looping through backwards from highest to lowest
-                // we know that we have already ruled out any higher tier campaigns so set this as the required tactic
-                if (attackRating > campaignMaxAttackRating) {
-                    requiredTactic = i;
-                    break;
-                }
-
-                // There are no lower campaigns. So this is it. The absolute minimum. Good job.
-                if (i === 0) {
-                    requiredTactic = i;
-                    break;
-                }
-            }
-
-            while (requiredTactic > game.global.civic.garrison.tactic) {
-                this.increaseCampaignDifficulty();
-            }
-
-            while (requiredTactic < game.global.civic.garrison.tactic) {
-                this.decreaseCampaignDifficulty();
-            }
-
-            return true;
         }
 
         // Autohell functions start here
@@ -5202,8 +5031,8 @@
 
     var universes = ['standard','heavy','antimatter','evil','micro','magic'];
 
-    var planetBiomes = ["grassland", "forest", "oceanic", "desert", "volcanic", "tundra", "hellscape", "eden"];
-    var planetTraits = ["rage", "elliptical", "stormy", "toxic", "magnetic", "ozone", "mellow", "trashed", "flare", "unstable", "dense"];
+    var planetBiomes = ["oceanic", "forest", "grassland","desert", "volcanic", "tundra", "hellscape", "eden"];
+    var planetTraits = ["magnetic", "rage", "elliptical", "stormy", "toxic", "ozone", "mellow", "trashed", "flare", "unstable", "dense"];
     var planetBiomeRaces = {
         hellscape: ["balorg", "imp"],
         eden: ["seraph", "unicorn"],
@@ -5901,7 +5730,6 @@
         resetMarketState();
         resetStorageState();
         resetProjectState();
-        resetWarState();
         resetProductionState();
         resetBuildingState();
         resetMinorTraitState();
@@ -6088,6 +5916,8 @@
         settings.foreignAttackHealthySoldiersPercent = 100;
         settings.foreignHireMercMoneyStoragePercent = 90;
         settings.foreignHireMercCostLowerThan = 50000;
+        settings.foreignMinAdvantage = 70;
+        settings.foreignMaxAdvantage = 80;
 
         settings.foreignPacifist = false;
         settings.foreignUnification = true;
@@ -6098,16 +5928,6 @@
         settings.foreignPowerRequired = 75;
         settings.foreignPolicyInferior = "Annex";
         settings.foreignPolicySuperior = "Sabotage";
-    }
-
-    function resetWarState() {
-        state.warManager.clearCampaignList();
-
-        state.warManager.addToCampaignList("Ambush", 10, 20);
-        state.warManager.addToCampaignList("Raid", 50, 100);
-        state.warManager.addToCampaignList("Pillage", 100, 180);
-        state.warManager.addToCampaignList("Assault", 200, 360);
-        state.warManager.addToCampaignList("Siege", 500, 800);
     }
 
     function resetHellSettings() {
@@ -6668,25 +6488,6 @@
             state.triggerManager.AddTriggerFromSetting(trigger.seq, trigger.priority, trigger.requirementType, trigger.requirementId, trigger.requirementCount, trigger.actionType, trigger.actionId, trigger.actionCount);
         });
 
-        // Retrieve settings for battle
-        for (let i = 0; i < state.warManager.campaignList.length; i++) {
-            let campaign = state.warManager.campaignList[i];
-
-            let settingKey = 'btl_' + campaign.name;
-            if (settings.hasOwnProperty(settingKey)) {
-                campaign.rating = parseFloat(settings[settingKey]);
-            } else {
-                settings[settingKey] = campaign.rating;
-            }
-
-            settingKey = 'btl_max_' + campaign.name;
-            if (settings.hasOwnProperty(settingKey)) {
-                campaign.maxRating = parseFloat(settings[settingKey]);
-            } else {
-                settings[settingKey] = campaign.maxRating;
-            }
-        }
-
         // Retrieve settings for resources
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             let resource = state.marketManager.priorityList[i];
@@ -6957,12 +6758,6 @@
             }
         }
 
-        for (let i = 0; i < state.warManager.campaignList.length; i++) {
-            let campaign = state.warManager.campaignList[i];
-            settings['btl_' + campaign.name] = campaign.rating;
-            settings['btl_max_' + campaign.name] = campaign.maxRating;
-        }
-
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
             settings['bat' + building.settingId] = building.autoBuildEnabled;
@@ -7137,6 +6932,8 @@
         addSetting("foreignAttackHealthySoldiersPercent", 100);
         addSetting("foreignHireMercMoneyStoragePercent", 90);
         addSetting("foreignHireMercCostLowerThan", 50000);
+        addSetting("foreignMinAdvantage", 70);
+        addSetting("foreignMaxAdvantage", 80);
 
         addSetting("foreignPacifist", false);
         addSetting("foreignUnification", true);
@@ -7743,25 +7540,24 @@
     //#region Auto Battle
 
     function autoBattle() {
+        let m = state.warManager;
+
         // mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
         let mercenariesHired = 0;
-        let mercenaryCost = state.warManager.getMercenaryCost();
-        let previousSoldiersCount = state.warManager.currentSoldiers;
-
-        while (state.warManager.currentSoldiers < state.warManager.maxSoldiers
-                && resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100
-                && mercenaryCost < settings.foreignHireMercCostLowerThan
-                && resources.Money.currentQuantity > mercenaryCost) {
-            state.warManager.hireMercenary();
-            mercenaryCost = state.warManager.getMercenaryCost();
-            mercenariesHired++;
-
-            // Just a bit of saftey to ensure that we did actually hire a mercenary
-            if (previousSoldiersCount === state.warManager.currentSoldiers) {
+        while (m.currentSoldiers < m.maxSoldiers && resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100) {
+            let mercenaryCost = m.getMercenaryCost();
+            if (mercenaryCost > settings.foreignHireMercCostLowerThan || mercenaryCost > resources.Money.currentQuantity) {
                 break;
             }
 
-            previousSoldiersCount = state.warManager.currentSoldiers;
+            let previousSoldiersCount = m.currentSoldiers;
+            m.hireMercenary();
+            mercenariesHired++;
+
+            // Just a bit of saftey to ensure that we did actually hire a mercenary
+            if (previousSoldiersCount === m.currentSoldiers) {
+                break;
+            }
         }
 
         // Log the interaction
@@ -7773,20 +7569,20 @@
 
         // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
         if (state.goal === "PreparingMAD") {
-            state.warManager.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
+            m.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
             return;
         }
 
         // Now that we've hired mercenaries we can continue to check the rest of the autofight logic
-        if (!state.warManager.isUnlocked()) { return; }
+        if (!m.isUnlocked()) { return; }
 
         // Stop here, if we don't want to attack anything
         if (settings.foreignPacifist) { return ; }
 
         // If we are not fully ready then return
-        if (state.warManager.maxCityGarrison <= 0 ||
-            state.warManager.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * state.warManager.maxCityGarrison ||
-            state.warManager.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * state.warManager.maxCityGarrison) {
+        if (m.maxCityGarrison <= 0 ||
+            m.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison ||
+            m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison) {
             return;
         }
 
@@ -7802,17 +7598,18 @@
             }
         }
 
-        let govOccupyIndex = -1;
+        let occupyTarget = -1;
 
         // Occupy, if needed
         for (let i = 0; i < 3; i++){
             if (settings[`foreignPolicy${rank[i]}`] === "Occupy" && !game.global.civic.foreign[`gov${i}`].occ) {
-                govOccupyIndex = i;
+                occupyTarget = i;
+                break;
             }
         }
 
         // Check if we want and can unify
-        if (settings.foreignUnification && isResearchUnlocked("unification") && bestTarget !== govOccupyIndex){
+        if (settings.foreignUnification && isResearchUnlocked("unification") && bestTarget !== occupyTarget){
             let subdued = 0;
             for (let i = 0; i < 3; i++){
                 if (bestTarget !== i &&
@@ -7825,7 +7622,7 @@
             if (subdued == 2) {
                 if (settings.foreignOccupyLast) {
                     // Occupy last force
-                    govOccupyIndex = bestTarget;
+                    occupyTarget = bestTarget;
                 } else if (settings[`foreignPolicy${rank[bestTarget]}`] === "Annex" || settings[`foreignPolicy${rank[bestTarget]}`] === "Purchase") {
                     // We want to Annex or Purchase last one, stop attacking so we can influence it
                     bestTarget = -1;
@@ -7833,43 +7630,77 @@
             }
         }
 
-        // We've got the soldiers, they're not wounded and they're ready to go, so charge!
-        // switchToBestAttackType returns true when the best attack type is set
+        // We don't have any target to attack
+        if (occupyTarget === -1 && bestTarget === -1) {
+            return;
+        }
+
         // If we are allowed to occupy a foreign power then we can perform attacks up to seige; otherwise we can only go up to assault so that we don't occupy them
-        if (!state.warManager.switchToBestAttackType(govOccupyIndex, bestTarget)) { return; }
-        if (state.warManager.selectedGovAttackIndex === -1) { return; }
+        let bestAttackRating = game.armyRating(m.currentSoldiers, m._textArmy);
+        let attackIndex = -1;
+        let requiredTactic = 0;
 
-        // Best attack type is set. Now adjust our battalion size to fit between our campaign attack rating ranges
-        let maxSoldiers = state.warManager.getMaxSoldiersForAttackType(state.warManager.selectedGovAttackIndex);
-        if (state.warManager.currentBattalion < maxSoldiers && state.warManager.currentCityGarrison > state.warManager.currentBattalion) {
-            let soldiersToAdd = Math.min(maxSoldiers - state.warManager.currentBattalion, state.warManager.currentCityGarrison - state.warManager.currentBattalion);
+        if (occupyTarget >= 0 && getAdvantage(bestAttackRating, 4, occupyTarget) >= settings.foreignMinAdvantage) {
+            attackIndex = occupyTarget;
+            requiredTactic = 4;
+        }
 
-            if (soldiersToAdd > 0) {
-                state.warManager.addBattalion(soldiersToAdd);
-            }
-        } else if (state.warManager.currentBattalion > maxSoldiers) {
-            let soldiersToRemove = state.warManager.currentBattalion - maxSoldiers;
-
-            if (soldiersToRemove > 0) {
-                state.warManager.removeBattalion(soldiersToRemove);
+        if (attackIndex === -1 && bestTarget >= 0) {
+            attackIndex = bestTarget;
+            for (let i = 3; i > 0; i--) {
+                if (getAdvantage(bestAttackRating, i, attackIndex) >= settings.foreignMinAdvantage) {
+                    requiredTactic = i;
+                    break;
+                }
             }
         }
 
+        // We don't have enough power
+        if (attackIndex === -1) {
+            return;
+        }
+
+        while (requiredTactic > game.global.civic.garrison.tactic) {
+            m.increaseCampaignDifficulty();
+        }
+        while (requiredTactic < game.global.civic.garrison.tactic) {
+            m.decreaseCampaignDifficulty();
+        }
+
+        // Best attack type is set. Now adjust our battalion size to fit between our campaign attack rating ranges
+        let maxRating = getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex);
+        let maxSoldiers = m.getSoldiersForAttackRating(maxRating);
+        if (m.currentBattalion < maxSoldiers && m.currentCityGarrison > m.currentBattalion) {
+            let soldiersToAdd = Math.min(maxSoldiers - m.currentBattalion, m.currentCityGarrison - m.currentBattalion);
+
+            if (soldiersToAdd > 0) {
+                m.addBattalion(soldiersToAdd);
+            }
+        } else if (m.currentBattalion > maxSoldiers) {
+            let soldiersToRemove = m.currentBattalion - maxSoldiers;
+
+            if (soldiersToRemove > 0) {
+                m.removeBattalion(soldiersToRemove);
+            }
+        }
+        let batalionRating = game.armyRating(m.currentBattalion, "army");
+
+        let campaignTitle = getVueById("garrison").$options.filters.tactics(requiredTactic);
         for (let i = 0; i < 10; i++) {
             // Don't attack if we don't have at least the target battalion size of healthy soldiers available
-            if (Math.min(maxSoldiers, state.warManager.maxCityGarrison) > state.warManager.currentCityGarrison - state.warManager.woundedSoldiers) { return; }
+            if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.woundedSoldiers) { return; }
 
             // Log the interaction
-            if (govOccupyIndex >= 0 && state.warManager.campaignList[game.global.civic.garrison.tactic].id === "Siege") {
-                state.log.logSuccess(loggingTypes.attack, `Launching ${state.warManager.campaignList[game.global.civic.garrison.tactic].name} campaign for occupation against ${getGovName(govOccupyIndex)}.`)
+            if (occupyTarget >= 0 && requiredTactic === 4) {
+                state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign for occupation against ${getGovName(occupyTarget)} with ${getAdvantage(batalionRating, requiredTactic, bestTarget).toFixed(1)}% advantage.`)
             } else if (bestTarget >= 0) {
-                state.log.logSuccess(loggingTypes.attack, `Launching ${state.warManager.campaignList[game.global.civic.garrison.tactic].name} campaign against ${getGovName(bestTarget)}.`)
+                state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(bestTarget)} with ${getAdvantage(batalionRating, requiredTactic, bestTarget).toFixed(1)}% advantage.`)
             }
 
-            state.warManager.launchCampaign(state.warManager.selectedGovAttackIndex);
+            m.launchCampaign(attackIndex);
 
-            if (state.warManager.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * state.warManager.maxCityGarrison
-                 || state.warManager.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * state.warManager.maxCityGarrison) {
+            if (m.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison
+                 || m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison) {
                      return;
             }
         }
@@ -12072,7 +11903,6 @@
 
         let resetFunction = function() {
             resetWarSettings();
-            resetWarState();
             updateSettingsFromState();
             updateWarSettingsContent(isMainSettings);
         };
@@ -12118,33 +11948,8 @@
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercMoneyStoragePercent", "Hire mercenary if money storage greater than percent", "Hire a mercenary if money storage is greater than this percent");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercCostLowerThan", "AND if cost lower than amount", "Combines with the money storage percent setting to determine when to hire mercenaries");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Campaign</th><th class="has-text-warning" style="width:40%">Minimum Attack Rating</th><th class="has-text-warning" style="width:40%">Maximum Rating to Send</th></tr>
-                <tbody id="script_${secondaryPrefix}warTableBody" class="script-contenttbody"></tbody>
-            </table>`);
-
-        let warTableBody = $(`#script_${secondaryPrefix}warTableBody`);
-        let newTableBodyText = "";
-
-        for (let i = 0; i < state.warManager.campaignList.length; i++) {
-            const campaign = state.warManager.campaignList[i];
-            newTableBodyText += `<tr value="${campaign.id}"><td id="script_${secondaryPrefix}${campaign.id}Toggle" style="width:20%"></td><td style="width:40%"></td><td style="width:40%"></td></tr>`;
-        }
-        warTableBody.append($(newTableBodyText));
-
-        // Build campaign settings rows
-        for (let i = 0; i < state.warManager.campaignList.length; i++) {
-            const campaign = state.warManager.campaignList[i];
-            let warElement = $(`#script_${secondaryPrefix}${campaign.id}Toggle`);
-
-            warElement.append(buildStandartLabel(campaign.name));
-
-            warElement = warElement.next();
-            warElement.append(buildCampaignRatingSettingsInput(secondaryPrefix, campaign));
-
-            warElement = warElement.next();
-            warElement.append(buildCampaignMaxRatingSettingsInput(secondaryPrefix, campaign));
-        }
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down this advantage, reducing potential loses");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -12174,60 +11979,6 @@
                 document.getElementById(mainSelectId).value = settings[settingName];
             }
         });
-    }
-
-    /**
-     * @param {Campaign} campaign
-     */
-    function buildCampaignRatingSettingsInput(secondaryPrefix, campaign) {
-        let mainSettingName = "script_" + campaign.id + "rating";
-        let computedSettingName = "script_" + secondaryPrefix + campaign.id + "rating";
-        let campaignMaxTextBox = $(`<input id="${computedSettingName}" type="text" style="text-align: right; height: 18px; width: 25%;"/>`);
-        campaignMaxTextBox.val(settings["btl_" + campaign.id]);
-
-        campaignMaxTextBox.on('change', function() {
-            let val = campaignMaxTextBox.val();
-            let rating = getRealNumber(val);
-            if (!isNaN(rating)) {
-                //console.log('Setting max for war ' + war.name + ' to be ' + max);
-                campaign.rating = rating;
-                updateSettingsFromState();
-
-                if (secondaryPrefix !== "" && settings.showSettings) {
-                    let mainSetting = $('#' + mainSettingName);
-                    mainSetting.val(rating);
-                }
-            }
-        });
-
-        return campaignMaxTextBox;
-    }
-
-    /**
-     * @param {Campaign} campaign
-     */
-    function buildCampaignMaxRatingSettingsInput(secondaryPrefix, campaign) {
-        let mainSettingName = "script_" + campaign.id + "maxRating";
-        let computedSettingName = "script_" + secondaryPrefix + campaign.id + "maxRating";
-        let campaignMaxTextBox = $(`<input id="${computedSettingName}" type="text" style="text-align: right; height: 18px; width: 25%;"/>`);
-        campaignMaxTextBox.val(settings["btl_max_" + campaign.id]);
-
-        campaignMaxTextBox.on('change', function() {
-            let val = campaignMaxTextBox.val();
-            let rating = getRealNumber(val);
-            if (!isNaN(rating)) {
-                //console.log('Setting max for war ' + war.name + ' to be ' + max);
-                campaign.maxRating = rating;
-                updateSettingsFromState();
-
-                if (secondaryPrefix !== "" && settings.showSettings) {
-                    let mainSetting = $('#' + mainSettingName);
-                    mainSetting.val(rating);
-                }
-            }
-        });
-
-        return campaignMaxTextBox;
     }
 
     function buildHellSettings(parentNode, isMainSettings) {
@@ -13832,41 +13583,61 @@
     }
 
     function getGovPower(govIndex) {
+        // This function is full of hacks. But all that can be accomplished by wise player without peeking inside game variables
+        // We really need to know power as accurate as possible, otherwise script becomes wonky when spies dies on mission
         let govProp = "gov" + govIndex;
-        if (game.global.civic.foreign[govProp].spy > 1) {
-            // With 2+ spies we know exact number
+        if (game.global.civic.foreign[govProp].spy > 0) {
+            // With 2+ spies we know exact number, for 1 we're assuming trick with advantage
+            // We can see ambush advantage with a single spy, and knowing advantage we can calculate power
+            // Proof of concept: military_power = army_offence / (5 / (1-advantage))
+            // I'm not going to waste time parsing tooltips, and take that from internal variable instead
             return game.global.civic.foreign[govProp].mil;
-        } else if (game.global.civic.foreign[govProp].spy === 1) { // Breakpoints taken from foreignGov() -> military(m,i)
-            // With 1 spy we know approximate value, let's assume worst in given range
-            let mil = game.global.civic.foreign[govProp].mil;
-            if (mil < 50) {
-                return 50;
-            }
-            if (mil < 75) {
-                return 75;
-            }
-            if (mil > 200) {
-                return 300;
-            }
-            if (mil > 160) {
-                return 200;
-            }
-            if (mil > 125) {
-                return 160;
-            }
-            return 125
-        } else { // Breakpoints taken from clearStates()
-            // No information, assume worst for certain gov
-            if (govIndex === 0) {
-                return 125;
-            }
-            if (govIndex === 1) {
-                return 175;
-            }
-            if (govIndex === 2) {
-                return 300;
+        } else {
+            // We're going to use another trick here. We know minimum and maximum power for gov
+            // If current power is below minimum, that means we sabotaged it already, but spy died since that
+            // We know seen it for sure, so let's just peek inside, imitating memory
+            // We could cache those values, but making it persistent in between of page reloads would be a pain
+            // Especially considering that player can not only reset, but also import different save at any moment
+            let minPower = [75, 125, 200];
+            let maxPower = [125, 175, 300];
+
+            if (game.global.civic.foreign[govProp].mil < minPower[govIndex]) {
+                return game.global.civic.foreign[govProp].mil;
+            } else {
+                // Above minimum. Even if ever sabotaged it, unfortunately we can't prove it. Not peeking inside, and assuming worst.
+                return maxPower[govIndex];
             }
         }
+    }
+
+    function getGovArmy(tactic, govIndex) { // function battleAssessment(gov)
+        let enemy = 0;
+        switch(tactic){
+            case 0:
+                enemy = 5;
+                break;
+            case 1:
+                enemy = 27.5;
+                break;
+            case 2:
+                enemy = 62.5;
+                break;
+            case 3:
+                enemy = 125;
+                break;
+            case 4:
+                enemy = 300;
+                break;
+        }
+        return enemy * getGovPower(govIndex) / 100;
+    }
+
+    function getAdvantage(army, tactic, govIndex) {
+        return (1 - (getGovArmy(tactic, govIndex) / army)) * 100;
+    }
+
+    function getRatingForAdvantage(adv, tactic, govIndex) {
+        return getGovArmy(tactic, govIndex) / (1 - (adv/100));
     }
 
     function removePoppers() {
