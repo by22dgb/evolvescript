@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.40
+// @version      3.2.1.41
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3243,9 +3243,10 @@
             if (!targetRating || targetRating <= 0) {
                 return 0;
             }
-            // Getting the rating for 1000 soldiers and dividing it by number of soldiers
-            // If we have wounded soldiers this value can be wrong, so we're looking for negative soldiers, to avoid that
-            let singleSoldierAttackRating = game.armyRating(-1000, this._textArmy, 0) / -1000;
+            // Getting the rating for 1000 soldiers and dividing it by number of soldiers, to get most accurate value after rounding
+            // If requested number is bigger than amount of healthy soldiers, returned value will be spoiled, unless we're explicitly passing number of wounded solder. But that number also unpredictably tamper with result.
+            // So, we're passing zero wounded as string(!) which casts to true boolean, and overrides real amount of wounded solders, but still acts as 0 in math
+            let singleSoldierAttackRating = game.armyRating(1000, this._textArmy, "0") / 1000;
             let maxSoldiers = Math.ceil(targetRating / singleSoldierAttackRating);
 
             if (!game.global.race[racialTraitHiveMind]) {
@@ -3257,9 +3258,9 @@
             // Just loop through and remove 1 at a time until we're under the max rating.
 
             // At 10 soldiers there's no hivemind bonus or malus, and the malus gets up to 50%, so start with up to 2x soldiers below 10
-            if (maxSoldiers < 10) maxSoldiers = Math.min(10, 2 * maxSoldiers);
 
-            while (maxSoldiers > 1 && game.armyRating(maxSoldiers - 1, this._textArmy, 0) > targetRating) {
+            maxSoldiers = this.maxSoldiers;
+            while (maxSoldiers > 1 && game.armyRating(maxSoldiers - 1, this._textArmy, "0") > targetRating) {
                 maxSoldiers--;
             }
 
