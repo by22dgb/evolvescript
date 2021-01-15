@@ -5324,7 +5324,7 @@
             Shed: new Action("Shed", "city", "shed", ""),
             LumberYard: new Action("Lumber Yard", "city", "lumber_yard", ""),
             RockQuarry: new Action("Rock Quarry", "city", "rock_quarry", ""),
-            CementPlant: new Action("Cement Factory", "city", "cement_plant", ""),
+            CementPlant: new Action("Cement Plant", "city", "cement_plant", ""),
             Foundry: new Action("Foundry", "city", "foundry", ""),
             Factory: new Factory(), // has options
             OilDepot: new Action("Fuel Depot", "city", "oil_depot", ""),
@@ -9009,6 +9009,20 @@
               }
             }
 
+            // Oftentimes autoBuild and queue tries to build same building at same time, at the moment when they're getting enough resource
+            // And if autoBuild will do it faster, that'll prevent queue from finished, and leave said building in queue, trying to build next level
+            // That may prolong same single building in queue again and again
+            if (game.global.queue.display) {
+                for (let i = 0; i < game.global.queue.queue.length; i++) {
+                    if (building.id === game.global.queue.queue[i].id) {
+                        continue buildingsLoop;
+                    }
+                    if (!game.global.settings.qAny) {
+                        break;
+                    }
+                }
+            }
+
             // Build building
             if (building.click(1)) {
                 if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
@@ -9688,7 +9702,7 @@
 
         // Buildings queue
         if (settings.queueRequest && game.global.queue.display) {
-            for (let i = 0; i < game.global.queue.queue.length; i ++) {
+            for (let i = 0; i < game.global.queue.queue.length; i++) {
                 let queue = game.global.queue.queue[i];
                 overrideTradesFor.push(queue.id);
                 if (!game.global.settings.qAny) {
@@ -9699,7 +9713,7 @@
 
         // Research queue
         if (settings.queueRequest && game.global.r_queue.display) {
-            for (let i = 0; i < game.global.r_queue.queue.length; i ++) {
+            for (let i = 0; i < game.global.r_queue.queue.length; i++) {
                 let queue = game.global.r_queue.queue[i];
                 if (techIds[queue.id]) {
                     overrideTradesFor.push(techIds[queue.id].id);
