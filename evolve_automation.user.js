@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.42
+// @version      3.2.1.43
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -9701,7 +9701,9 @@
         if (settings.queueRequest && game.global.r_queue.display) {
             for (let i = 0; i < game.global.r_queue.queue.length; i ++) {
                 let queue = game.global.r_queue.queue[i];
-                overrideTradesFor.push(queue.id);
+                if (techIds[queue.id]) {
+                    overrideTradesFor.push(techIds[queue.id].id);
+                }
                 if (!game.global.settings.qAny) {
                     break;
                 }
