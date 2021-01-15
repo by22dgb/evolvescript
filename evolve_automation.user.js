@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.41
+// @version      3.2.1.42
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3783,7 +3783,7 @@
             this.id = id;
             this.priority = 0;
 
-            this._autoBuildEnabled = false;
+            this.autoBuildEnabled = false;
             this._autoMax = -1;
             this.ignoreMinimumMoneySetting = false;
 
@@ -3840,17 +3840,6 @@
             while (this.resourceRequirements.length > resourceIndex) {
                 this.resourceRequirements.pop();
             }
-        }
-
-        get autoBuildEnabled() {
-            return this._autoBuildEnabled;
-        }
-
-        /**
-         * @param {boolean} value
-         */
-        set autoBuildEnabled(value) {
-            this._autoBuildEnabled = value;
         }
 
         get autoMax() {
@@ -4318,30 +4307,26 @@
             return true;
         }
 
-        // TODO: This value can be slightly inaccurate. Number is taken from UI tooltip, and it doesn't
-        // updates in realtime when you getting plasmids(and bonus to storage) from gene sequencing.
-        // It can be worked around - importing crateValue() from game, importing spatialReasoning() and
-        // rewriting it, opening modal to redraw tooltip with actual data, etc... but that's all quite
-        // tedious, and this issue probably doesn't worth such hussle, as inaccuracity inlikely will
-        // be more than a couple of percents. And even that will be eventually fixed, when tooltips
-        // will be redrawn. But if there will be easier way to fix it eventually - it would be nice to do so.
         getCrateVolume() {
-            let crateDescNumbers = $("div#createHead .crate .tooltip-content").text().match(/(\d+)/g);
-            if (crateDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
-              return Number(crateDescNumbers[1]);
-            } else {
-              return 350;
+            let vue = getVueById(this._storageVueBinding);
+            if (vue) {
+                let crateDescNumbers = vue.buildCrateDesc().match(/(\d+)/g);
+                if (crateDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
+                  return Number(crateDescNumbers[1]);
+                }
             }
+            return 350;
         }
 
-        // Same as above
         getContainerVolume() {
-            let containerDescNumbers = $("div#createHead .container .tooltip-content").text().match(/(\d+)/g);
-            if (containerDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
-              return Number(containerDescNumbers[1]);
-            } else {
-              return 800;
+            let vue = getVueById(this._storageVueBinding);
+            if (vue) {
+                let containerDescNumbers = vue.buildContainerDesc().match(/(\d+)/g);
+                if (containerDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
+                  return Number(containerDescNumbers[1]);
+                }
             }
+            return 800;
         }
     }
 
@@ -9431,8 +9416,8 @@
         // Calculate storages
         for (var i = 0; i < storageList.length; i++){
             let resource = storageList[i];
-            let cratesStorage = storageAdjustments[i].calculatedCrates * crateVolume;
-            let containersStorage = storageAdjustments[i].calculatedContainers * containerVolume;
+            let cratesStorage = resource.currentCrates * crateVolume;
+            let containersStorage = resource.currentContainers * containerVolume;
             let extraStorage = cratesStorage + containersStorage;
             let rawStorage = resource.maxQuantity - extraStorage;
             let freeStorage = resource.maxQuantity - resource.currentQuantity;
@@ -9496,13 +9481,16 @@
 
                 // We don't have enough containers, let's try to unassign something less prioritized
                 if (availableStorage < missingStorage){
+                    let maxCratesToUnassign = resource.autoCratesMax - storageAdjustments[i].calculatedCrates;
+                    let maxContainersToUnassign = resource.autoContainersMax - storageAdjustments[i].calculatedContainers;
+
                     for (var j = storageList.length-1; j > i; j--){
                         let otherFreeStorage = storageList[j].maxQuantity - storageList[j].currentQuantity;
 
                         // Unassign crates
-                        if (storageAdjustments[j].calculatedCrates > 0) {
+                        if (maxCratesToUnassign > 0 && storageAdjustments[j].calculatedCrates > 0) {
                             let missingCrates = Math.ceil(missingStorage / crateVolume);
-                            let cratesToUnassign = Math.min(storageAdjustments[j].calculatedCrates, missingCrates);
+                            let cratesToUnassign = Math.min(storageAdjustments[j].calculatedCrates, missingCrates, maxCratesToUnassign);
 
                             if (settings.storageSafeReassign || storageList[j].storeOverflow) {
                                 let emptyCrates = Math.floor(otherFreeStorage / containerVolume);
@@ -9512,14 +9500,15 @@
                             storageAdjustments[j].adjustCrates -= cratesToUnassign;
                             storageAdjustments[j].calculatedCrates -= cratesToUnassign;
                             totalCrates += cratesToUnassign;
+                            maxCratesToUnassign -= cratesToUnassign;
                             missingStorage -= cratesToUnassign * crateVolume;
                             otherFreeStorage -= cratesToUnassign * crateVolume;
                         }
 
                         // Unassign containers, if we still need them
-                        if (storageAdjustments[j].calculatedContainers > 0 && missingStorage > 0){
+                        if (maxContainersToUnassign > 0 && storageAdjustments[j].calculatedContainers > 0 && missingStorage > 0){
                             let missingContainers = Math.ceil(missingStorage / containerVolume);
-                            let containersToUnassign = Math.min(storageAdjustments[j].calculatedContainers, missingContainers);
+                            let containersToUnassign = Math.min(storageAdjustments[j].calculatedContainers, missingContainers, maxContainersToUnassign);
 
                             if (settings.storageSafeReassign || storageList[j].storeOverflow) {
                                 let emptyContainers = Math.floor(otherFreeStorage / containerVolume);
@@ -9529,6 +9518,7 @@
                             storageAdjustments[j].adjustContainers -= containersToUnassign;
                             storageAdjustments[j].calculatedContainers -= containersToUnassign;
                             totalContainers += containersToUnassign;
+                            maxContainersToUnassign -= containersToUnassign;
                             missingStorage -= containersToUnassign * containerVolume;
                             //otherFreeStorage -= containersToUnassign * containerVolume;
                         }
