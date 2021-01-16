@@ -6181,6 +6181,7 @@
         settings.buildingWeightingNonOperating = 0;
         settings.buildingWeightingTriggerConflict = 0;
         settings.buildingWeightingMissingSupply = 0;
+        settings.buildingWeightingQueueHelper = 100;
     }
 
     function resetBuildingSettings() {
@@ -6980,6 +6981,7 @@
         addSetting("buildingWeightingNonOperating", 0);
         addSetting("buildingWeightingTriggerConflict", 0);
         addSetting("buildingWeightingMissingSupply", 0);
+        addSetting("buildingWeightingQueueHelper", 100);
 
         addSetting("buildingEnabledAll", false);
         addSetting("buildingStateAll", false);
@@ -9014,7 +9016,7 @@
             // That may prolong same single building in queue again and again
             if (game.global.queue.display) {
                 for (let i = 0; i < game.global.queue.queue.length; i++) {
-                    if (building.id === game.global.queue.queue[i].id) {
+                    if (building._elementId === game.global.queue.queue[i].id) {
                         continue buildingsLoop;
                     }
                     if (!game.global.settings.qAny) {
@@ -10287,6 +10289,20 @@
               (building) => building === state.cityBuildings.OilDepot || building === state.spaceBuildings.SpacePropellantDepot || building === state.spaceBuildings.GasStorage,
               () => "Need more fuel",
               () => settings.buildingWeightingMissingFuel
+          ],[
+              () => game.global.queue.display && game.global.queue.queue.length > 0,
+              (building) => {
+                  for (let i = 0; i < game.global.queue.queue.length; i++) {
+                      if (building._elementId === game.global.queue.queue[i].id) {
+                          return true;
+                      }
+                      if (!game.global.settings.qAny) {
+                          break;
+                      }
+                  }
+              },
+              () => "Queued building",
+              () => settings.buildingWeightingQueueHelper
         ]];
     }
 
@@ -12642,6 +12658,7 @@
         addWeighingRule(tableBodyNode, "Building with state (space)", "Some instances of this building are not working", "buildingWeightingNonOperating");
         addWeighingRule(tableBodyNode, "Any", "Conflicts for some resource with active trigger", "buildingWeightingTriggerConflict");
         addWeighingRule(tableBodyNode, "Any", "Missing consumables or support to operate", "buildingWeightingMissingSupply");
+        addWeighingRule(tableBodyNode, "Queued building", "Helper rule for building queue, preventing other buildings from using same resources", "buildingWeightingQueueHelper");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
