@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.1
+// @version      3.3.1.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -91,7 +91,7 @@
             if (!settings[this._logEnabledSettingKey]) { return; }
             if (!settings[loggingType.settingKey]) { return; }
 
-            poly.messageQueue(text, this._success);
+            game.messageQueue(text, this._success);
         }
 
         /**
@@ -102,7 +102,7 @@
             if (!settings[this._logEnabledSettingKey]) { return; }
             if (!settings[loggingType.settingKey]) { return; }
 
-            poly.messageQueue(text, this._warning);
+            game.messageQueue(text, this._warning);
         }
     }
 
@@ -142,55 +142,64 @@
                 this.set("x100", false);
                 this.set("x25", false);
                 this.set("x10", false);
-                return false;
+                return 0;
             }
 
             if (!game.global.settings.mKeys) {
                 // Multiplier disabled? Mkay... Let's take a long road.
                 this._remainder -= 1;
+                return 1;
             } else if (this._remainder >= 25000) {
                 this.set("x100", true);
                 this.set("x25", true);
                 this.set("x10", true);
                 this._remainder -= 25000;
+                return 25000;
             } else if (this._remainder >= 2500) {
                 this.set("x100", true);
                 this.set("x25", true);
                 this.set("x10", false);
                 this._remainder -= 2500;
+                return 2500;
             } else if (this._remainder >= 1000) {
                 this.set("x100", true);
                 this.set("x25", false);
                 this.set("x10", true);
                 this._remainder -= 1000;
+                return 1000;
             } else if (this._remainder >= 250) {
                 this.set("x100", false);
                 this.set("x25", true);
                 this.set("x10", true);
                 this._remainder -= 250;
+                return 250;
             } else if (this._remainder >= 100) {
                 this.set("x100", true);
                 this.set("x25", false);
                 this.set("x10", false);
                 this._remainder -= 100;
+                return 100;
             } else if (this._remainder >= 25) {
                 this.set("x100", false);
                 this.set("x25", true);
                 this.set("x10", false);
                 this._remainder -= 25;
+                return 25;
             } else if (this._remainder >= 10) {
                 this.set("x100", false);
                 this.set("x25", false);
                 this.set("x10", true);
                 this._remainder -= 10;
+                return 10;
             } else {
                 this.set("x100", false);
                 this.set("x25", false);
                 this.set("x10", false);
                 this._remainder -= 1;
+                return 1;
             }
 
-            return true;
+            return 0;
         }
     }
 
@@ -748,25 +757,15 @@
                 return;
             }
 
-            let resourceIndex = 0;
-            let newCosts = poly.adjustCosts(this.definition.cost);
+            this.resourceRequirements = [];
 
-            Object.keys(newCosts).forEach(resourceName => {
-                let testCost = Number(newCosts[resourceName]()) || 0;
-
-                if (this.resourceRequirements.length > resourceIndex) {
-                    this.resourceRequirements[resourceIndex].resource = resources[resourceName];
-                    this.resourceRequirements[resourceIndex].quantity = testCost;
-                } else {
-                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], testCost));
+            let adjustedCosts = game.adjustCosts(this.definition.cost);
+            for (let resourceName in adjustedCosts) {
+                let resourceAmount = Number(adjustedCosts[resourceName]());
+                if (!resourceAmount) {
+                    continue;
                 }
-
-                resourceIndex++;
-            });
-
-            // Remove any extra elements that we have that are greater than the current number of requirements
-            while (this.resourceRequirements.length > resourceIndex) {
-                this.resourceRequirements.pop();
+                this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
             }
         }
 
@@ -791,7 +790,7 @@
                 return false;
             }
 
-            if (!poly.checkAffordable(this.definition, false)) {
+            if (!game.checkAffordable(this.definition, false)) {
                 return false;
             }
 
@@ -805,34 +804,19 @@
         /**
          * This is a "safe" click. It will only click if the container is currently clickable.
          * ie. it won't bypass the interface and click the node if it isn't clickable in the UI.
-         * @param {number} count
          */
-        click(count) {
+        click() {
             if (!this.isClickable()) {
                 return false
             }
 
-            let retVal = true;
-            let tempRetVal = true;
-            let previousCount = this.count;
-
-            // Not using state.multiplier here as there are affordability checks that are required before actioning
-            for (let i = 0; i < count; i++) {
-                if (retVal) {
-                    tempRetVal = this.vue.action();
-                    retVal = tempRetVal === undefined ? retVal : retVal && tempRetVal;
-
-                    if (this === state.evolutions.Rna) { retVal = retVal && resources.RNA.currentQuantity < resources.RNA.maxQuantity; }
-                    else if (this === state.evolutions.Dna) { retVal = retVal && resources.DNA.currentQuantity < resources.DNA.maxQuantity; }
-                    else if (this === state.cityBuildings.Food) { retVal = retVal && resources.Food.currentQuantity < resources.Food.maxQuantity; }
-                    else if (this === state.cityBuildings.Lumber) { retVal = retVal && resources.Lumber.currentQuantity < resources.Lumber.maxQuantity; }
-                    else if (this === state.cityBuildings.Stone) { retVal = retVal && resources.Stone.currentQuantity < resources.Stone.maxQuantity; }
-                    else if (this === state.cityBuildings.Chrysotile) { retVal = retVal && resources.Chrysotile.currentQuantity < resources.Chrysotile.maxQuantity; }
-                    else if (this === state.cityBuildings.Slaughter) {
-                        retVal = retVal && (resources.Lumber.currentQuantity < resources.Lumber.maxQuantity || resources.Food.currentQuantity < resources.Food.maxQuantity);
-                    }
-                }
+            this.updateResourceRequirements();
+            for (let i = 0; i < this.resourceRequirements.length; i++) {
+                let res = this.resourceRequirements[i];
+                res.resource.currentQuantity -= res.amount;
             }
+
+            this.vue.action();
 
             if (game.global.race.species === speciesProtoplasm // Don't log evolution actions
                     || this === state.cityBuildings.Food // Don't log gathering actions
@@ -841,7 +825,7 @@
                     || this === state.cityBuildings.Chrysotile
                     || this === state.cityBuildings.Slaughter
                     || this === state.cityBuildings.SlaveMarket) { // Don't log buying slaves
-                return retVal;
+                return true;
             }
 
             if (this.gameMax > 1 && this.gameMax < Number.MAX_SAFE_INTEGER) {
@@ -851,18 +835,7 @@
                 state.log.logSuccess(loggingTypes.construction, `${this.title} has been constructed.`);
             }
 
-            return retVal;
-        }
-
-        /**
-         * @param {number} count
-         */
-        clickIfCountLessThan(count) {
-            if (this.count < count && this.count < this.autoMax) {
-                return this.click(1);
-            }
-
-            return false;
+            return true;
         }
 
         /**
@@ -884,10 +857,10 @@
 
                 // Adjust fuel
                 if (this._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    resourceType.rate = poly.fuel_adjust(resourceType.initialRate);
+                    resourceType.rate = game.fuel_adjust(resourceType.initialRate);
                 }
                 if (this._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && this !== state.spaceBuildings.AlphaFusion) {
-                    resourceType.rate = poly.int_fuel_adjust(resourceType.initialRate);
+                    resourceType.rate = game.int_fuel_adjust(resourceType.initialRate);
                 }
 
                 let rateOfChange = resourceType.resource.rateOfChange;
@@ -2032,32 +2005,32 @@
             let assembly = game.global.tech[techFactory] ? true : false;
 
             if (production === FactoryGoods.LuxuryGoods) {
-                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Lux.fur[game.global.tech[techFactory]] : poly.f_rate.Lux.fur[0]);
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Lux.fur[game.global.tech[techFactory]] : game.f_rate.Lux.fur[0]);
             }
 
             if (production === FactoryGoods.Furs) {
-                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Furs.money[game.global.tech[techFactory]] : poly.f_rate.Furs.money[0]);
-                this._productionCosts[production][1].quantity = (assembly ? poly.f_rate.Furs.polymer[game.global.tech[techFactory]] : poly.f_rate.Furs.polymer[0]);
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Furs.money[game.global.tech[techFactory]] : game.f_rate.Furs.money[0]);
+                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Furs.polymer[game.global.tech[techFactory]] : game.f_rate.Furs.polymer[0]);
             }
 
             if (production === FactoryGoods.Alloy) {
-                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Alloy.copper[game.global.tech[techFactory]] : poly.f_rate.Alloy.copper[0]);
-                this._productionCosts[production][1].quantity = (assembly ? poly.f_rate.Alloy.aluminium[game.global.tech[techFactory]] : poly.f_rate.Alloy.aluminium[0]);
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Alloy.copper[game.global.tech[techFactory]] : game.f_rate.Alloy.copper[0]);
+                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Alloy.aluminium[game.global.tech[techFactory]] : game.f_rate.Alloy.aluminium[0]);
             }
 
             if (production === FactoryGoods.Polymer) {
-                this._productionCosts[production][0].quantity = !isLumberRace() ? (assembly ? poly.f_rate.Polymer.oil_kk[game.global.tech[techFactory]] : poly.f_rate.Polymer.oil_kk[0]) : (assembly ? poly.f_rate.Polymer.oil[game.global.tech[techFactory]] : poly.f_rate.Polymer.oil[0]);
-                this._productionCosts[production][1].quantity = !isLumberRace() ? 0 : (assembly ? poly.f_rate.Polymer.lumber[game.global.tech[techFactory]] : poly.f_rate.Polymer.lumber[0]);
+                this._productionCosts[production][0].quantity = !isLumberRace() ? (assembly ? game.f_rate.Polymer.oil_kk[game.global.tech[techFactory]] : game.f_rate.Polymer.oil_kk[0]) : (assembly ? game.f_rate.Polymer.oil[game.global.tech[techFactory]] : game.f_rate.Polymer.oil[0]);
+                this._productionCosts[production][1].quantity = !isLumberRace() ? 0 : (assembly ? game.f_rate.Polymer.lumber[game.global.tech[techFactory]] : game.f_rate.Polymer.lumber[0]);
             }
 
             if (production === FactoryGoods.NanoTube) {
-                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Nano_Tube.coal[game.global.tech[techFactory]] : poly.f_rate.Nano_Tube.coal[0]);
-                this._productionCosts[production][1].quantity = (assembly ? poly.f_rate.Nano_Tube.neutronium[game.global.tech[techFactory]] : poly.f_rate.Nano_Tube.neutronium[0]);
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Nano_Tube.coal[game.global.tech[techFactory]] : game.f_rate.Nano_Tube.coal[0]);
+                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Nano_Tube.neutronium[game.global.tech[techFactory]] : game.f_rate.Nano_Tube.neutronium[0]);
             }
 
             if (production === FactoryGoods.Stanene) {
-                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Stanene.aluminium[game.global.tech[techFactory]] : poly.f_rate.Stanene.aluminium[0]);
-                this._productionCosts[production][1].quantity = (assembly ? poly.f_rate.Stanene.nano[game.global.tech[techFactory]] : poly.f_rate.Stanene.nano[0]);
+                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Stanene.aluminium[game.global.tech[techFactory]] : game.f_rate.Stanene.aluminium[0]);
+                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Stanene.nano[game.global.tech[techFactory]] : game.f_rate.Stanene.nano[0]);
             }
 
             return this._productionCosts[production];
@@ -2455,16 +2428,16 @@
 
     var governmentTypes =
     {
-        anarchy: { id: "anarchy", name: function () { return poly.loc("govern_anarchy") } }, // Special - should not be shown to player
-        autocracy: { id: "autocracy", name: function () { return poly.loc("govern_autocracy") } },
-        democracy: { id: "democracy", name: function () { return poly.loc("govern_democracy") } },
-        oligarchy: { id: "oligarchy", name: function () { return poly.loc("govern_oligarchy") } },
-        theocracy: { id: "theocracy", name: function () { return poly.loc("govern_theocracy") } },
-        republic: { id: "republic", name: function () { return poly.loc("govern_republic") } },
-        socialist: { id: "socialist", name: function () { return poly.loc("govern_socialist") } },
-        corpocracy: { id: "corpocracy", name: function () { return poly.loc("govern_corpocracy") } },
-        technocracy: { id: "technocracy", name: function () { return poly.loc("govern_technocracy") } },
-        federation: { id: "federation", name: function () { return poly.loc("govern_federation") } },
+        anarchy: { id: "anarchy", name: function () { return game.loc("govern_anarchy") } }, // Special - should not be shown to player
+        autocracy: { id: "autocracy", name: function () { return game.loc("govern_autocracy") } },
+        democracy: { id: "democracy", name: function () { return game.loc("govern_democracy") } },
+        oligarchy: { id: "oligarchy", name: function () { return game.loc("govern_oligarchy") } },
+        theocracy: { id: "theocracy", name: function () { return game.loc("govern_theocracy") } },
+        republic: { id: "republic", name: function () { return game.loc("govern_republic") } },
+        socialist: { id: "socialist", name: function () { return game.loc("govern_socialist") } },
+        corpocracy: { id: "corpocracy", name: function () { return game.loc("govern_corpocracy") } },
+        technocracy: { id: "technocracy", name: function () { return game.loc("govern_technocracy") } },
+        federation: { id: "federation", name: function () { return game.loc("govern_federation") } },
     };
 
     class GovernmentManager {
@@ -2528,7 +2501,7 @@
             if (state.windowManager.isOpen()) { return; } // Don't try anything if a window is already open
 
             let optionsNode = document.querySelector("#govType button");
-            let title = poly.loc('civics_government_type');
+            let title = game.loc('civics_government_type');
             this._governmentToSet = government;
             state.windowManager.openModalWindowWithCallback(title, this.setGovernmentCallback, optionsNode);
         }
@@ -2624,7 +2597,7 @@
 
             if (this._espionageToPerform !== null) {
                 state.log.logSuccess(loggingTypes.spying, `Performing "${this._espionageToPerform}" covert operation against ${getGovName(govIndex)}.`)
-                let title = poly.loc('civics_espionage_actions');
+                let title = game.loc('civics_espionage_actions');
                 state.windowManager.openModalWindowWithCallback(title, this.performEspionageCallback, optionsNode);
             }
         }
@@ -2885,11 +2858,63 @@
             this._textArmy = "army";
 
             this.hellAttractorMax = 0;
+
+            this.tactic = 0;
+            this.workers = 0;
+            this.wounded = 0;
+            this.max = 0;
+            this.raid = 0;
+            this.m_use = 0;
+            this.crew = 0;
+
+            this.hellSoldiers = 0;
+            this.hellPatrols = 0;
+            this.hellPatrolSize = 0;
+        }
+
+        updateState() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+            this.tactic = game.global.civic.garrison.tactic;
+            this.workers = game.global.civic.garrison.workers;
+            this.wounded = game.global.civic.garrison.wounded;
+            this.raid = game.global.civic.garrison.raid;
+            this.max = game.global.civic.garrison.max;
+            this.m_use = game.global.civic.garrison.m_use;
+            this.crew = game.global.civic.garrison.crew;
+
+            if (game.global.portal.fortress) {
+                this.hellSoldiers = game.global.portal.fortress.garrison;
+                this.hellPatrols = game.global.portal.fortress.patrols;
+                this.hellPatrolSize = game.global.portal.fortress.patrol_size;
+            }
         }
 
         isUnlocked() {
             let node = document.getElementById("foreign");
             return node !== null && node.style.display !== "none";
+        }
+
+        get currentSoldiers() {
+            return this.workers - this.crew;
+        }
+
+        get maxSoldiers() {
+            return this.max - this.crew;
+        }
+
+        get currentCityGarrison() {
+            return this.currentSoldiers - this.hellSoldiers;
+        }
+
+        get maxCityGarrison() {
+            return this.maxSoldiers - this.hellSoldiers;
+        }
+
+        get hellGarrison()  {
+            return this.hellSoldiers - this.hellPatrolSize * this.hellPatrols - this.hellSoulForgeSoldiers;
         }
 
         /**
@@ -2902,6 +2927,11 @@
 
             state.spyManager.updateLastAttackLoop(govIndex);
             getVueById(this._vueBinding).campaign(govIndex);
+
+            // We don't know what we'll have after campaign until next tick. Let's override garrison with 0, so script won't try to anything else with soldiers until that
+            this.max = 0;
+            this.workers = 0;
+
             return true;
         }
 
@@ -2911,16 +2941,18 @@
         }
 
         getMercenaryCost() {
-            let cost = Math.round((1.24 ** game.global.civic.garrison.workers) * 75) - 50;
+            let cost = Math.round((1.24 ** this.workers) * 75) - 50;
             if (cost > 25000){
                 cost = 25000;
             }
-            if (game.global.civic.garrison.m_use > 0){
-                cost *= 1.1 ** game.global.civic.garrison.m_use;
+            if (this.m_use > 0){
+                cost *= 1.1 ** this.m_use;
             }
             if (game.global.race['brute']){
-                cost = cost / 2;
+                let gameTraitsBruteVars0 = 50;
+                cost *= 1 - (gameTraitsBruteVars0 / 100);
             }
+            cost = Math.round(cost);
 
             return cost;
         }
@@ -2930,71 +2962,26 @@
                 return false;
             }
 
+            let cost = this.getMercenaryCost();
+            if (this.workers >= this.max || resources.Money.currentQuantity < cost){
+                return false;
+            }
+
             getVueById(this._vueBinding).hire();
+
+            resources.Money.currentQuantity -= cost;
+            this.workers++;
+            this.m_use++;
+
             return true;
         }
 
-        get currentOffensiveRating() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            return parseFloat(document.querySelector("#garrison .header > span:nth-child(2) > span:nth-child(1)").textContent);
-        }
-
-        get maxOffensiveRating() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            return parseFloat(document.querySelector("#garrison .header > span:nth-child(2) > span:nth-child(2)").textContent);
-        }
-
-        get currentSoldiers() {
-            return game.global.civic.garrison.workers - game.global.civic.garrison.crew;
-        }
-
-        get maxSoldiers() {
-            return game.global.civic.garrison.max - game.global.civic.garrison.crew;
-        }
-
-        get woundedSoldiers() {
-            return game.global.civic.garrison.wounded;
-        }
-
-        get availableSoldiers() {
-            return game.global.civic.garrison.workers - game.global.civic.garrison.crew;
-        }
-
-        get hellSoldiers() {
-            if (game.global.portal.fortress) {
-                return game.global.portal.fortress.garrison;
-            } else {
-                return 0;
-            }
-        }
-
-        get hellPatrols() {
-            if (game.global.portal.fortress) {
-                return game.global.portal.fortress.patrols;
-            } else {
-                return 0;
-            }
-        }
-
-        get hellPatrolSize() {
-            if (game.global.portal.fortress) {
-                return game.global.portal.fortress.patrol_size;
-            } else {
-                return 0;
-            }
-        }
-
+        // export function soulForgeSoldiers() from Evolve/src/portal.js
         get hellSoulForgeSoldiers(){
             if (!game.global.portal.soul_forge || !game.global.portal.soul_forge.on) return 0;
 
             // Taken from the game code, so should give the same result
-            let soldiers = Math.round(650 / poly.armyRating(1,this._textArmy));
+            let soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
             if (game.global.portal.gun_emplacement) {
                 soldiers -= game.global.portal.gun_emplacement.on * (game.global.tech.hell_gun >= 2 ? 2 : 1);
                 if (soldiers < 0){
@@ -3004,28 +2991,15 @@
             return soldiers;
         }
 
-        get hellGarrison()  {
-            if (game.global.portal.fortress) {
-                return game.global.portal.fortress.garrison - game.global.portal.fortress.patrol_size * game.global.portal.fortress.patrols - this.hellSoulForgeSoldiers;
-            } else {
-                return 0;
-            }
-        }
-
-        get currentCityGarrison() {
-            return this.availableSoldiers - this.hellSoldiers;
-        }
-
-        get maxCityGarrison() {
-            return this.maxSoldiers - this.hellSoldiers;
-        }
-
         increaseCampaignDifficulty() {
             if (!this.isUnlocked()) {
                 return false;
             }
 
             getVueById(this._vueBinding).next();
+
+            this.tactic = Math.max(this.tactic + 1, 4);
+
             return true;
         }
 
@@ -3035,15 +3009,10 @@
             }
 
             getVueById(this._vueBinding).last();
+
+            this.tactic = Math.min(this.tactic - 1, 0);
+
             return true;
-        }
-
-        get currentBattalion() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            return game.global.civic.garrison.raid;
         }
 
         /**
@@ -3059,6 +3028,8 @@
                 state.multiplier.setMultiplier();
                 getVueById(this._vueBinding).aNext();
             }
+
+            this.raid = Math.min(this.raid + count, this.currentCityGarrison);
 
             return true;
         }
@@ -3077,6 +3048,8 @@
                 getVueById(this._vueBinding).aLast();
             }
 
+            this.raid = Math.max(this.raid - count, 0);
+
             return true;
         }
 
@@ -3088,13 +3061,11 @@
             if (!targetRating || targetRating <= 0) {
                 return 0;
             }
-            // Getting the rating for all out healthy soldiers and dividing it by number of soldiers, to get most accurate value after rounding
-            // Checking for something like 1000 soldiers would be more accurate, but if requested number is bigger than amount of healthy soldiers, returned value will be spoiled
-            // Unless we're explicitly passing number of wounded soldier. That number also unpredictably tamper with result but it can be worker around if we'll pass "0" as string.
-            // "0" casts to true boolean, and overrides real amount of wounded solders, yet still acts as 0 in math
-            // With fake armyRating we can't pass number of wounded soldiers, so just checking as much as we can for now
-            let testSoldiers = game.global.civic.garrison.workers - game.global.civic.garrison.wounded;
-            let singleSoldierAttackRating = poly.armyRating(testSoldiers, this._textArmy, "0") / testSoldiers;
+            // Getting the rating for 100 soldiers and dividing it by number of soldiers, to get more accurate value after rounding
+            // If requested number is bigger than amount of healthy soldiers, returned value will be spoiled
+            // To avoid that we're explicitly passing zero number of wounded soldiers as string(!)
+            // "0" casts to true boolean, and overrides real amount of wounded soldiers, yet still acts as 0 in math
+            let singleSoldierAttackRating = game.armyRating(100, this._textArmy, "0") / 100;
             let maxSoldiers = Math.ceil(targetRating / singleSoldierAttackRating);
 
             if (!game.global.race[racialTraitHiveMind]) {
@@ -3108,7 +3079,7 @@
             // At 10 soldiers there's no hivemind bonus or malus, and the malus gets up to 50%, so start with up to 2x soldiers below 10
 
             maxSoldiers = this.maxSoldiers;
-            while (maxSoldiers > 1 && poly.armyRating(maxSoldiers - 1, this._textArmy, "0") > targetRating) {
+            while (maxSoldiers > 1 && game.armyRating(maxSoldiers - 1, this._textArmy, "0") > targetRating) {
                 maxSoldiers--;
             }
 
@@ -3135,6 +3106,8 @@
                 getVueById(this._hellVueBinding).aNext();
             }
 
+            this.hellSoldiers = Math.min(this.hellSoldiers + count, this.workers);
+
             return true;
         }
 
@@ -3152,6 +3125,9 @@
                 getVueById(this._hellVueBinding).aLast();
             }
 
+            let min = this.hellPatrols * this.hellPatrolSize + this.hellSoulForgeSoldiers + state.spaceBuildings.PortalGuardPost.stateOnCount;
+            this.hellSoldiers = Math.max(this.hellSoldiers - count, min);
+
             return true;
         }
 
@@ -3165,8 +3141,16 @@
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
-                state.multiplier.setMultiplier();
+                let inc = state.multiplier.setMultiplier();
                 getVueById(this._hellVueBinding).patInc();
+
+                if (this.hellPatrols * this.hellPatrolSize < this.hellSoldiers){
+                    this.hellPatrols += inc;
+                    if (this.hellSoldiers < his.hellPatrols * this.hellPatrolSize){
+                        this.hellPatrols = Math.floor(this.hellSoldiers / this.hellPatrolSize);
+                    }
+                }
+
             }
 
             return true;
@@ -3186,6 +3170,8 @@
                 getVueById(this._hellVueBinding).patDec();
             }
 
+            this.hellPatrols = Math.max(this.hellPatrols - count, 0);
+
             return true;
         }
 
@@ -3199,8 +3185,16 @@
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
-                state.multiplier.setMultiplier();
+                let inc = state.multiplier.setMultiplier();
                 getVueById(this._hellVueBinding).patSizeInc();
+
+                if (this.hellPatrolSize < this.hellSoldiers){
+                    this.hellPatrolSize += inc;
+                    if (this.hellSoldiers < this.hellPatrols * this.hellPatrolSize){
+                        this.hellPatrols = Math.floor(this.hellSoldiers / this.hellPatrolSize);
+                    }
+                }
+
             }
 
             return true;
@@ -3219,6 +3213,8 @@
                 state.multiplier.setMultiplier();
                 getVueById(this._hellVueBinding).patSizeDec();
             }
+
+            this.hellPatrolSize = Math.max(this.hellPatrolSize - count, 1);
 
             return true;
         }
@@ -3249,8 +3245,8 @@
             // Only go into hell at all if walls are maxed and soldiers are close to full, or we are already there
             if (settings.hellHandlePatrolCount && this.maxSoldiers > settings.hellHomeGarrison + settings.hellMinSoldiers
                  && (this.hellSoldiers > settings.hellMinSoldiers
-                     || (this.availableSoldiers >= this.maxSoldiers * settings.hellMinSoldiersPercent / 100))) { // `&& game.global.portal.fortress.walls === 100` - don't like it. What the point in waiting with full garrison? Send them to death! Country need moar infernite.
-                targetHellSoldiers = Math.min(this.availableSoldiers, this.maxSoldiers - settings.hellHomeGarrison); // Leftovers from an incomplete patrol go to hell garrison
+                     || (this.currentSoldiers >= this.maxSoldiers * settings.hellMinSoldiersPercent / 100))) { // `&& game.global.portal.fortress.walls === 100` - don't like it. What the point in waiting with full garrison? Send them to death! Country need moar infernite.
+                targetHellSoldiers = Math.min(this.currentSoldiers, this.maxSoldiers - settings.hellHomeGarrison); // Leftovers from an incomplete patrol go to hell garrison
                 let availableHellSoldiers = targetHellSoldiers - this.hellSoulForgeSoldiers;
 
                 // Determine target hell garrison size
@@ -3666,25 +3662,15 @@
                 return;
             }
 
-            let resourceIndex = 0;
-            let newCosts = poly.arpaAdjustCosts(this.definition.cost);
+            this.resourceRequirements = [];
 
-            Object.keys(newCosts).forEach(resourceName => {
-                let testCost = Number(newCosts[resourceName]()) || 0;
-
-                if (this.resourceRequirements.length > resourceIndex) {
-                    this.resourceRequirements[resourceIndex].resource = resources[resourceName];
-                    this.resourceRequirements[resourceIndex].quantity = testCost;
-                } else {
-                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], testCost));
+            let adjustedCosts = poly.arpaAdjustCosts(this.definition.cost);
+            for (let resourceName in adjustedCosts) {
+                let resourceAmount = Number(adjustedCosts[resourceName]());
+                if (!resourceAmount) {
+                    continue;
                 }
-
-                resourceIndex++;
-            });
-
-            // Remove any extra elements that we have that are greater than the current number of requirements
-            while (this.resourceRequirements.length > resourceIndex) {
-                this.resourceRequirements.pop();
+                this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
             }
         }
 
@@ -3999,14 +3985,14 @@
          * @param {Resource} resource
          */
         getTradeRouteBuyPrice(resource) {
-            return poly.tradeBuyPrice(resource.id);
+            return game.tradeBuyPrice(resource.id);
         }
 
         /**
          * @param {Resource} resource
          */
         getTradeRouteSellPrice(resource) {
-            return poly.tradeSellPrice(resource.id);
+            return game.tradeSellPrice(resource.id);
         }
 
         /**
@@ -4235,7 +4221,7 @@
                 return false;
             }
 
-            if (!poly.checkAffordable(this.definition, false)) {
+            if (!game.checkAffordable(this.definition, false)) {
                 return false;
             }
 
@@ -4251,8 +4237,13 @@
                 return false
             }
 
-            getVueById(this._vueBinding).action();
+            this.updateResourceRequirements();
+            for (let i = 0; i < this.resourceRequirements.length; i++) {
+                let res = this.resourceRequirements[i];
+                res.resource.currentQuantity -= res.amount;
+            }
 
+            getVueById(this._vueBinding).action();
             state.log.logSuccess(loggingTypes.research, `${techIds[this.definition.id].title} has been researched.`);
             return true;
         }
@@ -4274,25 +4265,15 @@
                 return;
             }
 
-            let resourceIndex = 0;
-            let newCosts = poly.adjustCosts(this.definition.cost);
+            this.resourceRequirements = [];
 
-            Object.keys(newCosts).forEach(resourceName => {
-                let testCost = Number(newCosts[resourceName]()) || 0;
-
-                if (this.resourceRequirements.length > resourceIndex) {
-                    this.resourceRequirements[resourceIndex].resource = resources[resourceName];
-                    this.resourceRequirements[resourceIndex].quantity = testCost;
-                } else {
-                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], testCost));
+            let adjustedCosts = game.adjustCosts(this.definition.cost);
+            for (let resourceName in adjustedCosts) {
+                let resourceAmount = Number(adjustedCosts[resourceName]());
+                if (!resourceAmount) {
+                    continue;
                 }
-
-                resourceIndex++;
-            });
-
-            // Remove any extra elements that we have that are greater than the current number of requirements
-            while (this.resourceRequirements.length > resourceIndex) {
-                this.resourceRequirements.pop();
+                this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
             }
         }
     }
@@ -4360,10 +4341,10 @@
         isActionPossible() {
             // check against MAX as we want to know if it is possible...
             if (this.actionType === "research") {
-                return tech[this.actionId].isUnlocked() && poly.checkAffordable(tech[this.actionId].definition, true);
+                return tech[this.actionId].isUnlocked() && game.checkAffordable(tech[this.actionId].definition, true);
             }
             if (this.actionType === "build") {
-                return buildingIds[this.actionId].isUnlocked() && poly.checkAffordable(buildingIds[this.actionId].definition, true);
+                return buildingIds[this.actionId].isUnlocked() && game.checkAffordable(buildingIds[this.actionId].definition, true);
             }
         }
 
@@ -4608,8 +4589,8 @@
                 return false;
             }
 
-            const triggerCosts = poly.adjustCosts(origTriggerCosts);
-            const actionCosts = poly.adjustCosts(origActionCosts);
+            const triggerCosts = game.adjustCosts(origTriggerCosts);
+            const actionCosts = game.adjustCosts(origActionCosts);
             // console.log("triggerCosts");
             // Object.keys(triggerCosts).forEach(ele => (console.log(ele + ' ' + triggerCosts[ele]())));
             // console.log("actionCosts");
@@ -6906,8 +6887,8 @@
                 if (typeof settings[settingName] === typeof settingValue) {
                     settings[settingName] = settingValue;
                 } else {
-                    console.log(`Type mismatch during loading queued settings: 
-                        settings.${settingName} type: ${typeof settings[settingName]}, value: ${settings[settingName]}; 
+                    console.log(`Type mismatch during loading queued settings:
+                        settings.${settingName} type: ${typeof settings[settingName]}, value: ${settings[settingName]};
                         queuedEvolution.${settingName} type: ${typeof settingValue}, value: ${settingValue};`);
                 }
             }
@@ -6999,7 +6980,7 @@
 
             if (challenge === state.evolutions.Bunker || settings["challenge_" + challenge.id]) {
                 if (!game.global.race[challenge.effectId] || game.global.race[challenge.effectId] !== 1) {
-                    challenge.click(1)
+                    challenge.click()
                 }
             }
         }
@@ -7013,21 +6994,27 @@
             const costs = evolution.definition.cost;
 
             if (costs["RNA"]) {
-                let rnaCost = poly.adjustCosts(Number(evolution.definition.cost["RNA"]()) || 0);
+                let rnaCost = game.adjustCosts(Number(evolution.definition.cost["RNA"]()) || 0);
                 maxRNA = Math.max(maxRNA, rnaCost);
             }
 
             if (costs["DNA"]) {
-                let dnaCost = poly.adjustCosts(Number(evolution.definition.cost["DNA"]()) || 0);
+                let dnaCost = game.adjustCosts(Number(evolution.definition.cost["DNA"]()) || 0);
                 maxDNA = Math.max(maxDNA, dnaCost);
             }
         }
 
-        // Gather some resources and evolve (currently targeting Antids)
-        // 320 is the max rna / dna that is required... currently
-        state.evolutions.Rna.click(Math.min(maxRNA, resources.RNA.maxQuantity - resources.RNA.currentQuantity));
-        state.evolutions.Dna.click(Math.min(maxDNA, resources.DNA.maxQuantity - resources.DNA.currentQuantity));
-        state.evolutions.Rna.click(Math.min(maxRNA, resources.RNA.maxQuantity - resources.RNA.currentQuantity));
+        // Gather some resources and evolve 
+        let DNAForEvolution = Math.min(maxDNA - resources.DNA.currentQuantity, resources.DNA.maxQuantity - resources.DNA.currentQuantity, resources.RNA.maxQuantity / 2);
+        let RNAForDNA = Math.min(DNAForEvolution * 2 - resources.RNA.currentQuantity, resources.RNA.maxQuantity - resources.RNA.currentQuantity);
+        let RNARemaining = resources.RNA.currentQuantity + RNAForDNA - DNAForEvolution * 2;
+        let RNAForEvolution = Math.min(maxRNA - RNARemaining, resources.RNA.maxQuantity - RNARemaining);
+
+        let rna = game.actions.evolution.rna;
+        let dna = game.actions.evolution.dna;
+        for (var i = 0; i < RNAForDNA; i++) { rna.action(); }
+        for (var i = 0; i < DNAForEvolution; i++) { dna.action(); }
+        for (var i = 0; i < RNAForEvolution; i++) { rna.action(); }
 
         // Lets go for our targeted evolution
         let targetedEvolutionFound = false;
@@ -7035,7 +7022,7 @@
             if (state.evolutionTarget.evolutionTree[i].isUnlocked()) {
                 targetedEvolutionFound = true;
 
-                if (state.evolutionTarget.evolutionTree[i].click(1)) {
+                if (state.evolutionTarget.evolutionTree[i].click()) {
                     // If we successfully click the action then return to give the ui some time to refresh
                     return;
                 } else {
@@ -7046,19 +7033,19 @@
         }
 
         if ((resources.RNA.maxQuantity < maxRNA || resources.DNA.maxQuantity < maxDNA)) {
-            state.evolutions.Mitochondria.click(1);
+            state.evolutions.Mitochondria.click();
         }
         if (resources.DNA.maxQuantity < maxDNA) {
-            state.evolutions.EukaryoticCell.click(1);
+            state.evolutions.EukaryoticCell.click();
         }
         if (resources.RNA.maxQuantity < maxRNA) {
-            state.evolutions.Membrane.click(1);
+            state.evolutions.Membrane.click();
         }
-        if (state.evolutions.Nucleus.clickIfCountLessThan(10)) {
-            return;
+        if (state.evolutions.Nucleus.count < 10) {
+            state.evolutions.Nucleus.click();
         }
-        if (state.evolutions.Organelles.clickIfCountLessThan(10)) {
-            return;
+        if (state.evolutions.Organelles.count < 10) {
+            state.evolutions.Organelles.click()
         }
     }
 
@@ -7101,7 +7088,7 @@
 
                 // Parsing titles
                 for (let j = 0; j < planetBiomes.length; j++){
-                    if (planetBiomeName === poly.loc("biome_" +  planetBiomes[j] + "_name")) {
+                    if (planetBiomeName === game.loc("biome_" +  planetBiomes[j] + "_name")) {
                         planet.biome = planetBiomes[j];
                         break;
                     }
@@ -7110,7 +7097,7 @@
 
                 if (planetTraitName) {
                     for (let j = 0; j < planetTraits.length; j++){
-                        if (planetTraitName === poly.loc("planet_" + planetTraits[j])) {
+                        if (planetTraitName === game.loc("planet_" + planetTraits[j])) {
                             planet.trait = planetTraits[j];
                             break;
                         }
@@ -7126,7 +7113,7 @@
         }
 
         if (settings.userPlanetTargetName === "habitable") {
-            planets.sort((a, b) => (planetBiomes.indexOf(a.biome) + planetTraits.indexOf(a.trait)) - 
+            planets.sort((a, b) => (planetBiomes.indexOf(a.biome) + planetTraits.indexOf(a.trait)) -
                                    (planetBiomes.indexOf(b.biome) + planetTraits.indexOf(b.trait)));
         }
 
@@ -7158,8 +7145,8 @@
                 }
             }
 
-            planets.sort((a, b) => a.achieve !== b.achieve ? b.achieve - a.achieve : 
-                                   (planetBiomes.indexOf(a.biome) + planetTraits.indexOf(a.trait)) - 
+            planets.sort((a, b) => a.achieve !== b.achieve ? b.achieve - a.achieve :
+                                   (planetBiomes.indexOf(a.biome) + planetTraits.indexOf(a.trait)) -
                                    (planetBiomes.indexOf(b.biome) + planetTraits.indexOf(b.trait)));
         }
 
@@ -7397,14 +7384,8 @@
                 break;
             }
 
-            let previousSoldiersCount = m.currentSoldiers;
             m.hireMercenary();
             mercenariesHired++;
-
-            // Just a bit of saftey to ensure that we did actually hire a mercenary
-            if (previousSoldiersCount === m.currentSoldiers) {
-                break;
-            }
         }
 
         // Log the interaction
@@ -7428,12 +7409,12 @@
 
         // If we are not fully ready then return
         if (m.maxCityGarrison <= 0 ||
-            m.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison ||
+            m.wounded > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison ||
             m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison) {
             return;
         }
 
-        let bestAttackRating = poly.armyRating(m.currentSoldiers, m._textArmy);
+        let bestAttackRating = game.armyRating(m.currentSoldiers, m._textArmy);
         let attackIndex = 0;
         let requiredTactic = 0;
 
@@ -7450,7 +7431,7 @@
 
         // Check if there's something that we want and can occupy, and switch to that target if found
         for (let i = 0; i < 3; i++){
-            if (settings[`foreignPolicy${rank[i]}`] === "Occupy" && !game.global.civic.foreign[`gov${i}`].occ 
+            if (settings[`foreignPolicy${rank[i]}`] === "Occupy" && !game.global.civic.foreign[`gov${i}`].occ
                 && getAdvantage(bestAttackRating, 4, i) >= settings.foreignMinAdvantage) {
                 attackIndex = i;
                 requiredTactic = 4;
@@ -7508,23 +7489,23 @@
             maxSoldiers--;
         }
 
-        if (m.currentBattalion < maxSoldiers && m.currentCityGarrison > m.currentBattalion) {
-            let soldiersToAdd = Math.min(maxSoldiers - m.currentBattalion, m.currentCityGarrison - m.currentBattalion);
+        if (m.raid < maxSoldiers && m.currentCityGarrison > m.raid) {
+            let soldiersToAdd = Math.min(maxSoldiers - m.raid, m.currentCityGarrison - m.raid);
 
             if (soldiersToAdd > 0) {
                 m.addBattalion(soldiersToAdd);
             }
-        } else if (m.currentBattalion > maxSoldiers) {
-            let soldiersToRemove = m.currentBattalion - maxSoldiers;
+        } else if (m.raid > maxSoldiers) {
+            let soldiersToRemove = m.raid - maxSoldiers;
 
             if (soldiersToRemove > 0) {
                 m.removeBattalion(soldiersToRemove);
             }
         }
-        let batalionRating = poly.armyRating(m.currentBattalion, "army");
+        let batalionRating = game.armyRating(m.raid, "army");
 
 
-        if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.woundedSoldiers) { return; }
+        if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.wounded) { return; }
 
         // Log the interaction
         let campaignTitle = getVueById("garrison").$options.filters.tactics(requiredTactic);
@@ -8047,12 +8028,12 @@
 
         let optimalTax = Math.round((maxTaxRate - minTaxRate) * (1 - resources.Money.storageRatio)) + minTaxRate;
 
-        if (currentTaxRate < maxTaxRate && currentMorale > settings.generalMinimumMorale + 1 && 
+        if (currentTaxRate < maxTaxRate && currentMorale > settings.generalMinimumMorale + 1 &&
             (currentTaxRate < optimalTax || currentMorale > maxMorale + 1)) {
             taxVue.add();
         }
 
-        if (currentTaxRate > minTaxRate && currentMorale < maxMorale && 
+        if (currentTaxRate > minTaxRate && currentMorale < maxMorale &&
             (currentTaxRate > optimalTax || currentMorale < settings.generalMinimumMorale)) {
             taxVue.sub();
         }
@@ -8536,9 +8517,9 @@
         if (state.spaceBuildings.GasSpaceDockLaunch.isUnlocked()) {
             console.log("Soft resetting game with BioSeeder ship");
             state.goal = "GameOverMan";
-            state.spaceBuildings.GasSpaceDockLaunch.click(1);
+            state.spaceBuildings.GasSpaceDockLaunch.click();
         } else if (state.spaceBuildings.GasSpaceDockPrepForLaunch.isUnlocked()) {
-            state.spaceBuildings.GasSpaceDockPrepForLaunch.click(1);
+            state.spaceBuildings.GasSpaceDockPrepForLaunch.click();
         } else {
             // Open the modal to update the options
             state.spaceBuildings.GasSpaceDock.cacheOptions();
@@ -8693,46 +8674,57 @@
         // Clicks only up to full storage, but rateOfChange increased by full amount, so script will know exact number of surplus
         let resPerClick = getResourcesPerClick();
         if (state.cityBuildings.Food.isClickable()){
-           let amount = Math.min((resources.Food.maxQuantity - resources.Food.currentQuantity) / resPerClick, settings.buildingClickPerTick);
-           let food = game.actions.city.food;
-           for (var i = 0; i < amount; i++) {
-             food.action();
-           }
-           resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            let amount = Math.min((resources.Food.maxQuantity - resources.Food.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+            let food = game.actions.city.food;
+            for (var i = 0; i < amount; i++) {
+                food.action();
+            }
+            resources.Food.currentQuantity = Math.max(resources.Food.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
+            resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Lumber.isClickable()){
-           let amount = Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / resPerClick, settings.buildingClickPerTick);
-           let lumber = game.actions.city.lumber;
-           for (var i = 0; i < amount; i++) {
-             lumber.action();
-           }
-           resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            let amount = Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+            let lumber = game.actions.city.lumber;
+            for (var i = 0; i < amount; i++) {
+                lumber.action();
+            }
+            resources.Lumber.currentQuantity = Math.max(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
+            resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Stone.isClickable()){
-           let amount = Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / resPerClick, settings.buildingClickPerTick);
-           let stone = game.actions.city.stone;
-           for (var i = 0; i < amount; i++) {
-             stone.action();
-           }
-           resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            let amount = Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+            let stone = game.actions.city.stone;
+            for (var i = 0; i < amount; i++) {
+                stone.action();
+            }
+            resources.Stone.currentQuantity = Math.max(resources.Stone.currentQuantity + amount * resPerClick, resources.Stone.maxQuantity);
+            resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Chrysotile.isClickable()){
-           let amount = Math.min((resources.Chrysotile.maxQuantity - resources.Chrysotile.currentQuantity) / resPerClick, settings.buildingClickPerTick);
-           let chrysotile = game.actions.city.chrysotile;
-           for (var i = 0; i < amount; i++) {
-             chrysotile.action();
-           }
-           resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            let amount = Math.min((resources.Chrysotile.maxQuantity - resources.Chrysotile.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+            let chrysotile = game.actions.city.chrysotile;
+            for (var i = 0; i < amount; i++) {
+                chrysotile.action();
+            }
+            resources.Chrysotile.currentQuantity = Math.max(resources.Chrysotile.currentQuantity + amount * resPerClick, resources.Chrysotile.maxQuantity);
+            resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Slaughter.isClickable()){
-           let amount = Math.min(Math.max(resources.Lumber.maxQuantity - resources.Lumber.currentQuantity, resources.Food.maxQuantity - resources.Food.currentQuantity, resources.Furs.maxQuantity - resources.Furs.currentQuantity) / resPerClick, settings.buildingClickPerTick);
-           let slaughter = game.actions.city.slaughter;
-           for (var i = 0; i < amount; i++) {
-             slaughter.action();
-           }
-           resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
-           resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
-           resources.Furs.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            let amount = Math.min(Math.max(resources.Lumber.maxQuantity - resources.Lumber.currentQuantity, resources.Food.maxQuantity - resources.Food.currentQuantity, resources.Furs.maxQuantity - resources.Furs.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+            let slaughter = game.actions.city.slaughter;
+            for (var i = 0; i < amount; i++) {
+                slaughter.action();
+            }
+            resources.Lumber.currentQuantity = Math.max(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
+            resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            if (game.global.race[racialTraitSoulEater] && game.global.tech.primitive){
+                resources.Food.currentQuantity = Math.max(resources.Food.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
+                resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            }
+            if (resources.Furs.isUnlocked()) {
+                resources.Furs.currentQuantity = Math.max(resources.Furs.currentQuantity + amount * resPerClick, resources.Furs.maxQuantity);
+                resources.Furs.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            }
         }
     }
 
@@ -8752,7 +8744,7 @@
 
                 // We don't care about autoBuild settings, weight, amount, etc - trigger overrides everything if we have a trigger, and can build - do it.
                 if (building.isClickable()) {
-                    building.click(1);
+                    building.click();
                     if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
                         removePoppers();
                     }
@@ -8774,7 +8766,7 @@
             const building = buildingList[i];
 
             // Only go further if we can build it right now
-            if (!poly.checkAffordable(building.definition, false)) {
+            if (!game.checkAffordable(building.definition, false)) {
                 building.extraDescription += "Not enough resources<br>";
                 continue;
             }
@@ -8787,7 +8779,7 @@
                 // We only care about buildings with highter weight
                 // And we don't want to process clickable buildings - list was sorted by weight, and all buildings with highter priority should already been proccessed.
                 // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                if (building.weighting >= other.weighting || poly.checkAffordable(other.definition, false)){
+                if (building.weighting >= other.weighting || game.checkAffordable(other.definition, false)){
                     continue;
                 }
                 let weightDiffRatio = other.weighting / building.weighting;
@@ -8875,7 +8867,7 @@
             }
 
             // Build building
-            if (building.click(1)) {
+            if (building.click()) {
                 if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
                     removePoppers();
                 }
@@ -9151,10 +9143,10 @@
 
                 // Fuel adjust
                 if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    resourceType.rate = poly.fuel_adjust(resourceType.initialRate);
+                    resourceType.rate = game.fuel_adjust(resourceType.initialRate);
                 }
                 if (building._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== state.spaceBuildings.AlphaFusion) {
-                    resourceType.rate = poly.int_fuel_adjust(resourceType.initialRate);
+                    resourceType.rate = game.int_fuel_adjust(resourceType.initialRate);
                 }
 
                 // Just like for power, get our total resources available
@@ -9769,7 +9761,7 @@
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
             if (settings.autoEvolution && settings.userEvolutionTarget === "auto" && settings.evolutionBackup){
-                let stars = poly.alevel();
+                let stars = game.alevel();
                 let newRace = races[game.global.race.species];
 
                 console.log("Race: " + newRace.name + ", " + (stars-1) + "★ achievement: " + newRace.isMadAchievementUnlocked(stars));
@@ -9779,7 +9771,7 @@
                     if (!settings.evolutionIgnore[raceGroup]) {
                       // Let's double check it's actually *soft* reset
                       let resetButton = document.querySelector(".reset .button:not(.right)");
-                      if (resetButton.innerText === poly.loc("reset_soft")) {
+                      if (resetButton.innerText === game.loc("reset_soft")) {
                           state.log.logSuccess(loggingTypes.special, `${newRace.name} extinction achievement already earned, ignoring group, and restoring backup.`);
 
                           // Restoring backup reloads page, so we need to store list of ignored groups in settings
@@ -9925,6 +9917,8 @@
 
         state.spaceBuildings.PortalEastTower.gameMax = towerSize;
         state.spaceBuildings.PortalWestTower.gameMax = towerSize;
+
+        state.warManager.updateState();
     }
 
     function verifyGameActions() {
@@ -10023,7 +10017,7 @@
               () => 0 // Configured in autoBuild
           ],[
               () => true,
-              (building) => !poly.checkAffordable(building.definition, true),
+              (building) => !game.checkAffordable(building.definition, true),
               () => "Not enough storage",
               () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
           ],[
@@ -10095,7 +10089,7 @@
               () => "Bioseed prestige disabled",
               () => 0
           ],[
-              () => settings.prestigeType === "mad" && (tech['mad'].isResearched() || poly.checkAffordable(tech['mad'].definition, true)),
+              () => settings.prestigeType === "mad" && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true)),
               (building) => !building.is.housing && !building.is.garrison,
               () => "Awaiting MAD prestige",
               () => settings.buildingWeightingMADUseless
@@ -10222,7 +10216,7 @@
         // Exposed global it's a deepcopy of real game state, and it's not guaranteed to be actual
         // So, to ensure we won't process same state of game twice - we'll mark global at the end of the script tick, and wait for new one
         // Game ticks faster than script, so normally it's not an issue. But maybe game will be on pause, or lag badly - better be sure
-        if (!state.scriptingEdition && !game.global.seed) { return; }
+        if (!state.scriptingEdition && game.global.warseed === Number.MAX_SAFE_INTEGER) { return; }
 
         // console.log("Loop: " + state.loopCounter + ", goal: " + state.goal);
         if (state.loopCounter < Number.MAX_SAFE_INTEGER) {
@@ -10239,7 +10233,7 @@
         if (!settings.masterScriptToggle) { return; }
 
         if (state.goal === "GameOverMan"){
-            if (!state.scriptingEdition) { game.global.seed = null; };
+            if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; };
             return;
         }
 
@@ -10247,7 +10241,7 @@
             if (settings.autoEvolution) {
                 autoEvolution();
             }
-            if (!state.scriptingEdition) { game.global.seed = null; };
+            if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; };
             return;
         }
 
@@ -10328,7 +10322,7 @@
             autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
         }
 
-        if (!state.scriptingEdition) { game.global.seed = null; };
+        if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; };
     }
 
     function mainAutoEvolveScript() {
@@ -10352,8 +10346,13 @@
 
         if (document.title === "Evolve Scripting Edition") {
             state.scriptingEdition = true;
+            for (let fn in poly) {
+                if (!game[fn]) {
+                    game[fn] = poly[fn];
+                }
+            }
         }
-        
+
         initialiseState();
         initialiseRaces();
         initialiseScript();
@@ -12151,7 +12150,7 @@
             const trait = state.minorTraitManager.priorityList[i];
             let minorTraitElement = $('#script_minorTrait_' + trait.traitName + 'Toggle');
 
-            let toggle = $(`<span title="${poly.loc("trait_"+trait.traitName)}" class="has-text-info" style="margin-left: 20px;">${poly.loc("trait_"+trait.traitName+"_name")}</span>`);
+            let toggle = $(`<span title="${game.loc("trait_"+trait.traitName)}" class="has-text-info" style="margin-left: 20px;">${game.loc("trait_"+trait.traitName+"_name")}</span>`);
             minorTraitElement.append(toggle);
 
             minorTraitElement = minorTraitElement.next();
@@ -13448,7 +13447,7 @@
         // Firefox has issues if we use loc(key, variables) directly with variables as the game script won't detect it as an array
         // Something to do with firefox's sandbox for userscripts?
         // Anyway, just perform the replacement ourselves
-        let namePart1 = poly.loc(`civics_gov${game.global.civic.foreign[govProp].name.s0}`);
+        let namePart1 = game.loc(`civics_gov${game.global.civic.foreign[govProp].name.s0}`);
         return namePart1.replace("%0", game.global.civic.foreign[govProp].name.s1) + " (" + (govIndex + 1) + ")";
     }
 
@@ -13563,24 +13562,8 @@
 
     // Polyfills. Minimified ones taken directly from game code with no functional changes
     var poly = {
-        //export function adjustCosts(costs, wiki) from Evolve/src/functions.js
-        adjustCosts: function(n,t){if((n.RNA||n.DNA)&&game.global.genes.evolve){var e={};return Object.keys(n).forEach(function(t){"RNA"!==t&&"DNA"!==t||(e[t]=function(){return Math.round(.8*n[t]())})}),e}return function(n,e){if(game.global.race.hollow_bones&&(n.Plywood||n.Brick||n.Wrought_Iron||n.Sheet_Metal||n.Mythril||n.Aerogel||n.Nanoweave||n.Scarletite)){var r={};return Object.keys(n).forEach(function(t){r[t]="Plywood"===t||"Brick"===t||"Wrought_Iron"===t||"Sheet_Metal"===t||"Mythril"===t||"Aerogel"===t||"Nanoweave"===t||"Scarletite"===t?function(){return Math.round(.95*n[t](e))}:function(){return Math.round(n[t](e))}}),r}return n}(n=function(n,e){if(n.Cement&&game.global.tech.cement&&2<=game.global.tech.cement){var r=3<=game.global.tech.cement?.8:.9,o={};return Object.keys(n).forEach(function(t){o[t]="Cement"===t?function(){return Math.round(n[t](e)*r)||0}:function(){return Math.round(n[t](e))}}),o}return n}(n=function(e){if((game.global.race.smart||game.global.race.dumb)&&e.Knowledge){var t={};return Object.keys(e).forEach(function(n){t[n]="Knowledge"===n?function(){let t=e[n]();return game.global.race.smart&&(t*=.9),game.global.race.dumb&&(t*=1.05),Math.round(t)}:function(){return e[n]()}}),t}return e}(n=function(n,e){if(game.global.race.kindling_kindred&&(n.Lumber||n.Plywood)){var r={};return Object.keys(n).forEach(function(t){"Lumber"!==t&&"Plywood"!==t&&"Structs"!==t?r[t]=function(){return Math.round(1.05*n[t](e))||0}:"Structs"===t&&(r[t]=function(){return n[t](e)})}),r}return n}(n=function(n,e){if("technocracy"!==game.global.civic.govern.type)return n;var r=game.global.tech.high_tech&&12<=game.global.tech.high_tech?16<=game.global.tech.high_tech?1:1.01:1.02,o={};return Object.keys(n).forEach(function(t){o[t]="Knowledge"===t?function(){return Math.round(.92*n[t](e))}:"Money"===t||"Structs"===t||"Custom"===t?function(){return n[t](e)}:function(){return Math.round(n[t](e)*r)}}),o}(n,t),t)),t),t)},
-        //export function messageQueue(msg, color, true) from Evolve/src/functions.js
-        messageQueue: function(e,s){s=s||"warning";e=$('<p class="has-text-'+s+'">'+e+"</p>");$("#msgQueue").prepend(e),30<$("#msgQueue").children().length&&$("#msgQueue").children().last().remove()},
-        //export function checkAffordable(c_action,max) from Evolve/src/actions.js
-        checkAffordable: function(r,a){function l(o){let l=!0;return Object.keys(o).forEach(function(a){game.global.hasOwnProperty(a)?Object.keys(o[a]).forEach(function(r){(!global[a].hasOwnProperty(r)||global[a][r].count<o[a][r].count||global[a][r].hasOwnProperty("on")&&global[a][r].on<o[a][r].on)&&(l=!1)}):l=!1}),l}return!r.cost||(a?(o=this.adjustCosts(r.cost),s=!0,Object.keys(o).forEach(function(r){var a;"Custom"===r||("Structs"===r?l(o[r]())||(s=!1):"Plasmid"===r||"Phage"===r||"Dark"===r||"Harmony"===r?"Plasmid"===r&&"antimatter"===game.global.race.universe?game.global.race.Plasmid.anti<Number(o[r]())&&(s=!1):game.global.race[r].count<Number(o[r]())&&(s=!1):"Bool"===r?o[r]()||(s=!1):"Morale"===r?game.global.city.morale.current<Number(o[r]())&&(s=!1):"Army"===r?this.armyRating(game.global.civic.garrison.raid,"army")<Number(o[r]())&&(s=!1):"HellArmy"===r?(void 0===game.global.portal.fortress||game.global.portal.fortress.garrison-game.global.portal.fortress.patrols*game.global.portal.fortress.patrol_size<Number(o[r]()))&&(s=!1):"Supply"===r?game.global.portal.purifier.sup_max<Number(o[r]())&&(s=!1):(a=Number(o[r]())||0,r="Species"===r?game.global.race.species:r,0<=game.global.resource[r].max&&a>Number(game.global.resource[r].max)&&-1!==Number(game.global.resource[r].max)&&(s=!1)))}),s):(e=this.adjustCosts(r.cost),t=!0,Object.keys(e).forEach(function(r){var a,o;"Custom"===r?e[r]().met||(t=!1):"Structs"===r?l(e[r]())||(t=!1):"Plasmid"===r||"Phage"===r||"Dark"===r||"Harmony"===r?"Plasmid"===r&&"antimatter"===game.global.race.universe?game.global.race.Plasmid.anti<Number(e[r]())&&(t=!1):game.global.race[r].count<Number(e[r]())&&(t=!1):"Bool"===r?e[r]()||(t=!1):"Morale"===r?game.global.city.morale.current<Number(e[r]())&&(t=!1):"Army"===r||"HellArmy"===r?!1===e[r]()&&(t=!1):"Supply"===r?game.global.portal.purifier.supply<Number(e[r]())&&(t=!1):(a=Number(e[r]())||0,o="Species"===r?game.global.race.species:r,r=0<=game.global.resource[o].max&&a>game.global.resource[o].max,(a>Number(game.global.resource[o].amount)+game.global.resource[o].diff||r)&&(t=!1))}),t));var e,t,o,s},
-        //export function loc(key, variables) from Evolve/src/locale.js
-        loc: function(s){state.strings||function(s){$.ajaxSetup({async:!1});let n;if($.getJSON("strings/strings.json",s=>{n=s}),"en-US"!=s){let t;try{$.getJSON("strings/strings."+s+".json",s=>{t=s})}catch(s){console.error(s,s.stack)}var e=n.length;t&&Object.assign(n,t),n.length!=e&&console.error("string."+s+".json has extra keys.")}$.ajaxSetup({async:!0}),state.strings=n}(game.global.settings.locale);var t=state.strings[s];return t||(console.error("string "+s+" not found"),console.log(state.strings),s)},
         //export function arpaAdjustCosts(costs) from Evolve/src/arpa.js
-        arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),this.adjustCosts(t)},
-        //export function tradeBuyPrice(res) from Evolve/src/resources.js
-        tradeBuyPrice: function(a){let l=game.global.resource[a].value;game.global.race.arrogant&&(l*=1.1),game.global.race.conniving&&(l*=.95);let o=l*game.tradeRatio[a];return game.global.city.wharf&&(o*=.99**game.global.city.wharf.count),game.global.space.gps&&game.global.space.gps.count>3&&(o*=.99**game.global.space.gps.count),game.global.tech.railway&&(o*=.98**game.global.tech.railway),o=+o.toFixed(1)},
-        //export function tradeSellPrice(res) from Evolve/src/resources.js
-        tradeSellPrice: function(a){let l=4;game.global.race.merchant&&(l*=.75),game.global.race.asymmetrical&&(l*=1.2),game.global.race.conniving&&l--;let e=game.global.resource[a].value*game.tradeRatio[a]/l;return game.global.city.wharf&&(e*=1+.01*game.global.city.wharf.count),game.global.space.gps&&game.global.space.gps.count>3&&(e*=1+.01*game.global.space.gps.count),game.global.tech.railway&&(e*=1+.02*game.global.tech.railway),e=+e.toFixed(1)},
-        //export function armyRating(val, "army", 0) from Evolve/src/civics.js
-        armyRating: function(army) { let vue = getVueById("garrison"); return vue ? vue.$options.filters.rating(army) : army; },
-        //export const f_rate from Evolve/src/civics.js
-        f_rate: {Lux:{demand:[.14,.21,.28,.35,.42],fur:[2,3,4,5,6]},Furs:{money:[10,15,20,25,30],polymer:[1.5,2.25,3,3.75,4.5],output:[1,1.5,2,2.5,3]},Alloy:{copper:[.75,1.12,1.49,1.86,2.23],aluminium:[1,1.5,2,2.5,3],output:[.075,.112,.149,.186,.223]},Polymer:{oil_kk:[.22,.33,.44,.55,.66],oil:[.18,.27,.36,.45,.54],lumber:[15,22,29,36,43],output:[.125,.187,.249,.311,.373]},Nano_Tube:{coal:[8,12,16,20,24],neutronium:[.05,.075,.1,.125,.15],output:[.2,.3,.4,.5,.6]},Stanene:{aluminium:[30,45,60,75,90],nano:[.02,.03,.04,.05,.06],output:[.6,.9,1.2,1.5,1.8]}},
+        arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),game.adjustCosts(t)},
         //export function alevel() from Evolve/src/achieve.js
         alevel: function(){let a=1;return game.global.race.no_plasmid&&a++,game.global.race.no_trade&&a++,game.global.race.no_craft&&a++,game.global.race.no_crispr&&a++,game.global.race.weak_mastery&&a++,5<a&&(a=5),a},
         //export function fuel_adjust(fuel) from Evolve/src/space.js
