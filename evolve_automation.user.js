@@ -1,24 +1,23 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1.43
+// @version      3.3.1.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
 // @author       TMVictor
 // @author       Vollch
 // @match        https://tmvictor.github.io/Evolve-Scripting-Edition/
+// @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.4.1.min.js
 // @require      https://code.jquery.com/ui/1.12.1/jquery-ui.min.js
 // ==/UserScript==
 //
-// This script will NOT WORK WITH THE ORIGINAL VERSION OF THE GAME. It will only work with the scripting edition which can be found at:
-// https://tmvictor.github.io/Evolve-Scripting-Edition/
-//
-// This script forked from TMVictor's script version 3.2.1. Original script: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da
+// This script forked from TMVictor's script version 3.3.1. Original script: https://gist.github.com/TMVictor/3f24e27a21215414ddc68842057482da
 //
 // Changes from original version:
+//   Scripting Edition no longer required, works both with fork and original game
 //   Remade autoBuild, all buildings now can have individual weights, plus dynamic coefficients to weights(like, increasing weights of power plants when you need more energy), plus additional safe-guards checking for resource usage, available support, and such. You can fine-tune script to build what you actually need, and save resources for further constructions.
 //   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
 //   Remade autoCraftsmen, it assigns all crafters to same resource at once, to utilize apprentice bonus, and rotates them between resources aiming to desired ratio of stored resources
@@ -52,6 +51,7 @@
     var racialTraitCarnivore = "carnivore";
     var racialTraitSoulEater = "soul_eater";
     var racialTraitKindlingKindred = "kindling_kindred";
+    var racialTraitSmoldering = "smoldering"
     var racialTraitIntelligent = "intelligent";
     var racialTraitForge = 'forge';
     var racialTraitHiveMind = "hivemind";
@@ -91,7 +91,7 @@
             if (!settings[this._logEnabledSettingKey]) { return; }
             if (!settings[loggingType.settingKey]) { return; }
 
-            game.messageQueue(text, this._success);
+            poly.messageQueue(text, this._success);
         }
 
         /**
@@ -102,37 +102,46 @@
             if (!settings[this._logEnabledSettingKey]) { return; }
             if (!settings[loggingType.settingKey]) { return; }
 
-            game.messageQueue(text, this._warning);
+            poly.messageQueue(text, this._warning);
         }
     }
 
     class Multiplier {
         constructor() {
             this._remainder = 0;
+            this._state = {x100: false, x25: false, x10: false};
         }
 
-        /**
-         * @param {number} value
-         */
+        set(key, state) {
+            if (state !== this._state[key]) {
+                this._state[key] = state;
+                let eventName = state ? "keydown" : "keyup";
+                document.dispatchEvent(new KeyboardEvent(eventName, {key: game.global.settings.keyMap[key]}));
+            }
+        }
+
         reset(value) {
+            this._state = {x100: true, x25: true, x10: true};
+            this.set("x100", false);
+            this.set("x25", false);
+            this.set("x10", false);
             this._remainder = value;
         }
 
         get remainder() {
-            game.keyMap.x100 = false;
-            game.keyMap.x25 = false;
-            game.keyMap.x10 = false;
+            if (this._remainder <= 0) {
+                this.set("x100", false);
+                this.set("x25", false);
+                this.set("x10", false);
+            }
             return this._remainder;
         }
 
-        /**
-         * @return {boolean}
-         */
         setMultiplier() {
             if (this._remainder <= 0) {
-                game.keyMap.x100 = false;
-                game.keyMap.x25 = false;
-                game.keyMap.x10 = false;
+                this.set("x100", false);
+                this.set("x25", false);
+                this.set("x10", false);
                 return false;
             }
 
@@ -140,44 +149,44 @@
                 // Multiplier disabled? Mkay... Let's take a long road.
                 this._remainder -= 1;
             } else if (this._remainder >= 25000) {
-                game.keyMap.x100 = true;
-                game.keyMap.x25 = true;
-                game.keyMap.x10 = true;
+                this.set("x100", true);
+                this.set("x25", true);
+                this.set("x10", true);
                 this._remainder -= 25000;
             } else if (this._remainder >= 2500) {
-                game.keyMap.x100 = true;
-                game.keyMap.x25 = true;
-                game.keyMap.x10 = false;
+                this.set("x100", true);
+                this.set("x25", true);
+                this.set("x10", false);
                 this._remainder -= 2500;
             } else if (this._remainder >= 1000) {
-                game.keyMap.x100 = true;
-                game.keyMap.x25 = false;
-                game.keyMap.x10 = true;
+                this.set("x100", true);
+                this.set("x25", false);
+                this.set("x10", true);
                 this._remainder -= 1000;
             } else if (this._remainder >= 250) {
-                game.keyMap.x100 = false;
-                game.keyMap.x25 = true;
-                game.keyMap.x10 = true;
+                this.set("x100", false);
+                this.set("x25", true);
+                this.set("x10", true);
                 this._remainder -= 250;
             } else if (this._remainder >= 100) {
-                game.keyMap.x100 = true;
-                game.keyMap.x25 = false;
-                game.keyMap.x10 = false;
+                this.set("x100", true);
+                this.set("x25", false);
+                this.set("x10", false);
                 this._remainder -= 100;
             } else if (this._remainder >= 25) {
-                game.keyMap.x100 = false;
-                game.keyMap.x25 = true;
-                game.keyMap.x10 = false;
+                this.set("x100", false);
+                this.set("x25", true);
+                this.set("x10", false);
                 this._remainder -= 25;
             } else if (this._remainder >= 10) {
-                game.keyMap.x100 = false;
-                game.keyMap.x25 = false;
-                game.keyMap.x10 = true;
+                this.set("x100", false);
+                this.set("x25", false);
+                this.set("x10", true);
                 this._remainder -= 10;
             } else {
-                game.keyMap.x100 = false;
-                game.keyMap.x25 = false;
-                game.keyMap.x10 = false;
+                this.set("x100", false);
+                this.set("x25", false);
+                this.set("x10", false);
                 this._remainder -= 1;
             }
 
@@ -199,7 +208,6 @@
             this._originalName = name;
             this._vueBinding = "civ-" + this._originalId;
             /** @type {{job: string, display: boolean, workers: number, max: number, impact: number}} job */
-            this._definition = null;
 
             // Settings
             this._settingJobEnabled = "job_" + this._originalId;
@@ -218,11 +226,6 @@
                 return this.jobOverride.definition;
             }
 
-            // We've already got the definition previously so return it
-            if (this._definition !== null) {
-                return this._definition;
-            }
-
             // We're in the protoplasm stage of the game so there is no definition yet
             if (game.global.race.species === speciesProtoplasm) {
                 return this._nullJob;
@@ -230,8 +233,7 @@
 
             // Get the games job definition if it exists
             if (game.global.civic[this._originalId]) {
-                this._definition = game.global.civic[this._originalId];
-                return this._definition;
+                return game.global.civic[this._originalId];
             }
 
             // We've failed to get the definition
@@ -297,7 +299,11 @@
             }
 
             // Scripting Edition expose a function, rather than it's result. So we need to actually call it.
-            return game.craftCost()[this._originalId] !== undefined;
+            if (state.scriptingEdition) {
+                return game.craftCost()[this._originalId] !== undefined;
+            } else {
+                return game.craftCost[this._originalId] !== undefined;
+            }
         }
 
         get count() {
@@ -614,11 +620,8 @@
             this._location = location;
             this._elementId = this._tab + "-" + this.id;
             this.gameMax = Number.MAX_SAFE_INTEGER;
-            this.specialId = null;
 
             this._vueBinding = this._elementId;
-            this._definition = null;
-            this._instance = null;
 
             this.autoBuildEnabled = true;
             this.autoStateEnabled = true;
@@ -647,30 +650,15 @@
         }
 
         get definition() {
-            if (this._definition !== null) {
-                return this._definition;
-            }
-
-            let id = this.specialId === null ? this._id : this.specialId;
-
-            if (location !== null && location !== undefined && this._location != "") {
-                this._definition = game.actions[this._tab][this._location][id];
+            if (this._location !== "") {
+                return game.actions[this._tab][this._location][this._id];
             } else {
-                this._definition = game.actions[this._tab][id];
+                return game.actions[this._tab][this._id];
             }
-
-            return this._definition;
         }
 
         get instance() {
-            if (this._instance !== null) {
-                return this._instance;
-            }
-
-            let id = this.specialId === null ? this._id : this.specialId;
-            this._instance = game.global[this._tab][id];
-
-            return this._instance;
+            return game.global[this._tab][this._id];
         }
 
         setupCache() {
@@ -761,7 +749,7 @@
             }
 
             let resourceIndex = 0;
-            let newCosts = game.adjustCosts(this.definition.cost);
+            let newCosts = poly.adjustCosts(this.definition.cost);
 
             Object.keys(newCosts).forEach(resourceName => {
                 let testCost = Number(newCosts[resourceName]()) || 0;
@@ -803,7 +791,7 @@
                 return false;
             }
 
-            if (!game.checkAffordable(this.definition, false)) {
+            if (!poly.checkAffordable(this.definition, false)) {
                 return false;
             }
 
@@ -839,6 +827,7 @@
                     else if (this === state.cityBuildings.Food) { retVal = retVal && resources.Food.currentQuantity < resources.Food.maxQuantity; }
                     else if (this === state.cityBuildings.Lumber) { retVal = retVal && resources.Lumber.currentQuantity < resources.Lumber.maxQuantity; }
                     else if (this === state.cityBuildings.Stone) { retVal = retVal && resources.Stone.currentQuantity < resources.Stone.maxQuantity; }
+                    else if (this === state.cityBuildings.Chrysotile) { retVal = retVal && resources.Chrysotile.currentQuantity < resources.Chrysotile.maxQuantity; }
                     else if (this === state.cityBuildings.Slaughter) {
                         retVal = retVal && (resources.Lumber.currentQuantity < resources.Lumber.maxQuantity || resources.Food.currentQuantity < resources.Food.maxQuantity);
                     }
@@ -849,6 +838,7 @@
                     || this === state.cityBuildings.Food // Don't log gathering actions
                     || this === state.cityBuildings.Lumber
                     || this === state.cityBuildings.Stone
+                    || this === state.cityBuildings.Chrysotile
                     || this === state.cityBuildings.Slaughter
                     || this === state.cityBuildings.SlaveMarket) { // Don't log buying slaves
                 return retVal;
@@ -894,13 +884,13 @@
 
                 // Adjust fuel
                 if (this._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    resourceType.rate = spaceFuelAdjust(resourceType.initialRate);
+                    resourceType.rate = poly.fuel_adjust(resourceType.initialRate);
                 }
                 if (this._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && this !== state.spaceBuildings.AlphaFusion) {
-                    resourceType.rate = intFuelAdjust(resourceType.initialRate);
+                    resourceType.rate = poly.int_fuel_adjust(resourceType.initialRate);
                 }
 
-                let rateOfChange = resourceType.resource.calculatedRateOfChange;
+                let rateOfChange = resourceType.resource.rateOfChange;
                 // Adjust decay
                 if (game.global.race[challengeDecay]) {
                     rateOfChange += resourceType.resource.decayRate;
@@ -953,7 +943,7 @@
         }
 
         get stateOnCount() {
-            if (!this.hasState()) {
+            if (!this.hasState() || this.count < 1) {
                 return 0;
             }
 
@@ -961,7 +951,7 @@
         }
 
         get stateOffCount() {
-            if (!this.hasState()) {
+            if (!this.hasState() || this.count < 1) {
                 return 0;
             }
 
@@ -1040,6 +1030,21 @@
         196418,
         317811,
         514229,
+        832040,
+        1346269,
+        2178309,
+        3524578,
+        5702887,
+        9227465,
+        14930352,
+        24157817,
+        39088169,
+        63245986,
+        102334155,
+        165580141,
+        267914296,
+        433494437,
+        701408733
     ];
 
     class MinorTrait {
@@ -1226,12 +1231,12 @@
 
             this.weighting = 1;
 
-            this.calculatedRateOfChange = 0;
-
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
 
-            this._instance = null;
+            this.currentQuantity = 0;
+            this.maxQuantity = 0;
+            this.rateOfChange = 0;
 
             this.setupCache();
         }
@@ -1246,15 +1251,23 @@
         //#region Standard resource
 
         get instance() {
-            if (this._instance === null) {
-                this._instance = game.global.resource[this.id];
-            }
-
-            return this._instance;
+            return game.global.resource[this.id];
         }
 
         get id() {
             return this._id;
+        }
+
+        updateState() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+            let instance = this.instance;
+            this.currentQuantity = instance.amount;
+            this.maxQuantity = instance.max >= 0 ? instance.max : Number.MAX_SAFE_INTEGER;
+            this.rateOfChange = instance.diff;
+            this.storageRequired = 0;
         }
 
         isUnlocked() {
@@ -1345,19 +1358,15 @@
         }
 
         isCraftable() {
-            return game.craftCost().hasOwnProperty(this.id);
+            if (state.scriptingEdition) {
+                return game.craftCost().hasOwnProperty(this.id);
+            } else {
+                return game.craftCost.hasOwnProperty(this.id);
+            }
         }
 
         hasStorage() {
             return this.instance ? this.instance.stackable : false;
-        }
-
-        get currentQuantity() {
-            return this.instance.amount;
-        }
-
-        get maxQuantity() {
-            return this.instance.max >= 0 ? this.instance.max : Number.MAX_SAFE_INTEGER;
         }
 
         get tradeRouteQuantity() {
@@ -1373,18 +1382,14 @@
             return this.currentQuantity / this.maxQuantity;
         }
 
-        get rateOfChange() {
-            return this.instance ? this.instance.diff : 0;
-        }
-
         get timeToFull() {
             if (this.storageRatio > 0.98) {
                 return 0; // Already full.
             }
-            if (this.calculatedRateOfChange <= 0) {
+            if (this.rateOfChange <= 0) {
                 return Number.MAX_SAFE_INTEGER; // Won't ever fill with current rate.
             }
-            return (this.maxQuantity - this.currentQuantity) / this.calculatedRateOfChange;
+            return (this.maxQuantity - this.currentQuantity) / this.rateOfChange;
         }
 
         get decayRate() {
@@ -1522,21 +1527,19 @@
 
         //#region Standard resource
 
+        updateState() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+            this.currentQuantity = game.global.city.power;
+            this.maxQuantity = Number.MAX_SAFE_INTEGER;
+            this.rateOfChange = game.global.city.power;
+            this.storageRequired = 0;
+        }
+
         isUnlocked() {
             return game.global.city.powered;
-        }
-
-        get currentQuantity() {
-            return game.global.city.power; // game.global.city.power_total is the total of all power currently being generated
-        }
-
-        get maxQuantity() {
-            return Number.MAX_SAFE_INTEGER;
-        }
-
-        get rateOfChange() {
-            // This isn't really a resource so we'll be super tricky here and set the rate of change to be the available quantity
-            return this.currentQuantity;
         }
 
         //#endregion Standard resource
@@ -1560,6 +1563,21 @@
 
         //#region Standard resource
 
+        updateState() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+            let supportId = game.actions[this._region][this._inRegionId].info.support
+            if (!supportId) {
+                return;
+            }
+
+            this.currentQuantity = game.global[this._region][supportId].support;
+            this.maxQuantity = game.global[this._region][supportId].s_max;
+            this.rateOfChange = this.maxQuantity - this.currentQuantity;
+        }
+
         isUnlocked() {
             let containerNode = document.getElementById(this.id);
             return containerNode !== null && containerNode.style.display !== "none";
@@ -1567,43 +1585,6 @@
 
         isSupport() {
             return true;
-        }
-
-        get currentQuantity() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            let supportId = game.actions[this._region][this._inRegionId].info.support;
-            if (supportId) {
-                let currentQuantity = game.global[this._region][supportId].support;
-                if (currentQuantity) {
-                    return currentQuantity;
-                }
-            }
-
-            return 0;
-        }
-
-        get maxQuantity() {
-            if (!this.isUnlocked()) {
-                return 0;
-            }
-
-            let supportId = game.actions[this._region][this._inRegionId].info.support;
-            if (supportId) {
-                let maxQuantity = game.global[this._region][supportId].s_max;
-                if (maxQuantity) {
-                    return maxQuantity;
-                }
-            }
-
-            return 0;
-        }
-
-        get rateOfChange() {
-            // This isn't really a resource so we'll be super tricky here and set the rate of change to be the available quantity
-            return this.maxQuantity - this.currentQuantity;
         }
 
         //#endregion Standard resource
@@ -1614,16 +1595,17 @@
             super(name, id);
         }
 
+        updateState() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+            this.currentQuantity = this.id === "AntiPlasmid" ? game.global.race[this.id].anti : game.global.race[this.id].count;
+            this.maxQuantity = Number.MAX_SAFE_INTEGER;
+        }
+
         isUnlocked() {
             return this.currentQuantity > 0;
-        }
-
-        get currentQuantity() {
-            return this.id === "AntiPlasmid" ? game.global.race[this.id].anti : game.global.race[this.id].count;
-        }
-
-        get maxQuantity() {
-            return Number.MAX_SAFE_INTEGER;
         }
     }
 
@@ -1670,7 +1652,7 @@
         constructor() {
             super("Smelter", "city", "smelter", "");
 
-            this._vue = null;
+            this._industryVueBinding = "iSmelter";
 
             /** @type {ResourceProductionCost[][]} */
             this.smeltingConsumption = [ [], [] ];
@@ -1720,7 +1702,7 @@
                 }
 
                 if (fuel.resource === resources.Coal) {
-                    fuel.productionCost.quantity = game.global.race[racialTraitKindlingKindred] ? 0.15 : 0.25;
+                    fuel.productionCost.quantity = !isLumberRace() ? 0.15 : 0.25;
                 }
             });
 
@@ -1742,38 +1724,10 @@
             return this.isUnlocked() && this.count > 0;
         }
 
-        isOptionsCached() {
-            return this._vue !== null;
-        }
-
-        cacheOptions() {
-            let vue = getVueById("iSmelter");
-            if (vue !== undefined) {
-                this._vue = vue;
-                return;
-            }
-
-            if (!this.hasOptions() || state.windowManager.isOpen()) {
-                return;
-            }
-
-            let optionsNode = document.querySelector("#city-smelter .special");
-            let title = typeof game.actions.city.smelter.title === 'string' ? game.actions.city.smelter.title : game.actions.city.smelter.title();
-            state.windowManager.openModalWindowWithCallback(title, this.cacheOptionsCallback, optionsNode);
-        }
-
-        cacheOptionsCallback() {
-            state.cityBuildings.Smelter._vue = getVueById("specialModal");
-        }
-
         /**
          * @param {number} fuelType
          */
         isFuelUnlocked(fuelType) {
-            if (!this.isOptionsCached()) {
-                return false;
-            }
-
             if (fuelType === SmelterFuelTypes.Wood) {
                 return !game.global.race[racialTraitKindlingKindred];
             }
@@ -1812,9 +1766,6 @@
          * @param {number} smeltingType
          */
         isSmeltingUnlocked(smeltingType) {
-            if (!this.isOptionsCached()) {
-                return false;
-            }
 
             // Iron is always unlocked if the smelter is available
             if (smeltingType === SmelterSmeltingTypes.Iron) {
@@ -1850,7 +1801,8 @@
          * @param {number} count
          */
         increaseFuel(fuelType, count) {
-            if (count === 0 || !this.isFuelUnlocked(fuelType)) {
+            let vue = getVueById(this._industryVueBinding);
+            if (!vue || count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
@@ -1859,7 +1811,6 @@
             }
 
             let type = null;
-
             if (fuelType === SmelterFuelTypes.Wood) {
                 type = "Wood";
             }
@@ -1877,7 +1828,7 @@
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                this._vue.addFuel(type);
+                vue.addFuel(type);
             }
 
             return true;
@@ -1888,7 +1839,8 @@
          * @param {number} count
          */
         decreaseFuel(fuelType, count) {
-            if (count === 0 || !this.isFuelUnlocked(fuelType)) {
+            let vue = getVueById(this._industryVueBinding);
+            if (!vue || count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
@@ -1915,7 +1867,7 @@
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                this._vue.subFuel(type);
+                vue.subFuel(type);
             }
 
             return true;
@@ -1926,19 +1878,21 @@
          * @param {number} count
          */
         increaseSmelting(smeltingType, count) {
+            let vue = getVueById(this._industryVueBinding);
+
             // Increasing one decreases the other so no need for both an "increaseXXXX" and a "descreaseXXXX"
-            if (count === 0 || !this.isSmeltingUnlocked(smeltingType)) {
+            if (!vue || count === 0 || !this.isSmeltingUnlocked(smeltingType)) {
                 return false;
             }
 
             let func = null;
 
             if (smeltingType === SmelterSmeltingTypes.Iron) {
-                func = this._vue.ironSmelting;
+                func = vue.ironSmelting;
             }
 
             if (smeltingType === SmelterSmeltingTypes.Steel) {
-                func = this._vue.steelSmelting;
+                func = vue.steelSmelting;
             }
 
             if (func === null) { return false; }
@@ -1958,6 +1912,7 @@
             if (game.global.tech['star_forge'] && game.global.tech['star_forge'] >= 2) {
                 operating += (state.spaceBuildings.NeutronStellarForge.stateOnCount * 2);
             }
+            operating += state.spaceBuildings.PortalHellForge.stateOnCount * 3;
 
             return operating;
         }
@@ -1976,7 +1931,7 @@
         constructor() {
             super("Factory", "city", "factory", "");
 
-            this._vue = null;
+            this._industryVueBinding = "iFactory";
 
             this._productionCosts = null;
             this._productionOptions = null;
@@ -1987,35 +1942,7 @@
             return this.isUnlocked() && this.count > 0;
         }
 
-        isOptionsCached() {
-            return this._vue !== null;
-        }
-
-        cacheOptions() {
-            let vue = getVueById("iFactory");
-            if (vue !== undefined) {
-                this._vue = vue;
-                return;
-            }
-
-            if (!this.hasOptions() || state.windowManager.isOpen()) {
-                return;
-            }
-
-            let optionsNode = document.querySelector("#city-factory .special");
-            let title = typeof game.actions.city.factory.title === 'string' ? game.actions.city.factory.title : game.actions.city.factory.title();
-            state.windowManager.openModalWindowWithCallback(title, this.cacheOptionsCallback, optionsNode);
-        }
-
-        cacheOptionsCallback() {
-            state.cityBuildings.Factory._vue = getVueById("specialModal");
-        }
-
         get maxOperating() {
-            if (!this.isOptionsCached()) {
-                return 0;
-            }
-
             let operating = game.global.space['red_factory'] ? game.global.space.red_factory.on + game.global.city.factory.on : game.global.city.factory.on;
             operating += (state.spaceBuildings.AlphaMegaFactory.stateOnCount * 2);
 
@@ -2047,9 +1974,7 @@
          * @param {string} production
          */
         isProductionUnlocked(production) {
-            if (!this.isOptionsCached()) {
-                return false;
-            }
+            if (!game) return false;
 
             if (production === FactoryGoods.LuxuryGoods || production === FactoryGoods.Alloy) {
                 return true;
@@ -2107,32 +2032,32 @@
             let assembly = game.global.tech[techFactory] ? true : false;
 
             if (production === FactoryGoods.LuxuryGoods) {
-                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Lux.fur[game.global.tech[techFactory]] : game.f_rate.Lux.fur[0]);
+                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Lux.fur[game.global.tech[techFactory]] : poly.f_rate.Lux.fur[0]);
             }
 
             if (production === FactoryGoods.Furs) {
-                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Furs.money[game.global.tech[techFactory]] : game.f_rate.Furs.money[0]);
-                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Furs.polymer[game.global.tech[techFactory]] : game.f_rate.Furs.polymer[0]);
+                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Furs.money[game.global.tech[techFactory]] : poly.f_rate.Furs.money[0]);
+                this._productionCosts[production][1].quantity = (assembly ? poly.f_rate.Furs.polymer[game.global.tech[techFactory]] : poly.f_rate.Furs.polymer[0]);
             }
 
             if (production === FactoryGoods.Alloy) {
-                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Alloy.copper[game.global.tech[techFactory]] : game.f_rate.Alloy.copper[0]);
-                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Alloy.aluminium[game.global.tech[techFactory]] : game.f_rate.Alloy.aluminium[0]);
+                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Alloy.copper[game.global.tech[techFactory]] : poly.f_rate.Alloy.copper[0]);
+                this._productionCosts[production][1].quantity = (assembly ? poly.f_rate.Alloy.aluminium[game.global.tech[techFactory]] : poly.f_rate.Alloy.aluminium[0]);
             }
 
             if (production === FactoryGoods.Polymer) {
-                this._productionCosts[production][0].quantity = game.global.race[racialTraitKindlingKindred] ? (assembly ? game.f_rate.Polymer.oil_kk[game.global.tech[techFactory]] : game.f_rate.Polymer.oil_kk[0]) : (assembly ? game.f_rate.Polymer.oil[game.global.tech[techFactory]] : game.f_rate.Polymer.oil[0]);
-                this._productionCosts[production][1].quantity = game.global.race[racialTraitKindlingKindred] ? 0 : (assembly ? game.f_rate.Polymer.lumber[game.global.tech[techFactory]] : game.f_rate.Polymer.lumber[0]);
+                this._productionCosts[production][0].quantity = !isLumberRace() ? (assembly ? poly.f_rate.Polymer.oil_kk[game.global.tech[techFactory]] : poly.f_rate.Polymer.oil_kk[0]) : (assembly ? poly.f_rate.Polymer.oil[game.global.tech[techFactory]] : poly.f_rate.Polymer.oil[0]);
+                this._productionCosts[production][1].quantity = !isLumberRace() ? 0 : (assembly ? poly.f_rate.Polymer.lumber[game.global.tech[techFactory]] : poly.f_rate.Polymer.lumber[0]);
             }
 
             if (production === FactoryGoods.NanoTube) {
-                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Nano_Tube.coal[game.global.tech[techFactory]] : game.f_rate.Nano_Tube.coal[0]);
-                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Nano_Tube.neutronium[game.global.tech[techFactory]] : game.f_rate.Nano_Tube.neutronium[0]);
+                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Nano_Tube.coal[game.global.tech[techFactory]] : poly.f_rate.Nano_Tube.coal[0]);
+                this._productionCosts[production][1].quantity = (assembly ? poly.f_rate.Nano_Tube.neutronium[game.global.tech[techFactory]] : poly.f_rate.Nano_Tube.neutronium[0]);
             }
 
             if (production === FactoryGoods.Stanene) {
-                this._productionCosts[production][0].quantity = (assembly ? game.f_rate.Stanene.aluminium[game.global.tech[techFactory]] : game.f_rate.Stanene.aluminium[0]);
-                this._productionCosts[production][1].quantity = (assembly ? game.f_rate.Stanene.nano[game.global.tech[techFactory]] : game.f_rate.Stanene.nano[0]);
+                this._productionCosts[production][0].quantity = (assembly ? poly.f_rate.Stanene.aluminium[game.global.tech[techFactory]] : poly.f_rate.Stanene.aluminium[0]);
+                this._productionCosts[production][1].quantity = (assembly ? poly.f_rate.Stanene.nano[game.global.tech[techFactory]] : poly.f_rate.Stanene.nano[0]);
             }
 
             return this._productionCosts[production];
@@ -2154,7 +2079,8 @@
          * @param {number} count
          */
         increaseProduction(production, count) {
-            if (count === 0 || !this.isProductionUnlocked(production)) {
+            let vue = getVueById(this._industryVueBinding);
+            if (!vue || count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
@@ -2165,7 +2091,7 @@
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                this._vue.addItem(production);
+                vue.addItem(production);
             }
 
             return true;
@@ -2176,7 +2102,8 @@
          * @param {number} count
          */
         decreaseProduction(production, count) {
-            if (count === 0 || !this.isProductionUnlocked(production)) {
+            let vue = getVueById(this._industryVueBinding);
+            if (!vue || count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
@@ -2187,7 +2114,7 @@
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                this._vue.subItem(production);
+                vue.subItem(production);
             }
 
             return true;
@@ -2205,7 +2132,7 @@
         constructor() {
             super("Alpha Mining Droid", "interstellar", "mining_droid", "int_alpha");
 
-            this._vue = null;
+            this._industryVueBinding = "iDroid";
         }
 
         hasOptions() {
@@ -2213,43 +2140,11 @@
             return this.isUnlocked() && this.count > 0;
         }
 
-        isOptionsCached() {
-            return this._vue !== null;
-        }
-
-        cacheOptions() {
-            let vue = getVueById("iDroid");
-            if (vue !== undefined) {
-                this._vue = vue;
-                return;
-            }
-
-            if (!this.hasOptions() || state.windowManager.isOpen()) {
-                return;
-            }
-
-            let optionsNode = document.querySelector("#interstellar-mining_droid .special");
-            let title = typeof game.actions.interstellar.int_alpha.mining_droid.title === 'string' ? game.actions.interstellar.int_alpha.mining_droid.title : game.actions.interstellar.int_alpha.mining_droid.title();
-            state.windowManager.openModalWindowWithCallback(title, this.cacheOptionsCallback, optionsNode);
-        }
-
-        cacheOptionsCallback() {
-            state.spaceBuildings.AlphaMiningDroid._vue = getVueById("specialModal");
-        }
-
         get currentOperating() {
-            if (!this.isOptionsCached()) {
-                return 0;
-            }
-
             return game.global.interstellar.mining_droid.adam + game.global.interstellar.mining_droid.uran + game.global.interstellar.mining_droid.coal + game.global.interstellar.mining_droid.alum;
         }
 
         get maxOperating() {
-            if (!this.isOptionsCached()) {
-                return 0;
-            }
-
             return game.global.interstellar.mining_droid.on;
         }
 
@@ -2258,7 +2153,7 @@
          */
         isProductionUnlocked(production) {
             // All production is immediately unlocked
-            return this.isOptionsCached();
+            return true;
         }
 
         /**
@@ -2277,7 +2172,8 @@
          * @param {number} count
          */
         increaseProduction(production, count) {
-            if (count === 0 || !this.isProductionUnlocked(production)) {
+            let vue = getVueById(this._industryVueBinding);
+            if (!vue || count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
@@ -2288,7 +2184,7 @@
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                this._vue.addItem(production);
+                vue.addItem(production);
             }
 
             return true;
@@ -2299,7 +2195,8 @@
          * @param {number} count
          */
         decreaseProduction(production, count) {
-            if (count === 0 || !this.isProductionUnlocked(production)) {
+            let vue = getVueById(this._industryVueBinding);
+            if (!vue || count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
@@ -2310,7 +2207,7 @@
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                this._vue.subItem(production);
+                vue.subItem(production);
             }
 
             return true;
@@ -2327,7 +2224,7 @@
         constructor() {
             super("Alpha Factory", "interstellar", "g_factory", "int_alpha");
 
-            this._vue = null;
+            this._industryVueBinding = "iGraphene";
 
             /** @type {ResourceProductionCost[]} */
             this.grapheheConsumption = [];
@@ -2347,40 +2244,12 @@
             return this.isUnlocked() && this.count > 0;
         }
 
-        isOptionsCached() {
-            return this._vue !== null;
-        }
-
-        cacheOptions() {
-            let vue = getVueById("iGraphene");
-            if (vue !== undefined) {
-                this._vue = vue;
-                return;
-            }
-
-            if (!this.hasOptions() || state.windowManager.isOpen()) {
-                return;
-            }
-
-            let optionsNode = document.querySelector("#interstellar-g_factory .special");
-            let title = typeof game.actions.interstellar.int_alpha.g_factory.title === 'string' ? game.actions.interstellar.int_alpha.g_factory.title : game.actions.interstellar.int_alpha.g_factory.title();
-            state.windowManager.openModalWindowWithCallback(title, this.cacheOptionsCallback, optionsNode);
-        }
-
-        cacheOptionsCallback() {
-            state.spaceBuildings.AlphaFactory._vue = getVueById("specialModal");
-        }
-
         /**
          * @param {number} fuelType
          */
         isFuelUnlocked(fuelType) {
-            if (!this.isOptionsCached()) {
-                return false;
-            }
-
             if (fuelType === GrapheneFuelTypes.Lumber) {
-                return !game.global.race[racialTraitKindlingKindred];
+                return isLumberRace();
             }
 
             if (fuelType === GrapheneFuelTypes.Coal) {
@@ -2418,7 +2287,8 @@
          * @param {number} count
          */
         increaseFuel(fuelType, count) {
-            if (count === 0 || !this.isFuelUnlocked(fuelType)) {
+            let vue = getVueById(this._industryVueBinding);
+            if (!vue || count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
@@ -2429,15 +2299,15 @@
             let func = null;
 
             if (fuelType === GrapheneFuelTypes.Lumber) {
-                func = this._vue.addWood;
+                func = vue.addWood;
             }
 
             if (fuelType === GrapheneFuelTypes.Coal) {
-                func = this._vue.addCoal;
+                func = vue.addCoal;
             }
 
             if (fuelType === GrapheneFuelTypes.Oil) {
-                func = this._vue.addOil;
+                func = vue.addOil;
             }
 
             if (func === null) { return false; }
@@ -2456,7 +2326,8 @@
          * @param {number} count
          */
         decreaseFuel(fuelType, count) {
-            if (count === 0 || !this.isFuelUnlocked(fuelType)) {
+            let vue = getVueById(this._industryVueBinding);
+            if (!vue || count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
@@ -2467,15 +2338,15 @@
             let func = null;
 
             if (fuelType === GrapheneFuelTypes.Wood) {
-                func = this._vue.subWood;
+                func = vue.subWood;
             }
 
             if (fuelType === GrapheneFuelTypes.Coal) {
-                func = this._vue.subCoal;
+                func = vue.subCoal;
             }
 
             if (fuelType === GrapheneFuelTypes.Oil) {
-                func = this._vue.subOil;
+                func = vue.subOil;
             }
 
             if (func === null) { return false; }
@@ -2557,28 +2428,15 @@
         }
 
         get definition() {
-            if (this._definition !== null) {
-                return this._definition;
-            }
-
-            if (location !== null && location !== undefined && this._location != "") {
-                this._definition = game.actions[this._modalTab][this._location][this._id];
+            if (this._location !== "") {
+                return game.actions[this._modalTab][this._location][this._id];
             } else {
-                this._definition = game.actions[this._modalTab][this._id];
+                return game.actions[this._modalTab][this._id];
             }
-
-            return this._definition;
         }
 
         get instance() {
-            if (this._instance !== null) {
-                return this._instance;
-            }
-
-            let id = this.specialId === null ? this._id : this.specialId;
-            this._instance = game.global[this._modalTab][id];
-
-            return this._instance;
+            return game.global[this._modalTab][this._id];
         }
 
         isOptionsCached() {
@@ -2597,16 +2455,16 @@
 
     var governmentTypes =
     {
-        anarchy: { id: "anarchy", name: function () { return game.loc("govern_anarchy") } }, // Special - should not be shown to player
-        autocracy: { id: "autocracy", name: function () { return game.loc("govern_autocracy") } },
-        democracy: { id: "democracy", name: function () { return game.loc("govern_democracy") } },
-        oligarchy: { id: "oligarchy", name: function () { return game.loc("govern_oligarchy") } },
-        theocracy: { id: "theocracy", name: function () { return game.loc("govern_theocracy") } },
-        republic: { id: "republic", name: function () { return game.loc("govern_republic") } },
-        socialist: { id: "socialist", name: function () { return game.loc("govern_socialist") } },
-        corpocracy: { id: "corpocracy", name: function () { return game.loc("govern_corpocracy") } },
-        technocracy: { id: "technocracy", name: function () { return game.loc("govern_technocracy") } },
-        federation: { id: "federation", name: function () { return game.loc("govern_federation") } },
+        anarchy: { id: "anarchy", name: function () { return poly.loc("govern_anarchy") } }, // Special - should not be shown to player
+        autocracy: { id: "autocracy", name: function () { return poly.loc("govern_autocracy") } },
+        democracy: { id: "democracy", name: function () { return poly.loc("govern_democracy") } },
+        oligarchy: { id: "oligarchy", name: function () { return poly.loc("govern_oligarchy") } },
+        theocracy: { id: "theocracy", name: function () { return poly.loc("govern_theocracy") } },
+        republic: { id: "republic", name: function () { return poly.loc("govern_republic") } },
+        socialist: { id: "socialist", name: function () { return poly.loc("govern_socialist") } },
+        corpocracy: { id: "corpocracy", name: function () { return poly.loc("govern_corpocracy") } },
+        technocracy: { id: "technocracy", name: function () { return poly.loc("govern_technocracy") } },
+        federation: { id: "federation", name: function () { return poly.loc("govern_federation") } },
     };
 
     class GovernmentManager {
@@ -2670,7 +2528,7 @@
             if (state.windowManager.isOpen()) { return; } // Don't try anything if a window is already open
 
             let optionsNode = document.querySelector("#govType button");
-            let title = game.loc('civics_government_type');
+            let title = poly.loc('civics_government_type');
             this._governmentToSet = government;
             state.windowManager.openModalWindowWithCallback(title, this.setGovernmentCallback, optionsNode);
         }
@@ -2766,7 +2624,7 @@
 
             if (this._espionageToPerform !== null) {
                 state.log.logSuccess(loggingTypes.spying, `Performing "${this._espionageToPerform}" covert operation against ${getGovName(govIndex)}.`)
-                let title = game.loc('civics_espionage_actions');
+                let title = poly.loc('civics_espionage_actions');
                 state.windowManager.openModalWindowWithCallback(title, this.performEspionageCallback, optionsNode);
             }
         }
@@ -2869,28 +2727,15 @@
         }
 
         get definition() {
-            if (this._definition !== null) {
-                return this._definition;
-            }
-
-            if (location !== null && location !== undefined && this._location != "") {
-                this._definition = game.actions.evolution[this._location][this._id];
+            if (this._location !== "") {
+                return game.actions.evolution[this._location][this._id];
             } else {
-                this._definition = game.actions.evolution[this._id];
+                return game.actions.evolution[this._id];
             }
-
-            return this._definition;
         }
 
         get instance() {
-            if (this._instance !== null) {
-                return this._instance;
-            }
-
-            let id = this.specialId === null ? this._id : this.specialId;
-            this._instance = game.global.evolution[id];
-
-            return this._instance;
+            return game.global.evolution[this._id];
         }
     }
 
@@ -3149,7 +2994,7 @@
             if (!game.global.portal.soul_forge || !game.global.portal.soul_forge.on) return 0;
 
             // Taken from the game code, so should give the same result
-            let soldiers = Math.round(650 / game.armyRating(1,this._textArmy));
+            let soldiers = Math.round(650 / poly.armyRating(1,this._textArmy));
             if (game.global.portal.gun_emplacement) {
                 soldiers -= game.global.portal.gun_emplacement.on * (game.global.tech.hell_gun >= 2 ? 2 : 1);
                 if (soldiers < 0){
@@ -3243,10 +3088,13 @@
             if (!targetRating || targetRating <= 0) {
                 return 0;
             }
-            // Getting the rating for 1000 soldiers and dividing it by number of soldiers, to get most accurate value after rounding
-            // If requested number is bigger than amount of healthy soldiers, returned value will be spoiled, unless we're explicitly passing number of wounded solder. But that number also unpredictably tamper with result.
-            // So, we're passing zero wounded as string(!) which casts to true boolean, and overrides real amount of wounded solders, but still acts as 0 in math
-            let singleSoldierAttackRating = game.armyRating(1000, this._textArmy, "0") / 1000;
+            // Getting the rating for all out healthy soldiers and dividing it by number of soldiers, to get most accurate value after rounding
+            // Checking for something like 1000 soldiers would be more accurate, but if requested number is bigger than amount of healthy soldiers, returned value will be spoiled
+            // Unless we're explicitly passing number of wounded soldier. That number also unpredictably tamper with result but it can be worker around if we'll pass "0" as string.
+            // "0" casts to true boolean, and overrides real amount of wounded solders, yet still acts as 0 in math
+            // With fake armyRating we can't pass number of wounded soldiers, so just checking as much as we can for now
+            let testSoldiers = game.global.civic.garrison.workers - game.global.civic.garrison.wounded;
+            let singleSoldierAttackRating = poly.armyRating(testSoldiers, this._textArmy, "0") / testSoldiers;
             let maxSoldiers = Math.ceil(targetRating / singleSoldierAttackRating);
 
             if (!game.global.race[racialTraitHiveMind]) {
@@ -3260,7 +3108,7 @@
             // At 10 soldiers there's no hivemind bonus or malus, and the malus gets up to 50%, so start with up to 2x soldiers below 10
 
             maxSoldiers = this.maxSoldiers;
-            while (maxSoldiers > 1 && game.armyRating(maxSoldiers - 1, this._textArmy, "0") > targetRating) {
+            while (maxSoldiers > 1 && poly.armyRating(maxSoldiers - 1, this._textArmy, "0") > targetRating) {
                 maxSoldiers--;
             }
 
@@ -3422,6 +3270,11 @@
                     hellGarrison = 0; // If we cant defend adequately, send everyone out on patrol
                 } else if (availableHellSoldiers < hellGarrison * 2) {
                     hellGarrison = Math.floor(availableHellSoldiers / 2); // Always try to send out at least half our people
+                }
+
+                // Guardposts need at least one soldier free so lets just always keep one handy
+                if (state.spaceBuildings.PortalGuardPost.count > 0) {
+                    hellGarrison = hellGarrison + 1 + state.spaceBuildings.PortalGuardPost.stateOnCount;
                 }
 
                 // Determine the patrol attack rating
@@ -3791,7 +3644,6 @@
             this.resourceRequirements = [];
 
             this._vueBinding = "arpa" + this.id;
-            this._definition = null;
 
             this._x1ButtonSelector = `#arpa${this.id} > div.buy > button.button.x1`;
         }
@@ -3805,13 +3657,7 @@
         }
 
         get definition() {
-            if (this._definition !== null) {
-                return this._definition;
-            }
-
-            this._definition = game.actions.arpa[this.id];
-
-            return this._definition;
+            return game.actions.arpa[this.id];
         }
 
         // This is the resource requirements for 100% of the project
@@ -3821,7 +3667,7 @@
             }
 
             let resourceIndex = 0;
-            let newCosts = game.arpaAdjustCosts(this.definition.cost);
+            let newCosts = poly.arpaAdjustCosts(this.definition.cost);
 
             Object.keys(newCosts).forEach(resourceName => {
                 let testCost = Number(newCosts[resourceName]()) || 0;
@@ -4153,14 +3999,14 @@
          * @param {Resource} resource
          */
         getTradeRouteBuyPrice(resource) {
-            return game.tradeBuyPrice(resource.id);
+            return poly.tradeBuyPrice(resource.id);
         }
 
         /**
          * @param {Resource} resource
          */
         getTradeRouteSellPrice(resource) {
-            return game.tradeSellPrice(resource.id);
+            return poly.tradeSellPrice(resource.id);
         }
 
         /**
@@ -4358,12 +4204,10 @@
     }
 
     class Technology {
-        constructor(action) {
-            this._id = action.id.substring(5);
-            this._action = action;
+        constructor(id) {
+            this._id = id;
 
-            this._vueBinding = this._action.id;
-            this._definition = null;
+            this._vueBinding = "tech-" + id;
 
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
@@ -4374,11 +4218,11 @@
         }
 
         isUnlocked() {
-            return document.querySelector("#" + this._action.id + " > a") !== null && getVueById(this._vueBinding) !== undefined;
+            return document.querySelector("#" + this.definition.id + " > a") !== null && getVueById(this._vueBinding) !== undefined;
         }
 
         get definition() {
-            return this._action;
+            return game.actions.tech[this._id];
         }
 
         get title() {
@@ -4391,7 +4235,7 @@
                 return false;
             }
 
-            if (!game.checkAffordable(this.definition, false)) {
+            if (!poly.checkAffordable(this.definition, false)) {
                 return false;
             }
 
@@ -4409,12 +4253,12 @@
 
             getVueById(this._vueBinding).action();
 
-            state.log.logSuccess(loggingTypes.research, `${techIds[this._action.id].title} has been researched.`);
+            state.log.logSuccess(loggingTypes.research, `${techIds[this.definition.id].title} has been researched.`);
             return true;
         }
 
         isResearched() {
-            return game.checkOldTech(this.id);
+            return isResearchUnlocked(this.id);
         }
 
         /**
@@ -4431,7 +4275,7 @@
             }
 
             let resourceIndex = 0;
-            let newCosts = game.adjustCosts(this.definition.cost);
+            let newCosts = poly.adjustCosts(this.definition.cost);
 
             Object.keys(newCosts).forEach(resourceName => {
                 let testCost = Number(newCosts[resourceName]()) || 0;
@@ -4516,10 +4360,10 @@
         isActionPossible() {
             // check against MAX as we want to know if it is possible...
             if (this.actionType === "research") {
-                return tech[this.actionId].isUnlocked() && game.checkAffordable(tech[this.actionId].definition, true);
+                return tech[this.actionId].isUnlocked() && poly.checkAffordable(tech[this.actionId].definition, true);
             }
             if (this.actionType === "build") {
-                return buildingIds[this.actionId].isUnlocked() && game.checkAffordable(buildingIds[this.actionId].definition, true);
+                return buildingIds[this.actionId].isUnlocked() && poly.checkAffordable(buildingIds[this.actionId].definition, true);
             }
         }
 
@@ -4764,8 +4608,8 @@
                 return false;
             }
 
-            const triggerCosts = game.adjustCosts(origTriggerCosts);
-            const actionCosts = game.adjustCosts(origActionCosts);
+            const triggerCosts = poly.adjustCosts(origTriggerCosts);
+            const actionCosts = poly.adjustCosts(origActionCosts);
             // console.log("triggerCosts");
             // Object.keys(triggerCosts).forEach(ele => (console.log(ele + ' ' + triggerCosts[ele]())));
             // console.log("actionCosts");
@@ -5009,6 +4853,9 @@
         races.yeti, races.wendigo, races.tuskin, races.kamel, races.custom
     ];
 
+    // All minor traits and the currently two special traits
+    var minorTraits = ["tactical", "analytical", "promiscuous", "resilient", "cunning", "hardy", "ambidextrous", "industrious", "content", "fibroblast", "metallurgist", "gambler", "persuasive", "fortify", "mastery"];
+
     var universes = ['standard','heavy','antimatter','evil','micro','magic'];
 
     var planetBiomes = ["oceanic", "forest", "grassland","desert", "volcanic", "tundra", "hellscape", "eden"];
@@ -5058,6 +4905,7 @@
 
         // Basic resources (can trade for these)
         Food: new Resource("Food", "Food"),
+        Chrysotile: new Resource("Chrysotile", "Chrysotile"),
         Lumber: new Resource("Lumber", "Lumber"),
         Stone: new Resource("Stone", "Stone"),
         Crystal: new Resource("Crystal", "Crystal"),
@@ -5113,6 +4961,7 @@
     }
 
     var state = {
+        scriptingEdition: false,
         loopCounter: 1,
 
         lastPopulationCount: Number.MAX_SAFE_INTEGER,
@@ -5161,6 +5010,7 @@
             Colonist: new Job("colonist", "Colonist"),
             SpaceMiner: new Job("space_miner", "Space Miner"),
             HellSurveyor: new Job("hell_surveyor", "Hell Surveyor"),
+            Archaeologist: new Job("archaeologist", "Archaeologist"),
 
             // Crafting jobs
             Plywood: new CraftingJob("Plywood", "Plywood Crafter", resources.Plywood),
@@ -5293,6 +5143,7 @@
             Food: new Action("Food", "city", "food", ""),
             Lumber: new Action("Lumber", "city", "lumber", ""),
             Stone: new Action("Stone", "city", "stone", ""),
+            Chrysotile: new Action("Chrysotile", "city", "chrysotile", ""),
 
             Slaughter: new Action("Slaughter", "city", "slaughter", ""),
             SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
@@ -5432,6 +5283,7 @@
             AlphaWarehouse: new Action("Alpha Warehouse", "interstellar", "warehouse", "int_alpha"),
             AlphaMegaFactory: new Action("Alpha Mega Factory", "interstellar", "int_factory", "int_alpha"),
             AlphaLuxuryCondo: new Action("Alpha Luxury Condo", "interstellar", "luxury_condo", "int_alpha", {housing: true}),
+            AlphaExoticZoo: new Action("Alpha Exotic Zoo", "interstellar", "zoo", "int_alpha"),
 
             ProximaMission: new Action("Proxima Mission", "interstellar", "proxima_mission", "int_proxima", {mission: true}),
             ProximaTransferStation: new Action("Proxima Transfer Station", "interstellar", "xfer_station", "int_proxima"),
@@ -5515,6 +5367,11 @@
             PortalSoulForge: new Action("Portal Soul Forge", "portal", "soul_forge", "prtl_pit"),
             PortalGunEmplacement: new Action("Portal Gun Emplacement", "portal", "gun_emplacement", "prtl_pit"),
             PortalSoulAttractor: new Action("Portal Soul Attractor", "portal", "soul_attractor", "prtl_pit"),
+
+            PortalGuardPost: new Action("Portal Guard Post", "portal", "guard_post", "prtl_ruins"),
+            PortalHellForge: new Action("Portal Infernal Forge", "portal", "hell_forge", "prtl_ruins"),
+            PortalEastTower: new Action("Portal East Tower", "portal", "east_tower", "prtl_gate"),
+            PortalWestTower: new Action("Portal West Tower", "portal", "west_tower", "prtl_gate"),
         },
 
         projects: {
@@ -5586,6 +5443,9 @@
         state.spaceBuildings.SiriusAscensionTrigger.gameMax = 1;
         state.spaceBuildings.SiriusAscend.gameMax = 1;
         state.spaceBuildings.PortalSoulForge.gameMax = 1;
+
+        state.spaceBuildings.PortalEastTower.gameMax = 1;
+        state.spaceBuildings.PortalWestTower.gameMax = 1;
 
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Coal, 0.25, 1.25);
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Iron, 2, 6);
@@ -6008,11 +5868,13 @@
         state.marketManager.addResourceToPriorityList(resources.Furs);
         state.marketManager.addResourceToPriorityList(resources.Crystal);
         state.marketManager.addResourceToPriorityList(resources.Stone);
+        state.storageManager.addResourceToPriorityList(resources.Chrysotile);
         state.marketManager.addResourceToPriorityList(resources.Lumber);
         state.marketManager.addResourceToPriorityList(resources.Food);
 
         resources.Food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
         resources.Lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
+        resources.Chrysotile.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 0);
         resources.Stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
         resources.Crystal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
         resources.Furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
@@ -6063,6 +5925,7 @@
 
         resources.Food.updateStorageState(true, false, -1, -1);
         resources.Lumber.updateStorageState(true, false, -1, -1);
+        resources.Chrysotile.updateStorageState(true, false, -1, -1);
         resources.Stone.updateStorageState(true, false, -1, -1);
         resources.Furs.updateStorageState(true, false, -1, -1);
         resources.Copper.updateStorageState(true, false, -1, -1);
@@ -6091,16 +5954,13 @@
     function resetMinorTraitState() {
         state.minorTraitManager.clearPriorityList();
 
-        Object.keys(game.traits).forEach(traitName => {
-            // All minor traits and the currently two special traits
-            if (traitName === "fortify" || traitName === "mastery" || (game.traits[traitName] && game.traits[traitName].type === 'minor')) {
-                let trait = new MinorTrait(traitName);
-                trait.autoMinorTraitEnabled = true;
-                trait.autoMinorTraitWeighting = 1;
+        for (let i = 0; i < minorTraits.length; i++){
+            let trait = new MinorTrait(minorTraits[i]);
+            trait.autoMinorTraitEnabled = true;
+            trait.autoMinorTraitWeighting = 1;
 
-                state.minorTraitManager.addMinorTraitToPriorityList(trait);
-            }
-        });
+            state.minorTraitManager.addMinorTraitToPriorityList(trait);
+        }
     }
 
     function resetMinorTraitSettings() {
@@ -6138,6 +5998,7 @@
         state.jobManager.addJobToPriorityList(state.jobs.HellSurveyor);
         state.jobManager.addJobToPriorityList(state.jobs.Banker);
         state.jobManager.addJobToPriorityList(state.jobs.Priest);
+        state.jobManager.addJobToPriorityList(state.jobs.Archaeologist);
         state.jobManager.addJobToPriorityList(state.jobs.Plywood);
         state.jobManager.addJobToPriorityList(state.jobs.Brick);
         state.jobManager.addJobToPriorityList(state.jobs.WroughtIron);
@@ -6164,6 +6025,7 @@
         state.jobs.SpaceMiner.breakpointMaxs = [0, 0, -1];
         state.jobs.HellSurveyor.breakpointMaxs = [0, 0, -1];
         state.jobs.Priest.breakpointMaxs = [0, 0, 0];
+        state.jobs.Archaeologist.breakpointMaxs = [0, 0, -1];
     }
 
     function resetWeightingSettings() {
@@ -6343,6 +6205,8 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalRepairDroid);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalPitMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAssaultForge);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalEastTower);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWestTower);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeJumpShip);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeWormholeMission);
@@ -6367,6 +6231,7 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Sawmill);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedVrCenter);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaExoticZoo);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionMachine);
     }
@@ -7148,12 +7013,12 @@
             const costs = evolution.definition.cost;
 
             if (costs["RNA"]) {
-                let rnaCost = game.adjustCosts(Number(evolution.definition.cost["RNA"]()) || 0);
+                let rnaCost = poly.adjustCosts(Number(evolution.definition.cost["RNA"]()) || 0);
                 maxRNA = Math.max(maxRNA, rnaCost);
             }
 
             if (costs["DNA"]) {
-                let dnaCost = game.adjustCosts(Number(evolution.definition.cost["DNA"]()) || 0);
+                let dnaCost = poly.adjustCosts(Number(evolution.definition.cost["DNA"]()) || 0);
                 maxDNA = Math.max(maxDNA, dnaCost);
             }
         }
@@ -7236,7 +7101,7 @@
 
                 // Parsing titles
                 for (let j = 0; j < planetBiomes.length; j++){
-                    if (planetBiomeName === game.loc("biome_" +  planetBiomes[j] + "_name")) {
+                    if (planetBiomeName === poly.loc("biome_" +  planetBiomes[j] + "_name")) {
                         planet.biome = planetBiomes[j];
                         break;
                     }
@@ -7245,7 +7110,7 @@
 
                 if (planetTraitName) {
                     for (let j = 0; j < planetTraits.length; j++){
-                        if (planetTraitName === game.loc("planet_" + planetTraits[j])) {
+                        if (planetTraitName === poly.loc("planet_" + planetTraits[j])) {
                             planet.trait = planetTraits[j];
                             break;
                         }
@@ -7568,7 +7433,7 @@
             return;
         }
 
-        let bestAttackRating = game.armyRating(m.currentSoldiers, m._textArmy);
+        let bestAttackRating = poly.armyRating(m.currentSoldiers, m._textArmy);
         let attackIndex = 0;
         let requiredTactic = 0;
 
@@ -7626,10 +7491,10 @@
             }
         }
 
-        while (requiredTactic > game.global.civic.garrison.tactic) {
+        for (let i = 0; i < requiredTactic - game.global.civic.garrison.tactic; i++){
             m.increaseCampaignDifficulty();
         }
-        while (requiredTactic < game.global.civic.garrison.tactic) {
+        for (let i = 0; i < game.global.civic.garrison.tactic - requiredTactic; i++){
             m.decreaseCampaignDifficulty();
         }
 
@@ -7656,22 +7521,18 @@
                 m.removeBattalion(soldiersToRemove);
             }
         }
-        let batalionRating = game.armyRating(m.currentBattalion, "army");
+        let batalionRating = poly.armyRating(m.currentBattalion, "army");
 
+
+        if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.woundedSoldiers) { return; }
+
+        // Log the interaction
         let campaignTitle = getVueById("garrison").$options.filters.tactics(requiredTactic);
-        for (let i = 0; i < 10; i++) {
-            // Don't attack if we don't have at least the target battalion size of healthy soldiers available
-            if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.woundedSoldiers) { return; }
+        let aproximateSign = game.global.civic.foreign[`gov${attackIndex}`].spy < 1 ? "~" : "";
+        let advantagePercent = getAdvantage(batalionRating, requiredTactic, attackIndex).toFixed(1);
+        state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
 
-            // Log the interaction
-            state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${getAdvantage(batalionRating, requiredTactic, attackIndex).toFixed(1)}% advantage.`);
-            m.launchCampaign(attackIndex);
-
-            if (m.woundedSoldiers > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison
-                 || m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison) {
-                     return;
-            }
-        }
+        m.launchCampaign(attackIndex);
     }
 
     //#endregion Auto Battle
@@ -7764,7 +7625,8 @@
                     && !state.jobs.Banker.isUnlocked()
                     && !state.jobs.Colonist.isUnlocked()
                     && !state.jobs.SpaceMiner.isUnlocked()
-                    && !state.jobs.HellSurveyor.isUnlocked()) {
+                    && !state.jobs.HellSurveyor.isUnlocked()
+                    && !state.jobs.Archaeologist.isUnlocked()) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs[farmerIndex] = availableEmployees;
                 log("autoJobs", "Pushing all farmers")
@@ -7772,25 +7634,25 @@
                 let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
                 let farmerChange = state.jobs.Farmer.count - state.lastFarmerCount;
 
-                if (populationChange === farmerChange && resources.Food.calculatedRateOfChange > 0) {
+                if (populationChange === farmerChange && resources.Food.rateOfChange > 0) {
                     requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - populationChange, 0);
                     log("autoJobs", "Removing a farmer due to population growth")
                 } else {
                     requiredJobs[farmerIndex] = state.jobs.Farmer.count;
                 }
-            } else if (resources.Food.storageRatio < 0.2 && resources.Food.calculatedRateOfChange < 0) {
+            } else if (resources.Food.storageRatio < 0.2 && resources.Food.rateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
                 requiredJobs[farmerIndex] = Math.min(state.jobs.Farmer.count + 1, availableEmployees);
                 log("autoJobs", "Adding one farmer")
-            } else if (resources.Food.storageRatio > 0.6 && resources.Food.calculatedRateOfChange > 0) {
+            } else if (resources.Food.storageRatio > 0.6 && resources.Food.rateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
                 requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer")
-            } else if (resources.Food.storageRatio > 0.3 && resources.Food.calculatedRateOfChange > 100) {
+            } else if (resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > 100) {
                 // If we have over 30% storage and have > 100 food per second then remove a farmer
                 requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer - 100 food per second")
-            } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && resources.Food.calculatedRateOfChange > resources.Population.currentQuantity / 10) {
+            } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > resources.Population.currentQuantity / 10) {
                 // Carnivore race. We've got some food so put them to work!
                 requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer - Carnivore")
@@ -7823,8 +7685,9 @@
         // Now assign crafters
         if (settings.autoCraftsmen){
             // Taken from game source, no idea what this "140" means.
+            let gameTraitsResourcefulVars0 = 10;
             let speed = game.global.genes['crafty'] ? 2 : 1;
-            let craft_costs = game.global.race['resourceful'] ? (1 - game.traits.resourceful.vars[0] / 100) : 1;
+            let craft_costs = game.global.race['resourceful'] ? (1 - gameTraitsResourcefulVars0 / 100) : 1;
             let costMod = speed * craft_costs / 140;
 
             // Get list of craftabe resources
@@ -7930,9 +7793,9 @@
 
                 if (job === state.jobs.CementWorker) {
                     let currentCementWorkers = job.count;
-                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.calculatedRateOfChange " + resources.Stone.calculatedRateOfChange);
+                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.Stone.rateOfChange);
 
-                    let stoneRateOfChange = resources.Stone.calculatedRateOfChange;
+                    let stoneRateOfChange = resources.Stone.rateOfChange;
                     if (game.global.race[challengeDecay]) {
                         stoneRateOfChange += resources.Stone.decayRate;
                     }
@@ -8135,8 +7998,9 @@
         let currentTaxRate = taxInstance.tax_rate;
         let currentMorale = moraleInstance.current;
 
+        // main.js -> let mBaseCap = xxxx
         let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.stateOnCount + state.spaceBuildings.HellSpaceCasino.stateOnCount
-            + (state.spaceBuildings.RedVrCenter.stateOnCount * 2) + (state.spaceBuildings.Alien1Resort.stateOnCount * 2)
+            + (state.spaceBuildings.RedVrCenter.stateOnCount * 2) + (state.spaceBuildings.AlphaExoticZoo.stateOnCount * 2) + (state.spaceBuildings.Alien1Resort.stateOnCount * 2)
             + (state.projects.Monument.level * 2);
 
         if (game.global.tech[techSuperstar]) {
@@ -8206,12 +8070,6 @@
             return;
         }
 
-        // If we don't have a cache of the smelter options then attempt to cache them
-        if (!smelter.isOptionsCached()) {
-            smelter.cacheOptions();
-            return;
-        }
-
         // Only adjust fuels if race does not have forge trait which means they don't require smelter fuel
         if (!isForgeRace()) {
             let fuels = smelter.managedFuelPriorityList();
@@ -8224,7 +8082,7 @@
                 let productionCost = fuel.productionCost;
                 let resource = productionCost.resource;
 
-                let remainingRateOfChange = resource.calculatedRateOfChange + (smelter.fueledCount(fuel.fuelIndex) * productionCost.quantity);
+                let remainingRateOfChange = resource.rateOfChange + (smelter.fueledCount(fuel.fuelIndex) * productionCost.quantity);
                 // No need to preserve minimum income when storage is full
                 if (resource.storageRatio < 0.98) {
                     remainingRateOfChange -= productionCost.minRateOfChange;
@@ -8271,7 +8129,7 @@
             let productionCost = steelSmeltingConsumption[i];
             let resource = productionCost.resource;
 
-            let remainingRateOfChange = resource.calculatedRateOfChange + (smelterSteelCount * productionCost.quantity);
+            let remainingRateOfChange = resource.rateOfChange + (smelterSteelCount * productionCost.quantity);
             // No need to preserve minimum income when storage is full
             if (resource.storageRatio < 0.98) {
                 remainingRateOfChange -= productionCost.minRateOfChange;
@@ -8314,12 +8172,6 @@
             return;
         }
 
-        // If we don't have a cache of the factory options then attempt to cache them
-        if (!factory.isOptionsCached()) {
-            factory.cacheOptions();
-            return;
-        }
-
         let allProduction = factory.productionOptions;
         let remainingFactories = state.cityBuildings.Factory.maxOperating;
 
@@ -8347,7 +8199,7 @@
                     }
                     let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
                     let currentCost = production.requiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.calculatedRateOfChange + previousCost - currentCost;
+                    let rate = resourceCost.resource.rateOfChange + previousCost - currentCost;
                     if (resourceCost.resource.storageRatio < 0.98) {
                         rate -= resourceCost.minRateOfChange;
                     }
@@ -8390,7 +8242,7 @@
                 productionCosts.forEach(resourceCost => {
                     let previousCost = state.cityBuildings.Factory.currentProduction(luxuryGoods.goods) * resourceCost.quantity;
                     let currentCost = luxuryGoods.requiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.calculatedRateOfChange + previousCost - currentCost;
+                    let rate = resourceCost.resource.rateOfChange + previousCost - currentCost;
                     if (resourceCost.resource.storageRatio < 0.98) {
                         rate -= resourceCost.minRateOfChange;
                     }
@@ -8437,12 +8289,6 @@
             return;
         }
 
-        // If we don't have a cache of the options then attempt to cache them
-        if (!droid.isOptionsCached()) {
-            droid.cacheOptions();
-            return;
-        }
-
         // We've already got our cached values so just check if there is any need to change our ratios
         // We're not changing any existing setup, just allocating any free to adamantite
         // There aren't any settings around this currently
@@ -8462,12 +8308,6 @@
             return;
         }
 
-        // If we don't have a cache of the options then attempt to cache them
-        if (!plant.isOptionsCached()) {
-            plant.cacheOptions();
-            return;
-        }
-
         // We've already got our cached values so just check if there is any need to change our ratios
         let remainingPlants = plant.stateOnCount;
 
@@ -8481,7 +8321,7 @@
             }
 
             let currentFuelCount = plant.fueledCount(fuelIndex);
-            let rateOfChange = consumption.resource.calculatedRateOfChange + (consumption.quantity * currentFuelCount);
+            let rateOfChange = consumption.resource.rateOfChange + (consumption.quantity * currentFuelCount);
             if (consumption.resource.storageRatio < 0.98) {
                 rateOfChange -= consumption.minRateOfChange;
             }
@@ -8529,7 +8369,7 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let roundedRateOfChange = Math.floor(resource.calculatedRateOfChange) - game.global.interstellar.mass_ejector[resource.id];
+                let roundedRateOfChange = Math.floor(resource.rateOfChange) - game.global.interstellar.mass_ejector[resource.id];
 
                 if (remaining <= 0) {
                     resourceRequirement.requirement = 0;
@@ -8579,7 +8419,7 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let ejectableAmount = Math.ceil(resource.calculatedRateOfChange);
+                let ejectableAmount = Math.ceil(resource.rateOfChange);
 
                 if (remaining <= 0) {
                     resourceRequirement.requirement = 0;
@@ -8776,7 +8616,7 @@
                 if (resource.storageRatio > resource.autoSellRatio) {
                     maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.currentQuantity - (resource.autoSellRatio * resource.maxQuantity))); // If not full sell up to our sell ratio
                 } else {
-                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.calculatedRateOfChange * 2)); // If resource is full then sell up to 2 seconds worth of production
+                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.rateOfChange * 2)); // If resource is full then sell up to 2 seconds worth of production
                 }
 
                 if (maxAllowedUnits <= maxMultiplier) {
@@ -8827,8 +8667,9 @@
 
     function getResourcesPerClick() {
       let amount = 1;
+      let gameTraitsStrongVars0 = 5;
       if (game.global.race['strong']) {
-        amount *= game.traits.strong.vars[0];
+        amount *= gameTraitsStrongVars0;
       }
       if (game.global.genes['enhance']) {
         amount *= 2;
@@ -8848,8 +8689,8 @@
             }
         }
 
-        //Uses exposed action handlers, bypassing vue - they much faster, and that's important with a lot of calls
-        //Clicks only up to full storage, but calculatedRateOfChange increased by full amount, so script will know exact number of surplus
+        // Uses exposed action handlers, bypassing vue - they much faster, and that's important with a lot of calls
+        // Clicks only up to full storage, but rateOfChange increased by full amount, so script will know exact number of surplus
         let resPerClick = getResourcesPerClick();
         if (state.cityBuildings.Food.isClickable()){
            let amount = Math.min((resources.Food.maxQuantity - resources.Food.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8857,7 +8698,7 @@
            for (var i = 0; i < amount; i++) {
              food.action();
            }
-           resources.Food.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
+           resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Lumber.isClickable()){
            let amount = Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8865,7 +8706,7 @@
            for (var i = 0; i < amount; i++) {
              lumber.action();
            }
-           resources.Lumber.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
+           resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Stone.isClickable()){
            let amount = Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8873,7 +8714,15 @@
            for (var i = 0; i < amount; i++) {
              stone.action();
            }
-           resources.Stone.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
+           resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick;
+        }
+        if (state.cityBuildings.Chrysotile.isClickable()){
+           let amount = Math.min((resources.Chrysotile.maxQuantity - resources.Chrysotile.currentQuantity) / resPerClick, settings.buildingClickPerTick);
+           let chrysotile = game.actions.city.chrysotile;
+           for (var i = 0; i < amount; i++) {
+             chrysotile.action();
+           }
+           resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick;
         }
         if (state.cityBuildings.Slaughter.isClickable()){
            let amount = Math.min(Math.max(resources.Lumber.maxQuantity - resources.Lumber.currentQuantity, resources.Food.maxQuantity - resources.Food.currentQuantity, resources.Furs.maxQuantity - resources.Furs.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8881,9 +8730,9 @@
            for (var i = 0; i < amount; i++) {
              slaughter.action();
            }
-           resources.Lumber.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
-           resources.Food.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
-           resources.Furs.calculatedRateOfChange += resPerClick * settings.buildingClickPerTick;
+           resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
+           resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
+           resources.Furs.rateOfChange += resPerClick * settings.buildingClickPerTick;
         }
     }
 
@@ -8925,7 +8774,7 @@
             const building = buildingList[i];
 
             // Only go further if we can build it right now
-            if (!game.checkAffordable(building.definition, false)) {
+            if (!poly.checkAffordable(building.definition, false)) {
                 building.extraDescription += "Not enough resources<br>";
                 continue;
             }
@@ -8938,7 +8787,7 @@
                 // We only care about buildings with highter weight
                 // And we don't want to process clickable buildings - list was sorted by weight, and all buildings with highter priority should already been proccessed.
                 // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                if (building.weighting >= other.weighting || game.checkAffordable(other.definition, false)){
+                if (building.weighting >= other.weighting || poly.checkAffordable(other.definition, false)){
                     continue;
                 }
                 let weightDiffRatio = other.weighting / building.weighting;
@@ -8958,7 +8807,7 @@
                         }
 
                         // Bought resources are not included in calculatedRateOfCharge, to prevent overusing them, but here they will make estimations more accurate with no negative consequences. That's the very reason why we're buying any resources after all - to construct things sooner.
-                        let totalRateOfCharge = resource.calculatedRateOfChange + (resource.currentTradeRoutes > 0 ? game.breakdown.p.consume[resource.id].Trade : 0);
+                        let totalRateOfCharge = resource.rateOfChange + (resource.currentTradeRoutes > 0 ? game.breakdown.p.consume[resource.id].Trade : 0);
                         if (totalRateOfCharge <= 0) {
                             // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
                             estimatedTime[other.id][resource.id] = 0;
@@ -8992,7 +8841,7 @@
 
                   // We can use up to this amount of resources without delaying competing building
                   // Not very accurate, as income can fluctuate wildly for foundry, factory, and such, but should work as bottom line
-                  let totalRateOfCharge = resource.calculatedRateOfChange + (resource.currentTradeRoutes > 0 ? game.breakdown.p.consume[resource.id].Trade : 0);
+                  let totalRateOfCharge = resource.rateOfChange + (resource.currentTradeRoutes > 0 ? game.breakdown.p.consume[resource.id].Trade : 0);
                   let spareAmount = (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * totalRateOfCharge;
                   if (thisRequirement.quantity <= spareAmount) {
                       continue;
@@ -9053,7 +8902,7 @@
     //#region Auto Research
 
     function autoResearch() {
-        let items = $('#tech .action').not('.cna');
+        let items = $('#tech .action:not(.cna)');
 
         // Check if we have something researchable
         if (items.length === 0){
@@ -9088,7 +8937,7 @@
                 // If user wants to stabilise blackhole when under minimum solar mass then do it
                 click = true;
             } else if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole"
-                || itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider") {
+                || itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion" || itemId == "tech-dark_bomb") {
                 // Don't click any of the whitehole / cataclysm reset options without user consent... that would be a dick move, man.
                 continue;
             }
@@ -9302,14 +9151,14 @@
 
                 // Fuel adjust
                 if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    resourceType.rate = spaceFuelAdjust(resourceType.initialRate);
+                    resourceType.rate = poly.fuel_adjust(resourceType.initialRate);
                 }
                 if (building._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== state.spaceBuildings.AlphaFusion) {
-                    resourceType.rate = intFuelAdjust(resourceType.initialRate);
+                    resourceType.rate = poly.int_fuel_adjust(resourceType.initialRate);
                 }
 
                 // Just like for power, get our total resources available
-                resourceType.resource.calculatedRateOfChange += resourceType.rate * building.stateOnCount;
+                resourceType.resource.rateOfChange += resourceType.rate * building.stateOnCount;
             }
         }
 
@@ -9363,7 +9212,7 @@
                         }
 
                         if (!isStorageAvailable) {
-                            if (resourceType.resource.calculatedRateOfChange <= 0 || resourceType.resource.calculatedRateOfChange - resourceType.rate < 0) {
+                            if (resourceType.resource.rateOfChange <= 0 || resourceType.resource.rateOfChange - resourceType.rate < 0) {
                                 continue;
                             }
                         }
@@ -9378,7 +9227,7 @@
 
                     for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
                         let resourceType = building.consumption.resourceTypes[k];
-                        resourceType.resource.calculatedRateOfChange -= resourceType.rate;
+                        resourceType.resource.rateOfChange -= resourceType.rate;
                     }
 
                     requiredStateOn++;
@@ -9662,7 +9511,7 @@
         let tradableResources = m.getSortedTradeRouteSellList();
         let maxTradeRoutes = m.getMaxTradeRoutes();
         let tradeRoutesUsed = 0;
-        let currentMoneyPerSecond = resources.Money.calculatedRateOfChange;
+        let currentMoneyPerSecond = resources.Money.rateOfChange;
         let requiredTradeRoutes = [];
         let adjustmentTradeRoutes = [];
         let resourcesToTrade = [];
@@ -9674,17 +9523,17 @@
 
             if (tradeRoutesUsed < maxTradeRoutes && resource.autoTradeSellEnabled && resource.storageRatio > 0.98){
               let freeRoutes = maxTradeRoutes - tradeRoutesUsed;
-              let routesToLimit = Math.floor((resource.calculatedRateOfChange - resource.autoTradeSellMinPerSecond) / resource.tradeRouteQuantity);
+              let routesToLimit = Math.floor((resource.rateOfChange - resource.autoTradeSellMinPerSecond) / resource.tradeRouteQuantity);
               let routesToAssign = Math.min(freeRoutes, routesToLimit);
               if (routesToAssign > 0){
                 tradeRoutesUsed += routesToAssign;
                 requiredTradeRoutes[i] -= routesToAssign;
-                resource.calculatedRateOfChange -= resource.tradeRouteQuantity * routesToAssign;
+                resource.rateOfChange -= resource.tradeRouteQuantity * routesToAssign;
                 currentMoneyPerSecond += resource.currentTradeRouteSellPrice * routesToAssign;
               }
             }
 
-            //console.log(resource.id + " tradeRoutesUsed " + tradeRoutesUsed + ", maxTradeRoutes " + maxTradeRoutes + ", storageRatio " + resource.storageRatio + ", calculatedRateOfChange " + resource.calculatedRateOfChange)
+            //console.log(resource.id + " tradeRoutesUsed " + tradeRoutesUsed + ", maxTradeRoutes " + maxTradeRoutes + ", storageRatio " + resource.storageRatio + ", rateOfChange " + resource.rateOfChange)
             if (resource.autoTradeBuyEnabled && resource.autoTradeBuyRoutes > 0) {
                 resourcesToTrade.push( {
                     resource: resource,
@@ -9787,7 +9636,7 @@
                 // Override regular routes, to get demanded sooner
                 resourcesToTrade = demandedTrades;
                 // Drop minimum income, if we have something on demand, but can't trade with our income
-                if (minimumAllowedMoneyPerSecond > resources.Money.calculatedRateOfChange){
+                if (minimumAllowedMoneyPerSecond > resources.Money.rateOfChange){
                     minimumAllowedMoneyPerSecond = 0;
                 }
             }
@@ -9904,10 +9753,10 @@
             // Add sold resources to rate of change, so we can still use it
             // Bought resources ignored, to avoid ending with negative income when trade routes readjusted to another resource
             if (requiredTradeRoutes[i] < 0){
-                resource.calculatedRateOfChange -= requiredTradeRoutes[i] * resource.tradeRouteQuantity;
+                resource.rateOfChange -= requiredTradeRoutes[i] * resource.tradeRouteQuantity;
             }
         }
-        resources.Money.calculatedRateOfChange = currentMoneyPerSecond;
+        resources.Money.rateOfChange = currentMoneyPerSecond;
     }
 
     //#endregion Auto Trade Specials
@@ -9920,7 +9769,7 @@
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
             if (settings.autoEvolution && settings.userEvolutionTarget === "auto" && settings.evolutionBackup){
-                let stars = alevel();
+                let stars = poly.alevel();
                 let newRace = races[game.global.race.species];
 
                 console.log("Race: " + newRace.name + ", " + (stars-1) + "★ achievement: " + newRace.isMadAchievementUnlocked(stars));
@@ -9930,7 +9779,7 @@
                     if (!settings.evolutionIgnore[raceGroup]) {
                       // Let's double check it's actually *soft* reset
                       let resetButton = document.querySelector(".reset .button:not(.right)");
-                      if (resetButton.innerText === game.loc("reset_soft")) {
+                      if (resetButton.innerText === poly.loc("reset_soft")) {
                           state.log.logSuccess(loggingTypes.special, `${newRace.name} extinction achievement already earned, ignoring group, and restoring backup.`);
 
                           // Restoring backup reloads page, so we need to store list of ignored groups in settings
@@ -9949,7 +9798,6 @@
             }
             state.goal = "Standard";
             updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
-            resources.Population._instance = game.global.resource[resources.Population.id]; // We need to update cached population instance
         }
         // Not evolving anymore, clear ignore list
         settings.evolutionIgnore = {};
@@ -9961,8 +9809,7 @@
 
         // Reset calculated rate of changes, and required storage
         for (let id in resources) {
-            resources[id].calculatedRateOfChange = resources[id].rateOfChange;
-            resources[id].storageRequired = 0;
+            resources[id].updateState();
         }
 
         // Reset traded resources, so we can reuse it
@@ -9972,19 +9819,19 @@
             for (let i = 0; i < tradableResources.length; i++) {
                 let resourceDiff = game.breakdown.p.consume[tradableResources[i].id];
                 if (resourceDiff.Trade) {
-                    tradableResources[i].calculatedRateOfChange -= resourceDiff.Trade;
+                    tradableResources[i].rateOfChange -= resourceDiff.Trade;
                 }
             }
             let moneyDiff = game.breakdown.p.consume["Money"];
             if (moneyDiff.Trade){
-                resources.Money.calculatedRateOfChange -= moneyDiff.Trade;
+                resources.Money.rateOfChange -= moneyDiff.Trade;
             }
         }
 
         // Same for ejected resources
         if (settings.prestigeWhiteholeEjectEnabled && state.spaceBuildings.BlackholeMassEjector.stateOnCount > 0) {
             resourcesByAtomicMass.forEach(eject => {
-                eject.resource.calculatedRateOfChange += game.global.interstellar.mass_ejector[eject.resource.id];
+                eject.resource.rateOfChange += game.global.interstellar.mass_ejector[eject.resource.id];
             });
         }
 
@@ -10065,6 +9912,19 @@
         if (isHunterRace() && state.jobs.Farmer !== state.jobManager.unemployedJob) {
             state.jobs.Farmer.setJobOverride(state.jobManager.unemployedJob);
         }
+
+        // This comes from the "const towerSize = (function(){" in portal.js in the game code
+        let towerSize = 1000;
+        if (game.global.hasOwnProperty('pillars')){
+            Object.keys(game.global.pillars).forEach(function(pillar){
+                if (game.global.pillars[pillar]){
+                    towerSize -= 12;
+                }
+            });
+        }
+
+        state.spaceBuildings.PortalEastTower.gameMax = towerSize;
+        state.spaceBuildings.PortalWestTower.gameMax = towerSize;
     }
 
     function verifyGameActions() {
@@ -10163,7 +10023,7 @@
               () => 0 // Configured in autoBuild
           ],[
               () => true,
-              (building) => !game.checkAffordable(building.definition, true),
+              (building) => !poly.checkAffordable(building.definition, true),
               () => "Not enough storage",
               () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
           ],[
@@ -10235,7 +10095,7 @@
               () => "Bioseed prestige disabled",
               () => 0
           ],[
-              () => settings.prestigeType === "mad" && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true)),
+              () => settings.prestigeType === "mad" && (tech['mad'].isResearched() || poly.checkAffordable(tech['mad'].definition, true)),
               (building) => !building.is.housing && !building.is.garrison,
               () => "Awaiting MAD prestige",
               () => settings.buildingWeightingMADUseless
@@ -10310,7 +10170,7 @@
         let tempTech = {};
         //@ts-ignore
         for (let [technology, action] of Object.entries(game.actions.tech)) {
-            tempTech[technology] = new Technology(action);
+            tempTech[technology] = new Technology(technology);
             techIds[action.id] = tempTech[technology];
         }
 
@@ -10359,10 +10219,10 @@
     }
 
     function automate() {
-        // game.breakdown initializes during first game tick, dont tick script untill it happened
-        if (!game.breakdown.p.consume) {
-            return;
-        }
+        // Exposed global it's a deepcopy of real game state, and it's not guaranteed to be actual
+        // So, to ensure we won't process same state of game twice - we'll mark global at the end of the script tick, and wait for new one
+        // Game ticks faster than script, so normally it's not an issue. But maybe game will be on pause, or lag badly - better be sure
+        if (!state.scriptingEdition && !game.global.seed) { return; }
 
         // console.log("Loop: " + state.loopCounter + ", goal: " + state.goal);
         if (state.loopCounter < Number.MAX_SAFE_INTEGER) {
@@ -10378,11 +10238,8 @@
         // We've still updated the UI etc. above; just not performing any actions.
         if (!settings.masterScriptToggle) { return; }
 
-        if (modifierKeyPressed()) {
-            return;
-        }
-
         if (state.goal === "GameOverMan"){
+            if (!state.scriptingEdition) { game.global.seed = null; };
             return;
         }
 
@@ -10390,6 +10247,7 @@
             if (settings.autoEvolution) {
                 autoEvolution();
             }
+            if (!state.scriptingEdition) { game.global.seed = null; };
             return;
         }
 
@@ -10466,10 +10324,11 @@
         if (settings.prestigeType === "mad") {
             autoMadPrestige();
         }
-
         if (!massEjectorProcessed) {
             autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
         }
+
+        if (!state.scriptingEdition) { game.global.seed = null; };
     }
 
     function mainAutoEvolveScript() {
@@ -10479,15 +10338,22 @@
             setTimeout(mainAutoEvolveScript, 100);
             return;
         }
-        // @ts-ignore
+
         if (typeof unsafeWindow !== 'undefined') {
-            // @ts-ignore
             game = unsafeWindow.game;
         } else {
-            // @ts-ignore
             game = window.game;
         }
 
+        if (!game.global || !game.global.race || !game.breakdown.p.consume) {
+            setTimeout(mainAutoEvolveScript, 100);
+            return;
+        }
+
+        if (document.title === "Evolve Scripting Edition") {
+            state.scriptingEdition = true;
+        }
+        
         initialiseState();
         initialiseRaces();
         initialiseScript();
@@ -12285,7 +12151,7 @@
             const trait = state.minorTraitManager.priorityList[i];
             let minorTraitElement = $('#script_minorTrait_' + trait.traitName + 'Toggle');
 
-            let toggle = $(`<span title="${game.traits[trait.traitName].desc}" class="has-text-info" style="margin-left: 20px;">${game.traits[trait.traitName].name}</span>`);
+            let toggle = $(`<span title="${poly.loc("trait_"+trait.traitName)}" class="has-text-info" style="margin-left: 20px;">${poly.loc("trait_"+trait.traitName+"_name")}</span>`);
             minorTraitElement.append(toggle);
 
             minorTraitElement = minorTraitElement.next();
@@ -13559,7 +13425,7 @@
     }
 
     function isLumberRace() {
-        return !game.global.race[racialTraitKindlingKindred];
+        return !game.global.race[racialTraitKindlingKindred] && !game.global.race[racialTraitSmoldering];
     }
 
     function isIntelligentRace() {
@@ -13582,7 +13448,7 @@
         // Firefox has issues if we use loc(key, variables) directly with variables as the game script won't detect it as an array
         // Something to do with firefox's sandbox for userscripts?
         // Anyway, just perform the replacement ourselves
-        let namePart1 = game.loc(`civics_gov${game.global.civic.foreign[govProp].name.s0}`);
+        let namePart1 = poly.loc(`civics_gov${game.global.civic.foreign[govProp].name.s0}`);
         return namePart1.replace("%0", game.global.civic.foreign[govProp].name.s1) + " (" + (govIndex + 1) + ")";
     }
 
@@ -13652,15 +13518,11 @@
         }
     }
 
-    function modifierKeyPressed() {
-        return game.keyMultiplier() !== 1;
-    }
-
     /**
      * @param {string} elementId Id of the element that the vue is bound to
      */
     function getVueById(elementId) {
-        let element = game.document.getElementById(elementId);
+        let element = document.getElementById(elementId);
         if (element === null) {
             return undefined;
         }
@@ -13692,54 +13554,6 @@
 
     //#endregion Utility Functions
 
-    // Polyfils for unexposed functions
-
-    function spaceFuelAdjust(fuel){ // export function fuel_adjust(fuel){
-        if (game.global.race.universe === 'heavy'){
-            fuel *= 1.25 + (0.5 * heavyDarkEffect());
-        }
-        if (state.cityBuildings.MassDriver.stateOnCount > 0){
-            fuel *= 0.95 ** state.cityBuildings.MassDriver.stateOnCount;
-        }
-        if (game.global.stats.achieve['heavyweight']){
-            fuel *= 0.96 ** game.global.stats.achieve['heavyweight'].l;
-        }
-        if (game.global.city.ptrait === 'dense'){
-            fuel *= 1.2;
-        }
-        if (game.global.race['cataclysm']){
-            fuel *= 0.2;
-        }
-        return fuel;
-    }
-
-    function intFuelAdjust(fuel){ // export function int_fuel_adjust(fuel)
-        if (game.global.race.universe === 'heavy'){
-            fuel *= 1.2 + (0.3 * heavyDarkEffect());
-        }
-        if (game.global.stats.achieve['heavyweight']){
-            fuel *= 0.96 ** game.global.stats.achieve['heavyweight'].l;
-        }
-        return fuel;
-    }
-
-    function heavyDarkEffect(){ // export function darkEffect("heavy")
-        let de = game.global.race.Dark.count;
-        if (game.global.race.Harmony.count > 0){
-            de *= 1 + (game.global.race.Harmony.count * 0.01);
-        }
-        return 0.995 ** de;
-    }
-
-    function alevel(){ // export function alevel()
-        let a_level = 1;
-        if (game.global.race['no_plasmid'] || game.global.race['weak_mastery']){ a_level++; }
-        if (game.global.race['no_trade']){ a_level++; }
-        if (game.global.race['no_craft']){ a_level++; }
-        if (game.global.race['no_crispr']){ a_level++; }
-        return a_level;
-    }
-
     function govPrice(govIndex){ // function govPrice(gov)
         let price = game.global.civic.foreign[govIndex].eco * 15384;
         price *= 1 + game.global.civic.foreign[govIndex].hstl * 1.6 / 100;
@@ -13747,9 +13561,37 @@
         return +price.toFixed(0);
     }
 
+    // Polyfills. Minimified ones taken directly from game code with no functional changes
+    var poly = {
+        //export function adjustCosts(costs, wiki) from Evolve/src/functions.js
+        adjustCosts: function(n,t){if((n.RNA||n.DNA)&&game.global.genes.evolve){var e={};return Object.keys(n).forEach(function(t){"RNA"!==t&&"DNA"!==t||(e[t]=function(){return Math.round(.8*n[t]())})}),e}return function(n,e){if(game.global.race.hollow_bones&&(n.Plywood||n.Brick||n.Wrought_Iron||n.Sheet_Metal||n.Mythril||n.Aerogel||n.Nanoweave||n.Scarletite)){var r={};return Object.keys(n).forEach(function(t){r[t]="Plywood"===t||"Brick"===t||"Wrought_Iron"===t||"Sheet_Metal"===t||"Mythril"===t||"Aerogel"===t||"Nanoweave"===t||"Scarletite"===t?function(){return Math.round(.95*n[t](e))}:function(){return Math.round(n[t](e))}}),r}return n}(n=function(n,e){if(n.Cement&&game.global.tech.cement&&2<=game.global.tech.cement){var r=3<=game.global.tech.cement?.8:.9,o={};return Object.keys(n).forEach(function(t){o[t]="Cement"===t?function(){return Math.round(n[t](e)*r)||0}:function(){return Math.round(n[t](e))}}),o}return n}(n=function(e){if((game.global.race.smart||game.global.race.dumb)&&e.Knowledge){var t={};return Object.keys(e).forEach(function(n){t[n]="Knowledge"===n?function(){let t=e[n]();return game.global.race.smart&&(t*=.9),game.global.race.dumb&&(t*=1.05),Math.round(t)}:function(){return e[n]()}}),t}return e}(n=function(n,e){if(game.global.race.kindling_kindred&&(n.Lumber||n.Plywood)){var r={};return Object.keys(n).forEach(function(t){"Lumber"!==t&&"Plywood"!==t&&"Structs"!==t?r[t]=function(){return Math.round(1.05*n[t](e))||0}:"Structs"===t&&(r[t]=function(){return n[t](e)})}),r}return n}(n=function(n,e){if("technocracy"!==game.global.civic.govern.type)return n;var r=game.global.tech.high_tech&&12<=game.global.tech.high_tech?16<=game.global.tech.high_tech?1:1.01:1.02,o={};return Object.keys(n).forEach(function(t){o[t]="Knowledge"===t?function(){return Math.round(.92*n[t](e))}:"Money"===t||"Structs"===t||"Custom"===t?function(){return n[t](e)}:function(){return Math.round(n[t](e)*r)}}),o}(n,t),t)),t),t)},
+        //export function messageQueue(msg, color, true) from Evolve/src/functions.js
+        messageQueue: function(e,s){s=s||"warning";e=$('<p class="has-text-'+s+'">'+e+"</p>");$("#msgQueue").prepend(e),30<$("#msgQueue").children().length&&$("#msgQueue").children().last().remove()},
+        //export function checkAffordable(c_action,max) from Evolve/src/actions.js
+        checkAffordable: function(r,a){function l(o){let l=!0;return Object.keys(o).forEach(function(a){game.global.hasOwnProperty(a)?Object.keys(o[a]).forEach(function(r){(!global[a].hasOwnProperty(r)||global[a][r].count<o[a][r].count||global[a][r].hasOwnProperty("on")&&global[a][r].on<o[a][r].on)&&(l=!1)}):l=!1}),l}return!r.cost||(a?(o=this.adjustCosts(r.cost),s=!0,Object.keys(o).forEach(function(r){var a;"Custom"===r||("Structs"===r?l(o[r]())||(s=!1):"Plasmid"===r||"Phage"===r||"Dark"===r||"Harmony"===r?"Plasmid"===r&&"antimatter"===game.global.race.universe?game.global.race.Plasmid.anti<Number(o[r]())&&(s=!1):game.global.race[r].count<Number(o[r]())&&(s=!1):"Bool"===r?o[r]()||(s=!1):"Morale"===r?game.global.city.morale.current<Number(o[r]())&&(s=!1):"Army"===r?this.armyRating(game.global.civic.garrison.raid,"army")<Number(o[r]())&&(s=!1):"HellArmy"===r?(void 0===game.global.portal.fortress||game.global.portal.fortress.garrison-game.global.portal.fortress.patrols*game.global.portal.fortress.patrol_size<Number(o[r]()))&&(s=!1):"Supply"===r?game.global.portal.purifier.sup_max<Number(o[r]())&&(s=!1):(a=Number(o[r]())||0,r="Species"===r?game.global.race.species:r,0<=game.global.resource[r].max&&a>Number(game.global.resource[r].max)&&-1!==Number(game.global.resource[r].max)&&(s=!1)))}),s):(e=this.adjustCosts(r.cost),t=!0,Object.keys(e).forEach(function(r){var a,o;"Custom"===r?e[r]().met||(t=!1):"Structs"===r?l(e[r]())||(t=!1):"Plasmid"===r||"Phage"===r||"Dark"===r||"Harmony"===r?"Plasmid"===r&&"antimatter"===game.global.race.universe?game.global.race.Plasmid.anti<Number(e[r]())&&(t=!1):game.global.race[r].count<Number(e[r]())&&(t=!1):"Bool"===r?e[r]()||(t=!1):"Morale"===r?game.global.city.morale.current<Number(e[r]())&&(t=!1):"Army"===r||"HellArmy"===r?!1===e[r]()&&(t=!1):"Supply"===r?game.global.portal.purifier.supply<Number(e[r]())&&(t=!1):(a=Number(e[r]())||0,o="Species"===r?game.global.race.species:r,r=0<=game.global.resource[o].max&&a>game.global.resource[o].max,(a>Number(game.global.resource[o].amount)+game.global.resource[o].diff||r)&&(t=!1))}),t));var e,t,o,s},
+        //export function loc(key, variables) from Evolve/src/locale.js
+        loc: function(s){state.strings||function(s){$.ajaxSetup({async:!1});let n;if($.getJSON("strings/strings.json",s=>{n=s}),"en-US"!=s){let t;try{$.getJSON("strings/strings."+s+".json",s=>{t=s})}catch(s){console.error(s,s.stack)}var e=n.length;t&&Object.assign(n,t),n.length!=e&&console.error("string."+s+".json has extra keys.")}$.ajaxSetup({async:!0}),state.strings=n}(game.global.settings.locale);var t=state.strings[s];return t||(console.error("string "+s+" not found"),console.log(state.strings),s)},
+        //export function arpaAdjustCosts(costs) from Evolve/src/arpa.js
+        arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),this.adjustCosts(t)},
+        //export function tradeBuyPrice(res) from Evolve/src/resources.js
+        tradeBuyPrice: function(a){let l=game.global.resource[a].value;game.global.race.arrogant&&(l*=1.1),game.global.race.conniving&&(l*=.95);let o=l*game.tradeRatio[a];return game.global.city.wharf&&(o*=.99**game.global.city.wharf.count),game.global.space.gps&&game.global.space.gps.count>3&&(o*=.99**game.global.space.gps.count),game.global.tech.railway&&(o*=.98**game.global.tech.railway),o=+o.toFixed(1)},
+        //export function tradeSellPrice(res) from Evolve/src/resources.js
+        tradeSellPrice: function(a){let l=4;game.global.race.merchant&&(l*=.75),game.global.race.asymmetrical&&(l*=1.2),game.global.race.conniving&&l--;let e=game.global.resource[a].value*game.tradeRatio[a]/l;return game.global.city.wharf&&(e*=1+.01*game.global.city.wharf.count),game.global.space.gps&&game.global.space.gps.count>3&&(e*=1+.01*game.global.space.gps.count),game.global.tech.railway&&(e*=1+.02*game.global.tech.railway),e=+e.toFixed(1)},
+        //export function armyRating(val, "army", 0) from Evolve/src/civics.js
+        armyRating: function(army) { let vue = getVueById("garrison"); return vue ? vue.$options.filters.rating(army) : army; },
+        //export const f_rate from Evolve/src/civics.js
+        f_rate: {Lux:{demand:[.14,.21,.28,.35,.42],fur:[2,3,4,5,6]},Furs:{money:[10,15,20,25,30],polymer:[1.5,2.25,3,3.75,4.5],output:[1,1.5,2,2.5,3]},Alloy:{copper:[.75,1.12,1.49,1.86,2.23],aluminium:[1,1.5,2,2.5,3],output:[.075,.112,.149,.186,.223]},Polymer:{oil_kk:[.22,.33,.44,.55,.66],oil:[.18,.27,.36,.45,.54],lumber:[15,22,29,36,43],output:[.125,.187,.249,.311,.373]},Nano_Tube:{coal:[8,12,16,20,24],neutronium:[.05,.075,.1,.125,.15],output:[.2,.3,.4,.5,.6]},Stanene:{aluminium:[30,45,60,75,90],nano:[.02,.03,.04,.05,.06],output:[.6,.9,1.2,1.5,1.8]}},
+        //export function alevel() from Evolve/src/achieve.js
+        alevel: function(){let a=1;return game.global.race.no_plasmid&&a++,game.global.race.no_trade&&a++,game.global.race.no_craft&&a++,game.global.race.no_crispr&&a++,game.global.race.weak_mastery&&a++,5<a&&(a=5),a},
+        //export function fuel_adjust(fuel) from Evolve/src/space.js
+        fuel_adjust: function(a){return"heavy"===game.global.race.universe&&(a*=1.25+.5*function(){let a=game.global.race.Dark.count;return game.global.race.Harmony.count>0&&(a*=1+.01*game.global.race.Harmony.count),.995**a}()),state.cityBuildings.MassDriver.stateOnCount>0&&(a*=.95**state.cityBuildings.MassDriver.stateOnCount),game.global.stats.achieve.heavyweight&&(a*=.96**game.global.stats.achieve.heavyweight.l),"dense"===game.global.city.ptrait&&(a*=1.2),game.global.race.cataclysm&&(a*=.2),a},
+        //export function int_fuel_adjust(fuel) from Evolve/src/space.js
+        int_fuel_adjust: function(a){return"heavy"===game.global.race.universe&&(a*=1.2+.3*function(){let a=game.global.race.Dark.count;return game.global.race.Harmony.count>0&&(a*=1+.01*game.global.race.Harmony.count),.995**a}()),game.global.stats.achieve.heavyweight&&(a*=.96**game.global.stats.achieve.heavyweight.l),a},
+    };
+
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
     $(window).on('blur', function(e) {
-        if (game !== undefined && game.keyMultiplier() > 1){
+        if (game && game.global && game.global.settings){
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x10}));
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x25}));
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x100}));
