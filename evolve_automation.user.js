@@ -10375,14 +10375,17 @@
             win = unsafeWindow;
         } else {
             win = window;
-            poly.adjustCosts = win.evolve.adjustCosts;
         }
 
         game = win.evolve;
-
         if (!game) {
             alert("Please enable Debug Mode in settings, and refresh page.");
             return;
+        }
+
+        // poly.adjustCosts it's wrapper for firefox, with code to bypass script sandbox. If we're not on firefox - ignore it, and call real function instead
+        if (typeof unsafeWindow === 'undefined') {
+            poly.adjustCosts = game.adjustCosts;
         }
 
         if (!game.global?.race || !game.breakdown.p.consume) {
