@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.3
+// @version      3.3.1.4
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -44,6 +44,7 @@
     var settings = JSON.parse(localStorage.getItem('settings')) || {};
 
     var game = null;
+    var win = null;
 
     var speciesProtoplasm = "protoplasm";
     var challengeNoCraft = "no_craft";
@@ -10358,11 +10359,8 @@
             return;
         }
 
-        if (typeof unsafeWindow !== 'undefined') {
-            game = unsafeWindow.game;
-        } else {
-            game = window.game;
-        }
+        win = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+        game = win.game;
 
         if (!game) {
             alert("Please enable Debug Mode in settings, and refresh page.");
@@ -13551,7 +13549,7 @@
      * @param {string} elementId Id of the element that the vue is bound to
      */
     function getVueById(elementId) {
-        let element = document.getElementById(elementId);
+        let element = win.document.getElementById(elementId);
         if (element === null) {
             return undefined;
         }
