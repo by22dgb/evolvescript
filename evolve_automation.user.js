@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.4
+// @version      3.3.1.5
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -760,7 +760,7 @@
 
             this.resourceRequirements = [];
 
-            let adjustedCosts = game.adjustCosts(this.definition.cost);
+            let adjustedCosts = poly.adjustCosts(this.definition.cost);
             for (let resourceName in adjustedCosts) {
                 let resourceAmount = Number(adjustedCosts[resourceName]());
                 if (!resourceAmount) {
@@ -2936,10 +2936,6 @@
             state.spyManager.updateLastAttackLoop(govIndex);
             getVueById(this._vueBinding).campaign(govIndex);
 
-            // We don't know what we'll have after campaign until next tick. Let's override garrison with 0, so script won't try to anything else with soldiers until that
-            this.max = 0;
-            this.workers = 0;
-
             return true;
         }
 
@@ -3024,7 +3020,7 @@
         }
 
         getCampaignTitle(tactic) {
-            return getVueById(this._vueBinding)?.$options.filters.tactics(tactic);
+            return getVueById(this._vueBinding).$options.filters.tactics(tactic);
         }
 
         /**
@@ -3838,6 +3834,14 @@
                 return false;
             }
 
+            let price = getUnitBuyPrice(resource) * this.multiplier;
+            if (resources.Money.currentQuantity < price) {
+                return false;
+            }
+
+            resources.Money.currentQuantity -= this.multiplier * getUnitSellPrice(resource.id);
+            resource.currentQuantity += this.multiplier;
+
             getVueById(resource.marketVueBinding).purchase(resource.id);
         }
 
@@ -3849,7 +3853,12 @@
                 return false;
             }
 
-            getUnitSellPrice(resource.id)
+            if (resource.currentQuantity < this.multiplier) {
+                return false;
+            }
+
+            resources.Money.currentQuantity += this.multiplier * getUnitSellPrice(resource.id);
+            resource.currentQuantity -= this.multiplier;
 
             getVueById(resource.marketVueBinding).sell(resource.id);
         }
@@ -4170,7 +4179,7 @@
 
             this.resourceRequirements = [];
 
-            let adjustedCosts = game.adjustCosts(this.definition.cost);
+            let adjustedCosts = poly.adjustCosts(this.definition.cost);
             for (let resourceName in adjustedCosts) {
                 let resourceAmount = Number(adjustedCosts[resourceName]());
                 if (!resourceAmount) {
@@ -4492,8 +4501,8 @@
                 return false;
             }
 
-            const triggerCosts = game.adjustCosts(origTriggerCosts);
-            const actionCosts = game.adjustCosts(origActionCosts);
+            const triggerCosts = poly.adjustCosts(origTriggerCosts);
+            const actionCosts = poly.adjustCosts(origActionCosts);
             // console.log("triggerCosts");
             // Object.keys(triggerCosts).forEach(ele => (console.log(ele + ' ' + triggerCosts[ele]())));
             // console.log("actionCosts");
@@ -6897,12 +6906,12 @@
             const costs = evolution.definition.cost;
 
             if (costs["RNA"]) {
-                let rnaCost = game.adjustCosts(Number(evolution.definition.cost["RNA"]()) || 0);
+                let rnaCost = poly.adjustCosts(Number(evolution.definition.cost["RNA"]()) || 0);
                 maxRNA = Math.max(maxRNA, rnaCost);
             }
 
             if (costs["DNA"]) {
-                let dnaCost = game.adjustCosts(Number(evolution.definition.cost["DNA"]()) || 0);
+                let dnaCost = poly.adjustCosts(Number(evolution.definition.cost["DNA"]()) || 0);
                 maxDNA = Math.max(maxDNA, dnaCost);
             }
         }
@@ -7417,6 +7426,9 @@
         state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
 
         m.launchCampaign(attackIndex);
+        // We don't know what we'll have after campaign until next tick. Let's override garrison with 0, so script won't try to anything else with soldiers until that
+        this.max = 0;
+        this.workers = 0;
     }
 
     //#endregion Auto Battle
@@ -9151,7 +9163,7 @@
 
         // Disable underpowered buildings
         $("span.on.warn").each(function(){
-            let vue = this.parentNode.__vue__;
+            let vue = getVueById(this.parentNode.id);
             if (vue && vue.power_off) {
                 vue.power_off();
             }
@@ -10281,13 +10293,13 @@
             autoGatherResources();
         }
         if (settings.autoMarket) {
-            autoMarket();
+            autoMarket(); // Manual trading invalidates values of resources
         }
         if (settings.govManage) {
             manageGovernment();
         }
         if (settings.autoFight) {
-            autoBattle();
+            autoBattle(); // Launching attacks invalidates amount of alive and healthy soldiers, and adds unaccounted resources
             manageSpies();
         }
         if (settings.autoARPA) {
@@ -10359,7 +10371,13 @@
             return;
         }
 
-        win = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+        if (typeof unsafeWindow !== 'undefined') {
+            win = unsafeWindow;
+        } else {
+            win = window;
+            poly.adjustCosts = win.game.adjustCosts;
+        }
+
         game = win.game;
 
         if (!game) {
@@ -13591,7 +13609,10 @@
     // Polyfills. Minimified ones taken directly from game code with no functional changes
     var poly = {
         //export function arpaAdjustCosts(costs) from Evolve/src/arpa.js
-        arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),game.adjustCosts(t)},
+        arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),poly.adjustCosts(t)},
+
+        // FF compatibility
+        adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}))
     };
 
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
