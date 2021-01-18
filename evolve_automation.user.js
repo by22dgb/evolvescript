@@ -7426,9 +7426,6 @@
         state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
 
         m.launchCampaign(attackIndex);
-        // We don't know what we'll have after campaign until next tick. Let's override garrison with 0, so script won't try to anything else with soldiers until that
-        m.max = 0;
-        m.workers = 0;
     }
 
     //#endregion Auto Battle
@@ -8587,14 +8584,14 @@
         }
 
         // If we haven't got the assemble gene button or don't have full knowledge then return
-        if (game.global.tech["genetics"] < 6 || resources.Knowledge.storageRatio < 0.99) {
+        if (game.global.tech["genetics"] < 6 || resources.Knowledge.storageRatio < 0.99 || resources.Knowledge.currentQuantity < 200000) {
             return;
         }
 
-        let vue = getVueById("arpaSequence");
-        if (vue !== undefined) {
-            vue.novo();
-        }
+        getVueById("arpaSequence").novo();
+
+        resources.Knowledge.currentQuantity -= 200000;
+        resources.Gene.currentQuantity += 1;
     }
 
     //#endregion Auto Assemble Gene
@@ -10296,14 +10293,17 @@
             autoMarket(); // Manual trading invalidates values of resources
         }
         if (settings.govManage) {
-            manageGovernment();
+            manageGovernment(); // TODO: Switch to techocracy affect prices
+        }
+        if (settings.autoHell) {
+            autoHell(); // Should be called before autoFight, while garrison state is still valid
         }
         if (settings.autoFight) {
             autoBattle(); // Launching attacks invalidates amount of alive and healthy soldiers, and adds unaccounted resources
             manageSpies();
         }
         if (settings.autoARPA) {
-            autoArpa();
+            autoArpa();  // TODO: Project build doesn't update resources
         }
         if (settings.autoBuild) {
             autoBuild();
@@ -10322,9 +10322,6 @@
         }
         if (settings.autoTax) {
             autoTax();
-        }
-        if (settings.autoHell) {
-            autoHell();
         }
         if (settings.autoPower) {
             autoBuildingPriority();
