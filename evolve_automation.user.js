@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.5
+// @version      3.3.1.6
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2859,7 +2859,7 @@
     class WarManager {
         constructor() {
             this._vueBinding = "garrison";
-            this._hellVueBinding = "gFort";
+            this._hellVueBinding = "fort";
 
             this._textArmy = "army";
 
@@ -3096,7 +3096,7 @@
 
         // Autohell functions start here
         isHellUnlocked() {
-            let node = document.getElementById("gFort");
+            let node = document.getElementById(this._hellVueBinding);
             return node !== null && node.style.display !== "none";
         }
 
@@ -3156,7 +3156,7 @@
 
                 if (this.hellPatrols * this.hellPatrolSize < this.hellSoldiers){
                     this.hellPatrols += inc;
-                    if (this.hellSoldiers < his.hellPatrols * this.hellPatrolSize){
+                    if (this.hellSoldiers < this.hellPatrols * this.hellPatrolSize){
                         this.hellPatrols = Math.floor(this.hellSoldiers / this.hellPatrolSize);
                     }
                 }
@@ -7427,8 +7427,8 @@
 
         m.launchCampaign(attackIndex);
         // We don't know what we'll have after campaign until next tick. Let's override garrison with 0, so script won't try to anything else with soldiers until that
-        this.max = 0;
-        this.workers = 0;
+        m.max = 0;
+        m.workers = 0;
     }
 
     //#endregion Auto Battle
@@ -7440,11 +7440,11 @@
         if (!m.isHellUnlocked()) { return; }
 
         if (settings.hellTurnOffLogMessages) {
-            if (game.global.portal.fortress.notify) {
-                game.global.portal.fortress.notify = "No";
+            if (game.global.portal.fortress.notify === "Yes") {
+                $("#fort .b-checkbox").eq(0).click();
             }
-            if (game.global.portal.fortress.s_ntfy) {
-                game.global.portal.fortress.s_ntfy = "No";
+            if (game.global.portal.fortress.s_ntfy === "Yes") {
+                $("#fort .b-checkbox").eq(1).click();
             }
         }
 
@@ -10309,13 +10309,13 @@
             autoBuild();
         }
         if (settings.autoCraft) {
-            autoCraft();
+            autoCraft(); // TODO: Count resources for crafting, and update quantity
         }
         if (settings.autoResearch) {
             autoResearch();
         }
         if (settings.autoStorage) {
-            autoStorage();
+            autoStorage(); // TODO: Update maxQuantity
         }
         if (settings.autoJobs) {
             autoJobs();
@@ -10375,17 +10375,17 @@
             win = unsafeWindow;
         } else {
             win = window;
-            poly.adjustCosts = win.game.adjustCosts;
+            poly.adjustCosts = win.evolve.adjustCosts;
         }
 
-        game = win.game;
+        game = win.evolve;
 
         if (!game) {
             alert("Please enable Debug Mode in settings, and refresh page.");
             return;
         }
 
-        if (!game.global || !game.global.race || !game.breakdown.p.consume) {
+        if (!game.global?.race || !game.breakdown.p.consume) {
             setTimeout(mainAutoEvolveScript, 100);
             return;
         }
@@ -13617,26 +13617,15 @@
 
     // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
     $(window).on('blur', function(e) {
-        if (game && game.global && game.global.settings){
+        if (game?.global?.settings){
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x10}));
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x25}));
             document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x100}));
         }
     });
 
-    window.addEventListener('loadAutoEvolveScript', mainAutoEvolveScript)
 
-    $(document).ready(function() {
-        let autoEvolveScriptText = `
-        window.game = window.evolve;
-        window.dispatchEvent(new CustomEvent('loadAutoEvolveScript'));
-        `;
-
-        $('<script>')
-        .attr('type', 'module')
-        .text(autoEvolveScriptText)
-        .appendTo('head');
-    });
+    $().ready(mainAutoEvolveScript);
 
 // @ts-ignore
 })($);
