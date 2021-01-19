@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.8
+// @version      3.3.1.9
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -122,7 +122,7 @@
         }
 
         reset(value, allowOveruse) {
-            if (allowOveruse && game.global.settings.mKeys) {
+            if (allowOveruse && value > 1 && game.global.settings.mKeys) {
                 this._state = {x100: false, x25: false, x10: false};
                 this.set("x100", true);
                 this.set("x25", true);
@@ -807,10 +807,9 @@
             }
 
             //this.updateResourceRequirements();
-            for (let i = 0; i < this.resourceRequirements.length; i++) {
-                let res = this.resourceRequirements[i];
-                res.resource.currentQuantity -= res.quantity;
-            }
+            this.resourceRequirements.forEach(requirement =>
+                requirement.resource.currentQuantity -= requirement.quantity
+            );
 
             this.vue.action();
 
@@ -1206,6 +1205,8 @@
             this.currentQuantity = 0;
             this.maxQuantity = 0;
             this.rateOfChange = 0;
+            this.currentCrates = 0;
+            this.currentContainers = 0;
 
             this.setupCache();
         }
@@ -1236,6 +1237,8 @@
             this.currentQuantity = instance.amount;
             this.maxQuantity = instance.max >= 0 ? instance.max : Number.MAX_SAFE_INTEGER;
             this.rateOfChange = instance.diff;
+            this.currentCrates = instance.crates;
+            this.currentContainers = instance.containers;
         }
 
         isUnlocked() {
@@ -1393,14 +1396,6 @@
             this._autoContainersMax = count;
         }
 
-        get currentCrates() {
-            return this.instance ? this.instance.crates : 0;
-        }
-
-        get currentContainers() {
-            return this.instance ? this.instance.containers : 0;
-        }
-
         /**
          * @param {number} count
          */
@@ -1408,7 +1403,7 @@
             let vue = getVueById(this._stackVueBinding);
             if (vue === undefined) { return false; }
 
-            state.multiplier.reset(count);
+            state.multiplier.reset(count, count >= resources.Crates.currentQuantity);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
                 vue.addCrate(this.id);
@@ -1424,7 +1419,7 @@
             let vue = getVueById(this._stackVueBinding);
             if (vue === undefined) { return false; }
 
-            state.multiplier.reset(count);
+            state.multiplier.reset(count, this.currentCrates - count <= 0);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
                 vue.subCrate(this.id);
@@ -1440,7 +1435,7 @@
             let vue = getVueById(this._stackVueBinding);
             if (vue === undefined) { return false; }
 
-            state.multiplier.reset(count);
+            state.multiplier.reset(count, count >= resources.Containers.currentQuantity);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
                 vue.addCon(this.id);
@@ -1456,7 +1451,7 @@
             let vue = getVueById(this._stackVueBinding);
             if (vue === undefined) { return false; }
 
-            state.multiplier.reset(count);
+            state.multiplier.reset(count, this.currentContainers - count <= 0);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
                 vue.subCon(this.id);
@@ -2595,6 +2590,9 @@
             }
 
             if (this._espionageToPerform !== null) {
+                if (this._espionageToPerform === espionageTypes.Purchase.id) {
+                    resources.Money.currentQuantity -= poly.govPrice("gov" + govIndex);
+                }
                 state.log.logSuccess(loggingTypes.spying, `Performing "${this._espionageToPerform}" covert operation against ${getGovName(govIndex)}.`)
                 let title = game.loc('civics_espionage_actions');
                 state.windowManager.openModalWindowWithCallback(title, this.performEspionageCallback, optionsNode);
@@ -2665,7 +2663,7 @@
 
             if (espionageId === espionageTypes.Purchase.id) {
                 // Check if we have enough spies and money
-                if (game.global.civic.foreign[govProp].spy >= 3 && resources.Money.currentQuantity >= govPrice(govProp)){
+                if (game.global.civic.foreign[govProp].spy >= 3 && resources.Money.currentQuantity >= poly.govPrice(govProp)){
                     return true;
                 }
             }
@@ -3592,11 +3590,9 @@
                 }
             }
 
-            for (let i = 0; i < this.resourceRequirements.length; i++) {
-                let res = this.resourceRequirements[i];
-                let stepCost = res.quantity / 100;
-                res.resource.currentQuantity -= stepCost;
-            }
+            this.resourceRequirements.forEach(requirement =>
+                requirement.resource.currentQuantity -= requirement.quantity / 100
+            );
 
             getVueById(this._vueBinding).build(this.id, 1);
             return true;
@@ -4130,10 +4126,9 @@
             }
 
             this.updateResourceRequirements();
-            for (let i = 0; i < this.resourceRequirements.length; i++) {
-                let res = this.resourceRequirements[i];
-                res.resource.currentQuantity -= res.quantity;
-            }
+            this.resourceRequirements.forEach(requirement =>
+                requirement.resource.currentQuantity -= requirement.quantity
+            );
 
             getVueById(this._vueBinding).action();
             state.log.logSuccess(loggingTypes.research, `${techIds[this.definition.id].title} has been researched.`);
@@ -6895,7 +6890,7 @@
             }
         }
 
-        // Gather some resources and evolve 
+        // Gather some resources and evolve
         let DNAForEvolution = Math.min(maxDNA - resources.DNA.currentQuantity, resources.DNA.maxQuantity - resources.DNA.currentQuantity, resources.RNA.maxQuantity / 2);
         let RNAForDNA = Math.min(DNAForEvolution * 2 - resources.RNA.currentQuantity, resources.RNA.maxQuantity - resources.RNA.currentQuantity);
         let RNARemaining = resources.RNA.currentQuantity + RNAForDNA - DNAForEvolution * 2;
@@ -6906,6 +6901,9 @@
         for (var i = 0; i < RNAForDNA; i++) { rna.action(); }
         for (var i = 0; i < DNAForEvolution; i++) { dna.action(); }
         for (var i = 0; i < RNAForEvolution; i++) { rna.action(); }
+
+        resources.RNA.currentQuantity = RNARemaining + RNAForEvolution;
+        resources.DNA.currentQuantity = resources.DNA.currentQuantity + DNAForEvolution;
 
         // Lets go for our targeted evolution
         let targetedEvolutionFound = false;
@@ -7070,6 +7068,9 @@
         if (!resources.Population.isUnlocked()) { return; }
         if (game.global.race[challengeNoCraft]) { return; }
 
+        let craftAttempts = 0;
+
+        craftLoop:
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
             if (!craftable.isUnlocked()) {
@@ -7078,20 +7079,24 @@
 
             if (craftable.autoCraftEnabled) {
                 let craftRatio = getCraftRatio(craftable);
-                let tryCraft = true;
 
                 //console.log("resource: " + craftable.id + ", length: " + craftable.requiredResources.length);
                 for (let i = 0; i < craftable.resourceRequirements.length; i++) {
                     //console.log("resource: " + craftable.id + " required resource: " + craftable.requiredResources[i].id);
                     if (craftable.resourceRequirements[i].resource.storageRatio < craftRatio) {
-                        tryCraft = false;
+                        continue craftLoop;
                     }
                 }
 
-                if (tryCraft) {
-                    craftable.tryCraftX(5);
-                }
+                craftable.tryCraftX(5);
+                craftAttempts++;
             }
+        }
+
+        if (craftAttempts > 0) {
+            // TODO: Missing exposed craftingRatio to calculate craft result on script side
+            game.updateDebugData();
+            updateScriptData();
         }
     }
 
@@ -8691,7 +8696,6 @@
         }
 
         // Uses exposed action handlers, bypassing vue - they much faster, and that's important with a lot of calls
-        // Clicks only up to full storage, but rateOfChange increased by full amount, so script will know exact number of surplus
         let resPerClick = getResourcesPerClick();
         if (state.cityBuildings.Food.isClickable()){
             let amount = Math.min((resources.Food.maxQuantity - resources.Food.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8699,8 +8703,7 @@
             for (var i = 0; i < amount; i++) {
                 food.action();
             }
-            resources.Food.currentQuantity = Math.max(resources.Food.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
-            resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            resources.Food.currentQuantity = Math.min(resources.Food.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
         }
         if (state.cityBuildings.Lumber.isClickable()){
             let amount = Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8708,8 +8711,7 @@
             for (var i = 0; i < amount; i++) {
                 lumber.action();
             }
-            resources.Lumber.currentQuantity = Math.max(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
-            resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            resources.Lumber.currentQuantity = Math.min(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
         }
         if (state.cityBuildings.Stone.isClickable()){
             let amount = Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8717,8 +8719,7 @@
             for (var i = 0; i < amount; i++) {
                 stone.action();
             }
-            resources.Stone.currentQuantity = Math.max(resources.Stone.currentQuantity + amount * resPerClick, resources.Stone.maxQuantity);
-            resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            resources.Stone.currentQuantity = Math.min(resources.Stone.currentQuantity + amount * resPerClick, resources.Stone.maxQuantity);
         }
         if (state.cityBuildings.Chrysotile.isClickable()){
             let amount = Math.min((resources.Chrysotile.maxQuantity - resources.Chrysotile.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8726,8 +8727,7 @@
             for (var i = 0; i < amount; i++) {
                 chrysotile.action();
             }
-            resources.Chrysotile.currentQuantity = Math.max(resources.Chrysotile.currentQuantity + amount * resPerClick, resources.Chrysotile.maxQuantity);
-            resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            resources.Chrysotile.currentQuantity = Math.min(resources.Chrysotile.currentQuantity + amount * resPerClick, resources.Chrysotile.maxQuantity);
         }
         if (state.cityBuildings.Slaughter.isClickable()){
             let amount = Math.min(Math.max(resources.Lumber.maxQuantity - resources.Lumber.currentQuantity, resources.Food.maxQuantity - resources.Food.currentQuantity, resources.Furs.maxQuantity - resources.Furs.currentQuantity) / resPerClick, settings.buildingClickPerTick);
@@ -8735,15 +8735,12 @@
             for (var i = 0; i < amount; i++) {
                 slaughter.action();
             }
-            resources.Lumber.currentQuantity = Math.max(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
-            resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            resources.Lumber.currentQuantity = Math.min(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
             if (game.global.race[racialTraitSoulEater] && game.global.tech.primitive){
-                resources.Food.currentQuantity = Math.max(resources.Food.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
-                resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                resources.Food.currentQuantity = Math.min(resources.Food.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
             }
             if (resources.Furs.isUnlocked()) {
-                resources.Furs.currentQuantity = Math.max(resources.Furs.currentQuantity + amount * resPerClick, resources.Furs.maxQuantity);
-                resources.Furs.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                resources.Furs.currentQuantity = Math.min(resources.Furs.currentQuantity + amount * resPerClick, resources.Furs.maxQuantity);
             }
         }
     }
@@ -9463,11 +9460,21 @@
             let cratesToBuild = Math.min(numberOfCratesWeCanBuild, Math.ceil(totalStorageMissing / crateVolume));
             m.tryConstructCrate(cratesToBuild);
 
+            resources.Crates.currentQuantity += cratesToBuild;
+            resources.Crates.resourceRequirements.forEach(requirement =>
+                requirement.resource.currentQuantity -= requirement.quantity * cratesToBuild
+            );
+
             // And containers, if still needed
             totalStorageMissing -= cratesToBuild * crateVolume;
             if (totalStorageMissing > 0) {
                 let containersToBuild = Math.min(numberOfContainersWeCanBuild, Math.ceil(totalStorageMissing / crateVolume));
                 m.tryConstructContainer(containersToBuild);
+
+                resources.Containers.currentQuantity += containersToBuild;
+                resources.Containers.resourceRequirements.forEach(requirement =>
+                    requirement.resource.currentQuantity -= requirement.quantity * containersToBuild
+                );
             }
         }
 
@@ -9475,9 +9482,13 @@
         storageAdjustments.forEach(adjustment => {
             if (adjustment.adjustCrates < 0) {
                 adjustment.resource.tryUnassignCrate(adjustment.adjustCrates * -1);
+                adjustment.resource.maxQuantity -= adjustment.adjustCrates * -1 * crateVolume;
+                resources.Crates.currentQuantity += adjustment.adjustCrates * -1;
             }
             if (adjustment.adjustContainers < 0) {
                 adjustment.resource.tryUnassignContainer(adjustment.adjustContainers * -1);
+                adjustment.resource.maxQuantity -= adjustment.adjustContainers * -1 * containerVolume;
+                resources.Containers.currentQuantity += adjustment.adjustContainers * -1;
             }
         });
 
@@ -9485,9 +9496,13 @@
         storageAdjustments.forEach(adjustment => {
             if (adjustment.adjustCrates > 0) {
                 adjustment.resource.tryAssignCrate(adjustment.adjustCrates);
+                adjustment.resource.maxQuantity += adjustment.adjustCrates * crateVolume;
+                resources.Crates.currentQuantity -= adjustment.adjustCrates;
             }
             if (adjustment.adjustContainers > 0) {
                 adjustment.resource.tryAssignContainer(adjustment.adjustContainers);
+                adjustment.resource.maxQuantity += adjustment.adjustContainers * containerVolume;
+                resources.Containers.currentQuantity -= adjustment.adjustContainers;
             }
         });
     }
@@ -9781,6 +9796,57 @@
         for (let id in resources) {
             resources[id].updateData();
         }
+
+        // Reset traded resources, so we can reuse it
+        // game.tradeRatio holds rates for selling, while amount of bought goods is affected by various multipliers, so we're using game.breakdown here to retrieve correct numbers
+        if (settings.autoMarket) {
+            let tradableResources = state.marketManager.getSortedTradeRouteSellList();
+            for (let i = 0; i < tradableResources.length; i++) {
+                let resourceDiff = game.breakdown.p.consume[tradableResources[i].id];
+                if (resourceDiff.Trade) {
+                    tradableResources[i].rateOfChange -= resourceDiff.Trade;
+                }
+            }
+            let moneyDiff = game.breakdown.p.consume["Money"];
+            if (moneyDiff.Trade){
+                resources.Money.rateOfChange -= moneyDiff.Trade;
+            }
+        }
+
+        // Same for ejected resources
+        if (settings.prestigeWhiteholeEjectEnabled && state.spaceBuildings.BlackholeMassEjector.stateOnCount > 0) {
+            resourcesByAtomicMass.forEach(eject => {
+                eject.resource.rateOfChange += game.global.interstellar.mass_ejector[eject.resource.id];
+            });
+        }
+
+        // Add clicking to rate of change, so we can sell or eject it
+        if (settings.buildingAlwaysClick || (settings.autoBuild && resources.Population.currentQuantity <= 15 ||
+           (state.cityBuildings.RockQuarry.isUnlocked() && state.cityBuildings.RockQuarry.count === 0))) {
+            let resPerClick = getResourcesPerClick();
+            if (state.cityBuildings.Food.isClickable()) {
+                resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            }
+            if (state.cityBuildings.Lumber.isClickable()) {
+                resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            }
+            if (state.cityBuildings.Stone.isClickable()) {
+                resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            }
+            if (state.cityBuildings.Chrysotile.isClickable()) {
+                resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick;
+            }
+            if (state.cityBuildings.Slaughter.isClickable()){
+                resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                if (game.global.race[racialTraitSoulEater] && game.global.tech.primitive){
+                    resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                }
+                if (resources.Furs.isUnlocked()) {
+                    resources.Furs.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                }
+            }
+        }
+
         state.warManager.updateData();
         state.marketManager.updateData();
     }
@@ -9824,45 +9890,26 @@
         // Not evolving anymore, clear ignore list
         settings.evolutionIgnore = {};
 
+        // Update data from exposed global
         updateScriptData();
+
+        // Should be called after calculating rate of change
+        state.buildingManager.updateWeighting();
 
         state.buildingManager.updateResourceRequirements();
         state.projectManager.updateResourceRequirements();
         state.triggerManager.updateCompleteTriggers();
         state.triggerManager.resetTargetTriggers();
 
-        // Reset required storage
-        for (let id in resources) {
-            resources[id].storageRequired = 0;
-        }
-
-        // Reset traded resources, so we can reuse it
-        // game.tradeRatio holds rates for selling, while amount of bought goods is affected by various multipliers, so we're using game.breakdown here to retrieve correct numbers
-        if (settings.autoMarket) {
-            let tradableResources = state.marketManager.getSortedTradeRouteSellList();
-            for (let i = 0; i < tradableResources.length; i++) {
-                let resourceDiff = game.breakdown.p.consume[tradableResources[i].id];
-                if (resourceDiff.Trade) {
-                    tradableResources[i].rateOfChange -= resourceDiff.Trade;
-                }
-            }
-            let moneyDiff = game.breakdown.p.consume["Money"];
-            if (moneyDiff.Trade){
-                resources.Money.rateOfChange -= moneyDiff.Trade;
-            }
-        }
-
-        // Same for ejected resources
-        if (settings.prestigeWhiteholeEjectEnabled && state.spaceBuildings.BlackholeMassEjector.stateOnCount > 0) {
-            resourcesByAtomicMass.forEach(eject => {
-                eject.resource.rateOfChange += game.global.interstellar.mass_ejector[eject.resource.id];
-            });
-        }
-
         if (settings.minimumMoneyPercentage > 0) {
             state.minimumMoneyAllowed = resources.Money.maxQuantity * settings.minimumMoneyPercentage / 100;
         } else {
             state.minimumMoneyAllowed = settings.minimumMoney;
+        }
+
+        // Reset required storage
+        for (let id in resources) {
+            resources[id].storageRequired = 0;
         }
 
         // Get list of all unlocked techs, and find biggest numbers for each resource
@@ -9911,9 +9958,6 @@
                 requirement.resource.storageRequired = Math.max(requirement.quantity*0.0103, requirement.resource.storageRequired);
             });
         });
-
-        // Should be called after calculating rate of change
-        state.buildingManager.updateWeighting();
 
         // If our script opened a modal window but it is now closed (and the script didn't close it) then the user did so don't continue
         // with whatever our script was doing with the open modal window.
@@ -10191,16 +10235,11 @@
     }
 
     function initialiseScript() {
-        let tempTech = {};
-        //@ts-ignore
-        for (let [technology, action] of Object.entries(game.actions.tech)) {
-            tempTech[technology] = new Technology(technology);
-            techIds[action.id] = tempTech[technology];
+        for (let [key, action] of Object.entries(game.actions.tech)) {
+            let technology = new Technology(key);
+            tech[key] = technology;
+            techIds[action.id] = technology;
         }
-
-        Object.keys(tempTech).sort().forEach(function(key) {
-            tech[key] = tempTech[key];
-        });
 
         // Filling lookup table for data attributes
         for (let id in resources) {
@@ -10301,13 +10340,13 @@
             autoBuild();
         }
         if (settings.autoCraft) {
-            autoCraft(); // TODO: Count resources for crafting, and update quantity
+            autoCraft();
         }
         if (settings.autoResearch) {
             autoResearch();
         }
         if (settings.autoStorage) {
-            autoStorage(); // TODO: Update maxQuantity
+            autoStorage();
         }
         if (settings.autoJobs) {
             autoJobs();
@@ -13120,6 +13159,7 @@
             let bulkSell = $('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
             scriptNode.append(bulkSell);
             bulkSell.on('mouseup', function(e) {
+                updateScriptData();
                 autoMarket(true, true);
             });
 
@@ -13594,36 +13634,22 @@
 
     //#endregion Utility Functions
 
-    function govPrice(govIndex){ // function govPrice(gov)
-        let price = game.global.civic.foreign[govIndex].eco * 15384;
-        price *= 1 + game.global.civic.foreign[govIndex].hstl * 1.6 / 100;
-        price *= 1 - game.global.civic.foreign[govIndex].unrest * 0.25 / 100;
-        return +price.toFixed(0);
-    }
-
-    // Polyfills. Minimified ones taken directly from game code with no functional changes
     var poly = {
-        //export function arpaAdjustCosts(costs) from Evolve/src/arpa.js
+    // Taken directly from game code(v1.0.24) with no functional changes, and minimified:
+        // export function arpaAdjustCosts(costs) from arpa.js
         arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),poly.adjustCosts(t)},
+        // function govPrice(gov) from civics.js
+        govPrice: function(e){let i=game.global.civic.foreign[e],o=15384*i.eco;return o*=1+1.6*i.hstl/100,+(o*=1-.25*i.unrest/100).toFixed(0)},
 
+    // Reimplemented:
         // export function crateValue() from Evolve/src/resources.js
         crateValue: () => Number(getVueById("createHead").buildCrateDesc().match(/(\d+)/g)[1]),
         // export function containerValue() from Evolve/src/resources.js
         containerValue: () => Number(getVueById("createHead").buildContainerDesc().match(/(\d+)/g)[1]),
 
-        // FF compatibility
+    // Firefox compatibility:
         adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}))
     };
-
-    // Alt tabbing can leave modifier keys pressed. When the window loses focus release all modifier keys.
-    $(window).on('blur', function(e) {
-        if (game?.global?.settings){
-            document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x10}));
-            document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x25}));
-            document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x100}));
-        }
-    });
-
 
     $().ready(mainAutoEvolveScript);
 
