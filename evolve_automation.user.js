@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.6
+// @version      3.3.1.7
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -762,11 +762,10 @@
 
             let adjustedCosts = poly.adjustCosts(this.definition.cost);
             for (let resourceName in adjustedCosts) {
-                let resourceAmount = Number(adjustedCosts[resourceName]());
-                if (!resourceAmount) {
-                    continue;
+                if (resources[resourceName]) {
+                    let resourceAmount = Number(adjustedCosts[resourceName]());
+                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
                 }
-                this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
             }
         }
 
@@ -3545,11 +3544,10 @@
 
             let adjustedCosts = poly.arpaAdjustCosts(this.definition.cost);
             for (let resourceName in adjustedCosts) {
-                let resourceAmount = Number(adjustedCosts[resourceName]());
-                if (!resourceAmount) {
-                    continue;
+                if (resources[resourceName]) {
+                    let resourceAmount = Number(adjustedCosts[resourceName]());
+                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
                 }
-                this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
             }
         }
 
@@ -3788,11 +3786,11 @@
 
             // marketItem > vBind > purchase from resources.js
             let price = game.global.resource[resource.id].value;
-            if (global.race['arrogant']){
+            if (game.global.race['arrogant']){
                 let traitsArrogant0 = 10;
                 price *= 1 + (traitsArrogant0 / 100);
             }
-            if (global.race['conniving']){
+            if (game.global.race['conniving']){
                 let traitsConniving0 = 5;
                 price *= 1 - (traitsConniving0 / 100);
             }
@@ -4181,11 +4179,10 @@
 
             let adjustedCosts = poly.adjustCosts(this.definition.cost);
             for (let resourceName in adjustedCosts) {
-                let resourceAmount = Number(adjustedCosts[resourceName]());
-                if (!resourceAmount) {
-                    continue;
+                if (resources[resourceName]) {
+                    let resourceAmount = Number(adjustedCosts[resourceName]());
+                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
                 }
-                this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
             }
         }
     }
@@ -8591,7 +8588,7 @@
         getVueById("arpaSequence").novo();
 
         resources.Knowledge.currentQuantity -= 200000;
-        resources.Gene.currentQuantity += 1;
+        resources.Genes.currentQuantity += 1;
     }
 
     //#endregion Auto Assemble Gene
