@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.7
+// @version      3.3.1.8
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -121,12 +121,20 @@
             }
         }
 
-        reset(value) {
-            this._state = {x100: true, x25: true, x10: true};
-            this.set("x100", false);
-            this.set("x25", false);
-            this.set("x10", false);
-            this._remainder = value;
+        reset(value, allowOveruse) {
+            if (allowOveruse && game.global.settings.mKeys) {
+                this._state = {x100: false, x25: false, x10: false};
+                this.set("x100", true);
+                this.set("x25", true);
+                this.set("x10", true);
+                this._remainder = Math.ceil(value / 25000) * 25000
+            } else {
+                this._state = {x100: true, x25: true, x10: true};
+                this.set("x100", false);
+                this.set("x25", false);
+                this.set("x10", false);
+                this._remainder = value;
+            }
         }
 
         get remainder() {
@@ -388,13 +396,9 @@
                 this.removeWorkers(-1 * count);
             }
 
-            if (this.count + count > this.max) {
-                count = this.max - this.count;
-            }
-
             let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
-                state.multiplier.reset(count);
+                state.multiplier.reset(count, this.count + count >= this.max);
                 while (state.multiplier.remainder > 0) {
                     state.multiplier.setMultiplier();
                     vue.add();
@@ -422,13 +426,9 @@
                 this.addWorkers(-1 * count);
             }
 
-            if (this.count - count < 0) {
-                count = this.count;
-            }
-
             let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
-                state.multiplier.reset(count);
+                state.multiplier.reset(count, this.count - count <= 0);
                 while (state.multiplier.remainder > 0) {
                     state.multiplier.setMultiplier();
                     vue.sub();
@@ -520,7 +520,7 @@
 
             let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
-                state.multiplier.reset(count);
+                state.multiplier.reset(count, this.count + count >= this.max);
                 while (state.multiplier.remainder > 0) {
                     state.multiplier.setMultiplier();
                     vue.add(this._originalId);
@@ -544,13 +544,9 @@
                 this.addWorkers(-1 * count);
             }
 
-            if (this.count - count < 0) {
-                count = this.count;
-            }
-
             let vue = getVueById(this._vueBinding);
             if (vue !== undefined) {
-                state.multiplier.reset(count);
+                state.multiplier.reset(count, this.count - count <= 0);
                 while (state.multiplier.remainder > 0) {
                     state.multiplier.setMultiplier();
                     vue.sub(this._originalId);
@@ -952,7 +948,7 @@
             }
 
             if (adjustCount > 0) {
-                state.multiplier.reset(adjustCount);
+                state.multiplier.reset(adjustCount, this.stateOnCount + adjustCount >= this.count);
                 while (state.multiplier.remainder > 0) {
                     state.multiplier.setMultiplier();
                     this.vue.power_on();
@@ -964,7 +960,7 @@
             if (adjustCount < 0) {
                 adjustCount = adjustCount * -1; // We always want a positive number as we're calling an opposite function
 
-                state.multiplier.reset(adjustCount);
+                state.multiplier.reset(adjustCount, this.stateOnCount - adjustCount <= 0);
                 while (state.multiplier.remainder > 0) {
                     state.multiplier.setMultiplier();
                     this.vue.power_off();
@@ -1231,7 +1227,7 @@
             return this._id;
         }
 
-        updateState() {
+        updateData() {
             if (!this.isUnlocked()) {
                 return;
             }
@@ -1240,7 +1236,6 @@
             this.currentQuantity = instance.amount;
             this.maxQuantity = instance.max >= 0 ? instance.max : Number.MAX_SAFE_INTEGER;
             this.rateOfChange = instance.diff;
-            this.storageRequired = 0;
         }
 
         isUnlocked() {
@@ -1500,7 +1495,7 @@
 
         //#region Standard resource
 
-        updateState() {
+        updateData() {
             if (!this.isUnlocked()) {
                 return;
             }
@@ -1508,7 +1503,6 @@
             this.currentQuantity = game.global.city.power;
             this.maxQuantity = Number.MAX_SAFE_INTEGER;
             this.rateOfChange = game.global.city.power;
-            this.storageRequired = 0;
         }
 
         isUnlocked() {
@@ -1536,7 +1530,7 @@
 
         //#region Standard resource
 
-        updateState() {
+        updateData() {
             if (!this.isUnlocked()) {
                 return;
             }
@@ -1568,7 +1562,7 @@
             super(name, id);
         }
 
-        updateState() {
+        updateData() {
             if (!this.isUnlocked()) {
                 return;
             }
@@ -2878,7 +2872,7 @@
             this.hellAssigned = 0;
         }
 
-        updateState() {
+        updateData() {
             if (!this.isUnlocked()) {
                 return;
             }
@@ -3676,7 +3670,7 @@
             this.multiplier = 0;
         }
 
-        updateState() {
+        updateData() {
             if (!this.isUnlocked()) {
                 return;
             }
@@ -3847,7 +3841,7 @@
                 return false;
             }
 
-            resources.Money.currentQuantity -= this.multiplier * getUnitSellPrice(resource.id);
+            resources.Money.currentQuantity -= this.multiplier * this.getUnitSellPrice(resource);
             resource.currentQuantity += this.multiplier;
 
             getVueById(resource.marketVueBinding).purchase(resource.id);
@@ -3865,7 +3859,7 @@
                 return false;
             }
 
-            resources.Money.currentQuantity += this.multiplier * getUnitSellPrice(resource.id);
+            resources.Money.currentQuantity += this.multiplier * this.getUnitSellPrice(resource);
             resource.currentQuantity -= this.multiplier;
 
             getVueById(resource.marketVueBinding).sell(resource.id);
@@ -4057,28 +4051,6 @@
             }
 
             return true;
-        }
-
-        getCrateVolume() {
-            let vue = getVueById(this._storageVueBinding);
-            if (vue) {
-                let crateDescNumbers = vue.buildCrateDesc().match(/(\d+)/g);
-                if (crateDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
-                  return Number(crateDescNumbers[1]);
-                }
-            }
-            return 350;
-        }
-
-        getContainerVolume() {
-            let vue = getVueById(this._storageVueBinding);
-            if (vue) {
-                let containerDescNumbers = vue.buildContainerDesc().match(/(\d+)/g);
-                if (containerDescNumbers.length == 2){ // Should have 2 numbers: cost and volume
-                  return Number(containerDescNumbers[1]);
-                }
-            }
-            return 800;
         }
     }
 
@@ -7433,6 +7405,11 @@
         state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
 
         m.launchCampaign(attackIndex);
+
+        // We can't predict what happened during attack - our losses and gains, so let's request fresh data if launched attack this tick
+        // Amount of alive soldiers not really important if autoFight called after autoHell, but looted resources still can be used
+        game.updateDebugData();
+        updateScriptData();
     }
 
     //#endregion Auto Battle
@@ -9300,8 +9277,8 @@
             return;
         }
 
-        let crateVolume = m.getCrateVolume();
-        let containerVolume = m.getContainerVolume();
+        let crateVolume = poly.crateValue();
+        let containerVolume = poly.containerValue();
         let totalCrates = resources.Crates.currentQuantity;
         let totalContainers = resources.Containers.currentQuantity;
         let storageAdjustments = [];
@@ -9516,8 +9493,12 @@
     }
 
     function autoMinorTrait() {
-        let traitList = state.minorTraitManager.managedPriorityList();
+        let m = state.minorTraitManager;
+        if (!m.isUnlocked()) {
+            return;
+        }
 
+        let traitList = m.managedPriorityList();
         if (traitList.length === 0) {
             return;
         }
@@ -9535,7 +9516,7 @@
             if (trait.autoMinorTraitWeighting / totalWeighting >= trait.geneCost / totalGeneCost) {
                 if (resources.Genes.currentQuantity > trait.geneCost) {
                     //console.log("trying to buy " + trait.traitName + " at cost " + trait.geneCost)
-                    state.minorTraitManager.tryBuyWithGenes(trait.traitName, 1);
+                    m.tryBuyWithGenes(trait.traitName, 1);
                 }
             }
         });
@@ -9796,6 +9777,14 @@
 
     //#region Main Loop
 
+    function updateScriptData() {
+        for (let id in resources) {
+            resources[id].updateData();
+        }
+        state.warManager.updateData();
+        state.marketManager.updateData();
+    }
+
     function updateState() {
         if (game.global.race.species === speciesProtoplasm) {
             state.goal = "Evolution";
@@ -9835,14 +9824,16 @@
         // Not evolving anymore, clear ignore list
         settings.evolutionIgnore = {};
 
+        updateScriptData();
+
         state.buildingManager.updateResourceRequirements();
         state.projectManager.updateResourceRequirements();
         state.triggerManager.updateCompleteTriggers();
         state.triggerManager.resetTargetTriggers();
 
-        // Reset calculated rate of changes, and required storage
+        // Reset required storage
         for (let id in resources) {
-            resources[id].updateState();
+            resources[id].storageRequired = 0;
         }
 
         // Reset traded resources, so we can reuse it
@@ -9958,9 +9949,6 @@
 
         state.spaceBuildings.PortalEastTower.gameMax = towerSize;
         state.spaceBuildings.PortalWestTower.gameMax = towerSize;
-
-        state.warManager.updateState();
-        state.marketManager.updateState();
     }
 
     function verifyGameActions() {
@@ -10274,10 +10262,7 @@
         // We've still updated the UI etc. above; just not performing any actions.
         if (!settings.masterScriptToggle) { return; }
 
-        if (state.goal === "GameOverMan"){
-            if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; };
-            return;
-        }
+        if (state.goal === "GameOverMan"){ return; }
 
         if (state.goal === "Evolution") {
             if (settings.autoEvolution) {
@@ -10303,10 +10288,10 @@
             manageGovernment(); // TODO: Switch to techocracy affect prices
         }
         if (settings.autoHell) {
-            autoHell(); // Should be called before autoFight, while garrison state is still valid
+            autoHell();
         }
         if (settings.autoFight) {
-            autoBattle(); // Launching attacks invalidates amount of alive and healthy soldiers, and adds unaccounted resources
+            autoBattle();
             manageSpies();
         }
         if (settings.autoARPA) {
@@ -10403,6 +10388,9 @@
         }
 
         if (document.title === "Evolve Scripting Edition") {
+            // In Scripting Edition data don't need to be updated
+            game.updateDebugData = () => true;
+
             state.scriptingEdition = true;
         }
 
@@ -13617,6 +13605,11 @@
     var poly = {
         //export function arpaAdjustCosts(costs) from Evolve/src/arpa.js
         arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),poly.adjustCosts(t)},
+
+        // export function crateValue() from Evolve/src/resources.js
+        crateValue: () => Number(getVueById("createHead").buildCrateDesc().match(/(\d+)/g)[1]),
+        // export function containerValue() from Evolve/src/resources.js
+        containerValue: () => Number(getVueById("createHead").buildContainerDesc().match(/(\d+)/g)[1]),
 
         // FF compatibility
         adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}))
