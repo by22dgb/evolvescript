@@ -2871,17 +2871,15 @@
         }
 
         updateData() {
-            if (!this.isUnlocked()) {
-                return;
+            if (game.global.civic.garrison) {
+                this.tactic = game.global.civic.garrison.tactic;
+                this.workers = game.global.civic.garrison.workers;
+                this.wounded = game.global.civic.garrison.wounded;
+                this.raid = game.global.civic.garrison.raid;
+                this.max = game.global.civic.garrison.max;
+                this.m_use = game.global.civic.garrison.m_use;
+                this.crew = game.global.civic.garrison.crew;
             }
-
-            this.tactic = game.global.civic.garrison.tactic;
-            this.workers = game.global.civic.garrison.workers;
-            this.wounded = game.global.civic.garrison.wounded;
-            this.raid = game.global.civic.garrison.raid;
-            this.max = game.global.civic.garrison.max;
-            this.m_use = game.global.civic.garrison.m_use;
-            this.crew = game.global.civic.garrison.crew;
 
             if (game.global.portal.fortress) {
                 this.hellSoldiers = game.global.portal.fortress.garrison;
