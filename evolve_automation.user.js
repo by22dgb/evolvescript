@@ -810,10 +810,10 @@
                 return false
             }
 
-            this.updateResourceRequirements();
+            //this.updateResourceRequirements();
             for (let i = 0; i < this.resourceRequirements.length; i++) {
                 let res = this.resourceRequirements[i];
-                res.resource.currentQuantity -= res.amount;
+                res.resource.currentQuantity -= res.quantity;
             }
 
             this.vue.action();
@@ -3584,14 +3584,24 @@
                 return false;
             }
 
-            if (!this.ignoreMinimumMoneySetting) {
-                let moneyRequirement = this.resourceRequirements.find(requirement => requirement.resource === resources.Money);
-                if (moneyRequirement && moneyRequirement.quantity > 0) {
-                    let moneyFloor = moneyRequirement.quantity / 100; // We are building in steps of 1%
-                    if (resources.Money.currentQuantity - moneyFloor < state.minimumMoneyAllowed) {
-                        return false;
-                    }
+            //this.updateResourceRequirements();
+            for (let i = 0; i < this.resourceRequirements.length; i++) {
+                let res = this.resourceRequirements[i];
+                let stepCost = res.quantity / 100;
+
+                if (!this.ignoreMinimumMoneySetting && res.resource === resources.Money && stepCost > 0 && resources.Money.currentQuantity - stepCost < state.minimumMoneyAllowed) {
+                    return false;
                 }
+
+                if (res.resource.currentQuantity < stepCost) {
+                    return false;
+                }
+            }
+
+            for (let i = 0; i < this.resourceRequirements.length; i++) {
+                let res = this.resourceRequirements[i];
+                let stepCost = res.quantity / 100;
+                res.resource.currentQuantity -= stepCost;
             }
 
             getVueById(this._vueBinding).build(this.id, 1);
@@ -4150,7 +4160,7 @@
             this.updateResourceRequirements();
             for (let i = 0; i < this.resourceRequirements.length; i++) {
                 let res = this.resourceRequirements[i];
-                res.resource.currentQuantity -= res.amount;
+                res.resource.currentQuantity -= res.quantity;
             }
 
             getVueById(this._vueBinding).action();
@@ -10300,7 +10310,7 @@
             manageSpies();
         }
         if (settings.autoARPA) {
-            autoArpa();  // TODO: Project build doesn't update resources
+            autoArpa();
         }
         if (settings.autoBuild) {
             autoBuild();
