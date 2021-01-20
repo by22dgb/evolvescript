@@ -8366,36 +8366,49 @@
             });
         }
 
-        // Only eject if storage cap reached for resource
+        // Limited eject
         if (state.spaceBuildings.BlackholeMassEjector.stateOnCount < settings.prestigeWhiteholeEjectAllCount) {
             let remaining = state.spaceBuildings.BlackholeMassEjector.stateOnCount * 1000;
             adjustMassEjector = true;
 
+            // First we want to eject capped resources
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
 
-                if (remaining <= 0 || resource.isCraftable()) {
+                if (remaining <= 0 || resource.storageRatio < 0.98) {
                     resourceRequirement.requirement = 0;
                     return;
                 }
 
-                let ejectableAmount = 0;
-                if (resource.storageRatio > 0.98) {
-                    ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.rateOfChange));
-                }
-
-                // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it, or it's Adamantite(we need it to get more ejectors).
-                if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
-                    ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.decayRate * settings.prestigeWhiteholeDecayRate));
-                }
-
-                if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 0 && resource.currentQuantity >= resource.storageRequired) {
-                    ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.rateOfChange));
-                }
-
-                resourceRequirement.requirement = Math.min(remaining, ejectableAmount);
+                resourceRequirement.requirement = Math.min(remaining, Math.ceil(resource.rateOfChange));
                 remaining -= resourceRequirement.requirement;
             });
+
+            // And if we still have some ejectors remaining, let's try to find something else
+            if (remaining > 0 && (settings.prestigeWhiteholeEjectExcess || (game.global.race[challengeDecay] && settings.prestigeWhiteholeDecayRate > 0))) {
+                resourcesByAtomicMass.forEach(resourceRequirement => {
+                    let resource = resourceRequirement.resource;
+
+                    if (remaining <= 0 || resource.isCraftable()) {
+                        return;
+                    }
+
+                    let ejectableAmount = resourceRequirement.requirement;
+                    remaining += resourceRequirement.requirement;
+
+                    // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it, or it's Adamantite(we need it to get more ejectors).
+                    if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
+                        ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.decayRate * settings.prestigeWhiteholeDecayRate));
+                    }
+
+                    if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 0 && resource.currentQuantity >= resource.storageRequired) {
+                        ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.rateOfChange));
+                    }
+
+                    resourceRequirement.requirement = Math.min(remaining, ejectableAmount);
+                    remaining -= resourceRequirement.requirement;
+                });
+            }
         }
 
         if (!adjustMassEjector) { return; }
