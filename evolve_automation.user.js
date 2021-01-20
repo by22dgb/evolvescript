@@ -29,7 +29,6 @@
 //   Expanded triggers, they got "researched" and "built" conditions, and "build" action. And an option to import missing resources required to perform chosen action. Once condition is met and action is available script will set trade routes for what it missing. It can import steel for crucible, titanium for hunter process, uranium for mutual destruction, and same for buildings - whatever you need.
 //   Added option to import resources for queued buildings and researches
 //   Reworked fighting\spying. At first glance it have less configurable options now, but range of possible outcomes is wider, and route to them is more optimal. With default settings it'll sabotage, plunder, and then annex all foreign powers, gradually moving from top to bottom of the list, as they becomes weak enough, and then occupy last city to finish unification. By tweaking settings it's possible to configure script to get any unification achievment(annex\purchase\occupy\reject, with or without pacifism).
-//   Added basic support for magic universe - managing crystal miners, and autobuilding pylons
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
 //   Added evolution queue. If queue enabled and not empty, settings from top of the list will be applied before next evolution, and then removed from queue. When you add new evolution to queue script stores currently configured race, prestige type, and challenges. Evolution settings can also be edited manualy, and can store any settings, but be very careful doing that, as those data will be imported intro script settings without any validation, except for synthax check.
 //   Standalone autoAchievements option is gone. It's now selectable as a race. Conditional races now can be chosen by auto achievments during random evolution. With mass extinction perk conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one.
@@ -316,12 +315,7 @@
                 return this.jobOverride.isCraftsman();
             }
 
-            // Scripting Edition expose a function, rather than it's result. So we need to actually call it.
-            if (state.scriptingEdition) {
-                return game.craftCost()[this._originalId] !== undefined;
-            } else {
-                return game.craftCost[this._originalId] !== undefined;
-            }
+            return poly.craftCost()[this._originalId] !== undefined;
         }
 
         get count() {
@@ -685,7 +679,7 @@
         get title() {
             let definition = this.definition;
             if (definition !== undefined) {
-                return typeof this.definition.title === 'string' ? this.definition.title : this.definition.title();
+                return typeof definition.title === 'string' ? definition.title : definition.title();
             }
 
             // There is no definition...
@@ -728,25 +722,18 @@
                 return this.overridePowered;
             }
 
-            if (!this.definition.hasOwnProperty("powered")) {
+            let definition = this.definition;
+            if (!definition.hasOwnProperty("powered")) {
                 return 0;
             }
 
-            //checkPowerRequirements()
-            if (this.definition.hasOwnProperty("power_reqs")) {
-                let power_reqs = this.definition.power_reqs;
-                let isMet = true;
-                Object.keys(power_reqs).forEach(function (req){
-                    if (!game.global.tech[req] || game.global.tech[req] < power_reqs[req]){
-                        isMet = false;
-                    }
-                });
-                if (!isMet) {
+            for (let req in definition.power_reqs || {}) {
+                if (!game.global.tech[req] || game.global.tech[req] < definition.power_reqs[req]){
                     return 0;
                 }
             }
 
-            return this.definition.powered();
+            return definition.powered();
         }
 
         updateResourceRequirements() {
@@ -890,7 +877,7 @@
                 return false;
             }
 
-            return this.instance !== undefined && this.instance.hasOwnProperty("count");
+            return this.instance?.hasOwnProperty("count");
         }
 
         get count() {
@@ -1124,21 +1111,9 @@
 
         /**
          * @param {string} traitName
-         * @param {number} count
          */
-        tryBuyWithGenes(traitName, count) {
-            if (count === 0) { return true; }
-            if (!this.isUnlocked()) { return false; }
-            let vue = getVueById(this._traitVueBinding);
-            if (vue === undefined) { return false; }
-
-            state.multiplier.reset(count);
-            while (state.multiplier.remainder > 0) {
-                state.multiplier.setMultiplier();
-                vue.gene(traitName);
-            }
-
-            return true;
+        buyTrait(traitName) {
+            getVueById(this._traitVueBinding)?.gene(traitName);
         }
     }
 
@@ -1329,11 +1304,7 @@
         }
 
         isCraftable() {
-            if (state.scriptingEdition) {
-                return game.craftCost().hasOwnProperty(this.id);
-            } else {
-                return game.craftCost.hasOwnProperty(this.id);
-            }
+            return poly.craftCost().hasOwnProperty(this.id);
         }
 
         hasStorage() {
@@ -3551,19 +3522,11 @@
         }
 
         get level() {
-            if (this.instance === undefined || !this.instance.hasOwnProperty("rank")) {
-                return 0;
-            }
-
-            return this.instance.rank;
+            return this.instance?.rank || 0;
         }
 
         get progress() {
-            if (this.instance === undefined || !this.instance.hasOwnProperty("complete")) {
-                return 0;
-            }
-
-            return this.instance.complete;
+            return this.instance?.complete || 0;
         }
 
         /**
@@ -3665,11 +3628,9 @@
         }
 
         updateData() {
-            if (!this.isUnlocked()) {
-                return;
+            if (game.global.city.market) {
+                this.multiplier = game.global.city.market.qty;
             }
-
-            this.multiplier = game.global.city.market.qty;
         }
 
         isUnlocked() {
@@ -5169,7 +5130,7 @@
             NeutronStellarForge: new Action("Neutron Stellar Forge", "interstellar", "stellar_forge", "int_neutron"),
 
             Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole", {mission: true}),
-            BlackholeFarReach: new Action("Blackhole Far Reach", "interstellar", "far_reach", "int_blackhole", {knowledge: true}),
+            BlackholeFarReach: new Action("Blackhole Farpoint", "interstellar", "far_reach", "int_blackhole", {knowledge: true}),
             BlackholeStellarEngine: new Action("Blackhole Stellar Engine", "interstellar", "stellar_engine", "int_blackhole"),
             BlackholeMassEjector: new Action("Blackhole Mass Ejector", "interstellar", "mass_ejector", "int_blackhole"),
 
@@ -5252,27 +5213,13 @@
 
     function initialiseState() {
         // Construct craftable resource list
-        state.craftableResourceList.push(resources.Plywood);
-        resources.Plywood.resourceRequirements.push(new ResourceRequirement(resources.Lumber, 100));
-        state.craftableResourceList.push(resources.Brick);
-        resources.Brick.resourceRequirements.push(new ResourceRequirement(resources.Cement, 40));
-        state.craftableResourceList.push(resources.Wrought_Iron);
-        resources.Wrought_Iron.resourceRequirements.push(new ResourceRequirement(resources.Iron, 80));
-        state.craftableResourceList.push(resources.Sheet_Metal);
-        resources.Sheet_Metal.resourceRequirements.push(new ResourceRequirement(resources.Aluminium, 120));
-        state.craftableResourceList.push(resources.Mythril);
-        resources.Mythril.resourceRequirements.push(new ResourceRequirement(resources.Iridium, 100));
-        resources.Mythril.resourceRequirements.push(new ResourceRequirement(resources.Alloy, 250));
-        state.craftableResourceList.push(resources.Aerogel);
-        resources.Aerogel.resourceRequirements.push(new ResourceRequirement(resources.Graphene, 2500));
-        resources.Aerogel.resourceRequirements.push(new ResourceRequirement(resources.Infernite, 50));
-        state.craftableResourceList.push(resources.Nanoweave);
-        resources.Nanoweave.resourceRequirements.push(new ResourceRequirement(resources.Nano_Tube, 1000));
-        resources.Nanoweave.resourceRequirements.push(new ResourceRequirement(resources.Vitreloy, 40));
-        state.craftableResourceList.push(resources.Scarletite);
-        resources.Scarletite.resourceRequirements.push(new ResourceRequirement(resources.Iron, 250000));
-        resources.Scarletite.resourceRequirements.push(new ResourceRequirement(resources.Adamantite, 7500));
-        resources.Scarletite.resourceRequirements.push(new ResourceRequirement(resources.Orichalcum, 500));
+        for (let [name, costs] of Object.entries(poly.craftCost())) {
+            for (let i = 0; i < costs.length; i++) {
+                resources[name].resourceRequirements.push(new ResourceRequirement(resources[costs[i].r], costs[i].a));
+            }
+            state.craftableResourceList.push(resources[name]);
+        }
+        // TODO: Craft costs aren't constant. They can change if player mutate out of wasteful. But original game expose static objects, we'd need to refresh page to get actual data.
 
         // Lets set our crate / container resource requirements
         resources.Crates.resourceRequirements.push(new ResourceRequirement(resources.Plywood, 10));
@@ -5366,9 +5313,9 @@
         state.spaceBuildings.AlphaLaboratory.addResourceConsumption(resources.Alpha_Support, 1);
         state.spaceBuildings.AlphaExchange.addResourceConsumption(resources.Alpha_Support, 1);
         state.spaceBuildings.AlphaFactory.addResourceConsumption(resources.Alpha_Support, 1);
-        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Lumber, 350, 100);
-        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Coal, 25, 10);
-        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Oil, 15, 10);
+        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Lumber, 350, 0);
+        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Coal, 25, 0);
+        state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Oil, 15, 0);
 
         state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.Alpha_Support, -1);
         state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.Uranium, 0.28);
@@ -8381,7 +8328,7 @@
                     return;
                 }
 
-                // These are from the autoBuildingPriority(). If we reduce below these figures then buildings start being turned off...
+                // These are from the autoPower(). If we reduce below these figures then buildings start being turned off...
                 // Leave enough neutronium to stabilise the blackhole if required
                 let allowedRatio = 0.06;
                 if (resource === resources.Food) { allowedRatio = 0.11; }
@@ -8683,14 +8630,8 @@
 
     function autoGatherResources() {
         // Don't spam click once we've got a bit of population going
-        if (!settings.buildingAlwaysClick && resources.Population.currentQuantity > 15) {
-            if (!state.cityBuildings.RockQuarry.isUnlocked()) {
-                return;
-            }
-
-            if (state.cityBuildings.RockQuarry.count > 0) {
-                return;
-            }
+        if (!settings.buildingAlwaysClick && resources.Population.currentQuantity > 15 && state.cityBuildings.RockQuarry.count > 0) {
+            return;
         }
 
         // Uses exposed action handlers, bypassing vue - they much faster, and that's important with a lot of calls
@@ -9122,7 +9063,7 @@
 
     //#region Auto Power
 
-    function autoBuildingPriority() {
+    function autoPower() {
         let availablePowerNode = document.querySelector('#powerMeter');
 
         // Only start doing this once power becomes available. Isn't useful before then
@@ -9139,10 +9080,7 @@
 
         // Disable underpowered buildings
         $("span.on.warn").each(function(){
-            let vue = getVueById(this.parentNode.id);
-            if (vue && vue.power_off) {
-                vue.power_off();
-            }
+            getVueById(this.parentNode.id)?.power_off?.();
         });
 
         // Calculate the available power / resource rates of change that we have to work with
@@ -9169,6 +9107,10 @@
             }
         }
 
+        let maxAttractors = (settings.autoHell && settings.hellHandleAttractors) ? state.warManager.hellAttractorMax : Number.MAX_SAFE_INTEGER;
+        let maxTourists = resources.Money.storageRatio > 0.98 ? state.cityBuildings.TouristCenter.stateOnCount - 1 : Number.MAX_SAFE_INTEGER;
+        let maxMill = state.cityBuildings.Mill.powered ? state.cityBuildings.Mill.stateOnCount - Math.floor((resources.Power.currentQuantity - 5) / -(state.cityBuildings.Mill.powered)) : Number.MAX_SAFE_INTEGER;
+
         // Start assigning buildings from the top of our priority list to the bottom
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
@@ -9182,12 +9124,18 @@
                     }
                 }
 
-                if (settings.autoHell && settings.hellHandleAttractors && building === state.spaceBuildings.PortalAttractor && requiredStateOn >= state.warManager.hellAttractorMax) {
+                // Leave attractors to autoHell
+                if (building === state.spaceBuildings.PortalAttractor && requiredStateOn >= maxAttractors) {
                     continue;
                 }
 
-                if (building === state.cityBuildings.TouristCenter && resources.Money.storageRatio > 0.98) {
-                    requiredStateOn = Math.max(0, building.stateOnCount - 1);
+                // Disable tourist center with full money
+                if (building === state.cityBuildings.TouristCenter && requiredStateOn >= maxTourists) {
+                    continue;
+                }
+
+                // Disable mills with surplus energy
+                if (building === state.cityBuildings.Mill && requiredStateOn >= maxMill) {
                     continue;
                 }
 
@@ -9529,7 +9477,7 @@
             if (trait.autoMinorTraitWeighting / totalWeighting >= trait.geneCost / totalGeneCost) {
                 if (resources.Genes.currentQuantity > trait.geneCost) {
                     //console.log("trying to buy " + trait.traitName + " at cost " + trait.geneCost)
-                    m.tryBuyWithGenes(trait.traitName, 1);
+                    m.buyTrait(trait.traitName);
                 }
             }
         });
@@ -9819,8 +9767,7 @@
         }
 
         // Add clicking to rate of change, so we can sell or eject it
-        if (settings.buildingAlwaysClick || (settings.autoBuild && resources.Population.currentQuantity <= 15 ||
-           (state.cityBuildings.RockQuarry.isUnlocked() && state.cityBuildings.RockQuarry.count === 0))) {
+        if (settings.buildingAlwaysClick || (settings.autoBuild && (resources.Population.currentQuantity <= 15 || state.cityBuildings.RockQuarry.count < 1))) {
             let resPerClick = getResourcesPerClick();
             if (state.cityBuildings.Food.isClickable()) {
                 resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
@@ -10353,7 +10300,7 @@
             autoTax();
         }
         if (settings.autoPower) {
-            autoBuildingPriority();
+            autoPower();
         }
         if (settings.autoFactory) {
             autoFactory();
@@ -10427,6 +10374,8 @@
         if (document.title === "Evolve Scripting Edition") {
             // In Scripting Edition data don't need to be updated
             game.updateDebugData = () => true;
+            // Exposed craftCost it's a function here, while in original game it's an object
+            poly.craftCost = game.craftCost;
 
             state.scriptingEdition = true;
         }
@@ -13644,6 +13593,9 @@
         crateValue: () => Number(getVueById("createHead").buildCrateDesc().match(/(\d+)/g)[1]),
         // export function containerValue() from Evolve/src/resources.js
         containerValue: () => Number(getVueById("createHead").buildContainerDesc().match(/(\d+)/g)[1]),
+
+    // Scripting Edition compatibility:
+        craftCost: () => game.craftCost,
 
     // Firefox compatibility:
         adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}))
