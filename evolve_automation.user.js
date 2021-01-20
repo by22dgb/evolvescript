@@ -1254,7 +1254,7 @@
             let vue = getVueById(this._ejectorVueBinding);
             if (vue === undefined) { return false; }
 
-            state.multiplier.reset(count);
+            state.multiplier.reset(count, game.global.interstellar.mass_ejector[this.id] <= count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
                 vue.ejectLess(this.id);
@@ -5621,6 +5621,7 @@
         settings.prestigeWhiteholeMinMass = 8;
         settings.prestigeWhiteholeStabiliseMass = true;
         settings.prestigeWhiteholeEjectEnabled = true;
+        settings.prestigeWhiteholeEjectExcess = false;
         settings.prestigeWhiteholeDecayRate = 0.2;
         settings.prestigeWhiteholeEjectAllCount = 5;
     }
@@ -6567,6 +6568,7 @@
         addSetting("prestigeWhiteholeMinMass", 8);
         addSetting("prestigeWhiteholeStabiliseMass", true);
         addSetting("prestigeWhiteholeEjectEnabled", true);
+        addSetting("prestigeWhiteholeEjectExcess", false);
         addSetting("prestigeWhiteholeDecayRate", 0.2);
         addSetting("prestigeWhiteholeEjectAllCount", 5);
 
@@ -8371,23 +8373,27 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let ejectableAmount = Math.ceil(resource.rateOfChange);
 
-                if (remaining <= 0) {
+                if (remaining <= 0 || resource.isCraftable()) {
                     resourceRequirement.requirement = 0;
                     return;
                 }
 
-                if (resource.storageRatio < 0.98) {
-                    // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it, or it's Adamantite(we need it to get more ejectors).
-                    if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
-                        ejectableAmount = Math.floor(resource.decayRate * settings.prestigeWhiteholeDecayRate);
-                    } else {
-                        ejectableAmount = 0;
-                    }
+                let ejectableAmount = 0;
+                if (resource.storageRatio > 0.98) {
+                    ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.rateOfChange));
                 }
 
-                resourceRequirement.requirement = Math.min(remaining, Math.max(0, ejectableAmount));
+                // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it, or it's Adamantite(we need it to get more ejectors).
+                if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
+                    ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.decayRate * settings.prestigeWhiteholeDecayRate));
+                }
+
+                if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 0 && resource.currentQuantity >= resource.storageRequired) {
+                    ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.rateOfChange));
+                }
+
+                resourceRequirement.requirement = Math.min(remaining, ejectableAmount);
                 remaining -= resourceRequirement.requirement;
             });
         }
@@ -11000,7 +11006,8 @@
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeMinMass", "Required minimum solar mass", "Required minimum solar mass of blackhole before prestiging");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole until minimum solar mass reached", "Stabilises the blackhole with exotic materials until minimum solar mass is reached");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectEnabled", "Enable mass ejector", "If not enabled the mass ejector will not be managed by the script");
-        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate. Only useful during Decay Challenge, normally only resources with full storages will be ejected, until below option is activated.");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until \"Eject everything\" option is activated.");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate, only useful during Decay Challenge");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
