@@ -9505,7 +9505,6 @@
               if (routesToAssign > 0){
                 tradeRoutesUsed += routesToAssign;
                 requiredTradeRoutes[i] -= routesToAssign;
-                resource.rateOfChange -= resource.tradeRouteQuantity * routesToAssign;
                 currentMoneyPerSecond += resource.currentTradeRouteSellPrice * routesToAssign;
               }
             }
@@ -9725,11 +9724,9 @@
             } else if (adjustmentTradeRoutes[i] < 0) {
                 m.removeTradeRoutes(resource, -1 * adjustmentTradeRoutes[i]);
             }
-            // Add sold resources to rate of change, so we can still use it
-            // Bought resources ignored, to avoid ending with negative income when trade routes readjusted to another resource
-            if (requiredTradeRoutes[i] < 0){
-                resource.rateOfChange -= requiredTradeRoutes[i] * resource.tradeRouteQuantity;
-            }
+            // It does change rates of changes, but we don't want to store this changes.
+            // Sold resources can be easily reclaimed, and we want to be able to use it for production, ejecting, upkeep, etc, so let's pretend they're still here
+            // And bought resources are dungerous to use - we don't want to end with negative income after recalculating trades
         }
         resources.Money.rateOfChange = currentMoneyPerSecond;
     }
