@@ -9115,34 +9115,37 @@
 
         let maxAttractors = (settings.autoHell && settings.hellHandleAttractors) ? state.warManager.hellAttractorMax : Number.MAX_SAFE_INTEGER;
         let maxTourists = resources.Money.storageRatio > 0.98 ? state.cityBuildings.TouristCenter.stateOnCount - 1 : Number.MAX_SAFE_INTEGER;
-        let maxMill = state.cityBuildings.Mill.powered ? state.cityBuildings.Mill.stateOnCount - Math.floor((resources.Power.currentQuantity - 5) / -(state.cityBuildings.Mill.powered)) : Number.MAX_SAFE_INTEGER;
+        let maxMill = state.cityBuildings.Mill.powered && resources.Food.storageRatio < 0.7 ? Math.max(0, state.cityBuildings.Mill.stateOnCount - Math.floor((resources.Power.currentQuantity - 5) / (-state.cityBuildings.Mill.powered))) : Number.MAX_SAFE_INTEGER;
+
+        if (maxMill < state.cityBuildings.Mill.stateOnCount) {
+            availablePower -= (state.cityBuildings.Mill.powered * state.cityBuildings.Mill.stateOnCount - maxMill)
+        }
 
         // Start assigning buildings from the top of our priority list to the bottom
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
             let requiredStateOn = 0;
 
+            // TODO: Get rid of this loop, it can be calculated once
             for (let j = 0; j < building.count; j++) {
-                if (building.powered > 0) {
-                    // Building needs power and we don't have any
-                    if ((availablePower <= 0 && building.powered > 0) || (availablePower - building.powered < 0)) {
-                        continue;
-                    }
+                // Building needs power and we don't have any
+                if (building.powered > 0 && availablePower - building.powered < 0) {
+                    break;
                 }
 
                 // Leave attractors to autoHell
                 if (building === state.spaceBuildings.PortalAttractor && requiredStateOn >= maxAttractors) {
-                    continue;
+                    break;
                 }
 
                 // Disable tourist center with full money
                 if (building === state.cityBuildings.TouristCenter && requiredStateOn >= maxTourists) {
-                    continue;
+                    break;
                 }
 
                 // Disable mills with surplus energy
                 if (building === state.cityBuildings.Mill && requiredStateOn >= maxMill) {
-                    continue;
+                    break;
                 }
 
                 let resourcesToTake = 0;
@@ -9174,7 +9177,7 @@
 
                         if (!isStorageAvailable) {
                             if (resourceType.resource.rateOfChange <= 0 || resourceType.resource.rateOfChange - resourceType.rate < 0) {
-                                continue;
+                                break;
                             }
                         }
                     }
@@ -13602,7 +13605,7 @@
         craftCost: () => game.craftCost,
 
     // Firefox compatibility:
-        adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}))
+        adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}), wiki)
     };
 
     $().ready(mainAutoEvolveScript);
