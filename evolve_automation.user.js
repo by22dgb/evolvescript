@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.10
+// @version      3.3.1.11
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2678,6 +2678,11 @@
         get instance() {
             return game.global.evolution[this._id];
         }
+
+        isUnlocked() {
+            let containerNode = document.getElementById(this._elementId);
+            return containerNode !== null && containerNode.style.display !== "none" && !containerNode.classList.contains("is-hidden");
+        }
     }
 
     class ChallengeEvolutionAction extends EvolutionAction {
@@ -4567,10 +4572,6 @@
         return true;
     }
 
-    function neverAllowed() {
-        return false;
-    }
-
     function demonicAllowed() {
         return game.global.city.biome === 'hellscape' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
     }
@@ -4624,6 +4625,10 @@
         }
     }
 
+    function valdiAllowed() {
+        return game.global.genes.challenge;
+    }
+
     var races = {
         antid: new Race("antid", "Antid", alwaysAllowed, "", "Ophiocordyceps Unilateralis"),
         mantis: new Race("mantis", "Mantis", alwaysAllowed, "", "Praying Unanswered"),
@@ -4658,7 +4663,7 @@
         sporgar: new Race("sporgar", "Sporgar", alwaysAllowed, "", "Fungicide"),
         shroomi: new Race("shroomi", "Shroomi", alwaysAllowed, "", "Bad Trip"),
         moldling: new Race("moldling", "Moldling", alwaysAllowed, "", "Digested"),
-        junker: new Race("junker", "Valdi", neverAllowed, "Challenge genes unlocked", "Euthanasia"),
+        junker: new Race("junker", "Valdi", valdiAllowed, "Challenge genes unlocked", "Euthanasia"),
         dryad: new Race("dryad", "Dryad", feyAllowed, "Forest planet", "Ashes to Ashes"),
         satyr: new Race("satyr", "Satyr", feyAllowed, "Forest planet", "Stopped the music"),
         phoenix: new Race("phoenix", "Phoenix", heatAllowed, "Volcanic planet", "Snuffed"),
@@ -4873,7 +4878,6 @@
                                     Human: new EvolutionAction("", "evo", "human", ""),
                                     Orc: new EvolutionAction("", "evo", "orc", ""),
                                     Elven: new EvolutionAction("", "evo", "elven", ""),
-                                    Valdi: new EvolutionAction("", "evo", "junker", ""), // junker challenge
                                 Gigantism: new EvolutionAction("", "evo", "gigantism", ""),
                                     Troll: new EvolutionAction("", "evo", "troll", ""),
                                     Ogre: new EvolutionAction("", "evo", "ogre", ""),
@@ -5417,7 +5421,7 @@
         races.human.evolutionTree = [e.Human].concat(humanoid);
         races.orc.evolutionTree = [e.Orc].concat(humanoid);
         races.elven.evolutionTree = [e.Elven].concat(humanoid);
-        races.junker.evolutionTree = [e.Valdi, e.Bunker].concat(humanoid); // requires bunker gene
+        races.junker.evolutionTree = [e.Bunker, e.Junker, e.Sentience].concat(humanoid); // Actions order is reversed, to make sure it won't Sentience before setting challenge
         raceGroup = [ races.human, races.orc, races.elven, races.junker ];
         if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'humanoid') {
             races.custom.evolutionTree = [e.Custom].concat(humanoid)
@@ -6853,12 +6857,14 @@
         resources.DNA.currentQuantity = resources.DNA.currentQuantity + DNAForEvolution;
 
         // Lets go for our targeted evolution
-        let targetedEvolutionFound = false;
         for (let i = 0; i < state.evolutionTarget.evolutionTree.length; i++) {
-            if (state.evolutionTarget.evolutionTree[i].isUnlocked()) {
-                targetedEvolutionFound = true;
-
-                if (state.evolutionTarget.evolutionTree[i].click()) {
+            let action = state.evolutionTarget.evolutionTree[i];
+            if (action.isUnlocked()) {
+                // Don't click challenges which already active
+                if (action instanceof ChallengeEvolutionAction && action !== state.evolutions.Bunker && game.global.race[action.effectId]) {
+                    continue;
+                }
+                if (action.click()) {
                     // If we successfully click the action then return to give the ui some time to refresh
                     return;
                 } else {
@@ -6868,10 +6874,10 @@
             }
         }
 
-        if ((resources.RNA.maxQuantity < maxRNA || resources.DNA.maxQuantity < maxDNA)) {
+        if (state.evolutions.Mitochondria.count < 1 || resources.RNA.maxQuantity < maxRNA || resources.DNA.maxQuantity < maxDNA) {
             state.evolutions.Mitochondria.click();
         }
-        if (resources.DNA.maxQuantity < maxDNA) {
+        if (state.evolutions.EukaryoticCell.count < 1 || resources.DNA.maxQuantity < maxDNA) {
             state.evolutions.EukaryoticCell.click();
         }
         if (resources.RNA.maxQuantity < maxRNA) {
@@ -11179,7 +11185,7 @@
         addStandardSectionSettingsToggle(currentNode, "challenge_steelen", "Steelen", "Challenge mode - steelen");
         addStandardSectionSettingsToggle(currentNode, "challenge_emfield", "EM Field", "Challenge mode - electromagnetic field disruption");
         addStandardSectionSettingsToggle(currentNode, "challenge_cataclysm", "Cataclysm", "Challenge mode - shattered world (no homeworld)");
-        addStandardSectionSettingsToggle(currentNode, "challenge_junker", "Junker", "Challenge mode - junker");
+        addStandardSectionSettingsToggle(currentNode, "challenge_junker", "Genetic Dead End", "Challenge mode - genetic dead end (Valdi)");
 
         addStandardHeading(currentNode, "Evolution Queue");
         addStandardSectionSettingsToggle(currentNode, "evolutionQueueEnabled", "Queue Enabled", "When enabled script with evolve with queued settings, from top to bottom. During that script settings will be overriden with settings stored in queue. Queued target will be removed from list after evolution.");
