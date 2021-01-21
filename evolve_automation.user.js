@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.9
+// @version      3.3.1.10
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3791,7 +3791,7 @@
                 return false;
             }
 
-            let price = getUnitBuyPrice(resource) * this.multiplier;
+            let price = this.getUnitBuyPrice(resource) * this.multiplier;
             if (resources.Money.currentQuantity < price) {
                 return false;
             }
@@ -9126,101 +9126,69 @@
             }
         }
 
-        let maxAttractors = (settings.autoHell && settings.hellHandleAttractors) ? state.warManager.hellAttractorMax : Number.MAX_SAFE_INTEGER;
-        let maxTourists = resources.Money.storageRatio > 0.98 ? state.cityBuildings.TouristCenter.stateOnCount - 1 : Number.MAX_SAFE_INTEGER;
-        let maxMill = state.cityBuildings.Mill.powered && resources.Food.storageRatio < 0.7 ? Math.max(0, state.cityBuildings.Mill.stateOnCount - Math.floor((resources.Power.currentQuantity - 5) / (-state.cityBuildings.Mill.powered))) : Number.MAX_SAFE_INTEGER;
-
-        if (maxMill < state.cityBuildings.Mill.stateOnCount) {
-            availablePower -= (state.cityBuildings.Mill.powered * state.cityBuildings.Mill.stateOnCount - maxMill)
-        }
-
         // Start assigning buildings from the top of our priority list to the bottom
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
-            let requiredStateOn = 0;
 
-            // TODO: Get rid of this loop, it can be calculated once
-            for (let j = 0; j < building.count; j++) {
-                // Building needs power and we don't have any
-                if (building.powered > 0 && availablePower - building.powered < 0) {
-                    break;
-                }
+            let maxStateOn = building.count;
+            if (building.powered > 0) {
+                maxStateOn = Math.min(maxStateOn, availablePower / building.powered)
+            }
 
-                // Leave attractors to autoHell
-                if (building === state.spaceBuildings.PortalAttractor && requiredStateOn >= maxAttractors) {
-                    break;
-                }
+            // Max attractors configured by autoHell
+            if (building === state.spaceBuildings.PortalAttractor && settings.autoHell && settings.hellHandleAttractors) {
+                maxStateOn = Math.min(maxStateOn, state.warManager.hellAttractorMax);
+                maxStateOn = Math.min(maxStateOn, building.stateOnCount + 1);
+                maxStateOn = Math.max(maxStateOn, building.stateOnCount - 1);
+            }
 
-                // Disable tourist center with full money
-                if (building === state.cityBuildings.TouristCenter && requiredStateOn >= maxTourists) {
-                    break;
-                }
+            // Disable tourist center with full money
+            if (building === state.cityBuildings.TouristCenter && resources.Money.storageRatio > 0.98) {
+                maxStateOn = Math.min(maxStateOn, state.cityBuildings.TouristCenter.stateOnCount - 1);
+            }
 
-                // Disable mills with surplus energy
-                if (building === state.cityBuildings.Mill && requiredStateOn >= maxMill) {
-                    break;
-                }
+            // Disable mills with surplus energy
+            if (building === state.cityBuildings.Mill && building.powered && resources.Food.storageRatio < 0.7) {
+                maxStateOn = Math.min(maxStateOn, building.stateOnCount - ((resources.Power.currentQuantity - 5) / (-building.powered)));
+            }
 
-                let resourcesToTake = 0;
+            for (let j = 0; j < building.consumption.resourceTypes.length; j++) {
+                let resourceType = building.consumption.resourceTypes[j];
 
-                for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
-                    let resourceType = building.consumption.resourceTypes[k];
+                // If resource rate is negative then we are gaining resources. So, only check if we are consuming resources
+                if (resourceType.rate > 0) {
 
-                    // TODO: Implement minimum rates of change for each resource
-                    // If resource rate is negative then we are gaining resources. So, only check if we are consuming resources
-                    if (resourceType.rate > 0) {
-                        let isStorageAvailable = false;
-
+                    if (resourceType.resource === resources.Food) {
+                        // Wendigo doesn't store food. Let's assume it's always available.
+                        if (resourceType.resource.storageRatio > 0.1 || game.global.race['ravenous'] ) {
+                            continue;
+                        }
+                    } else if (!resourceType.resource.isSupport() && resourceType.resource.storageRatio > 0.01) {
                         // If we have more than xx% of our storage then its ok to lose some resources.
                         // This check is mainly so that power producing buildings don't turn off when rate of change goes negative.
                         // That can cause massive loss of life if turning off space habitats :-)
-                        // We'll turn power producing structures off one at a time below if they are below xx% storage
-                        if (resourceType.resource === resources.Food) {
-                            // Wendigo doesn't store food. Let's assume it's always available.
-                            if (game.global.race['ravenous']) {
-                                isStorageAvailable = true;
-                            } else {
-                                isStorageAvailable = resourceType.resource.storageRatio > 0.1;
-                            }
-                        } else if (resourceType.resource === resources.Coal || resourceType.resource === resources.Oil
-                                || resourceType.resource === resources.Uranium || resourceType.resource === resources.Helium_3
-                                || resourceType.resource === resources.Elerium || resourceType.resource === resources.Deuterium) {
-                            isStorageAvailable = resourceType.resource.storageRatio > 0.01;
-                        }
-
-                        if (!isStorageAvailable) {
-                            if (resourceType.resource.rateOfChange <= 0 || resourceType.resource.rateOfChange - resourceType.rate < 0) {
-                                break;
-                            }
-                        }
+                        continue;
                     }
 
-                    resourcesToTake++;
-                }
-
-                // All resources passed the test so take them.
-                if (resourcesToTake === building.consumption.resourceTypes.length) {
-                    availablePower -= building.powered;
-
-                    for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
-                        let resourceType = building.consumption.resourceTypes[k];
-                        resourceType.resource.rateOfChange -= resourceType.rate;
-                    }
-
-                    requiredStateOn++;
-                } else {
-                    // If this is a power producing structure then only turn off one at a time!
-                    if (building.powered < 0) {
-                        requiredStateOn = building.stateOnCount - 1;
-                        availablePower += building.powered; // we're turning off a power producing building so remove it from available power
-                    }
-
-                    // We couldn't get the resources so skip the rest of this building type
-                    break;
+                    maxStateOn = Math.min(maxStateOn, resourceType.resource.rateOfChange / resourceType.rate);
                 }
             }
 
-            let adjustment = requiredStateOn - building.stateOnCount;
+            // If this is a power producing structure then only turn off one at a time!
+            if (building.powered < 0) {
+                maxStateOn = Math.max(maxStateOn, building.stateOnCount - 1);
+            }
+
+            maxStateOn = Math.floor(maxStateOn);
+
+            // Now when we know how many buildings we need - let's take resources
+            for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
+                let resourceType = building.consumption.resourceTypes[k];
+                resourceType.resource.rateOfChange -= resourceType.rate * maxStateOn;
+            }
+            availablePower -= building.powered * maxStateOn;
+
+            let adjustment = maxStateOn - building.stateOnCount;
             building.tryAdjustState(adjustment);
         }
     }
