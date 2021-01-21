@@ -6768,7 +6768,7 @@
 
                     for (let j = 0; j < raceGroup.length; j++) {
                         const race = raceGroup[j];
-                        if (!race.isMadAchievementUnlocked(achievementLevel) && race.evolutionCondition()) { // Pick races who met conditions
+                        if (race !== races.valdi && !race.isMadAchievementUnlocked(achievementLevel) && race.evolutionCondition()) { // Pick races who met conditions
                             remainingRace = race;
                             remainingAchievements++;
                         }
