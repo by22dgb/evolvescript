@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.11
+// @version      3.3.1.12
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2967,7 +2967,7 @@
 
             getVueById(this._vueBinding).next();
 
-            this.tactic = Math.max(this.tactic + 1, 4);
+            this.tactic = Math.min(this.tactic + 1, 4);
 
             return true;
         }
@@ -2979,7 +2979,7 @@
 
             getVueById(this._vueBinding).last();
 
-            this.tactic = Math.min(this.tactic - 1, 0);
+            this.tactic = Math.max(this.tactic - 1, 0);
 
             return true;
         }
@@ -5327,7 +5327,6 @@
 
         state.spaceBuildings.NebulaNexus.addResourceConsumption(resources.Nebula_Support, -2);
         state.spaceBuildings.NebulaHarvestor.addResourceConsumption(resources.Nebula_Support, 1);
-
         state.spaceBuildings.NebulaEleriumProspector.addResourceConsumption(resources.Nebula_Support, 1);
 
         state.spaceBuildings.NeutronMiner.addResourceConsumption(resources.Helium_3, 3);
@@ -5362,13 +5361,6 @@
         state.spaceBuildings.SunSwarmSatellite.overridePowered = -0.35;
         state.spaceBuildings.ProximaDyson.overridePowered = -1.25;
         ////////////////////
-
-        // We aren't getting these ones yet...
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Money, 100000));
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Steel, 25000));
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Neutronium, 240));
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Elerium, 10));
-        state.spaceBuildings.GasSpaceDockShipSegment.resourceRequirements.push(new ResourceRequirement(resources.Nano_Tube, 12000));
 
         state.evolutionChallengeList.push(state.evolutions.Bunker);
         state.evolutionChallengeList.push(state.evolutions.Plasmid);
@@ -6051,6 +6043,9 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaExoticZoo);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionMachine);
+
+        state.spaceBuildings.PortalAttractor.autoStateEnabled = false;
+        state.spaceBuildings.BlackholeCompletedStargate.autoStateEnabled = false;
     }
 
     function resetProjectSettings() {
@@ -8525,7 +8520,7 @@
 
     function isBioseederPrestigeAvailable() {
         let spaceDock = state.spaceBuildings.GasSpaceDock;
-        if (!spaceDock.isUnlocked) { return false; }
+        if (!spaceDock.isUnlocked()) { return false; }
         if (spaceDock.count < 1) { return false; }
         if (state.spaceBuildings.GasSpaceDockShipSegment.count < 100) { return false; }
         if (state.spaceBuildings.GasSpaceDockProbe.count < settings.prestigeBioseedProbes) { return false; }
@@ -10097,7 +10092,7 @@
               () => settings.buildingWeightingNonOperating
           ],[
               () => !settings.prestigeBioseedConstruct,
-              (building) => building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe,
+              (building) => building === state.spaceBuildings.GasSpaceDock || building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe,
               () => "Bioseed prestige disabled",
               () => 0
           ],[
@@ -10988,7 +10983,7 @@
         // Bioseed
         addStandardSectionHeader1(prestigeHeaderNode, "Bioseed");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "autoSpace", "Construct Launch Facility", "Constructs the Launch Facility when it becomes available regardless of other settings");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Constructs Bioseeder Ship Segments and Probes", "Construct the bioseeder ship segments and probes in preparation for bioseeding");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Constructs Space Dock, Bioseeder Ship, and Probes", "Construct the bioseeder ship segments and probes in preparation for bioseeding");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedProbes", "Required probes", "Required number of probes before launching bioseeder ship");
 
         // Whitehole
@@ -13277,7 +13272,7 @@
         let autoTradeBuyChecked = resource.autoTradeBuyEnabled ? " checked" : "";
         let autoTradeSellChecked = resource.autoTradeSellEnabled ? " checked" : "";
         let marketRow = $('#market-' + resource.id);
-        let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
+        let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch ea-market-toggle" style="margin-left: 12px"><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
         let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" title="Enable selling of this resource. When to sell is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">sell</span><span class="state"></span></label>');
         let toggleTradeFor = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" title="Enable trading for this resource. Max routes is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade for</span><span class="state"></span></label>');
         let toggleTradeAway = $('<label id="script_tsell1_' +  resource.id + '" tabindex="0" title="Enable trading this resource away. Min income is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade away</span><span class="state"></span></label>');
@@ -13349,7 +13344,7 @@
 
         $("#market .market-item .res").width("5rem");
         $("#market .market-item .trade > :first-child").text("R:");
-        $("#market .trade .zero").text("x").css("margin-right", 12);
+        $("#market .trade .zero").text("x");
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             createMarketToggle(state.marketManager.priorityList[i]);
         }
@@ -13358,7 +13353,7 @@
     function removeMarketToggles() {
         $("#market .market-item .res").width("7.5rem");
         $("#market .market-item .trade > :first-child").text("Routes:");
-        $("#market .trade .zero").text("Cancel Routes").css("margin-right", "");
+        $("#market .trade .zero").text("Cancel Routes");
         $('.ea-market-toggle').remove();
     }
 
