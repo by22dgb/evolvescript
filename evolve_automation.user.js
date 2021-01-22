@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.12
+// @version      3.3.1.13
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -633,10 +633,8 @@
 
             this.priority = 0;
 
-            this.consumption = {
-                /** @type {{ resource: Resource, initialRate: number, rate: number, }[]} */
-                resourceTypes: [],
-            };
+            /** @type {{ resource: Resource, rate: number, }[]} */
+            this.consumption = [];
 
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
@@ -714,7 +712,7 @@
         }
 
         hasConsumption() {
-            return this.definition.hasOwnProperty("powered") || this.consumption.resourceTypes.length > 0;
+            return this.definition.hasOwnProperty("powered") || this.consumption.length > 0;
         }
 
         get powered() {
@@ -825,24 +823,27 @@
          * @param {number} rate
          */
         addResourceConsumption(resource, rate) {
-            this.consumption.resourceTypes.push({ resource: resource, initialRate: rate, rate: rate });
+            this.consumption.push({ resource: resource, rate: rate });
         }
 
         missingSupply() {
-            for (let j = 0; j < this.consumption.resourceTypes.length; j++) {
-                let resourceType = this.consumption.resourceTypes[j];
+            let uselessSupport = 0;
+
+            for (let j = 0; j < this.consumption.length; j++) {
+                let resourceType = this.consumption[j];
 
                 // Food fluctuate a lot, ignore it, assuming we always can get more
                 if (resourceType.resource === resources.Food && settings.autoJobs && state.jobs.Farmer.isManaged()) {
                     continue;
                 }
 
+                let consumptionRate = resourceType.rate;
                 // Adjust fuel
                 if (this._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    resourceType.rate = game.fuel_adjust(resourceType.initialRate);
+                    consumptionRate = game.fuel_adjust(consumptionRate);
                 }
                 if (this._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && this !== state.spaceBuildings.AlphaFusion) {
-                    resourceType.rate = game.int_fuel_adjust(resourceType.initialRate);
+                    consumptionRate = game.int_fuel_adjust(consumptionRate);
                 }
 
                 let rateOfChange = resourceType.resource.rateOfChange;
@@ -852,19 +853,27 @@
                 }
 
                 // It need something that we're lacking
-                if (resourceType.rate > 0 && rateOfChange < resourceType.rate) {
+                if (consumptionRate > 0 && rateOfChange < consumptionRate) {
                     return resourceType;
                 }
 
                 // It provides support which we don't need
-                if (resourceType.rate < 0 && resourceType.resource.isSupport() && rateOfChange > 0) {
-                    return resourceType;
+                if (consumptionRate < 0 && resourceType.resource.isSupport()) {
+                    if (rateOfChange > 0) {
+                      uselessSupport += 1;
+                    } else {
+                      uselessSupport -= 1000;
+                    }
                 }
 
                 // BeltSpaceStation is special case, as it provide jobs, which provides support, thus we can have 0 support even with powered buildings, if jobs not filled
                 if (this === state.spaceBuildings.BeltSpaceStation && resourceType.resource === resources.Belt_Support && state.jobs.SpaceMiner.count < state.jobs.SpaceMiner.max){
                     return {resource: resources.Population, rate: 1};
                 }
+            }
+            // We're checking this after loop, to make sure *all* provided supports are useless.
+            if (uselessSupport > 0) {
+                return this.consumption[0];
             }
             return false; // false means we have all we need for this to operate
         }
@@ -3607,7 +3616,6 @@
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const project = this.priorityList[i];
 
-                    //console.log(project.id + " unlocked= " + project.isUnlocked() + " autoBuildEnabled= " + project.autoBuildEnabled + " autoSpace= " + settings.autoSpace)
                     if (project.isUnlocked() && project.autoBuildEnabled) {
                         this._managedPriorityList.push(project);
                     }
@@ -4733,6 +4741,8 @@
         Belt_Support: new Support("Belt Support", "srspc_belt", "space", "spc_belt"),
         Alpha_Support: new Support("Alpha Support", "srint_alpha", "interstellar", "int_alpha"),
         Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
+        Gateway_Support: new Support("Gateway Support", "gxy_gateway", "galaxy", "gxy_gateway"),
+        Alien_Support: new Support("Alien Support", "gxy_alien2", "galaxy", "gxy_alien2"),
 
         // Basic resources (can trade for these)
         Food: new Resource("Food", "Food"),
@@ -5152,36 +5162,43 @@
             SiriusAscend: new Action("Sirius Ascend", "interstellar", "ascend", "int_sirius"),
             SiriusThermalCollector: new Action("Sirius ThermalCollector", "interstellar", "thermal_collector", "int_sirius"),
 
-            // GatewayMission: new Action("Gateway Mission", "galaxy", "gateway_mission", "gxy_gateway"),
-            // GatewayStarbase: new Action("Gateway Starbase", "galaxy", "starbase", "gxy_gateway"),
-            // GatewayShipDock: new Action("Gateway Ship Dock", "galaxy", "ship_dock", "gxy_gateway"),
+            GatewayMission: new Action("Gateway Mission", "galaxy", "gateway_mission", "gxy_gateway", {mission: true}),
+            GatewayStarbase: new Action("Gateway Starbase", "galaxy", "starbase", "gxy_gateway", {garrison: true}),
+            GatewayShipDock: new Action("Gateway Ship Dock", "galaxy", "ship_dock", "gxy_gateway"),
 
-            // StargateStation: new Action("Stargate Station", "galaxy", "gateway_station", "gxy_stargate"),
-            // StargateTelemetryBeacon: new Action("Stargate Telemetry Beacon", "galaxy", "telemetry_beacon", "gxy_stargate"),
-            // StargateDepot: new Action("Stargate Depot", "galaxy", "gateway_depot", "gxy_stargate"),
-            // StargateDefensePlatform: new Action("Stargate Defense Platform", "galaxy", "defense_platform", "gxy_stargate"),
+            BologniumShip: new Action("Gateway Bolognium Ship", "galaxy", "bolognium_ship", "gxy_gateway"),
+            ScoutShip: new Action("Gateway Scout Ship", "galaxy", "scout_ship", "gxy_gateway"),
+            CorvetteShip: new Action("Gateway Corvette Ship", "galaxy", "corvette_ship", "gxy_gateway"),
+            FrigateShip: new Action("Gateway Frigate Ship", "galaxy", "frigate_ship", "gxy_gateway"),
+            CruiserShip: new Action("Gateway Cruiser Ship", "galaxy", "cruiser_ship", "gxy_gateway"),
+            Dreadnought: new Action("Gateway Dreadnought", "galaxy", "dreadnought", "gxy_gateway"),
 
-            // GorddonMission: new Action("Gorddon Mission", "galaxy", "demaus_mission", "gxy_gorddon"),
-            // GorddonEmbassy: new Action("Gorddon Embassy", "galaxy", "embassy", "gxy_gorddon"),
-            // GorddonDormitory: new Action("Gorddon Dormitory", "galaxy", "dormitory", "gxy_gorddon"),
-            // GorddonSymposium: new Action("Gorddon Symposium", "galaxy", "symposium", "gxy_gorddon"),
-            // GorddonFreighter: new Action("Gorddon Freighter", "galaxy", "freighter", "gxy_gorddon"),
+            StargateStation: new Action("Stargate Station", "galaxy", "gateway_station", "gxy_stargate"),
+            StargateTelemetryBeacon: new Action("Stargate Telemetry Beacon", "galaxy", "telemetry_beacon", "gxy_stargate", {knowledge: true}),
+            StargateDepot: new Action("Stargate Depot", "galaxy", "gateway_depot", "gxy_stargate"),
+            StargateDefensePlatform: new Action("Stargate Defense Platform", "galaxy", "defense_platform", "gxy_stargate"),
 
-            // Alien1Consulate: new Action("Alien 1 Consulate", "galaxy", "consulate", "gxy_alien1"),
+            GorddonMission: new Action("Gorddon Mission", "galaxy", "gorddon_mission", "gxy_gorddon", {mission: true}),
+            GorddonEmbassy: new Action("Gorddon Embassy", "galaxy", "embassy", "gxy_gorddon", {housing: true}),
+            GorddonDormitory: new Action("Gorddon Dormitory", "galaxy", "dormitory", "gxy_gorddon", {housing: true}),
+            GorddonSymposium: new Action("Gorddon Symposium", "galaxy", "symposium", "gxy_gorddon", {knowledge: true}),
+            GorddonFreighter: new Action("Gorddon Freighter", "galaxy", "freighter", "gxy_gorddon"),
+
+            Alien1Consulate: new Action("Alien 1 Consulate", "galaxy", "consulate", "gxy_alien1", {housing: true}),
             Alien1Resort: new Action("Alien 1 Resort", "galaxy", "resort", "gxy_alien1"),
-            // Alien1VitreloyPlant: new Action("Alien 1 Vitreloy Plant", "galaxy", "vitreloy_plant", "gxy_alien1"),
-            // Alien1SuperFreighter: new Action("Alien 1 Super Freighter", "galaxy", "super_freighter", "gxy_alien1"),
+            Alien1VitreloyPlant: new Action("Alien 1 Vitreloy Plant", "galaxy", "vitreloy_plant", "gxy_alien1"),
+            Alien1SuperFreighter: new Action("Alien 1 Super Freighter", "galaxy", "super_freighter", "gxy_alien1"),
 
-            // Alien2Mission: new Action("Alien 2 Mission", "galaxy", "alien2_mission", "gxy_alien2"),
-            // Alien2Foothold: new Action("Alien 2 Foothold", "galaxy", "foothold", "gxy_alien2"),
-            // Alien2ArmedMiner: new Action("Alien 2 Armed Miner", "galaxy", "armed_miner", "gxy_alien2"),
-            // Alien2OreProcessor: new Action("Alien 2 Ore Processor", "galaxy", "ore_processor", "gxy_alien2"),
-            // Alien2Scavenger: new Action("Alien 2 Scavenger", "galaxy", "scavenger", "gxy_alien2"),
+            Alien2Mission: new Action("Alien 2 Mission", "galaxy", "alien2_mission", "gxy_alien2"),
+            Alien2Foothold: new Action("Alien 2 Foothold", "galaxy", "foothold", "gxy_alien2"),
+            Alien2ArmedMiner: new Action("Alien 2 Armed Miner", "galaxy", "armed_miner", "gxy_alien2"),
+            Alien2OreProcessor: new Action("Alien 2 Ore Processor", "galaxy", "ore_processor", "gxy_alien2"),
+            Alien2Scavenger: new Action("Alien 2 Scavenger", "galaxy", "scavenger", "gxy_alien2"),
 
-            // ChthonianMission: new Action("Chthonian Mission", "galaxy", "chthonian_mission", "gxy_chthonian"),
-            // ChthonianMineLayer: new Action("Chthonian Mine Layer", "galaxy", "minelayer", "gxy_chthonian"),
-            // ChthonianExcavator: new Action("Chthonian Excavator", "galaxy", "excavator", "gxy_chthonian"),
-            // ChthonianRaider: new Action("Chthonian Raider", "galaxy", "raider", "gxy_chthonian"),
+            ChthonianMission: new Action("Chthonian Mission", "galaxy", "chthonian_mission", "gxy_chthonian"),
+            ChthonianMineLayer: new Action("Chthonian Mine Layer", "galaxy", "minelayer", "gxy_chthonian"),
+            ChthonianExcavator: new Action("Chthonian Excavator", "galaxy", "excavator", "gxy_chthonian"),
+            ChthonianRaider: new Action("Chthonian Raider", "galaxy", "raider", "gxy_chthonian"),
 
             PortalTurret: new Action("Portal Laser Turret", "portal", "turret", "prtl_fortress"),
             PortalCarport: new Action("Portal Surveyor Carport", "portal", "carport", "prtl_fortress"),
@@ -5205,11 +5222,13 @@
         },
 
         projects: {
+            LaunchFacility: new Project("Launch Facility", "launch_facility"),
             SuperCollider: new Project("Supercollider", "lhc"),
             StockExchange: new Project("Stock Exchange", "stock_exchange"),
             Monument: new Project("Monument", "monument"),
             Railway: new Project("Railway", "railway"),
-            LaunchFacility: new Project("Launch Facility", "launch_facility"),
+            Nexus: new Project("Nexus", "nexus"),
+            RoidEject: new Project("Asteroid Redirect", "roid_eject"),
         },
 
         //global: null,
@@ -5259,9 +5278,10 @@
         state.spaceBuildings.SiriusAscensionTrigger.gameMax = 1;
         state.spaceBuildings.SiriusAscend.gameMax = 1;
         state.spaceBuildings.PortalSoulForge.gameMax = 1;
-
         state.spaceBuildings.PortalEastTower.gameMax = 1;
         state.spaceBuildings.PortalWestTower.gameMax = 1;
+        state.spaceBuildings.GorddonEmbassy.gameMax = 1;
+        state.spaceBuildings.Alien1Consulate.gameMax = 1;
 
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Coal, 0.25, 1.25);
         state.cityBuildings.Smelter.addSmeltingConsumption(SmelterSmeltingTypes.Steel, resources.Iron, 2, 6);
@@ -5275,7 +5295,6 @@
         state.cityBuildings.TouristCenter.addResourceConsumption(resources.Food, 50);
 
         // Construct space buildings list
-        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.Moon_Support, -1);
         state.spaceBuildings.MoonBase.addResourceConsumption(resources.Moon_Support, -2);
         state.spaceBuildings.MoonBase.addResourceConsumption(resources.Oil, 2);
         state.spaceBuildings.MoonIridiumMine.addResourceConsumption(resources.Moon_Support, 1);
@@ -5320,6 +5339,7 @@
         state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Lumber, 350, 0);
         state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Coal, 25, 0);
         state.spaceBuildings.AlphaFactory.addGrapheneConsumption(resources.Oil, 15, 0);
+        state.spaceBuildings.AlphaMegaFactory.addResourceConsumption(resources.Deuterium, 5);
 
         state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.Alpha_Support, -1);
         state.spaceBuildings.ProximaTransferStation.addResourceConsumption(resources.Uranium, 0.28);
@@ -5331,8 +5351,44 @@
 
         state.spaceBuildings.NeutronMiner.addResourceConsumption(resources.Helium_3, 3);
 
-        state.spaceBuildings.AlphaMegaFactory.addResourceConsumption(resources.Deuterium, 5);
+        state.spaceBuildings.GatewayStarbase.addResourceConsumption(resources.Gateway_Support, -2);
+        state.spaceBuildings.GatewayStarbase.addResourceConsumption(resources.Helium_3, 25);
+        state.spaceBuildings.GatewayStarbase.addResourceConsumption(resources.Food, 250);
 
+        state.spaceBuildings.BologniumShip.addResourceConsumption(resources.Gateway_Support, 1);
+        state.spaceBuildings.BologniumShip.addResourceConsumption(resources.Helium_3, 5);
+        state.spaceBuildings.ScoutShip.addResourceConsumption(resources.Gateway_Support, 1);
+        state.spaceBuildings.ScoutShip.addResourceConsumption(resources.Helium_3, 6);
+        state.spaceBuildings.CorvetteShip.addResourceConsumption(resources.Gateway_Support, 1);
+        state.spaceBuildings.CorvetteShip.addResourceConsumption(resources.Helium_3, 10);
+        state.spaceBuildings.FrigateShip.addResourceConsumption(resources.Gateway_Support, 2);
+        state.spaceBuildings.FrigateShip.addResourceConsumption(resources.Helium_3, 25);
+        state.spaceBuildings.CruiserShip.addResourceConsumption(resources.Gateway_Support, 3);
+        state.spaceBuildings.CruiserShip.addResourceConsumption(resources.Deuterium, 25);
+        state.spaceBuildings.Dreadnought.addResourceConsumption(resources.Gateway_Support, 5);
+        state.spaceBuildings.Dreadnought.addResourceConsumption(resources.Deuterium, 80);
+
+        state.spaceBuildings.StargateStation.addResourceConsumption(resources.Gateway_Support, -0.5);
+        state.spaceBuildings.StargateTelemetryBeacon.addResourceConsumption(resources.Gateway_Support, -0.75);
+
+        state.spaceBuildings.GorddonEmbassy.addResourceConsumption(resources.Food, 7500);
+        state.spaceBuildings.GorddonFreighter.addResourceConsumption(resources.Helium_3, 12);
+
+        state.spaceBuildings.Alien1VitreloyPlant.addResourceConsumption(resources.Bolognium, 2.5);
+        state.spaceBuildings.Alien1VitreloyPlant.addResourceConsumption(resources.Stanene, 1000);
+        state.spaceBuildings.Alien1VitreloyPlant.addResourceConsumption(resources.Money, 50000);
+        state.spaceBuildings.Alien1SuperFreighter.addResourceConsumption(resources.Helium_3, 25);
+
+        state.spaceBuildings.Alien2Foothold.addResourceConsumption(resources.Alien_Support, -4);
+        state.spaceBuildings.Alien2Foothold.addResourceConsumption(resources.Elerium, 2.5);
+        state.spaceBuildings.Alien2ArmedMiner.addResourceConsumption(resources.Alien_Support, 1);
+        state.spaceBuildings.Alien2ArmedMiner.addResourceConsumption(resources.Helium_3, 10);
+        state.spaceBuildings.Alien2OreProcessor.addResourceConsumption(resources.Alien_Support, 1);
+        state.spaceBuildings.Alien2Scavenger.addResourceConsumption(resources.Alien_Support, 1);
+        state.spaceBuildings.Alien2Scavenger.addResourceConsumption(resources.Helium_3, 12);
+
+        state.spaceBuildings.ChthonianMineLayer.addResourceConsumption(resources.Helium_3, 8);
+        state.spaceBuildings.ChthonianRaider.addResourceConsumption(resources.Helium_3, 18);
 
         // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
         ////////////////////
@@ -5610,10 +5666,9 @@
     function resetPrestigeSettings() {
         settings.prestigeType = "none";
 
-        settings.autoSpace = false;
+        settings.prestigeMADIgnoreArpa = false;
         settings.prestigeBioseedConstruct = false;
         settings.prestigeBioseedProbes = 3;
-
         settings.prestigeWhiteholeMinMass = 8;
         settings.prestigeWhiteholeStabiliseMass = true;
         settings.prestigeWhiteholeEjectEnabled = true;
@@ -6044,6 +6099,44 @@
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionMachine);
 
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GatewayMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GatewayStarbase);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GatewayShipDock);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Dreadnought);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.CruiserShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.FrigateShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.CorvetteShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ScoutShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BologniumShip);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateStation);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateTelemetryBeacon);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDepot);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDefensePlatform);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonEmbassy);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonDormitory);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonSymposium);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonFreighter);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien1Consulate);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien1Resort);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien1VitreloyPlant);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien1SuperFreighter);
+
+        //state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien2Mission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien2Foothold);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien2ArmedMiner);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien2OreProcessor);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien2Scavenger);
+
+        //state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianMineLayer);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianExcavator);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianRaider);
+
         state.spaceBuildings.PortalAttractor.autoStateEnabled = false;
         state.spaceBuildings.BlackholeCompletedStargate.autoStateEnabled = false;
     }
@@ -6056,15 +6149,16 @@
 
     function resetProjectState() {
         state.projectManager.clearPriorityList();
-        state.projectManager.addProjectToPriorityList(state.projects.SuperCollider);
-        state.projectManager.addProjectToPriorityList(state.projects.StockExchange);
-        state.projectManager.addProjectToPriorityList(state.projects.Monument);
-        state.projectManager.addProjectToPriorityList(state.projects.Railway);
-        state.projectManager.addProjectToPriorityList(state.projects.LaunchFacility);
 
-        for (let i = 0; i < state.projectManager.priorityList.length; i++) {
-            state.projectManager.priorityList[i]._autoMax = -1;
+        for (let key in state.projects) {
+            let project = state.projects[key];
+            project._autoMax = -1;
+            project.autoBuildEnabled = false;
+            state.projectManager.addProjectToPriorityList(project);
         }
+
+        state.projects.LaunchFacility.autoBuildEnabled = true;
+        state.projects.LaunchFacility.ignoreMinimumMoneySetting = true;
     }
 
     function resetProductionSettings() {
@@ -6561,7 +6655,7 @@
         addSetting("autoMiningDroid", false);
         addSetting("autoGraphenePlant", false);
         addSetting("prestigeType", "none");
-        addSetting("autoSpace", false);
+        addSetting("prestigeMADIgnoreArpa", false);
         addSetting("prestigeBioseedConstruct", false);
         addSetting("prestigeBioseedProbes", 3);
         addSetting("prestigeWhiteholeMinMass", 8);
@@ -8996,12 +9090,8 @@
     function autoArpa() {
         let projectList = state.projectManager.managedPriorityList();
 
-        // Special autoSpace logic. If autoSpace is on then ignore other ARPA settings and build once MAD has been researched
-        if (settings.autoSpace && state.projects.LaunchFacility.isUnlocked() && isResearchUnlocked("mad")) {
-            if (!state.triggerManager.projectConflicts(state.projects.LaunchFacility)) {
-                log("autoARPA", "override build launch facility")
-                state.projects.LaunchFacility.tryBuild(false);
-            }
+        if (settings.prestigeMADIgnoreArpa && !isResearchUnlocked("mad")) {
+            return;
         }
 
         // Loop through our managed projects
@@ -9111,19 +9201,20 @@
 
             availablePower += (building.powered * building.stateOnCount);
 
-            for (let j = 0; j < building.consumption.resourceTypes.length; j++) {
-                let resourceType = building.consumption.resourceTypes[j];
+            for (let j = 0; j < building.consumption.length; j++) {
+                let resourceType = building.consumption[j];
 
                 // Fuel adjust
+                let consumptionRate = resourceType.rate;
                 if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    resourceType.rate = game.fuel_adjust(resourceType.initialRate);
+                    consumptionRate = game.fuel_adjust(consumptionRate);
                 }
-                if (building._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== state.spaceBuildings.AlphaFusion) {
-                    resourceType.rate = game.int_fuel_adjust(resourceType.initialRate);
+                if ((building._tab === "interstellar" || building._tab === "galaxy") && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== state.spaceBuildings.AlphaFusion) {
+                    consumptionRate = game.int_fuel_adjust(consumptionRate);
                 }
 
                 // Just like for power, get our total resources available
-                resourceType.resource.rateOfChange += resourceType.rate * building.stateOnCount;
+                resourceType.resource.rateOfChange += consumptionRate * building.stateOnCount;
             }
         }
 
@@ -9153,8 +9244,8 @@
                 maxStateOn = Math.min(maxStateOn, building.stateOnCount - ((resources.Power.currentQuantity - 5) / (-building.powered)));
             }
 
-            for (let j = 0; j < building.consumption.resourceTypes.length; j++) {
-                let resourceType = building.consumption.resourceTypes[j];
+            for (let j = 0; j < building.consumption.length; j++) {
+                let resourceType = building.consumption[j];
 
                 // If resource rate is negative then we are gaining resources. So, only check if we are consuming resources
                 if (resourceType.rate > 0) {
@@ -9183,8 +9274,8 @@
             maxStateOn = Math.floor(maxStateOn);
 
             // Now when we know how many buildings we need - let's take resources
-            for (let k = 0; k < building.consumption.resourceTypes.length; k++) {
-                let resourceType = building.consumption.resourceTypes[k];
+            for (let k = 0; k < building.consumption.length; k++) {
+                let resourceType = building.consumption[k];
                 resourceType.resource.rateOfChange -= resourceType.rate * maxStateOn;
             }
             availablePower -= building.powered * maxStateOn;
@@ -9845,6 +9936,10 @@
             resources[id].storageRequired = 0;
         }
 
+        // Fuel for techs and missions
+        state.oilRequiredByMissions = 0;
+        state.heliumRequiredByMissions = 0;
+
         // Get list of all unlocked techs, and find biggest numbers for each resource
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
         $("#tech .action a:first-child").each(function() {
@@ -9852,6 +9947,12 @@
                 let resource = resLowIds[name];
                 if (resource !== undefined) {
                     resource.storageRequired = Math.max(amount*1.03, resource.storageRequired);
+                    if (resource === resources.Helium_3){
+                        state.heliumRequiredByMissions = Math.max(amount*1.03, state.heliumRequiredByMissions);
+                    }
+                    if (resource === resources.Oil){
+                        state.oilRequiredByMissions = Math.max(amount*1.03, state.oilRequiredByMissions);
+                    }
                 }
             });
         });
@@ -9861,10 +9962,6 @@
         // Otherwise they might start build up knowledge cap just to afford themselves, increasing required
         // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
         state.knowledgeRequiredByTechs = resources.Knowledge.storageRequired;
-
-        // Same for fuels, but we'll need to actually calculate it
-        state.oilRequiredByMissions = 0;
-        state.heliumRequiredByMissions = 0;
 
         // For building using data attributes is not optimal, as they doesn't updates in real time
         state.buildingManager.priorityList.forEach(building => {
@@ -9905,6 +10002,14 @@
             resources.Crates.resourceRequirements[0].resource = resources.Stone;
             resources.Crates.resourceRequirements[0].quantity = 200;
         }
+
+        if (game.global.tech['luna'] && game.global.tech['luna'] >= 2) {
+            state.spaceBuildings.SpaceNavBeacon.consumption = [{resource: resources.Moon_Support, rate: -1},
+                                                               {resource: resources.Red_Support,  rate: -1}];
+        } else {
+            state.spaceBuildings.SpaceNavBeacon.consumption = [{resource: resources.Moon_Support, rate: -1}];
+        }
+        state.spaceBuildings.GatewayShipDock.consumption = [{resource: resources.Gateway_Support, rate: state.spaceBuildings.GatewayStarbase.count * -0.25}];
 
         if (isEvilRace() && !isEvilUniverse() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
             state.jobs.Lumberjack.setJobOverride(state.jobManager.unemployedJob);
@@ -10981,8 +11086,11 @@
         });
 
         // Bioseed
+        addStandardSectionHeader1(prestigeHeaderNode, "Mutual Assured Destruction");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeMADIgnoreArpa", "Ignore A.R.P.A. during Pre-MAD", "Disables building A.R.P.A. projects untill MAD is researched");
+
+        // Bioseed
         addStandardSectionHeader1(prestigeHeaderNode, "Bioseed");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "autoSpace", "Construct Launch Facility", "Constructs the Launch Facility when it becomes available regardless of other settings");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Constructs Space Dock, Bioseeder Ship, and Probes", "Construct the bioseeder ship segments and probes in preparation for bioseeding");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedProbes", "Required probes", "Required number of probes before launching bioseeder ship");
 
@@ -12534,7 +12642,7 @@
         addWeighingRule(tableBodyNode, "Mass Ejector", "Existed ejectors not fully utilized", "buildingWeightingUnusedEjectors");
         addWeighingRule(tableBodyNode, "Not housing or barrack", "MAD prestige enabled, and affordable", "buildingWeightingMADUseless");
         addWeighingRule(tableBodyNode, "Freight Yard, Container Port", "Have unused crates or containers", "buildingWeightingCrateUseless");
-        addWeighingRule(tableBodyNode, "All fuel depots", "Missing Oil or Helium for mission", "buildingWeightingMissingFuel");
+        addWeighingRule(tableBodyNode, "All fuel depots", "Missing Oil or Helium for techs and missions", "buildingWeightingMissingFuel");
         addWeighingRule(tableBodyNode, "Building with state (city)", "Some instances of this building are not working", "buildingWeightingNonOperatingCity");
         addWeighingRule(tableBodyNode, "Building with state (space)", "Some instances of this building are not working", "buildingWeightingNonOperating");
         addWeighingRule(tableBodyNode, "Any", "Conflicts for some resource with active trigger", "buildingWeightingTriggerConflict");
@@ -13183,13 +13291,11 @@
 
     function createArpaToggles() {
         removeArpaToggles();
-        createArpaToggle(state.projects.SuperCollider);
-        createArpaToggle(state.projects.StockExchange);
-        createArpaToggle(state.projects.Monument);
-        createArpaToggle(state.projects.Railway);
-
-        if (state.projects.LaunchFacility.isUnlocked()) {
-            createArpaToggle(state.projects.LaunchFacility);
+        for (let key in state.projects) {
+            let project = state.projects[key];
+            if (project.isUnlocked()) {
+                createArpaToggle(project);
+            }
         }
     }
 
