@@ -31,7 +31,7 @@
 //   Reworked fighting\spying. At first glance it have less configurable options now, but range of possible outcomes is wider, and route to them is more optimal. With default settings it'll sabotage, plunder, and then annex all foreign powers, gradually moving from top to bottom of the list, as they becomes weak enough, and then occupy last city to finish unification. By tweaking settings it's possible to configure script to get any unification achievment(annex\purchase\occupy\reject, with or without pacifism).
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
 //   Added evolution queue. If queue enabled and not empty, settings from top of the list will be applied before next evolution, and then removed from queue. When you add new evolution to queue script stores currently configured race, prestige type, and challenges. Evolution settings can also be edited manualy, and can store any settings, but be very careful doing that, as those data will be imported intro script settings without any validation, except for synthax check.
-//   Standalone autoAchievements option is gone. It's now selectable as a race. Conditional races now can be chosen by auto achievments during random evolution. With mass extinction perk conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one.
+//   Standalone autoAchievements option is gone. It's now selectable as a race. Conditional races now can be chosen by auto achievments during random evolution. With mass extinction perk conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one. During bioseed runs it'll go for races with no greatness achievement.
 //   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
 //   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)
 //
@@ -4047,6 +4047,10 @@
         isMadAchievementUnlocked(level) {
             return isAchievementUnlocked("extinct_" + this.id, level);
         }
+
+        isGreatnessAchievmentUnlocked(level) {
+            return isAchievementUnlocked("genus_" + game.races[this.id].type, level);
+        }
     }
 
     class Technology {
@@ -5469,8 +5473,7 @@
         races.human.evolutionTree = [e.Human].concat(humanoid);
         races.orc.evolutionTree = [e.Orc].concat(humanoid);
         races.elven.evolutionTree = [e.Elven].concat(humanoid);
-        races.junker.evolutionTree = [e.Bunker, e.Junker, e.Sentience].concat(humanoid); // Actions order is reversed, to make sure it won't Sentience before setting challenge
-        raceGroup = [ races.human, races.orc, races.elven, races.junker ];
+        raceGroup = [ races.human, races.orc, races.elven ];
         if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'humanoid') {
             races.custom.evolutionTree = [e.Custom].concat(humanoid)
             raceGroup.push(races.custom);
@@ -5613,6 +5616,11 @@
             raceGroup.push(races.custom);
         }
         state.raceGroupAchievementList.push(raceGroup);
+
+        races.junker.evolutionTree = [e.Bunker, e.Junker, e.Sentience].concat(humanoid); // Actions order is reversed, to make sure it won't Sentience before setting challenge
+        raceGroup = [ races.junker ];
+        state.raceGroupAchievementList.push(raceGroup);
+
     }
 
     function resetWarSettings() {
@@ -5894,7 +5902,7 @@
 
     function resetWeightingSettings() {
         settings.buildingWeightingNew = 3;
-        settings.buildingWeightingUselessPowerPlant = 0;
+        settings.buildingWeightingUselessPowerPlant = 0.1;
         settings.buildingWeightingNeedfulPowerPlant = 3;
         settings.buildingWeightingUnderpowered = 0.8;
         settings.buildingWeightingUselessKnowledge = 0.1;
@@ -6740,7 +6748,7 @@
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
         addSetting("buildingWeightingNew", 3);
-        addSetting("buildingWeightingUselessPowerPlant", 0);
+        addSetting("buildingWeightingUselessPowerPlant", 0.1);
         addSetting("buildingWeightingNeedfulPowerPlant", 3);
         addSetting("buildingWeightingUnderpowered", 0.8);
         addSetting("buildingWeightingUselessKnowledge", 0.1);
@@ -6851,15 +6859,28 @@
                     if (settings.evolutionBackup && settings.evolutionIgnore[i]) {
                       continue;
                     }
-                    const raceGroup = state.raceGroupAchievementList[i];
+                    let raceGroup = state.raceGroupAchievementList[i];
                     let remainingAchievements = 0;
                     let remainingRace = null;
 
                     for (let j = 0; j < raceGroup.length; j++) {
-                        const race = raceGroup[j];
-                        if (race !== races.valdi && !race.isMadAchievementUnlocked(achievementLevel) && race.evolutionCondition()) { // Pick races who met conditions
+                        let race = raceGroup[j];
+
+                        // Ignore Valdi if we're not going for 4star, and locked conditional races
+                        if ((race === races.junker && achievementLevel < 5) || !race.evolutionCondition()) {
+                            continue;
+                        }
+
+                        // We're going for greatness achievement only when bioseeding, if not - go for extinction
+                        if ((settings.prestigeType === "bioseed" && !race.isGreatnessAchievmentUnlocked(achievementLevel)) ||
+                            (settings.prestigeType !== "bioseed" && !race.isMadAchievementUnlocked(achievementLevel))) {
                             remainingRace = race;
                             remainingAchievements++;
+                        }
+
+                        // We're forcing Valdi to be the very last chosen race, when there's no other options, by overriding remainingPercent
+                        if (race === races.junker) {
+                            remainingAchievements = 0.01;
                         }
                     }
 
@@ -11242,7 +11263,7 @@
         currentNode.append(`<div style="margin-top: 5px; width: 400px;">
                               <label for="script_userEvolutionTarget">Target Evolution:</label>
                               <select id="script_userEvolutionTarget" style="width: 150px; float: right;">
-                                <option value = "auto">Auto MAD Achievements</option>
+                                <option value = "auto" title = "Picks race with unearned Greatness achievement for bioseed runs, or with unearned Extinction achievement in other cases. Conditional races are prioritized, when available.">Auto Achievements</option>
                               </select>
                             </div><div><span id="script_race_warning"></span></div>`);
 
@@ -11351,7 +11372,7 @@
                 nameClass = "has-text-danger";
             }
         } else if (queuedEvolution.userEvolutionTarget === "auto") {
-            raceName = "Auto MAD Achievements";
+            raceName = "Auto Achievements";
             nameClass = "has-text-warning";
         } else {
             raceName = "Unrecognized race!";
@@ -13161,7 +13182,7 @@
             // It doesn't have such huge impact anymore, as used to before rewriting trigger's tech selectors, but still won't hurt to have an option to increase performance a bit more
             createSettingToggle(scriptNode, 'showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
 
-            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto MAD Achievements mode will target races that you don\'t have extinction achievements for yet.');
+            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\greatness achievements for yet.');
             createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
             createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
             createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
