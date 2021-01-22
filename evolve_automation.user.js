@@ -11372,7 +11372,11 @@
                 nameClass = "has-text-danger";
             }
         } else if (queuedEvolution.userEvolutionTarget === "auto") {
-            raceName = "Auto Achievements";
+            if (queuedEvolution.prestigeType === "bioseed") {
+                raceName = "Auto Achievements (Greatness)";
+            } else {
+                raceName = "Auto Achievements (Extinction)";
+            }
             nameClass = "has-text-warning";
         } else {
             raceName = "Unrecognized race!";
