@@ -1562,12 +1562,6 @@
         }
     }
 
-    const SmelterFuelTypes = {
-        Wood: 0,
-        Coal: 1,
-        Oil: 2,
-    }
-
     const SmelterSmeltingTypes = {
         Iron: 0,
         Steel: 1,
@@ -1577,14 +1571,14 @@
         /**
          * @param {Resource} resource
          */
-        constructor(resource) {
+        constructor(fuelType, resource, amount, min) {
             this.id = resource.id;
             this.resource = resource;
             this.enabled = true;
             this.priority = 0;
 
-            this.fuelIndex = 0;
-            this.productionCost = null;
+            this.fuelType = fuelType;
+            this.productionCost = new ResourceProductionCost(resource, amount, min);
             this.required = 0;
             this.adjustment = 0;
         }
@@ -1607,27 +1601,9 @@
             this._fuelPriorityList.length = 0;
         }
 
-        /**
-         * @param {SmelterFuel} fuel
-         */
         addFuelToPriorityList(fuel) {
             fuel.priority = this._fuelPriorityList.length;
             this._fuelPriorityList.push(fuel);
-
-            if (fuel.resource === resources.Lumber) {
-                fuel.fuelIndex = SmelterFuelTypes.Wood;
-                fuel.productionCost = new ResourceProductionCost(resources.Lumber, 0, 6);
-            }
-
-            if (fuel.resource === resources.Coal) {
-                fuel.fuelIndex = SmelterFuelTypes.Coal;
-                fuel.productionCost = new ResourceProductionCost(resources.Coal, 0, 2);
-            }
-
-            if (fuel.resource === resources.Oil) {
-                fuel.fuelIndex = SmelterFuelTypes.Oil;
-                fuel.productionCost = new ResourceProductionCost(resources.Oil, 0.35, 2);
-            }
         }
 
         sortByPriority() {
@@ -1666,42 +1642,27 @@
             return this.isUnlocked() && this.count > 0;
         }
 
-        /**
-         * @param {number} fuelType
-         */
         isFuelUnlocked(fuelType) {
-            if (fuelType === SmelterFuelTypes.Wood) {
-                return !game.global.race[racialTraitKindlingKindred];
+            if (fuelType === "Wood") {
+                return isLumberRace();
             }
 
-            if (fuelType === SmelterFuelTypes.Coal) {
+            if (fuelType === "Coal") {
                 return game.global.resource.Coal.display;
             }
 
-            if (fuelType === SmelterFuelTypes.Oil) {
+            if (fuelType === "Oil") {
                 return game.global.resource.Oil.display;
             }
         }
 
-        /**
-         * @param {number} fuelType
-         */
+
         fueledCount(fuelType) {
             if (!this.isFuelUnlocked(fuelType)) {
                 return 0;
             }
 
-            if (fuelType === SmelterFuelTypes.Wood) {
-                return game.global.city.smelter.Wood;
-            }
-
-            if (fuelType === SmelterFuelTypes.Coal) {
-                return game.global.city.smelter.Coal;
-            }
-
-            if (fuelType === SmelterFuelTypes.Oil) {
-                return game.global.city.smelter.Oil;
-            }
+            return game.global.city.smelter[fuelType];
         }
 
         /**
@@ -1752,25 +1713,10 @@
                 return this.decreaseFuel(fuelType, count * -1);
             }
 
-            let type = null;
-            if (fuelType === SmelterFuelTypes.Wood) {
-                type = "Wood";
-            }
-
-            if (fuelType === SmelterFuelTypes.Coal) {
-                type = "Coal";
-            }
-
-            if (fuelType === SmelterFuelTypes.Oil) {
-                type = "Oil";
-            }
-
-            if (type === null) { return false; }
-
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                vue.addFuel(type);
+                vue.addFuel(fuelType);
             }
 
             return true;
@@ -1790,26 +1736,10 @@
                 return this.increaseFuel(fuelType, count * -1);
             }
 
-            let type = null;
-
-            if (fuelType === SmelterFuelTypes.Wood) {
-                type = "Wood";
-            }
-
-            if (fuelType === SmelterFuelTypes.Coal) {
-                type = "Coal";
-            }
-
-            if (fuelType === SmelterFuelTypes.Oil) {
-                type = "Oil";
-            }
-
-            if (type === null) { return false; }
-
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                vue.subFuel(type);
+                vue.subFuel(fuelType);
             }
 
             return true;
@@ -2279,7 +2209,7 @@
 
             let func = null;
 
-            if (fuelType === GrapheneFuelTypes.Wood) {
+            if (fuelType === GrapheneFuelTypes.Lumber) {
                 func = vue.subWood;
             }
 
@@ -6178,9 +6108,9 @@
     function resetProductionState() {
         // Smelter settings
         state.cityBuildings.Smelter.clearFuelPriorityList();
-        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.Oil));
-        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.Coal));
-        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel(resources.Lumber));
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel("Oil", resources.Oil, 0.35, 2));
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel("Coal", resources.Coal, 0, 2));
+        state.cityBuildings.Smelter.addFuelToPriorityList(new SmelterFuel("Wood", resources.Lumber, 0, 6));
 
         // Factory settings
         let productionSettings = state.cityBuildings.Factory.productionOptions;
@@ -8136,7 +8066,7 @@
         let smelter = state.cityBuildings.Smelter;
 
         // No smelter; no auto smelter. No soup for you.
-        if (!smelter.isUnlocked()) {
+        if (smelter.count < 1) {
             return;
         }
 
@@ -8145,14 +8075,14 @@
             let fuels = smelter.managedFuelPriorityList();
             let remainingSmelters = smelter.maxOperating;
             fuels.forEach(fuel => {
-                if (remainingSmelters <= 0) {
+                if (remainingSmelters <= 0 || !smelter.isFuelUnlocked(fuel.fuelType)) {
                     return;
                 }
 
                 let productionCost = fuel.productionCost;
                 let resource = productionCost.resource;
 
-                let remainingRateOfChange = resource.rateOfChange + (smelter.fueledCount(fuel.fuelIndex) * productionCost.quantity);
+                let remainingRateOfChange = resource.rateOfChange + (smelter.fueledCount(fuel.fuelType) * productionCost.quantity);
                 // No need to preserve minimum income when storage is full
                 if (resource.storageRatio < 0.98) {
                     remainingRateOfChange -= productionCost.minRateOfChange;
@@ -8169,16 +8099,16 @@
             });
 
             fuels.forEach(fuel => {
-                fuel.adjustment = fuel.required - smelter.fueledCount(fuel.fuelIndex);
+                fuel.adjustment = fuel.required - smelter.fueledCount(fuel.fuelType);
 
                 if (fuel.adjustment < 0) {
-                    smelter.decreaseFuel(fuel.fuelIndex, -fuel.adjustment);
+                    smelter.decreaseFuel(fuel.fuelType, -fuel.adjustment);
                 }
             });
 
             fuels.forEach(fuel => {
                 if (fuel.adjustment > 0) {
-                    smelter.increaseFuel(fuel.fuelIndex, fuel.adjustment);
+                    smelter.increaseFuel(fuel.fuelType, fuel.adjustment);
                 }
             });
         }
@@ -8238,7 +8168,7 @@
         let factory = state.cityBuildings.Factory;
 
         // No factory; no auto factory
-        if (!factory.isUnlocked()) {
+        if (factory.count < 1) {
             return;
         }
 
@@ -8355,7 +8285,7 @@
         let droid = state.spaceBuildings.AlphaMiningDroid;
 
         // If not unlocked then nothing to do
-        if (!droid.isUnlocked()) {
+        if (droid.count < 1) {
             return;
         }
 
@@ -8374,7 +8304,7 @@
         let plant = state.spaceBuildings.AlphaFactory;
 
         // If not unlocked then nothing to do
-        if (!plant.isUnlocked()) {
+        if (plant.count < 1) {
             return;
         }
 
@@ -8388,6 +8318,9 @@
 
             if (remainingPlants === 0) {
                 return;
+            }
+            if (!consumption.resource.isUnlocked()) {
+                continue;
             }
 
             let currentFuelCount = plant.fueledCount(fuelIndex);
