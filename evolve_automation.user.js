@@ -9261,7 +9261,7 @@
             }
 
             // Disable mills with surplus energy
-            if (building === state.cityBuildings.Mill && building.powered && resources.Food.storageRatio < 0.7) {
+            if (building === state.cityBuildings.Mill && building.powered && resources.Food.storageRatio < 0.7 && !game.global.race['ravenous']) {
                 maxStateOn = Math.min(maxStateOn, building.stateOnCount - ((resources.Power.currentQuantity - 5) / (-building.powered)));
             }
 
