@@ -6885,7 +6885,7 @@
                     }
 
                     // If we have Mass Extinction perk, and not affected by randomness - prioritize conditional races
-                    if (game.global.stats.achieve['mass_extinction'] && remainingAchievements > 0 && remainingRace.evolutionConditionText !== '') {
+                    if (remainingRace !== races.junker && game.global.stats.achieve['mass_extinction'] && remainingAchievements > 0 && remainingRace.evolutionConditionText !== '') {
                         targetedGroup.group = raceGroup;
                         targetedGroup.race = remainingRace;
                         targetedGroup.remainingPercent = 100;
