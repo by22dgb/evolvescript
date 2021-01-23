@@ -5674,8 +5674,8 @@
     function resetPrestigeSettings() {
         settings.prestigeType = "none";
 
-        settings.prestigeMADIgnoreArpa = false;
-        settings.prestigeBioseedConstruct = false;
+        settings.prestigeMADIgnoreArpa = true;
+        settings.prestigeBioseedConstruct = true;
         settings.prestigeBioseedProbes = 3;
         settings.prestigeWhiteholeMinMass = 8;
         settings.prestigeWhiteholeStabiliseMass = true;
@@ -6663,8 +6663,8 @@
         addSetting("autoMiningDroid", false);
         addSetting("autoGraphenePlant", false);
         addSetting("prestigeType", "none");
-        addSetting("prestigeMADIgnoreArpa", false);
-        addSetting("prestigeBioseedConstruct", false);
+        addSetting("prestigeMADIgnoreArpa", true);
+        addSetting("prestigeBioseedConstruct", true);
         addSetting("prestigeBioseedProbes", 3);
         addSetting("prestigeWhiteholeMinMass", 8);
         addSetting("prestigeWhiteholeStabiliseMass", true);
@@ -8286,7 +8286,7 @@
                 });
 
                 // If we're going for bioseed - try to balance neutronium\nanotubes ratio
-                if (settings.prestigeBioseedConstruct && production.goods === FactoryGoods.NanoTube && resources.Neutronium.currentQuantity < 250) {
+                if (settings.prestigeBioseedConstruct && settings.prestigeType === "bioseed" && production.goods === FactoryGoods.NanoTube && resources.Neutronium.currentQuantity < 250) {
                     actualRequiredFactories = 0;
                 }
 
@@ -10217,9 +10217,14 @@
               () => "Still have some non operating buildings",
               () => settings.buildingWeightingNonOperating
           ],[
-              () => !settings.prestigeBioseedConstruct,
+              () => settings.prestigeBioseedConstruct && settings.prestigeType !== "bioseed",
               (building) => building === state.spaceBuildings.GasSpaceDock || building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe,
               () => "Bioseed prestige disabled",
+              () => 0
+          ],[
+              () => settings.prestigeBioseedConstruct && settings.prestigeType === "bioseed",
+              (building) => building === state.spaceBuildings.DwarfWorldCollider,
+              () => "Ignored on Bioseed runs",
               () => 0
           ],[
               () => settings.prestigeType === "mad" && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true)),
@@ -11007,10 +11012,8 @@
         return toggle;
     }
 
-    function buildStandartLabel(note, highlight) {
-        let classAttribute = highlight ? ' class="has-text-danger"' : ' class="has-text-info"';
-        let label = $('<span' + classAttribute + '">' + note + '</span>');
-        return label;
+    function buildStandartLabel(note, color = "has-text-info") {
+        return $(`<span class="${color}">${note}</span>`);
     }
 
     function buildGeneralSettings() {
@@ -11108,11 +11111,11 @@
 
         // Bioseed
         addStandardSectionHeader1(prestigeHeaderNode, "Mutual Assured Destruction");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeMADIgnoreArpa", "Ignore A.R.P.A. during Pre-MAD", "Disables building A.R.P.A. projects untill MAD is researched");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeMADIgnoreArpa", "Pre-MAD: Ignore A.R.P.A.", "Disables building A.R.P.A. projects untill MAD is researched");
 
         // Bioseed
         addStandardSectionHeader1(prestigeHeaderNode, "Bioseed");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Constructs Space Dock, Bioseeder Ship, and Probes", "Construct the bioseeder ship segments and probes in preparation for bioseeding");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Non-Bioseed: Ignore Space Dock, Bioseeder Ship and Probes<br>Bioseed: Ignore World Collider", "Construct the space dock, bioseeder ship segments and probes only when bioseed is current prestige goal, and skip building world collider");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedProbes", "Required probes", "Required number of probes before launching bioseeder ship");
 
         // Whitehole
@@ -11120,7 +11123,7 @@
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeMinMass", "Required minimum solar mass", "Required minimum solar mass of blackhole before prestiging");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole until minimum solar mass reached", "Stabilises the blackhole with exotic materials until minimum solar mass is reached");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectEnabled", "Enable mass ejector", "If not enabled the mass ejector will not be managed by the script");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until \"Eject everything\" option is activated.");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until 'Eject everything' option is activated.");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate, only useful during Decay Challenge");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
 
@@ -12772,7 +12775,18 @@
             const building = state.buildingManager.priorityList[i];
             let buildingElement = $('#script_' + building.settingId + 'Toggle');
 
-            buildingElement.append(buildStandartLabel(building.name, building._tab !== "city"));
+            let color = "has-text-info";
+            if (building._tab === "space") {
+                color = "has-text-danger";
+            } else if (building._tab === "galaxy") {
+                color = "has-text-advanced";
+            } else if (building._tab === "interstellar") {
+                color = "has-text-special";
+            } else if (building._tab === "portal") {
+                color = "has-text-warning";
+            }
+
+            buildingElement.append(buildStandartLabel(building.name, color));
 
             buildingElement = buildingElement.next();
             buildingElement.append(buildStandartSettingsToggle(building, "autoBuildEnabled", "script_bat2_" + building.settingId, "script_bat1_" + building.settingId));
