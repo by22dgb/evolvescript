@@ -758,7 +758,7 @@
             this.resourceRequirements.forEach(requirement =>
                 requirement.resource.currentQuantity -= requirement.quantity
             );
-
+            let newCount = this.count + 1;
             this.vue.action();
 
             if (game.global.race.species === speciesProtoplasm // Don't log evolution actions
@@ -773,7 +773,7 @@
 
             if (this.gameMax > 1 && this.gameMax < Number.MAX_SAFE_INTEGER) {
                 // This build has segments that will be built
-                state.log.logSuccess(loggingTypes.multi_construction, `${this.title} (${this.count}) has been constructed.`);
+                state.log.logSuccess(loggingTypes.multi_construction, `${this.title} (${newCount}) has been constructed.`);
             } else {
                 state.log.logSuccess(loggingTypes.construction, `${this.title} has been constructed.`);
             }
