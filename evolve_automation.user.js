@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.13
+// @version      3.3.1.14
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -19,6 +19,7 @@
 // Changes from original version:
 //   Scripting Edition no longer required, works both with fork and original game
 //   Remade autoBuild, all buildings now can have individual weights, plus dynamic coefficients to weights(like, increasing weights of power plants when you need more energy), plus additional safe-guards checking for resource usage, available support, and such. You can fine-tune script to build what you actually need, and save resources for further constructions.
+//   Added autoQuarry option, which manages stone to chrysotile ratio for smoldering races
 //   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa.
 //   Remade autoCraftsmen, it assigns all crafters to same resource at once, to utilize apprentice bonus, and rotates them between resources aiming to desired ratio of stored resources
 //   Slightly tuned pre-mad autoCraft, so it won't use resources such greedy, as it used to do. You'll still have resources for everything you need, you just won't stuck with hundreds of thousands of plywood... and no lumber to build university.
@@ -1525,6 +1526,58 @@
         }
     }
 
+
+    class RockQuarry extends Action {
+        constructor() {
+            super("Rock Quarry", "city", "rock_quarry", "");
+
+            this._industryVueBinding = "iQuarry";
+        }
+
+        get asbestos() {
+            return this.instance.asbestos;
+        }
+
+        increaseAsbestos(count) {
+            let vue = getVueById(this._industryVueBinding);
+            if (vue === undefined || count === 0) {
+                return false;
+            }
+
+            if (count < 0) {
+                return this.decreaseAsbestos(count * -1);
+            }
+
+            state.multiplier.reset(count, this.instance.asbestos + count >= 100);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.add();
+            }
+
+            return true;
+        }
+
+        decreaseAsbestos(count) {
+            let vue = getVueById(this._industryVueBinding);
+            if (vue === undefined || count === 0) {
+                return false;
+            }
+
+            if (count < 0) {
+                return this.increaseAsbestos(count * -1);
+            }
+
+            state.multiplier.reset(count, this.instance.asbestos - count <= 0);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.sub();
+            }
+
+            return true;
+        }
+
+    }
+
     const SmelterSmeltingTypes = {
         Iron: 0,
         Steel: 1,
@@ -1598,11 +1651,6 @@
          */
         addSmeltingConsumption(smeltingType, resource, quantity, minRateOfChange) {
             this.smeltingConsumption[smeltingType].push(new ResourceProductionCost(resource, quantity, minRateOfChange));
-        }
-
-        hasOptions() {
-            // Always has options once unlocked
-            return this.isUnlocked() && this.count > 0;
         }
 
         isFuelUnlocked(fuelType) {
@@ -1770,11 +1818,6 @@
 
             this._productionCosts = null;
             this._productionOptions = null;
-        }
-
-        hasOptions() {
-            // Always has options once unlocked
-            return this.isUnlocked() && this.count > 0;
         }
 
         get maxOperating() {
@@ -1970,11 +2013,6 @@
             this._industryVueBinding = "iDroid";
         }
 
-        hasOptions() {
-            // Always has options once unlocked
-            return this.isUnlocked() && this.count > 0;
-        }
-
         get currentOperating() {
             return game.global.interstellar.mining_droid.adam + game.global.interstellar.mining_droid.uran + game.global.interstellar.mining_droid.coal + game.global.interstellar.mining_droid.alum;
         }
@@ -2072,11 +2110,6 @@
          */
         addGrapheneConsumption(resource, quantity, minRateOfChange) {
             this.grapheheConsumption.push(new ResourceProductionCost(resource, quantity, minRateOfChange));
-        }
-
-        hasOptions() {
-            // Always has options once unlocked
-            return this.isUnlocked() && this.count > 0;
         }
 
         /**
@@ -2201,13 +2234,8 @@
             super("Gas Space Dock", "space", "star_dock", "spc_gas");
         }
 
-        hasOptions() {
-            // Always has options once unlocked
-            return this.isUnlocked() && this.count > 0;
-        }
-
         isOptionsCached() {
-            if (!this.hasOptions() || game.global.tech['genesis'] < 4) {
+            if (this.count < 1 || game.global.tech['genesis'] < 4) {
                 // It doesn't have options yet so I guess all "none" of them are cached!
                 // Also return true if we don't have the required tech level yet
                 return true;
@@ -2225,7 +2253,7 @@
         }
 
         cacheOptions() {
-            if (!this.hasOptions() || state.windowManager.isOpen()) {
+            if (this.count < 1 || state.windowManager.isOpen()) {
                 return false;
             }
 
@@ -4910,7 +4938,7 @@
             Silo: new Action("Grain Silo", "city", "silo", ""),
             Shed: new Action("Shed", "city", "shed", ""),
             LumberYard: new Action("Lumber Yard", "city", "lumber_yard", ""),
-            RockQuarry: new Action("Rock Quarry", "city", "rock_quarry", ""),
+            RockQuarry: new RockQuarry(), // has options
             CementPlant: new Action("Cement Plant", "city", "cement_plant", ""),
             Foundry: new Action("Foundry", "city", "foundry", ""),
             Factory: new Factory(), // has options
@@ -6550,6 +6578,7 @@
             delete settings.autoTradeSpecialResources;
         }
 
+        addSetting("autoQuarry", false);
         addSetting("autoSmelter", false);
         addSetting("autoFactory", false);
         addSetting("autoMiningDroid", false);
@@ -7755,7 +7784,8 @@
                     }
                 }
 
-                if (job === state.jobs.CementWorker) {
+                // Stone income fluctuate a lot when we're managing smoldering quarry, ignore it
+                if (job === state.jobs.CementWorker && (!game.global.race[racialTraitSmoldering] || !settings.autoQuarry)) {
                     let currentCementWorkers = job.count;
                     log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.Stone.rateOfChange);
 
@@ -8024,6 +8054,30 @@
     }
 
     //#endregion Auto Tax
+
+    function autoQuarry() {
+        let quarry = state.cityBuildings.RockQuarry;
+
+        // Nothing to do here with no quarry, or smoldering
+        if (quarry.count < 1 || !game.global.race[racialTraitSmoldering]) {
+            return;
+        }
+
+        let chrysotileRatio = resources.Chrysotile.storageRatio;
+        let stoneRatio = resources.Stone.storageRatio;
+        if (state.cityBuildings.MetalRefinery.count > 0) {
+            stoneRatio = Math.min(stoneRatio, resources.Aluminium.storageRatio);
+        }
+
+        let newAsbestos = 50;
+        if (chrysotileRatio < stoneRatio) {
+            newAsbestos = 100 - Math.round(chrysotileRatio / stoneRatio * 50);
+        }
+        if (stoneRatio < chrysotileRatio) {
+            newAsbestos = Math.round(stoneRatio / chrysotileRatio * 50);
+        }
+        quarry.increaseAsbestos(newAsbestos - quarry.asbestos);
+    }
 
     //#region Auto Smelter
 
@@ -9833,6 +9887,12 @@
         // Not evolving anymore, clear ignore list
         settings.evolutionIgnore = {};
 
+        // Workround for game bug dublicating garrison and governmment div's after reset
+        // TODO: Remove me once it's fixed in game
+        if ($("#civics .garrison").length == 2) {
+            window.location.reload();
+        }
+
         // Update data from exposed global
         updateScriptData();
 
@@ -10327,6 +10387,9 @@
         }
         if (settings.autoGraphenePlant) {
             autoGraphenePlant();
+        }
+        if (settings.autoQuarry) {
+            autoQuarry();
         }
         if (settings.autoSmelter) {
             autoSmelter();
@@ -13088,6 +13151,7 @@
             createSettingToggle(scriptNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(scriptNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
             createSettingToggle(scriptNode, 'autoCraftsmen', 'Enable this when performing challenge runs and autoJobs will also manage craftsmen.');
+            createSettingToggle(scriptNode, 'autoQuarry', 'Manages rock quarry stone to chrysotile ratio for smoldering races');
             createSettingToggle(scriptNode, 'autoSmelter', 'Manages smelter output at different stages at the game.');
             createSettingToggle(scriptNode, 'autoFactory', 'Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.');
             createSettingToggle(scriptNode, 'autoMiningDroid', 'Manages mining droid production based on power and consumption. Produces Adamantite only. Not currently user configurable.');
