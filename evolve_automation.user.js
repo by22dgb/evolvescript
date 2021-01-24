@@ -1705,7 +1705,7 @@
          */
         increaseFuel(fuelType, count) {
             let vue = getVueById(this._industryVueBinding);
-            if (!vue || count === 0 || !this.isFuelUnlocked(fuelType)) {
+            if (vue === undefined || count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
@@ -1728,7 +1728,7 @@
          */
         decreaseFuel(fuelType, count) {
             let vue = getVueById(this._industryVueBinding);
-            if (!vue || count === 0 || !this.isFuelUnlocked(fuelType)) {
+            if (vue === undefined || count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
@@ -1753,7 +1753,7 @@
             let vue = getVueById(this._industryVueBinding);
 
             // Increasing one decreases the other so no need for both an "increaseXXXX" and a "descreaseXXXX"
-            if (!vue || count === 0 || !this.isSmeltingUnlocked(smeltingType)) {
+            if (vue === undefined || count === 0 || !this.isSmeltingUnlocked(smeltingType)) {
                 return false;
             }
 
@@ -1952,7 +1952,7 @@
          */
         increaseProduction(production, count) {
             let vue = getVueById(this._industryVueBinding);
-            if (!vue || count === 0 || !this.isProductionUnlocked(production)) {
+            if (vue === undefined || count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
@@ -1975,7 +1975,7 @@
          */
         decreaseProduction(production, count) {
             let vue = getVueById(this._industryVueBinding);
-            if (!vue || count === 0 || !this.isProductionUnlocked(production)) {
+            if (vue === undefined || count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
@@ -2045,7 +2045,7 @@
          */
         increaseProduction(production, count) {
             let vue = getVueById(this._industryVueBinding);
-            if (!vue || count === 0 || !this.isProductionUnlocked(production)) {
+            if (vue === undefined || count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
@@ -2068,7 +2068,7 @@
          */
         decreaseProduction(production, count) {
             let vue = getVueById(this._industryVueBinding);
-            if (!vue || count === 0 || !this.isProductionUnlocked(production)) {
+            if (vue === undefined || count === 0 || !this.isProductionUnlocked(production)) {
                 return false;
             }
 
@@ -2160,7 +2160,7 @@
          */
         increaseFuel(fuelType, count) {
             let vue = getVueById(this._industryVueBinding);
-            if (!vue || count === 0 || !this.isFuelUnlocked(fuelType)) {
+            if (vue === undefined || count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
@@ -2199,7 +2199,7 @@
          */
         decreaseFuel(fuelType, count) {
             let vue = getVueById(this._industryVueBinding);
-            if (!vue || count === 0 || !this.isFuelUnlocked(fuelType)) {
+            if (vue === undefined || count === 0 || !this.isFuelUnlocked(fuelType)) {
                 return false;
             }
 
@@ -2844,8 +2844,7 @@
         }
 
         isMercenaryUnlocked() {
-            //return game.global.civic.garrison.mercs;
-            return document.querySelector("#garrison .first") !== null;
+            return document.querySelector("#garrison .first") !== null && game.global.civic.garrison.mercs;
         }
 
         getMercenaryCost() {
@@ -2931,14 +2930,15 @@
          * @param {number} count
          */
         addBattalion(count) {
-            if (!this.isUnlocked()) {
+            let vue = getVueById(this._vueBinding);
+            if (vue === undefined || !this.isUnlocked()) {
                 return false;
             }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                getVueById(this._vueBinding).aNext();
+                vue.aNext();
             }
 
             this.raid = Math.min(this.raid + count, this.currentCityGarrison);
@@ -2950,14 +2950,15 @@
          * @param {number} count
          */
         removeBattalion(count) {
-            if (!this.isUnlocked()) {
+            let vue = getVueById(this._vueBinding);
+            if (vue === undefined || !this.isUnlocked()) {
                 return false;
             }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                getVueById(this._vueBinding).aLast();
+                vue.aLast();
             }
 
             this.raid = Math.max(this.raid - count, 0);
@@ -3008,14 +3009,15 @@
          * @param {number} count
          */
         addHellGarrison(count) {
-            if (!this.isHellUnlocked()) {
+            let vue = getVueById(this._hellVueBinding);
+            if (vue === undefined || !this.isHellUnlocked()) {
                 return false;
             }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                getVueById(this._hellVueBinding).aNext();
+                vue.aNext();
             }
 
             this.hellSoldiers = Math.min(this.hellSoldiers + count, this.workers);
@@ -3028,6 +3030,7 @@
          * @param {number} count
          */
         removeHellGarrison(count) {
+            let vue = getVueById(this._hellVueBinding);
             if (!this.isHellUnlocked()) {
                 return false;
             }
@@ -3035,7 +3038,7 @@
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                getVueById(this._hellVueBinding).aLast();
+                vue.aLast();
             }
 
             let min = this.hellPatrols * this.hellPatrolSize + this.hellSoulForgeSoldiers + state.spaceBuildings.PortalGuardPost.stateOnCount;
@@ -3049,14 +3052,15 @@
          * @param {number} count
          */
         addHellPatrol(count) {
-            if (!this.isHellUnlocked()) {
+            let vue = getVueById(this._hellVueBinding);
+            if (vue === undefined || !this.isHellUnlocked()) {
                 return false;
             }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 let inc = state.multiplier.setMultiplier();
-                getVueById(this._hellVueBinding).patInc();
+                vue.patInc();
 
                 if (this.hellPatrols * this.hellPatrolSize < this.hellSoldiers){
                     this.hellPatrols += inc;
@@ -3074,14 +3078,15 @@
          * @param {number} count
          */
         removeHellPatrol(count) {
-            if (!this.isHellUnlocked()) {
+            let vue = getVueById(this._hellVueBinding);
+            if (vue === undefined || !this.isHellUnlocked()) {
                 return false;
             }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                getVueById(this._hellVueBinding).patDec();
+                vue.patDec();
             }
 
             this.hellPatrols = Math.max(this.hellPatrols - count, 0);
@@ -3093,14 +3098,15 @@
          * @param {number} count
          */
         addHellPatrolSize(count) {
-            if (!this.isHellUnlocked()) {
+            let vue = getVueById(this._hellVueBinding);
+            if (vue === undefined || !this.isHellUnlocked()) {
                 return false;
             }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 let inc = state.multiplier.setMultiplier();
-                getVueById(this._hellVueBinding).patSizeInc();
+                vue.patSizeInc();
 
                 if (this.hellPatrolSize < this.hellSoldiers){
                     this.hellPatrolSize += inc;
@@ -3118,14 +3124,15 @@
          * @param {number} count
          */
         removeHellPatrolSize(count) {
-            if (!this.isHellUnlocked()) {
+            let vue = getVueById(this._hellVueBinding);
+            if (vue === undefined || !this.isHellUnlocked()) {
                 return false;
             }
 
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                getVueById(this._hellVueBinding).patSizeDec();
+                vue.patSizeDec();
             }
 
             this.hellPatrolSize = Math.max(this.hellPatrolSize - count, 1);
@@ -3819,22 +3826,18 @@
          * @param {number} count
          */
         addTradeRoutes(resource, count) {
-            if (!this.isResourceUnlocked(resource)) {
+            let vue = getVueById(resource.marketVueBinding);
+            if (vue === undefined || !this.isResourceUnlocked(resource)) {
                 return false;
             }
 
-            let vue = getVueById(resource.marketVueBinding);
-            if (vue !== null) {
-                state.multiplier.reset(count);
-                while (state.multiplier.remainder > 0) {
-                    state.multiplier.setMultiplier();
-                    vue.autoBuy(resource.id);
-                }
-
-                return true;
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.autoBuy(resource.id);
             }
 
-            return false
+            return true;
         }
 
         /**
@@ -3842,22 +3845,18 @@
          * @param {number} count
          */
         removeTradeRoutes(resource, count) {
-            if (!this.isResourceUnlocked(resource)) {
+            let vue = getVueById(resource.marketVueBinding);
+            if (vue === undefined || !this.isResourceUnlocked(resource)) {
                 return false;
             }
 
-            let vue = getVueById(resource.marketVueBinding);
-            if (vue !== null) {
-                state.multiplier.reset(count);
-                while (state.multiplier.remainder > 0) {
-                    state.multiplier.setMultiplier();
-                    vue.autoSell(resource.id);
-                }
-
-                return true;
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.autoSell(resource.id);
             }
 
-            return false
+            return true;
         }
     }
 
@@ -7266,22 +7265,24 @@
         let m = state.warManager;
 
         // Mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
-        let mercenariesHired = 0;
-        while (m.currentSoldiers < m.maxSoldiers && resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100) {
-            let mercenaryCost = m.getMercenaryCost();
-            if (mercenaryCost > settings.foreignHireMercCostLowerThan || mercenaryCost > resources.Money.currentQuantity) {
-                break;
+        if (m.isMercenaryUnlocked()) {
+            let mercenariesHired = 0;
+            while (m.currentSoldiers < m.maxSoldiers && resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100) {
+                let mercenaryCost = m.getMercenaryCost();
+                if (mercenaryCost > settings.foreignHireMercCostLowerThan || mercenaryCost > resources.Money.currentQuantity) {
+                    break;
+                }
+
+                m.hireMercenary();
+                mercenariesHired++;
             }
 
-            m.hireMercenary();
-            mercenariesHired++;
-        }
-
-        // Log the interaction
-        if (mercenariesHired === 1) {
-            state.log.logSuccess(loggingTypes.mercenary, `Hired a mercenary to join the garrison.`);
-        } else if (mercenariesHired > 1) {
-            state.log.logSuccess(loggingTypes.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`);
+            // Log the interaction
+            if (mercenariesHired === 1) {
+                state.log.logSuccess(loggingTypes.mercenary, `Hired a mercenary to join the garrison.`);
+            } else if (mercenariesHired > 1) {
+                state.log.logSuccess(loggingTypes.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`);
+            }
         }
 
         // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
@@ -11676,15 +11677,15 @@
         typeSelectNode.autocomplete({
             delay: 0,
             source: function(request, response) {
-            let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
-            let techList = [];
-            Object.values(tech).forEach(technology => {
-                let title = technology.title;
-                if(matcher.test(title)){
-                    techList.push({label: title, value: technology.id});
-                }
-            });
-            response(techList);
+                let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
+                let techList = [];
+                Object.values(tech).forEach(technology => {
+                    let title = technology.title;
+                    if(matcher.test(title)){
+                        techList.push({label: title, value: technology.id});
+                    }
+                });
+                response(techList);
             },
             select: onChange, // Dropdown list click
             focus: onChange, // Arrow keys press
@@ -11739,15 +11740,15 @@
         typeSelectNode.autocomplete({
             delay: 0,
             source: function(request, response) {
-            let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
-            let buildingList = [];
-            Object.values(buildingIds).forEach(building => {
-                let name = building.name;
-                if(matcher.test(name)){
-                    buildingList.push({label: name, value: building.settingId});
-                }
-            });
-            response(buildingList);
+                let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
+                let buildingList = [];
+                Object.values(buildingIds).forEach(building => {
+                    let name = building.name;
+                    if(matcher.test(name)){
+                        buildingList.push({label: name, value: building.settingId});
+                    }
+                });
+                response(buildingList);
             },
             select: onChange, // Dropdown list click
             focus: onChange, // Arrow keys press
@@ -11800,51 +11801,37 @@
         currentNode.empty().off("*");
 
         // Theology 1
-        let theology1Node = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchTheology_1">Target Theology 1:</label><select id="script_userResearchTheology_1" style="width: 150px; float: right;"></select></div>');
-        currentNode.append(theology1Node);
+        currentNode.append(`<div style="margin-top: 5px; width: 400px">
+                              <label for="script_userResearchTheology_1">Target Theology 1:</label>
+                              <select id="script_userResearchTheology_1" style="width: 150px; float: right;">
+                                <option value = "auto">Script Managed</option>
+                                <option value = "tech-anthropology">Anthropology</option>
+                                <option value = "tech-fanaticism">Fanaticism</option>
+                              </select>
+                            </div>`);
 
-        let selectNode = $('#script_userResearchTheology_1');
-        let selected = settings.userResearchTheology_1 === "auto" ? ' selected="selected"' : "";
-        let optionNode = $('<option value = "auto"' + selected + '>Script Managed</option>');
-        selectNode.append(optionNode);
-
-        selected = settings.userResearchTheology_1 === "tech-anthropology" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "tech-anthropology"' + selected + '>Anthropology</option>');
-        selectNode.append(optionNode);
-
-        selected = settings.userResearchTheology_1 === "tech-fanaticism" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "tech-fanaticism"' + selected + '>Fanaticism</option>');
-        selectNode.append(optionNode);
-
-        selectNode.on('change', function() {
-            let value = $("#script_userResearchTheology_1 :selected").val();
-            settings.userResearchTheology_1 = value;
+        let theology1Select = $('#script_userResearchTheology_1');
+        theology1Select.val(settings.userResearchTheology_1);
+        theology1Select.on('change', function() {
+            settings.userResearchTheology_1 = this.value;
             updateSettingsFromState();
-            //console.log("Chosen theology 1 target of " + value);
         });
 
         // Theology 2
-        let theology2Node = $('<div style="margin-top: 5px; width: 400px"><label for="script_userResearchTheology_2">Target Theology 2:</label><select id="script_userResearchTheology_2" style="width: 150px; float: right;"></select></div>');
-        currentNode.append(theology2Node);
+        currentNode.append(`<div style="margin-top: 5px; width: 400px">
+                              <label for="script_userResearchTheology_2">Target Theology 2:</label>
+                              <select id="script_userResearchTheology_2" style="width: 150px; float: right;">
+                                <option value = "auto">Script Managed</option>
+                                <option value = "tech-study">Study</option>
+                                <option value = "tech-deify">Deify</option>
+                              </select>
+                            </div>`);
 
-        selectNode = $('#script_userResearchTheology_2');
-        selected = settings.userResearchTheology_2 === "auto" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "auto"' + selected + '>Script Managed</option>');
-        selectNode.append(optionNode);
-
-        selected = settings.userResearchTheology_2 === "tech-study" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "tech-study"' + selected + '>Study</option>');
-        selectNode.append(optionNode);
-
-        selected = settings.userResearchTheology_2 === "tech-deify" ? ' selected="selected"' : "";
-        optionNode = $('<option value = "tech-deify"' + selected + '>Deify</option>');
-        selectNode.append(optionNode);
-
-        selectNode.on('change', function() {
-            let value = $("#script_userResearchTheology_2 :selected").val();
-            settings.userResearchTheology_2 = value;
+        let theology2Select = $('#script_userResearchTheology_2');
+        theology2Select.val(settings.userResearchTheology_2);
+        theology2Select.on('change', function() {
+            settings.userResearchTheology_2 = this.value;
             updateSettingsFromState();
-            //console.log("Chosen theology 2 target of " + value);
         });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -11910,26 +11897,26 @@
     function buildStandartSettingsSelector2(secondaryPrefix, parentNode, settingName, displayName, hintText, optionsList) {
         let computedSelectId = `script_${secondaryPrefix}${settingName}`;
         let mainSelectId = `script_${settingName}`;
-        let div = $(`<div style="margin-top: 5px; display: inline-block; width: 80%; text-align: left;"><label title="${hintText}" for="${computedSelectId}">${displayName}:</label><select id="${computedSelectId}" style="width: 150px; float: right;"></select></div>`);
-        parentNode.append(div);
+
+        parentNode.append(`<div style="margin-top: 5px; display: inline-block; width: 80%; text-align: left;">
+                              <label title="${hintText}" for="${computedSelectId}">${displayName}:</label>
+                              <select id="${computedSelectId}" style="width: 150px; float: right;">
+                              </select>
+                            </div>`);
 
         let selectNode = $('#' + computedSelectId);
 
         for (var i = 0; i < optionsList.length; i++) {
-            let value = optionsList[i];
-            let selected = settings[settingName] === optionsList[i] ? ' selected="selected"' : "";
-            let optionNode = $(`<option value="${optionsList[i]}" ${selected}>${optionsList[i]}</option>`);
-            selectNode.append(optionNode);
+            selectNode.append(`<option value="${optionsList[i]}"}>${optionsList[i]}</option>`);
         }
 
+        selectNode.val(settings[settingName]);
         selectNode.on('change', function() {
-            let value = $(`#${computedSelectId} :selected`).val();
-            settings[settingName] = value;
+            settings[settingName] = this.value;
             updateSettingsFromState();
 
             if (secondaryPrefix !== "" && settings.showSettings) {
-                // @ts-ignore
-                document.getElementById(mainSelectId).value = settings[settingName];
+                document.getElementById(mainSelectId).value = this.value;
             }
         });
     }
@@ -12666,60 +12653,36 @@
         );
 
         let tableBodyNode = $('#script_buildingTableBody');
-        let newTableBodyText = "";
 
         $("#script_buildingSearch").on("keyup", filterBuildingSettingsTable); // Add building filter
 
         // Add in a first row for switching "All"
-        newTableBodyText += '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>';
+        let newTableBodyText = '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>';
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
-            const building = state.buildingManager.priorityList[i];
-            let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + building.settingId + '"' + classAttribute + '><td id="script_' + building.settingId + 'Toggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>';
+            let building = state.buildingManager.priorityList[i];
+            newTableBodyText += '<tr value="' + building.settingId + '" class="script-draggable"><td id="script_' + building.settingId + 'Toggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build special "All Buildings" top row
         let buildingElement = $('#script_bldallToggle');
-        let toggle = $('<span class="has-text-warning" style="margin-left: 20px;">All Buildings</span>');
-        buildingElement.append(toggle);
+        buildingElement.append('<span class="has-text-warning" style="margin-left: 20px;">All Buildings</span>');
 
         // enabled column
         buildingElement = buildingElement.next();
-        toggle = buildAllBuildingEnabledSettingsToggle(state.buildingManager.priorityList);
-        buildingElement.append(toggle);
-
-        // max column
-        buildingElement = buildingElement.next();
-        buildingElement.append($('<span></span>'));
-
-        // weight column
-        buildingElement = buildingElement.next();
-        buildingElement.append($('<span></span>'));
+        buildingElement.append(buildAllBuildingEnabledSettingsToggle(state.buildingManager.priorityList));
 
         // state column
-        buildingElement = buildingElement.next();
-        toggle = buildAllBuildingStateSettingsToggle(state.buildingManager.priorityList);
-        buildingElement.append(toggle);
+        buildingElement = buildingElement.next().next().next();
+        buildingElement.append(buildAllBuildingStateSettingsToggle(state.buildingManager.priorityList));
 
         // Build all other buildings settings rows
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
-            const building = state.buildingManager.priorityList[i];
+            let building = state.buildingManager.priorityList[i];
             let buildingElement = $('#script_' + building.settingId + 'Toggle');
 
-            let color = "has-text-info";
-            if (building._tab === "space") {
-                color = "has-text-danger";
-            } else if (building._tab === "galaxy") {
-                color = "has-text-advanced";
-            } else if (building._tab === "interstellar") {
-                color = "has-text-special";
-            } else if (building._tab === "portal") {
-                color = "has-text-warning";
-            }
-
-            buildingElement.append(buildStandartLabel(building.name, color));
+            buildingElement.append(buildBuildingLabel(building));
 
             buildingElement = buildingElement.next();
             buildingElement.append(buildStandartSettingsToggle(building, "autoBuildEnabled", "script_bat2_" + building.settingId, "script_bat1_" + building.settingId));
@@ -12782,6 +12745,21 @@
         let content = document.querySelector('#script_buildingSettings .script-content');
         content.style.height = null;
         content.style.height = content.offsetHeight + "px"
+    }
+
+    function buildBuildingLabel(building) {
+        let color = "has-text-info";
+        if (building._tab === "space") {
+            color = "has-text-danger";
+        } else if (building._tab === "galaxy") {
+            color = "has-text-advanced";
+        } else if (building._tab === "interstellar") {
+            color = "has-text-special";
+        } else if (building._tab === "portal") {
+            color = "has-text-warning";
+        }
+
+        return $(`<span class="${color}">${building.name}</span>`);
     }
 
     /**
