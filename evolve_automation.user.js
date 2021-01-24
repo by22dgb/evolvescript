@@ -217,14 +217,10 @@
          * @param {string} name
          */
         constructor(id, name) {
-            /** @type {{job: string, display: boolean, workers: number, max: number, impact: number, name: string}} job */
-            this._nullJob = { job: "nullJob", display: false, workers: 0, max: 0, impact: 0, name: "None" };
-
             // Private properties
             this._originalId = id;
             this._originalName = name;
             this._vueBinding = "civ-" + this._originalId;
-            /** @type {{job: string, display: boolean, workers: number, max: number, impact: number}} job */
 
             // Settings
             this._settingJobEnabled = "job_" + this._originalId;
@@ -243,18 +239,7 @@
                 return this.jobOverride.definition;
             }
 
-            // We're in the protoplasm stage of the game so there is no definition yet
-            if (game.global.race.species === speciesProtoplasm) {
-                return this._nullJob;
-            }
-
-            // Get the games job definition if it exists
-            if (game.global.civic[this._originalId]) {
-                return game.global.civic[this._originalId];
-            }
-
-            // We've failed to get the definition
-            return this._nullJob;
+            return game.global.civic[this._originalId];
         }
 
         get id() {
@@ -262,12 +247,7 @@
                 return this.jobOverride.id;
             }
 
-            let definition = this.definition;
-            if (definition === this._nullJob) {
-                return this._originalId;
-            }
-
-            return definition.job;
+            return this.definition.job;
         }
 
         get name() {
@@ -275,12 +255,7 @@
                 return this.jobOverride.name;
             }
 
-            let definition = this.definition;
-            if (definition === this._nullJob) {
-                return this._originalName;
-            }
-
-            return game.global.civic[this.id].name;
+            return this.definition.name;
         }
 
         /**
@@ -453,14 +428,8 @@
 
             if (this.id === 'farmer' || this.id === 'lumberjack' || this.id === 'quarry_worker' || this.id === 'crystal_miner' || this.id === 'scavenger') {
                 // Only these jobs can be set as default
-                let vue = getVueById(this._vueBinding);
-                if (vue !== undefined) {
-                    vue.setDefault(this.id);
-                    return true;
-                }
+                getVueById(this._vueBinding)?.setDefault(this.id);
             }
-
-            return false;
         }
     }
 
@@ -596,13 +565,7 @@
         }
 
         setAsDefault() {
-            let vue = getVueById(this._vueBinding);
-            if (vue !== undefined) {
-                vue.setDefault();
-                return true;
-            }
-
-            return false;
+            getVueById(this._vueBinding)?.setDefault();
         }
     }
 
@@ -7933,8 +7896,9 @@
         }
 
         // Force default hunter job for hunter races, we'll have issues with assigning otherwise
-        if (isHunterRace() && !state.jobs.Farmer.isDefault()) {
+        if (isHunterRace()) {
             state.jobs.Farmer.setAsDefault();
+            // TODO: Cached default job causes flickering in jobSetDefault below
         }
 
         for (let i = 0; i < jobAdjustments.length; i++) {
@@ -7965,15 +7929,15 @@
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
         if (settings.jobSetDefault) {
             if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0) {
-                if (!state.jobs.Farmer.isDefault()) { state.jobs.Farmer.setAsDefault(); }
+                state.jobs.Farmer.setAsDefault();
             } else if (state.jobs.QuarryWorker.isUnlocked() && state.jobs.QuarryWorker.count > 0) {
-                if (!state.jobs.QuarryWorker.isDefault()) { state.jobs.QuarryWorker.setAsDefault(); }
+                state.jobs.QuarryWorker.setAsDefault();
             } else if (state.jobs.Lumberjack.isUnlocked() && state.jobs.Lumberjack.count > 0) {
-                if (!state.jobs.Lumberjack.isDefault()) { state.jobs.Lumberjack.setAsDefault(); }
+                state.jobs.Lumberjack.setAsDefault();
             } else if (state.jobs.CrystalMiner.isUnlocked() && state.jobs.CrystalMiner.count > 0) {
-                if (!state.jobs.CrystalMiner.isDefault()) { state.jobs.CrystalMiner.setAsDefault(); }
+                state.jobs.CrystalMiner.setAsDefault();
             } else if (state.jobs.Scavenger.isUnlocked() && state.jobs.Scavenger.count > 0) {
-                if (!state.jobs.Scavenger.isDefault()) { state.jobs.Scavenger.setAsDefault(); }
+                state.jobs.Scavenger.setAsDefault();
             }
         }
     }
