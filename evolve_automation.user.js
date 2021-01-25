@@ -811,10 +811,6 @@
                 }
 
                 let rateOfChange = resourceType.resource.rateOfChange;
-                // Adjust decay
-                if (game.global.race[challengeDecay]) {
-                    rateOfChange += resourceType.resource.decayRate;
-                }
 
                 // It need something that we're lacking
                 if (consumptionRate > 0 && rateOfChange < consumptionRate) {
@@ -1127,6 +1123,7 @@
             this.currentTradeRouteBuyPrice = 0;
             this.currentTradeRouteSellPrice = 0;
             this.currentTradeRoutes = 0;
+            this.currentTradeDiff = 0;
 
             this.marketPriority = 0;
             this.autoBuyEnabled = false;
@@ -1155,6 +1152,8 @@
             this.rateOfChange = 0;
             this.currentCrates = 0;
             this.currentContainers = 0;
+            this.currentEject = 0;
+            this.currentDecay = 0;
 
             this.setupCache();
         }
@@ -1187,6 +1186,51 @@
             this.rateOfChange = instance.diff;
             this.currentCrates = instance.crates;
             this.currentContainers = instance.containers;
+
+            // When routes are managed - we're excluding trade diff from operational rate of change.
+            if (settings.autoMarket && this.isTradable() && (this.autoTradeBuyEnabled || this.autoTradeSellEnabled)) {
+                this.currentTradeRoutes = instance.trade;
+                this.currentTradeRouteBuyPrice = game.tradeBuyPrice(this._id);
+                this.currentTradeRouteSellPrice = game.tradeSellPrice(this._id);
+                this.currentTradeDiff = game.breakdown.p.consume[this._id].Trade || 0;
+                this.rateOfChange -= this.currentTradeDiff;
+            } else {
+                this.currentTradeDiff = 0;
+            }
+
+            // Exclude ejected resources, so we can reuse it
+            if (settings.prestigeWhiteholeEjectEnabled && this.isEjectable() && state.spaceBuildings.BlackholeMassEjector.count > 0) {
+                this.currentEject = game.global.interstellar.mass_ejector[this._id];
+                this.rateOfChange += this.currentEject;
+            } else {
+                this.currentEject = 0;
+            }
+
+            // Restore decayed rate
+            if (game.global.race[challengeDecay] && this.tradeRouteQuantity > 0 && this.currentQuantity >= 50) {
+                this.currentDecay = (this.currentQuantity - 50) * (0.001 * this.tradeRouteQuantity);
+                this.rateOfChange += this.currentDecay;
+            } else {
+                this.currentDecay = 0;
+            }
+        }
+
+        calculateRateOfChange(apply) {
+            let value = this.rateOfChange;
+            if ((apply.buy || apply.all) && this.currentTradeDiff > 0) {
+                value += this.currentTradeDiff;
+            }
+            if ((apply.sell || apply.all) && this.currentTradeDiff < 0) {
+                value += this.currentTradeDiff;
+            }
+            if (apply.eject || apply.all) {
+                value -= this.currentEject;
+            }
+            if (apply.decay || apply.all) {
+                value -= this.currentDecay;
+            }
+
+            return value;
         }
 
         isUnlocked() {
@@ -1213,6 +1257,8 @@
             let vue = getVueById(this._ejectorVueBinding);
             if (vue === undefined) { return false; }
 
+            this.currentEject += count;
+
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
@@ -1226,6 +1272,8 @@
         decreaseEjection(count) {
             let vue = getVueById(this._ejectorVueBinding);
             if (vue === undefined) { return false; }
+
+            this.currentEject -= count;
 
             state.multiplier.reset(count, game.global.interstellar.mass_ejector[this.id] <= count);
             while (state.multiplier.remainder > 0) {
@@ -1301,17 +1349,11 @@
             if (this.storageRatio > 0.98) {
                 return 0; // Already full.
             }
-            if (this.rateOfChange <= 0) {
+            let totalRateOfCharge = this.calculateRateOfChange({all: true});
+            if (totalRateOfCharge <= 0) {
                 return Number.MAX_SAFE_INTEGER; // Won't ever fill with current rate.
             }
-            return (this.maxQuantity - this.currentQuantity) / this.rateOfChange;
-        }
-
-        get decayRate() {
-            if (this.tradeRouteQuantity <= 0 || this.currentQuantity < 50) {
-                return 0;
-            }
-            return (this.currentQuantity - 50) * (0.001 * this.tradeRouteQuantity);
+            return (this.maxQuantity - this.currentQuantity) / totalRateOfCharge;
         }
 
         //#endregion Standard resource
@@ -3615,9 +3657,6 @@
                     const resource = this.priorityList[i];
 
                     if (this.isResourceUnlocked(resource) && (resource.autoTradeBuyEnabled || resource.autoTradeSellEnabled)) {
-                        resource.currentTradeRouteBuyPrice = this.getTradeRouteBuyPrice(resource);
-                        resource.currentTradeRouteSellPrice = this.getTradeRouteSellPrice(resource);
-                        resource.currentTradeRoutes = this.getTradeRoutes(resource);
                         this._sortedTradeRouteSellList.push(resource);
                     }
                 }
@@ -3775,34 +3814,6 @@
             }
 
             return game.global.city.market.mtrade;
-        }
-
-        /**
-         * @param {Resource} resource
-         */
-        getTradeRoutes(resource) {
-            return game.global.resource[resource.id].trade;
-        }
-
-        /**
-         * @param {Resource} resource
-         */
-        getTradeRouteQuantity(resource) {
-            return game.tradeRatio[resource.id];
-        }
-
-        /**
-         * @param {Resource} resource
-         */
-        getTradeRouteBuyPrice(resource) {
-            return game.tradeBuyPrice(resource.id);
-        }
-
-        /**
-         * @param {Resource} resource
-         */
-        getTradeRouteSellPrice(resource) {
-            return game.tradeSellPrice(resource.id);
         }
 
         /**
@@ -5550,6 +5561,7 @@
         settings.foreignHireMercCostLowerThan = 50000;
         settings.foreignMinAdvantage = 40;
         settings.foreignMaxAdvantage = 50;
+        settings.foreignMaxSiegeBattalion = 15;
 
         settings.foreignPacifist = false;
         settings.foreignUnification = true;
@@ -5660,7 +5672,7 @@
         state.marketManager.addResourceToPriorityList(resources.Furs);
         state.marketManager.addResourceToPriorityList(resources.Crystal);
         state.marketManager.addResourceToPriorityList(resources.Stone);
-        state.storageManager.addResourceToPriorityList(resources.Chrysotile);
+        state.marketManager.addResourceToPriorityList(resources.Chrysotile);
         state.marketManager.addResourceToPriorityList(resources.Lumber);
         state.marketManager.addResourceToPriorityList(resources.Food);
 
@@ -5712,6 +5724,7 @@
         state.storageManager.addResourceToPriorityList(resources.Copper);
         state.storageManager.addResourceToPriorityList(resources.Furs);
         state.storageManager.addResourceToPriorityList(resources.Stone);
+        state.storageManager.addResourceToPriorityList(resources.Chrysotile);
         state.storageManager.addResourceToPriorityList(resources.Lumber);
         state.storageManager.addResourceToPriorityList(resources.Food);
 
@@ -6616,6 +6629,7 @@
         addSetting("foreignHireMercCostLowerThan", 50000);
         addSetting("foreignMinAdvantage", 40);
         addSetting("foreignMaxAdvantage", 50);
+        addSetting("foreignMaxSiegeBattalion", 15);
 
         addSetting("foreignPacifist", false);
         addSetting("foreignUnification", true);
@@ -7052,8 +7066,6 @@
         if (!resources.Population.isUnlocked()) { return; }
         if (game.global.race[challengeNoCraft]) { return; }
 
-        let craftAttempts = 0;
-
         craftLoop:
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
@@ -7073,14 +7085,7 @@
                 }
 
                 craftable.tryCraftX(5);
-                craftAttempts++;
             }
-        }
-
-        if (craftAttempts > 0) {
-            // TODO: Missing exposed craftingRatio to calculate craft result on script side
-            game.updateDebugData();
-            updateScriptData();
         }
     }
 
@@ -7344,7 +7349,20 @@
             }
         }
 
-        // If we aren't going to occupy our target, then let's find best tactic for plundering
+        let minSoldiers = 1;
+        let maxSoldiers = 1;
+
+        // Check if we can siege for loot
+        if (requiredTactic !== 4) {
+            let minSiegeSoldiers = m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMinAdvantage, 4, attackIndex));
+            if (minSiegeSoldiers <= settings.foreignMaxSiegeBattalion && minSiegeSoldiers <= m.currentCityGarrison) {
+                minSoldiers = minSiegeSoldiers;
+                maxSoldiers = Math.min(m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, 4, attackIndex), settings.foreignMaxSiegeBattalion));
+                requiredTactic = 4;
+            }
+        }
+
+        // If we aren't going to siege our target, then let's find best tactic for plundering
         if (requiredTactic !== 4) {
             for (let i = 3; i > 0; i--) {
                 if (getAdvantage(bestAttackRating, i, attackIndex) >= settings.foreignMinAdvantage) {
@@ -7352,6 +7370,8 @@
                     break;
                 }
             }
+            minSoldiers = m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMinAdvantage, requiredTactic, attackIndex));
+            maxSoldiers = m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex));
         }
 
         while (m.tactic < requiredTactic) {
@@ -7361,16 +7381,11 @@
             m.decreaseCampaignDifficulty();
         }
 
-        // Best attack type is set. Now adjust our battalion size to fit between our campaign attack rating ranges
-        let minRating = getRatingForAdvantage(settings.foreignMinAdvantage, requiredTactic, attackIndex);
-        let maxRating = getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex);
-        let minSoldiers = m.getSoldiersForAttackRating(minRating);
-        let maxSoldiers = m.getSoldiersForAttackRating(maxRating);
-
         if (maxSoldiers > minSoldiers) {
             maxSoldiers--;
         }
 
+        // Best attack type is set. Now adjust our battalion size to fit between our campaign attack rating ranges
         if (m.raid < maxSoldiers && m.currentCityGarrison > m.raid) {
             let soldiersToAdd = Math.min(maxSoldiers - m.raid, m.currentCityGarrison - m.raid);
 
@@ -7384,23 +7399,17 @@
                 m.removeBattalion(soldiersToRemove);
             }
         }
-        let batalionRating = game.armyRating(m.raid, "army");
-
+        let battalionRating = game.armyRating(m.raid, "army");
 
         if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.wounded) { return; }
 
         // Log the interaction
         let campaignTitle = m.getCampaignTitle(requiredTactic);
         let aproximateSign = game.global.civic.foreign[`gov${attackIndex}`].spy < 1 ? "~" : "";
-        let advantagePercent = getAdvantage(batalionRating, requiredTactic, attackIndex).toFixed(1);
+        let advantagePercent = getAdvantage(battalionRating, requiredTactic, attackIndex).toFixed(1);
         state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
 
         m.launchCampaign(attackIndex);
-
-        // We can't predict what happened during attack - our losses and gains, so let's request fresh data if launched attack this tick
-        // Amount of alive soldiers not really important if autoFight called after autoHell, but looted resources still can be used
-        game.updateDebugData();
-        updateScriptData();
     }
 
     //#endregion Auto Battle
@@ -7604,6 +7613,7 @@
 
         // First figure out how many farmers are required
         if (state.jobs.Farmer.isManaged()) {
+            let foodRateOfChange = resources.Food.calculateRateOfChange({buy: true});
             if (!state.jobs.Lumberjack.isUnlocked()
                     && !state.jobs.QuarryWorker.isUnlocked()
                     && !state.jobs.CrystalMiner.isUnlocked()
@@ -7627,25 +7637,25 @@
                 let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
                 let farmerChange = state.jobs.Farmer.count - state.lastFarmerCount;
 
-                if (populationChange === farmerChange && resources.Food.rateOfChange > 0) {
+                if (populationChange === farmerChange && foodRateOfChange > 0) {
                     requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - populationChange, 0);
                     log("autoJobs", "Removing a farmer due to population growth")
                 } else {
                     requiredJobs[farmerIndex] = state.jobs.Farmer.count;
                 }
-            } else if (resources.Food.storageRatio < 0.2 && resources.Food.rateOfChange < 0) {
+            } else if (resources.Food.storageRatio < 0.2 && foodRateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
                 requiredJobs[farmerIndex] = Math.min(state.jobs.Farmer.count + 1, availableEmployees);
                 log("autoJobs", "Adding one farmer")
-            } else if (resources.Food.storageRatio > 0.6 && resources.Food.rateOfChange > 0) {
+            } else if (resources.Food.storageRatio > 0.6 && foodRateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
                 requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer")
-            } else if (resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > 100) {
+            } else if (resources.Food.storageRatio > 0.3 && foodRateOfChange > 100) {
                 // If we have over 30% storage and have > 100 food per second then remove a farmer
                 requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer - 100 food per second")
-            } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && resources.Food.rateOfChange > resources.Population.currentQuantity / 10) {
+            } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && foodRateOfChange > resources.Population.currentQuantity / 10) {
                 // Carnivore race. We've got some food so put them to work!
                 requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer - Carnivore")
@@ -7789,10 +7799,7 @@
                     let currentCementWorkers = job.count;
                     log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.Stone.rateOfChange);
 
-                    let stoneRateOfChange = resources.Stone.rateOfChange;
-                    if (game.global.race[challengeDecay]) {
-                        stoneRateOfChange += resources.Stone.decayRate;
-                    }
+                    let stoneRateOfChange = resources.Stone.calculateRateOfChange({buy: true});
 
                     if (jobsToAssign < currentCementWorkers) {
                         // great, remove workers as we want less than we have
@@ -7928,7 +7935,6 @@
         // Force default hunter job for hunter races, we'll have issues with assigning otherwise
         if (isHunterRace()) {
             state.jobs.Farmer.setAsDefault();
-            // TODO: Cached default job causes flickering in jobSetDefault below
         }
 
         for (let i = 0; i < jobAdjustments.length; i++) {
@@ -8101,13 +8107,10 @@
                 let productionCost = fuel.productionCost;
                 let resource = productionCost.resource;
 
-                let remainingRateOfChange = resource.rateOfChange + (smelter.fueledCount(fuel.fuelType) * productionCost.quantity);
+                let remainingRateOfChange = resource.calculateRateOfChange({buy: true}) + (smelter.fueledCount(fuel.fuelType) * productionCost.quantity);
                 // No need to preserve minimum income when storage is full
                 if (resource.storageRatio < 0.98) {
                     remainingRateOfChange -= productionCost.minRateOfChange;
-                }
-                if (game.global.race[challengeDecay]) {
-                    remainingRateOfChange += resource.decayRate;
                 }
                 let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
                 let maxAllowedUnits = Math.min(affordableAmount, remainingSmelters);
@@ -8148,13 +8151,10 @@
             let productionCost = steelSmeltingConsumption[i];
             let resource = productionCost.resource;
 
-            let remainingRateOfChange = resource.rateOfChange + (smelterSteelCount * productionCost.quantity);
+            let remainingRateOfChange = resource.calculateRateOfChange({buy: true}) + (smelterSteelCount * productionCost.quantity);
             // No need to preserve minimum income when storage is full
             if (resource.storageRatio < 0.98) {
                 remainingRateOfChange -= productionCost.minRateOfChange;
-            }
-            if (game.global.race[challengeDecay]) {
-                remainingRateOfChange += resource.decayRate;
             }
             let affordableAmount = Math.floor(remainingRateOfChange / productionCost.quantity);
             maxAllowedSteel = Math.min(maxAllowedSteel, affordableAmount);
@@ -8218,12 +8218,9 @@
                     }
                     let previousCost = state.cityBuildings.Factory.currentProduction(production.goods) * resourceCost.quantity;
                     let currentCost = production.requiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.rateOfChange + previousCost - currentCost;
+                    let rate = resourceCost.resource.calculateRateOfChange({buy: true}) + previousCost - currentCost;
                     if (resourceCost.resource.storageRatio < 0.98) {
                         rate -= resourceCost.minRateOfChange;
-                    }
-                    if (game.global.race[challengeDecay]) {
-                        rate += resourceCost.resource.decayRate;
                     }
 
                     // If we can't afford it (it's above our minimum rate of change) then remove a factory
@@ -8261,12 +8258,9 @@
                 productionCosts.forEach(resourceCost => {
                     let previousCost = state.cityBuildings.Factory.currentProduction(luxuryGoods.goods) * resourceCost.quantity;
                     let currentCost = luxuryGoods.requiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.rateOfChange + previousCost - currentCost;
+                    let rate = resourceCost.resource.calculateRateOfChange({buy: true}) + previousCost - currentCost;
                     if (resourceCost.resource.storageRatio < 0.98) {
                         rate -= resourceCost.minRateOfChange;
-                    }
-                    if (game.global.race[challengeDecay]) {
-                        rate += resourceCost.resource.decayRate;
                     }
                     // If we can't afford it (it's above our minimum rate of change) then remove a factory
                     // UNLESS we've got over 80% storage full. In that case lets go wild!
@@ -8343,12 +8337,9 @@
             }
 
             let currentFuelCount = plant.fueledCount(fuelIndex);
-            let rateOfChange = consumption.resource.rateOfChange + (consumption.quantity * currentFuelCount);
+            let rateOfChange = consumption.resource.calculateRateOfChange({buy: true}) + (consumption.quantity * currentFuelCount);
             if (consumption.resource.storageRatio < 0.98) {
                 rateOfChange -= consumption.minRateOfChange;
-            }
-            if (game.global.race[challengeDecay]) {
-                rateOfChange += consumption.resource.decayRate;
             }
 
             let maxFueledForConsumption = remainingPlants;
@@ -8379,7 +8370,6 @@
     var resourcesByAtomicMass = [];
 
     function autoMassEjector() {
-        if (!settings.prestigeWhiteholeEjectEnabled) { return; }
         if (state.spaceBuildings.BlackholeMassEjector.stateOnCount === 0) { return; }
 
         let adjustMassEjector = false;
@@ -8391,7 +8381,7 @@
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
-                let roundedRateOfChange = Math.floor(resource.rateOfChange) - game.global.interstellar.mass_ejector[resource.id];
+                let roundedRateOfChange = Math.floor(resource.calculateRateOfChange({buy: true, eject: true}));
 
                 if (remaining <= 0) {
                     resourceRequirement.requirement = 0;
@@ -8419,12 +8409,8 @@
                     if ((resource === resources.Food || resource === resources.Uranium || resource === resources.Neutronium)
                             && resource.currentQuantity / resource.maxQuantity < allowedRatio - 0.01) {
                         resourceRequirement.requirement = 0
-                    } else if (resource.storageRatio > 0.01 && roundedRateOfChange === 0) {
-                        resourceRequirement.requirement = game.global.interstellar.mass_ejector[resource.id];
-                    } else if (resource.storageRatio > 0.01 && roundedRateOfChange < 0) {
-                        resourceRequirement.requirement = Math.max(0, game.global.interstellar.mass_ejector[resource.id] + roundedRateOfChange);
-                    } else if (resource.storageRatio > 0.01 && roundedRateOfChange > 0) {
-                        resourceRequirement.requirement = Math.min(remaining, game.global.interstellar.mass_ejector[resource.id] + roundedRateOfChange);
+                    } else if (resource.storageRatio > 0.01) {
+                        resourceRequirement.requirement = Math.max(0, Math.min(remaining, resource.currentEject + roundedRateOfChange));
                     } else {
                         resourceRequirement.requirement = 0;
                     }
@@ -8448,7 +8434,7 @@
                     return;
                 }
 
-                resourceRequirement.requirement = Math.min(remaining, Math.ceil(resource.rateOfChange));
+                resourceRequirement.requirement = Math.min(remaining, Math.ceil(resource.calculateRateOfChange({buy: true})));
                 remaining -= resourceRequirement.requirement;
             });
 
@@ -8466,11 +8452,11 @@
 
                     // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it, or it's Adamantite(we need it to get more ejectors).
                     if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
-                        ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.decayRate * settings.prestigeWhiteholeDecayRate));
+                        ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentDecay * settings.prestigeWhiteholeDecayRate));
                     }
 
                     if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 0 && resource.currentQuantity >= resource.storageRequired) {
-                        ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.rateOfChange));
+                        ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true})));
                     }
 
                     resourceRequirement.requirement = Math.min(remaining, ejectableAmount);
@@ -8484,7 +8470,7 @@
         // Decrement first to free up space
         resourcesByAtomicMass.forEach(resourceRequirement => {
             let resource = resourceRequirement.resource;
-            let adjustment = resourceRequirement.requirement - game.global.interstellar.mass_ejector[resource.id];
+            let adjustment = resourceRequirement.requirement - resource.currentEject;
             if (adjustment < 0) {
                 resource.decreaseEjection(adjustment * -1);
             }
@@ -8493,7 +8479,7 @@
         // Increment any remaining items
         resourcesByAtomicMass.forEach(resourceRequirement => {
             let resource = resourceRequirement.resource;
-            let adjustment = resourceRequirement.requirement - game.global.interstellar.mass_ejector[resource.id];
+            let adjustment = resourceRequirement.requirement - resource.currentEject;
             if (adjustment > 0) {
                 resource.increaseEjection(adjustment);
             }
@@ -8654,7 +8640,7 @@
                 if (resource.storageRatio > resource.autoSellRatio) {
                     maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.currentQuantity - (resource.autoSellRatio * resource.maxQuantity))); // If not full sell up to our sell ratio
                 } else {
-                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.rateOfChange * 2)); // If resource is full then sell up to 2 seconds worth of production
+                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.calculateRateOfChange({all: true}) * 2)); // If resource is full then sell up to 2 seconds worth of production
                 }
 
                 if (maxAllowedUnits <= maxMultiplier) {
@@ -8841,8 +8827,7 @@
                             continue;
                         }
 
-                        // Bought resources are not included in calculatedRateOfCharge, to prevent overusing them, but here they will make estimations more accurate with no negative consequences. That's the very reason why we're buying any resources after all - to construct things sooner.
-                        let totalRateOfCharge = resource.rateOfChange + (resource.currentTradeRoutes > 0 ? game.breakdown.p.consume[resource.id].Trade : 0);
+                        let totalRateOfCharge = resource.calculateRateOfChange({all: true});
                         if (totalRateOfCharge <= 0) {
                             // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
                             estimatedTime[other.id][resource.id] = 0;
@@ -8876,7 +8861,7 @@
 
                   // We can use up to this amount of resources without delaying competing building
                   // Not very accurate, as income can fluctuate wildly for foundry, factory, and such, but should work as bottom line
-                  let totalRateOfCharge = resource.rateOfChange + (resource.currentTradeRoutes > 0 ? game.breakdown.p.consume[resource.id].Trade : 0);
+                  let totalRateOfCharge = resource.calculateRateOfChange({all: true});
                   let spareAmount = (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * totalRateOfCharge;
                   if (thisRequirement.quantity <= spareAmount) {
                       continue;
@@ -9147,10 +9132,8 @@
     //#region Auto Power
 
     function autoPower() {
-        let availablePowerNode = document.querySelector('#powerMeter');
-
         // Only start doing this once power becomes available. Isn't useful before then
-        if (availablePowerNode === null) {
+        if (!resources.Power.isUnlocked()) {
             return;
         }
 
@@ -9167,7 +9150,7 @@
         });
 
         // Calculate the available power / resource rates of change that we have to work with
-        let availablePower = parseFloat(availablePowerNode.textContent);
+        let availablePower = resources.Power.currentQuantity;
 
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
@@ -9235,7 +9218,7 @@
                         continue;
                     }
 
-                    maxStateOn = Math.min(maxStateOn, resourceType.resource.rateOfChange / resourceType.rate);
+                    maxStateOn = Math.min(maxStateOn, resourceType.resource.calculateRateOfChange({buy: true}) / resourceType.rate);
                 }
             }
 
@@ -9256,6 +9239,8 @@
             let adjustment = maxStateOn - building.stateOnCount;
             building.tryAdjustState(adjustment);
         }
+        resources.Power.currentQuantity = availablePower;
+        resources.Power.rateOfChange = availablePower;
     }
 
     //#endregion Auto Power
@@ -9779,10 +9764,10 @@
             } else if (adjustmentTradeRoutes[i] < 0) {
                 m.removeTradeRoutes(resource, -1 * adjustmentTradeRoutes[i]);
             }
-            // It does change rates of changes, but we don't want to store this changes.
-            // Sold resources can be easily reclaimed, and we want to be able to use it for production, ejecting, upkeep, etc, so let's pretend they're still here
-            // And bought resources are dungerous to use - we don't want to end with negative income after recalculating trades
         }
+        // It does change rates of changes of resources, but we don't want to store this changes.
+        // Sold resources can be easily reclaimed, and we want to be able to use it for production, ejecting, upkeep, etc, so let's pretend they're still here
+        // And bought resources are dungerous to use - we don't want to end with negative income after recalculating trades
         resources.Money.rateOfChange = currentMoneyPerSecond;
     }
 
@@ -9795,27 +9780,13 @@
             resources[id].updateData();
         }
 
-        // Reset traded resources, so we can reuse it
-        // game.tradeRatio holds rates for selling, while amount of bought goods is affected by various multipliers, so we're using game.breakdown here to retrieve correct numbers
+        // Money is special. They aren't defined as tradable, but still affected by trades
         if (settings.autoMarket) {
-            let tradableResources = state.marketManager.getSortedTradeRouteSellList();
-            for (let i = 0; i < tradableResources.length; i++) {
-                let resourceDiff = game.breakdown.p.consume[tradableResources[i].id];
-                if (resourceDiff.Trade) {
-                    tradableResources[i].rateOfChange -= resourceDiff.Trade;
-                }
-            }
             let moneyDiff = game.breakdown.p.consume["Money"];
             if (moneyDiff.Trade){
+                resources.Money.currentTradeDiff = moneyDiff.Trade;
                 resources.Money.rateOfChange -= moneyDiff.Trade;
             }
-        }
-
-        // Same for ejected resources
-        if (settings.prestigeWhiteholeEjectEnabled && state.spaceBuildings.BlackholeMassEjector.stateOnCount > 0) {
-            resourcesByAtomicMass.forEach(eject => {
-                eject.resource.rateOfChange += game.global.interstellar.mass_ejector[eject.resource.id];
-            });
         }
 
         // Add clicking to rate of change, so we can sell or eject it
@@ -9887,7 +9858,7 @@
         // Not evolving anymore, clear ignore list
         settings.evolutionIgnore = {};
 
-        // Workround for game bug dublicating garrison and governmment div's after reset
+        // Workround for game bug dublicating of garrison and governmment div's after reset
         // TODO: Remove me once it's fixed in game
         if ($("#civics .garrison").length == 2) {
             window.location.reload();
@@ -10333,73 +10304,6 @@
             return;
         }
 
-        let massEjectorProcessed = false;
-        if (state.spaceBuildings.BlackholeMassEjector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
-            autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
-            massEjectorProcessed = true;
-        }
-
-        if (settings.buildingAlwaysClick || settings.autoBuild){
-            autoGatherResources();
-        }
-        if (settings.autoMarket) {
-            autoMarket(); // Manual trading invalidates values of resources
-        }
-        if (settings.govManage) {
-            manageGovernment(); // TODO: Switch to techocracy affect prices
-        }
-        if (settings.autoHell) {
-            autoHell();
-        }
-        if (settings.autoFight) {
-            autoBattle();
-            manageSpies();
-        }
-        if (settings.autoARPA) {
-            autoArpa();
-        }
-        if (settings.autoBuild) {
-            autoBuild();
-        }
-        if (settings.autoCraft) {
-            autoCraft();
-        }
-        if (settings.autoResearch) {
-            autoResearch();
-        }
-        if (settings.autoStorage) {
-            autoStorage();
-        }
-        if (settings.autoJobs) {
-            autoJobs();
-        }
-        if (settings.autoTax) {
-            autoTax();
-        }
-        if (settings.autoPower) {
-            autoPower();
-        }
-        if (settings.autoFactory) {
-            autoFactory();
-        }
-        if (settings.autoMiningDroid) {
-            autoMiningDroid();
-        }
-        if (settings.autoGraphenePlant) {
-            autoGraphenePlant();
-        }
-        if (settings.autoQuarry) {
-            autoQuarry();
-        }
-        if (settings.autoSmelter) {
-            autoSmelter();
-        }
-        if (settings.autoAssembleGene) {
-            autoAssembleGene();
-        }
-        if (settings.autoMinorTrait) {
-            autoMinorTrait();
-        }
         if (settings.prestigeType === "whitehole") {
             autoWhiteholePrestige();
         }
@@ -10409,8 +10313,69 @@
         if (settings.prestigeType === "mad") {
             autoMadPrestige();
         }
-        if (!massEjectorProcessed) {
-            autoMassEjector(); // We do this at the start and end of the function. If eject all is required then this will occur at the start; otherwise process at the end
+        if (settings.autoStorage) {
+            autoStorage(); // All changes cached
+        }
+        if (settings.buildingAlwaysClick || settings.autoBuild){
+            autoGatherResources(); // All changes cached
+        }
+        if (settings.autoMarket) {
+            autoMarket(); // Manual trading invalidates values of resources, change is random and can't be predicted, but we won't need values anymore
+        }
+        if (settings.autoResearch) {
+            autoResearch(); // All changes cached
+        }
+        if (settings.autoHell) {
+            autoHell(); // All changes cached
+        }
+        if (settings.autoFactory) {
+            autoFactory(); // Can invalidate rateOfChange
+        }
+        if (settings.autoMiningDroid) {
+            autoMiningDroid(); // Can invalidate rateOfChange
+        }
+        if (settings.autoGraphenePlant) {
+            autoGraphenePlant(); // Can invalidate rateOfChange
+        }
+        if (settings.autoQuarry) {
+            autoQuarry(); // Can invalidate rateOfChange
+        }
+        if (settings.autoSmelter) {
+            autoSmelter(); // Can invalidate rateOfChange
+        }
+        if (settings.autoJobs) {
+            autoJobs(); // Can invalidates rateOfChange
+        }
+        if (settings.autoPower) {
+            autoPower(); // Underpowering can invalidate count of powered buildings, and whatrever they're doing will be gone
+        }
+        if (settings.autoARPA) {
+            autoArpa(); // Invalidates progress of constructed projects
+        }
+        if (settings.autoBuild) {
+            autoBuild(); // Invalidates count of constructed buildings
+        }
+        if (settings.autoAssembleGene) {
+            autoAssembleGene(); // Called after arpa, buildings, and research to not steal knowledge from them
+        }
+        if (settings.autoMinorTrait) {
+            autoMinorTrait(); // Called after assemble gene to utilize new gene
+        }
+        if (settings.autoCraft) {
+            autoCraft(); // Invalidates quantities of resources, missing exposed craftingRatio to calculate craft result on script side
+        }
+        if (settings.autoFight) {
+            manageSpies(); // Can unoccupy foreign power in rare occasions, without caching back new status. Auto fight will check status once again, but such desync should not cause any harm
+            autoBattle(); // Invalidates garrison, and adds unaccounted amount of resources after attack
+        }
+        if (settings.autoTax) {
+            autoTax(); // Invalidaes rates of change(morale bonus), and tax income
+        }
+        if (settings.govManage) {
+            manageGovernment(); // Governments gives bonuses and penalties to many different things, invalidating them
+        }
+        if (settings.prestigeWhiteholeEjectEnabled) {
+            autoMassEjector(); // Purge remaining rateOfChange, should be called when it won't be needed anymore
         }
 
         if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; };
@@ -11896,7 +11861,7 @@
         addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignPacifist", "Pacifist", "Turns attacks off and on");
 
         addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignUnification", "Perform unification", "Perform unification once all three powers are subdued. autoResearch should be enabled for this to work.");
-        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignOccupyLast", "Occupy last foreign power", "Occupy last foreign power once other two are subdued, and unification is researched. That can speed up unification, if you don't need unification achievements");
+        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignOccupyLast", "Occupy last foreign power", "Occupy last foreign power once other two are subdued, and unification is researched. It will speed up unification. And even if you don't want to unify at all - disabled above checkbox, and just want to plunder enemies, this option still better to keep enabled. As a side effect it will prevent you from wasting money influencing and inciting last foreign power, and allow you to occupy it during looting with sieges, for additional production bonus. Disable it only if you want annex\purchase achievements.");
 
         addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignTrainSpy", "Train spies", "Train spies to use against foreign powers");
         addStandardSectionSettingsNumber2(secondaryPrefix, foreignPowerNode, 0, "foreignSpyMax", "Maximum spies", "Maximum spies per foreign power");
@@ -11917,6 +11882,7 @@
 
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down this advantage, reducing potential loses");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMaxSiegeBattalion", "Maximum siege battalion", "Maximum battalion for siege campaign. Only try to siege if it's possible with up to given amount of soldiers. Siege is expensive, if you'll be doing it with too big battalion it might be less profitable than other combat campaigns. This option not applied for unification, it's only for regular looting.");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
