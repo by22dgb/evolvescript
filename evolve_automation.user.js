@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.14
+// @version      3.3.1.15
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -7349,8 +7349,8 @@
             }
         }
 
-        let minSoldiers = 1;
-        let maxSoldiers = 1;
+        let minSoldiers = null;
+        let maxSoldiers = null;
 
         // Check if we can siege for loot
         if (requiredTactic !== 4) {
@@ -7370,9 +7370,10 @@
                     break;
                 }
             }
-            minSoldiers = m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMinAdvantage, requiredTactic, attackIndex));
-            maxSoldiers = m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex));
         }
+
+        minSoldiers ??= m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMinAdvantage, requiredTactic, attackIndex));
+        maxSoldiers ??= m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex));
 
         while (m.tactic < requiredTactic) {
             m.increaseCampaignDifficulty();
