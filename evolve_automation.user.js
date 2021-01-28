@@ -9624,7 +9624,8 @@
         // Workround for game bug dublicating of garrison and governmment div's after reset
         // TODO: Remove me once it's fixed in game
         if ($("#civics .garrison").length == 2) {
-            window.location.reload();
+            state.goal = "GameOverMan";
+            setTimeout(()=> window.location.reload(), 5000);
         }
 
         // Update data from exposed global
