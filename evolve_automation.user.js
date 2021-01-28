@@ -5745,15 +5745,16 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GatewayStarbase);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GatewayShipDock);
 
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateStation);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateTelemetryBeacon);
+
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Dreadnought);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.CruiserShip);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.FrigateShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BologniumShip);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.CorvetteShip);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ScoutShip);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BologniumShip);
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateStation);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateTelemetryBeacon);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDepot);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDefensePlatform);
 
