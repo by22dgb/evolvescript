@@ -1947,7 +1947,7 @@
 
     class GraphenePlant extends Action {
         constructor() {
-            super("Alpha Factory", "interstellar", "g_factory", "int_alpha");
+            super("Alpha Graphene Plant", "interstellar", "g_factory", "int_alpha");
 
             this._industryVueBinding = "iGraphene";
             this._industryVue = undefined;
@@ -4924,12 +4924,12 @@
         state.spaceBuildings.GorddonEmbassy.gameMax = 1;
         state.spaceBuildings.Alien1Consulate.gameMax = 1;
 
-        if (game.global.race.universe == "magic"){
-            state.cityBuildings.CoalPower.addResourceConsumption(resources.Mana, 0.05);
-        } else {
-            state.cityBuildings.CoalPower.addResourceConsumption(resources.Coal, 0.35);
-        }
-        state.cityBuildings.OilPower.addResourceConsumption(resources.Oil, 0.65);
+        state.cityBuildings.CoalPower.consumption = normalizeProperties([{resource: () => game.global.race.universe === "magic" ? resources.Mana : resources.Coal, rate: () => game.global.race.environmentalist ? 0 : game.global.race.universe === "magic" ? 0.05 : 0.65}]);
+        state.cityBuildings.OilPower.consumption = normalizeProperties([{resource: resources.Oil, rate: game.global.race.environmentalist ? 0 : 0.65}]);
+
+        state.spaceBuildings.GatewayShipDock.consumption = normalizeProperties([{resource: resources.Gateway_Support, rate: () => state.spaceBuildings.GatewayStarbase.count * -0.25}]);
+        state.spaceBuildings.SpaceNavBeacon.consumption = normalizeProperties([{resource: resources.Moon_Support, rate: -1}, {resource: resources.Red_Support, rate: () => game.global.tech.luna >= 2 ? -1 : 0}]);
+
         state.cityBuildings.FissionPower.addResourceConsumption(resources.Uranium, 0.1);
         state.cityBuildings.TouristCenter.addResourceConsumption(resources.Food, 50);
 
@@ -9704,14 +9704,6 @@
             resources.Crates.resourceRequirements[0].resource = resources.Stone;
             resources.Crates.resourceRequirements[0].quantity = 200;
         }
-
-        if (game.global.tech['luna'] >= 2) {
-            state.spaceBuildings.SpaceNavBeacon.consumption = [{resource: resources.Moon_Support, rate: -1},
-                                                               {resource: resources.Red_Support,  rate: -1}];
-        } else {
-            state.spaceBuildings.SpaceNavBeacon.consumption = [{resource: resources.Moon_Support, rate: -1}];
-        }
-        state.spaceBuildings.GatewayShipDock.consumption = [{resource: resources.Gateway_Support, rate: state.spaceBuildings.GatewayStarbase.count * -0.25}];
 
         if (isEvilRace() && !isEvilUniverse() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
             state.jobs.Lumberjack.setJobOverride(state.jobManager.unemployedJob);
