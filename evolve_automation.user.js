@@ -5026,34 +5026,6 @@
         state.spaceBuildings.ChthonianMineLayer.addResourceConsumption(resources.Helium_3, 8);
         state.spaceBuildings.ChthonianRaider.addResourceConsumption(resources.Helium_3, 18);
 
-        // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
-        ////////////////////
-        state.cityBuildings.TouristCenter.overridePowered = 0;
-        state.spaceBuildings.MoonIridiumMine.overridePowered = 0;
-        state.spaceBuildings.MoonHeliumMine.overridePowered = 0;
-        state.spaceBuildings.MoonObservatory.overridePowered = 0;
-        state.spaceBuildings.RedLivingQuarters.overridePowered = 0;
-        state.spaceBuildings.RedMine.overridePowered = 0;
-        state.spaceBuildings.RedFabrication.overridePowered = 0;
-        state.spaceBuildings.RedBiodome.overridePowered = 0;
-        state.spaceBuildings.RedExoticLab.overridePowered = 0;
-        state.spaceBuildings.RedSpaceBarracks.overridePowered = 0;
-        state.spaceBuildings.RedVrCenter.overridePowered = 0;
-        state.spaceBuildings.BeltEleriumShip.overridePowered = 0;
-        state.spaceBuildings.BeltIridiumShip.overridePowered = 0;
-        state.spaceBuildings.BeltIronShip.overridePowered = 0;
-        state.spaceBuildings.AlphaMiningDroid.overridePowered = 0;
-        state.spaceBuildings.AlphaProcessing.overridePowered = 0;
-        state.spaceBuildings.AlphaLaboratory.overridePowered = 0;
-        state.spaceBuildings.AlphaExchange.overridePowered = 0;
-        state.spaceBuildings.AlphaFactory.overridePowered = 0;
-        state.spaceBuildings.ProximaCruiser.overridePowered = 0;
-        state.spaceBuildings.NebulaHarvestor.overridePowered = 0;
-        state.spaceBuildings.NebulaEleriumProspector.overridePowered = 0;
-        state.spaceBuildings.SunSwarmSatellite.overridePowered = -0.35;
-        state.spaceBuildings.ProximaDyson.overridePowered = -1.25;
-        ////////////////////
-
         state.evolutionChallengeList.push(state.evolutions.Bunker);
         state.evolutionChallengeList.push(state.evolutions.Plasmid);
         state.evolutionChallengeList.push(state.evolutions.Trade);
@@ -5073,6 +5045,22 @@
         resetProductionState();
         resetBuildingState();
         resetMinorTraitState();
+
+        // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
+        state.buildingManager.priorityList.forEach(building => {
+            if (building.powered > 0) {
+                let powerId = (building._location || building._tab) + ":" + building.id;
+                if (game.global.power.indexOf(powerId) === -1) {
+                    building.overridePowered = 0;
+                }
+            }
+        });
+        state.spaceBuildings.SunSwarmSatellite.overridePowered = -0.35;
+        state.spaceBuildings.ProximaDyson.overridePowered = -1.25;
+        state.spaceBuildings.ProximaDysonSphere.overridePowered = -5;
+        state.spaceBuildings.ProximaOrichalcumSphere.overridePowered = -8;
+        // Numbers aren't exactly correct. That's fine - it won't mess with calculations - it's not something we can turn off and on. We just need to know that they *are* power generators, for autobuild, and that's enough for us.
+        // And it doesn't includes Stellar Engine at all. It can generate some power... But only when fully built, and you don't want to build 100 levels of engine just to generate 20MW.
     }
 
     function initialiseRaces() {
@@ -9748,29 +9736,6 @@
     }
 
     function verifyGameActions() {
-            // Check for fidelity of game actions code - a lot of buildings specify power when they don't use any...
-            // The following line of code is copied directly from the game code:
-            let p_structs = [
-                'city:apartment','int_alpha:habitat','int_alpha:luxury_condo','spc_red:spaceport','int_alpha:starport','int_blackhole:s_gate','gxy_gateway:starbase','gxy_gateway:ship_dock','int_neutron:stellar_forge',
-                'int_neutron:citadel','city:coal_mine','spc_moon:moon_base','spc_red:red_tower','spc_home:nav_beacon','int_proxima:xfer_station','gxy_stargate:telemetry_beacon',
-                'int_nebula:nexus','gxy_stargate:gateway_depot','spc_dwarf:elerium_contain','spc_gas:gas_mining','spc_belt:space_station','spc_gas_moon:outpost','gxy_gorddon:embassy',
-                'gxy_gorddon:dormitory','gxy_alien1:resort','spc_gas_moon:oil_extractor','int_alpha:int_factory','city:factory','spc_red:red_factory','spc_dwarf:world_controller',
-                'prtl_fortress:turret','prtl_badlands:war_drone','city:wardenclyffe','city:biolab','city:mine','city:rock_quarry','city:cement_plant','city:sawmill','city:mass_driver',
-                'int_neutron:neutron_miner','prtl_fortress:war_droid','prtl_pit:soul_forge','gxy_chthonian:excavator','int_blackhole:far_reach','prtl_badlands:sensor_drone',
-                'prtl_badlands:attractor','city:metal_refinery','gxy_stargate:gateway_station','gxy_alien1:vitreloy_plant','gxy_alien2:foothold','gxy_gorddon:symposium',
-                'int_blackhole:mass_ejector','city:casino','spc_hell:spc_casino','prtl_fortress:repair_droid','gxy_stargate:defense_platform','prtl_pit:gun_emplacement','prtl_pit:soul_attractor','int_sirius:ascension_trigger'];
-
-            // Perform the check
-            state.buildingManager.priorityList.forEach(building => {
-                if (building.powered > 0) {
-                    let tempId = (building._location !== "" ? building._location : building._tab) + ":" + building.id
-                    let tempIndex = p_structs.indexOf(tempId);
-                    if (tempIndex === -1) {
-                        console.log("Found building that is specified in game actions code as powered but isn't included in powered calculations: " + tempId);
-                    }
-                }
-            });
-
             // Check that actions that exist in game also exist in our script
             verifyGameActionsExist(game.actions.evolution, state.evolutions, false);
             verifyGameActionsExist(game.actions.city, state.cityBuildings, false);
