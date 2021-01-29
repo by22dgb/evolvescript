@@ -45,23 +45,6 @@
     var game = null;
     var win = null;
 
-    var speciesProtoplasm = "protoplasm";
-    var challengeNoCraft = "no_craft";
-    var challengeDecay = "decay";
-    var racialTraitCarnivore = "carnivore";
-    var racialTraitSoulEater = "soul_eater";
-    var racialTraitKindlingKindred = "kindling_kindred";
-    var racialTraitSmoldering = "smoldering"
-    var racialTraitIntelligent = "intelligent";
-    var racialTraitForge = 'forge';
-    var racialTraitHiveMind = "hivemind";
-    var racialTraitEvil = "evil";
-    var racialTraitSlaver = "slaver";
-    var racialTraitCannibalize = "cannibalize";
-    var racialTraitCreative = "creative";
-    var techFactory = "factory";
-    var techSuperstar = "superstar";
-
     // --------------------
 
     //#region Class Declarations
@@ -761,7 +744,7 @@
             let newCount = this.count + 1;
             this.vue.action();
 
-            if (game.global.race.species === speciesProtoplasm // Don't log evolution actions
+            if (game.global.race.species === "protoplasm" // Don't log evolution actions
                     || this === state.cityBuildings.Food // Don't log gathering actions
                     || this === state.cityBuildings.Lumber
                     || this === state.cityBuildings.Stone
@@ -1206,7 +1189,7 @@
             }
 
             // Restore decayed rate
-            if (game.global.race[challengeDecay] && this.tradeRouteQuantity > 0 && this.currentQuantity >= 50) {
+            if (game.global.race['decay'] && this.tradeRouteQuantity > 0 && this.currentQuantity >= 50) {
                 this.currentDecay = (this.currentQuantity - 50) * (0.001 * this.tradeRouteQuantity);
                 this.rateOfChange += this.currentDecay;
             } else {
@@ -1454,7 +1437,7 @@
          */
         tryCraftX(count) {
             if (!this.isUnlocked()) { return false; }
-            if (game.global.race[challengeNoCraft]) { return false; }
+            if (game.global.race['no_craft']) { return false; }
 
             let vue = getVueById(this._vueBinding);
             if (vue === undefined) { return false; }
@@ -1601,7 +1584,7 @@
         }
 
         initIndustry() {
-            if (this.count < 1 || !game.global.race[racialTraitSmoldering]) {
+            if (this.count < 1 || !game.global.race['smoldering']) {
                 return false;
             }
 
@@ -1668,7 +1651,7 @@
             this.Fuels = normalizeProperties({
                 Oil: {id: "Oil", unlocked: () => game.global.resource.Oil.display, cost: new ResourceProductionCost(resources.Oil, 0.35, 2)},
                 Coal: {id: "Coal", unlocked: () => game.global.resource.Coal.display, cost: new ResourceProductionCost(resources.Coal, () => !isLumberRace() ? 0.15 : 0.25, 2)},
-                Wood: {id: "Wood", unlocked: () => !game.global.race[racialTraitKindlingKindred] || game.global.race[racialTraitEvil], cost: new ResourceProductionCost(resources.Lumber, () => game.global.race[racialTraitEvil] && !game.global.race[racialTraitSoulEater] ? 1 : 3, 6)},
+                Wood: {id: "Wood", unlocked: () => isLumberRace() || game.global.race['evil'], cost: new ResourceProductionCost(resources.Lumber, () => game.global.race['evil'] && !game.global.race['soul_eater'] ? 1 : 3, 6)},
                 Star: {id: "Star", unlocked: () => game.global.tech.star_forge >= 2, cost: new ResourceProductionCost(resources.StarPower, 1, 0)},
             }, [ResourceProductionCost]);
         }
@@ -1760,7 +1743,7 @@
     }
 
     function f_rate(production, resource) {
-        return game.f_rate[production][resource][game.global.tech[techFactory] || 0];
+        return game.f_rate[production][resource][game.global.tech['factory'] || 0];
     }
 
     class Factory extends Action {
@@ -2754,7 +2737,7 @@
             let singleSoldierAttackRating = game.armyRating(100, this._textArmy, "0") / 100;
             let maxSoldiers = Math.ceil(targetRating / singleSoldierAttackRating);
 
-            if (!game.global.race[racialTraitHiveMind]) {
+            if (!game.global.race['hivemind']) {
                 return maxSoldiers;
             }
 
@@ -2937,7 +2920,7 @@
 
             if (this._managedPriorityList.length === 0) {
                 this._lastLoopCounter = state.loopCounter;
-                let evilRace = isEvilRace() && !isEvilUniverse();
+                let evilRace = isDemonRace();
 
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const job = this.priorityList[i];
@@ -2989,7 +2972,7 @@
         }
 
         canManualCraft() {
-            return !game.global.race[challengeNoCraft];
+            return !game.global.race['no_craft'];
         }
 
         get managedCraftsmen() {
@@ -4172,7 +4155,7 @@
 
                 //@ts-ignore
                 // Divide costs by 100 to get the cost for a single segment and subtract the creative flat bonus
-                if (this.costsConflict(targetTrigger.cost, project.definition.cost, 0.01 * (game.global.race[racialTraitCreative] ? 0.8 : 1))) {
+                if (this.costsConflict(targetTrigger.cost, project.definition.cost, 0.01 * (game.global.race['creative'] ? 0.8 : 1))) {
 
                     //console.log("project " + project.id + " CONFLICTS with target")
                     return true;
@@ -4924,8 +4907,8 @@
         state.spaceBuildings.GorddonEmbassy.gameMax = 1;
         state.spaceBuildings.Alien1Consulate.gameMax = 1;
 
-        state.cityBuildings.CoalPower.consumption = normalizeProperties([{resource: () => game.global.race.universe === "magic" ? resources.Mana : resources.Coal, rate: () => game.global.race.environmentalist ? 0 : game.global.race.universe === "magic" ? 0.05 : 0.65}]);
-        state.cityBuildings.OilPower.consumption = normalizeProperties([{resource: resources.Oil, rate: game.global.race.environmentalist ? 0 : 0.65}]);
+        state.cityBuildings.CoalPower.consumption = normalizeProperties([{resource: () => game.global.race.universe === "magic" ? resources.Mana : resources.Coal, rate: () => game.global.race['environmentalist'] ? 0 : game.global.race.universe === "magic" ? 0.05 : 0.65}]);
+        state.cityBuildings.OilPower.consumption = normalizeProperties([{resource: resources.Oil, rate: game.global.race['environmentalist'] ? 0 : 0.65}]);
 
         state.spaceBuildings.GatewayShipDock.consumption = normalizeProperties([{resource: resources.Gateway_Support, rate: () => state.spaceBuildings.GatewayStarbase.count * -0.25}]);
         state.spaceBuildings.SpaceNavBeacon.consumption = normalizeProperties([{resource: resources.Moon_Support, rate: -1}, {resource: resources.Red_Support, rate: () => game.global.tech.luna >= 2 ? -1 : 0}]);
@@ -5290,6 +5273,8 @@
 
     function resetGeneralSettings() {
         settings.genesAssembleGeneAlways = false;
+        settings.buildingAlwaysClick = false;
+        settings.buildingClickPerTick = 50;
     }
 
     function resetPrestigeSettings() {
@@ -5389,7 +5374,7 @@
     function resetMarketSettings() {
         settings.queueRequest = true;
         settings.tradeRouteMinimumMoneyPerSecond = 300;
-        settings.tradeRouteMinimumMoneyPercentage = 5;
+        settings.tradeRouteMinimumMoneyPercentage = 50;
     }
 
     function resetStorageState() {
@@ -5542,8 +5527,7 @@
 
     function resetBuildingSettings() {
         settings.buildingBuildIfStorageFull = false;
-        settings.buildingAlwaysClick = false;
-        settings.buildingClickPerTick = 50;
+        settings.buildingShrineType = "any";
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
@@ -6307,7 +6291,7 @@
         addSetting("minimumMoneyPercentage", 0);
         addSetting("queueRequest", true);
         addSetting("tradeRouteMinimumMoneyPerSecond", 300);
-        addSetting("tradeRouteMinimumMoneyPercentage", 5);
+        addSetting("tradeRouteMinimumMoneyPercentage", 50);
         addSetting("generalMinimumTaxRate", 0);
         addSetting("generalMinimumMorale", 105)
         addSetting("generalMaximumMorale", 500);
@@ -6373,6 +6357,7 @@
         addSetting("userResearchTheology_2", "auto");
 
         addSetting("buildingBuildIfStorageFull", false);
+        addSetting("buildingShrineType", "any");
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
         addSetting("buildingWeightingNew", 3);
@@ -6438,7 +6423,7 @@
     }
 
     function autoEvolution() {
-        if (game.global.race.species !== speciesProtoplasm) {
+        if (game.global.race.species !== "protoplasm") {
             return;
         }
 
@@ -6757,7 +6742,7 @@
 
     function autoCraft() {
         if (!resources.Population.isUnlocked()) { return; }
-        if (game.global.race[challengeNoCraft]) { return; }
+        if (game.global.race['no_craft']) { return; }
 
         craftLoop:
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -7281,7 +7266,7 @@
         let scavengerIndex = jobList.indexOf(state.jobs.Scavenger);
 
         let lumberjackIndex = -1;
-        if (isEvilRace() && !isEvilUniverse()) {
+        if (isDemonRace()) {
             lumberjackIndex = farmerIndex;
         } else {
             lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
@@ -7372,7 +7357,7 @@
             }
 
             log("autoJobs", "currentQuantity " + resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0))
-            if (isEvilRace() && !isEvilUniverse()) {
+            if (isDemonRace()) {
                 if (resources.Population.currentQuantity > breakpoint0Max && requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(1)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
                     requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(1);
@@ -7488,7 +7473,7 @@
                 // Races with the Intelligent trait get bonus production based on the number of professors and scientists
                 // Only unassign them when knowledge is max if the race is not intelligent
                 // Once we've research shotgun sequencing we get boost and soon autoassemble genes so stop unassigning
-                if (!isIntelligentRace() && !isResearchUnlocked("shotgun_sequencing")) {
+                if (!game.global.race['intelligent'] && !isResearchUnlocked("shotgun_sequencing")) {
                     // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
                     if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && resources.Knowledge.storageRatio > 0.99) {
                         jobsToAssign = 0;
@@ -7501,7 +7486,7 @@
                 }
 
                 // Stone income fluctuate a lot when we're managing smoldering quarry, ignore it
-                if (job === state.jobs.CementWorker && (!game.global.race[racialTraitSmoldering] || !settings.autoQuarry)) {
+                if (job === state.jobs.CementWorker && (!game.global.race['smoldering'] || !settings.autoQuarry)) {
                     let currentCementWorkers = job.count;
                     log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.Stone.rateOfChange);
 
@@ -7546,7 +7531,7 @@
             let minLumberjacks = 0;
             let totalWeighting = 0;
 
-            if (isEvilRace() && !isEvilUniverse() && lumberjackIndex !== -1) {
+            if (isDemonRace() && lumberjackIndex !== -1) {
                 // Evil races are a little bit different. Their "umemployed" workers act as both farmers and lumberjacks
                 // We need to keep a minimum number on farming.
                 minLumberjacks = requiredJobs[lumberjackIndex];
@@ -7598,7 +7583,7 @@
 
             if (availableEmployees > 0) {
                 // Split the remainder in accordance to the given weightings
-                if (isEvilRace() && !isEvilUniverse() && lumberjackIndex !== -1) {
+                if (isDemonRace() && lumberjackIndex !== -1) {
                     // Lumberjacks are special! for evil races they are also farmers so we need to keep a minimum even if the split doens't have that many
                     let lumberjacks = Math.ceil(availableEmployees * settings.jobLumberWeighting / totalWeighting);
                     lumberjacks = Math.max(minLumberjacks - requiredJobs[lumberjackIndex], lumberjacks);
@@ -7611,7 +7596,7 @@
                 let startingAvailableEmployees = availableEmployees;
 
                 splitJobs.forEach(jobDetails => {
-                    if (availableEmployees <= 0 || (isEvilRace() && !isEvilUniverse() && jobDetails.job === state.jobs.Lumberjack)) {
+                    if (availableEmployees <= 0 || (isDemonRace() && jobDetails.job === state.jobs.Lumberjack)) {
                         // We've already dealt with evil lumberjacks above. Those dastardly lumberjacks!
                         return; // forEach return
                     }
@@ -7710,7 +7695,7 @@
             + (state.spaceBuildings.RedVrCenter.stateOnCount * 2) + (state.spaceBuildings.AlphaExoticZoo.stateOnCount * 2) + (state.spaceBuildings.Alien1Resort.stateOnCount * 2)
             + (state.projects.Monument.level * 2);
 
-        if (game.global.tech[techSuperstar]) {
+        if (game.global.tech['superstar']) {
             maxMorale += state.jobs.Entertainer.count;
         }
 
@@ -7793,7 +7778,7 @@
         }
 
         // Only adjust fuels if race does not have forge trait which means they don't require smelter fuel
-        if (!isForgeRace()) {
+        if (!game.global.race['forge']) {
             let remainingSmelters = smelter.maxOperating;
 
             let fuels = smelter.fuelPriorityList();
@@ -8180,7 +8165,7 @@
             });
 
             // And if we still have some ejectors remaining, let's try to find something else
-            if (remaining > 0 && (settings.prestigeWhiteholeEjectExcess || (game.global.race[challengeDecay] && settings.prestigeWhiteholeDecayRate > 0))) {
+            if (remaining > 0 && (settings.prestigeWhiteholeEjectExcess || (game.global.race['decay'] && settings.prestigeWhiteholeDecayRate > 0))) {
                 resourcesByAtomicMass.forEach(resourceRequirement => {
                     let resource = resourceRequirement.resource;
 
@@ -8192,7 +8177,7 @@
                     remaining += resourceRequirement.requirement;
 
                     // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it, or it's Adamantite(we need it to get more ejectors).
-                    if (game.global.race[challengeDecay] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
+                    if (game.global.race['decay'] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
                         ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentDecay * settings.prestigeWhiteholeDecayRate));
                     }
 
@@ -8489,7 +8474,7 @@
                 slaughter.action();
             }
             resources.Lumber.currentQuantity = Math.min(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
-            if (game.global.race[racialTraitSoulEater] && game.global.tech.primitive){
+            if (game.global.race['soul_eater'] && game.global.tech.primitive){
                 resources.Food.currentQuantity = Math.min(resources.Food.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
             }
             if (resources.Furs.isUnlocked()) {
@@ -9557,7 +9542,7 @@
             }
             if (state.cityBuildings.Slaughter.isClickable()){
                 resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
-                if (game.global.race[racialTraitSoulEater] && game.global.tech.primitive){
+                if (game.global.race['soul_eater'] && game.global.tech.primitive){
                     resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
                 }
                 if (resources.Furs.isUnlocked()) {
@@ -9571,7 +9556,7 @@
     }
 
     function updateState() {
-        if (game.global.race.species === speciesProtoplasm) {
+        if (game.global.race.species === "protoplasm") {
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
@@ -9705,7 +9690,7 @@
             resources.Crates.resourceRequirements[0].quantity = 200;
         }
 
-        if (isEvilRace() && !isEvilUniverse() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
+        if (isDemonRace() && state.jobs.Lumberjack !== state.jobManager.unemployedJob) {
             state.jobs.Lumberjack.setJobOverride(state.jobManager.unemployedJob);
         }
 
@@ -9804,7 +9789,33 @@
               () => "Not enough storage",
               () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
           ],[
-              () => game.global.race[racialTraitSlaver],
+              () => game.global.race['magnificent'] && settings.buildingShrineType !== "any",
+              (building) => {
+                  if (building === state.cityBuildings.Shrine) {
+                      let bonus = null;
+                      if (game.global.city.calendar.moon > 0 && game.global.city.calendar.moon < 7){
+                          bonus = "morale";
+                      } else if (game.global.city.calendar.moon > 7 && game.global.city.calendar.moon < 14){
+                          bonus = "metal";
+                      } else if (game.global.city.calendar.moon > 14 && game.global.city.calendar.moon < 21){
+                          bonus = "know";
+                      } else if (game.global.city.calendar.moon > 21){
+                          bonus = "tax";
+                      } else {
+                          return true;
+                      }
+                      if (settings.buildingShrineType === "equally") {
+                          let minShrine = Math.min(game.global.city.shrine.morale, game.global.city.shrine.metal, game.global.city.shrine.know, game.global.city.shrine.tax);
+                          return game.global.city.shrine[bonus] !== minShrine;
+                      } else {
+                          return settings.buildingShrineType !== bonus;
+                      }
+                  }
+              },
+              () => "Wrong shrine",
+              () => 0 // Shrine
+          ],[
+              () => game.global.race['slaver'],
               (building) => {
                   if (building === state.cityBuildings.SlaveMarket) {
                       if (resources.Slave.currentQuantity >= resources.Slave.maxQuantity) {
@@ -9818,7 +9829,7 @@
               (note) => note,
               () => 0 // Slave Market
           ],[
-              () => game.global.race[racialTraitCannibalize],
+              () => game.global.race['cannibalize'],
               (building) => {
                   if (building === state.cityBuildings.SacrificialAltar && building.count > 0) {
                       if (resources.Population.currentQuantity < 20) {
@@ -9835,7 +9846,7 @@
 
                       if (game.global.city.s_alter.rage >= 3600 && game.global.city.s_alter.regen >= 3600 &&
                           game.global.city.s_alter.mind >= 3600 && game.global.city.s_alter.mine >= 3600 &&
-                          (game.global.race[racialTraitKindlingKindred] || game.global.city.s_alter.harvest >= 3600)){
+                          (!isLumberRace() || game.global.city.s_alter.harvest >= 3600)){
                           return "Sacrifice bonus already high enough";
                       }
                   }
@@ -10839,8 +10850,7 @@
         });
 
         selectNode.on('change', function() {
-            let value = $(`#${computedSelectId} :selected`).val();
-            settings[settingName] = value;
+            settings[settingName] = this.value;
             updateSettingsFromState();
 
             if (secondaryPrefix !== "" && settings.showSettings) {
@@ -10885,8 +10895,7 @@
         selectNode.val(settings.userUniverseTargetName);
 
         selectNode.on('change', function() {
-            let value = $("#script_userUniverseTargetName :selected").val();
-            settings.userUniverseTargetName = value;
+            settings.userUniverseTargetName = this.value;
             updateSettingsFromState();
         });
 
@@ -10904,8 +10913,7 @@
 
         selectNode.val(settings.userPlanetTargetName);
         selectNode.on('change', function() {
-            let value = $("#script_userPlanetTargetName :selected").val();
-            settings.userPlanetTargetName = value;
+            settings.userPlanetTargetName = this.value;
             updateSettingsFromState();
         });
 
@@ -10931,8 +10939,7 @@
         }
 
         selectNode.on('change', function() {
-            let value = $("#script_userEvolutionTarget :selected").val();
-            settings.userEvolutionTarget = value;
+            settings.userEvolutionTarget = this.value;
             state.resetEvolutionTarget = true;
             updateSettingsFromState();
 
@@ -12413,6 +12420,26 @@
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
 
+        currentNode.append(`<div style="margin-top: 5px; width: 400px;">
+                              <label for="script_buildingShrineType">Prefered Shrine:</label>
+                              <select id="script_buildingShrineType" style="width: 150px; float: right;">
+                                <option value = "any">Any</option>
+                                <option value = "equally">Equally</option>
+                                <option value = "morale">Morale</option>
+                                <option value = "metal">Metal</option>
+                                <option value = "know">Knowledge</option>
+                                <option value = "tax">Tax</option>
+                              </select>
+                            </div>`);
+
+        let selectNode = $('#script_buildingShrineType');
+
+        selectNode.val(settings.buildingShrineType);
+        selectNode.on('change', function() {
+            settings.buildingShrineType = this.value;
+            updateSettingsFromState();
+        });
+
         // Add table
         currentNode.append(
             `<div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings.."></div>
@@ -13255,27 +13282,15 @@
     }
 
     function isHunterRace() {
-        return game.global.race[racialTraitCarnivore] || game.global.race[racialTraitSoulEater];
+        return game.global.race['carnivore'] || game.global.race['soul_eater'];
     }
 
-    function isEvilRace() {
-        return game.global.race[racialTraitEvil];
-    }
-
-    function isEvilUniverse() {
-        return game.global.race.universe === "evil";
+    function isDemonRace() {
+        return game.global.race['soul_eater'] && game.global.race.species !== 'wendigo';
     }
 
     function isLumberRace() {
-        return !game.global.race[racialTraitKindlingKindred] && !game.global.race[racialTraitSmoldering];
-    }
-
-    function isIntelligentRace() {
-        return game.global.race[racialTraitIntelligent];
-    }
-
-    function isForgeRace() {
-        return game.global.race[racialTraitForge];
+        return !game.global.race['kindling_kindred'] && !game.global.race['smoldering'];
     }
 
     /**
