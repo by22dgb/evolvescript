@@ -8522,7 +8522,7 @@
 
             // Only go further if we can build it right now
             if (!game.checkAffordable(building.definition, false)) {
-                building.extraDescription += "Not enough resources<br>";
+                //building.extraDescription += "Not enough resources<br>";
                 continue;
             }
 
@@ -8628,19 +8628,6 @@
                 break;
             }
         }
-
-        $('.popper').each(function(){
-          let building = buildingIds[this.id.substr(3)];
-          if (building) {
-            let desc_node = $(this).find("#extra_desc");
-            if (desc_node.length){
-              desc_node.html(building.extraDescription);
-            } else {
-              $(this).css("pointer-events", "none");
-              $(this).append(`<div id="extra_desc">${building.extraDescription}</div>`);
-            }
-          }
-        });
     }
 
     //#endregion Auto Building
@@ -10004,6 +9991,20 @@
         resourcesByAtomicMass.unshift({ resource: resources.Infernite, requirement: 0, });
         resourcesByAtomicMass.unshift({ resource: resources.Elerium, requirement: 0, });
 
+        new MutationObserver((mutationList, observer) => {
+            if (!settings.autoBuild) {
+                return;
+            }
+            mutationList.forEach(mutation => {
+                mutation.addedNodes.forEach(node => {
+                    let building = buildingIds[node.id.substr(3)];
+                    if (building?.autoBuildEnabled) {
+                        node.style.pointerEvents = "none";
+                        node.innerHTML += `<div>${building.extraDescription}</div>`;
+                    }
+                });
+            });
+        }).observe(document.querySelector("#main"), {childList: true});
     }
 
     function automate() {
