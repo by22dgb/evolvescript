@@ -40,7 +40,7 @@
 //@ts-check
 (function($) {
     'use strict';
-    var settings = JSON.parse(localStorage.getItem('settings')) || {};
+    var settings = JSON.parse(localStorage.getItem('settings')) ?? {};
 
     var game = null;
     var win = null;
@@ -189,8 +189,6 @@
                 this._remainder -= 1;
                 return 1;
             }
-
-            return 0;
         }
     }
 
@@ -590,7 +588,7 @@
             this.overridePowered = undefined;
 
             // Additional flags
-            this.is = flags || {};
+            this.is = flags ?? {};
         }
 
         get definition() {
@@ -671,7 +669,7 @@
                 return 0;
             }
 
-            for (let req in definition.power_reqs || {}) {
+            for (let req in definition.power_reqs ?? {}) {
                 if (!game.global.tech[req] || game.global.tech[req] < definition.power_reqs[req]){
                     return 0;
                 }
@@ -1034,8 +1032,8 @@
         }
 
         sortByPriority() {
-            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
-            this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this.priorityList.sort((a, b) => a.priority - b.priority);
+            this._managedPriorityList.sort((a, b) => a.priority - b.priority);
         }
 
         managedPriorityList() {
@@ -1670,7 +1668,7 @@
         }
 
         fuelPriorityList() {
-            return Object.values(this.Fuels).sort(function (a, b) { return a.priority - b.priority } );
+            return Object.values(this.Fuels).sort((a, b) => a.priority - b.priority);
         }
 
         fueledCount(fuel) {
@@ -1799,7 +1797,13 @@
         }
 
         get maxOperating() {
-            return state.cityBuildings.Factory.stateOnCount + state.spaceBuildings.RedFactory.stateOnCount + state.spaceBuildings.AlphaMegaFactory.stateOnCount * 2;
+            let max = state.cityBuildings.Factory.stateOnCount + state.spaceBuildings.RedFactory.stateOnCount + state.spaceBuildings.AlphaMegaFactory.stateOnCount * 2;
+            for (let production of Object.values(this.Productions)){
+                if (production.unlocked && !production.enabled) {
+                    max -= game.global.city.factory[production.id];
+                }
+            }
+            return max;
         }
 
         currentProduction(production) {
@@ -1871,10 +1875,6 @@
             }
 
             return true;
-        }
-
-        productionPriorityList() {
-            return Object.values(this.Productions).sort(function (a, b) { return a.priority - b.priority } );
         }
 
         get currentOperating() {
@@ -2903,14 +2903,13 @@
         }
 
         sortByPriority() {
-            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
-            this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this.priorityList.sort((a, b) => a.priority - b.priority);
+            this._managedPriorityList.sort((a, b) => a.priority - b.priority);
 
             for (let i = 0; i < this.priorityList.length; i++) {
                 this.maxJobBreakpoints = Math.max(this.maxJobBreakpoints, this.priorityList[i].breakpointMaxs.length);
             }
 
-            //this.craftingJobs.sort(function (a, b) { return a.priority - b.priority } );
         }
 
         managedPriorityList() {
@@ -3085,10 +3084,10 @@
         }
 
         sortByPriority() {
-            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
-            this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
-            this._statePriorityList.sort(function (a, b) { return a.priority - b.priority } );
-            this._managedStatePriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this.priorityList.sort((a, b) => a.priority - b.priority);
+            this._managedPriorityList.sort((a, b) => a.priority - b.priority);
+            this._statePriorityList.sort((a, b) => a.priority - b.priority);
+            this._managedStatePriorityList.sort((a, b) => a.priority - b.priority);
         }
 
         managedPriorityList() {
@@ -3259,8 +3258,8 @@
         }
 
         sortByPriority() {
-            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
-            this._managedPriorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this.priorityList.sort((a, b) => a.priority - b.priority);
+            this._managedPriorityList.sort((a, b) => a.priority - b.priority);
         }
 
         managedPriorityList() {
@@ -3324,8 +3323,8 @@
         }
 
         sortByPriority() {
-            this.priorityList.sort(function (a, b) { return a.marketPriority - b.marketPriority } );
-            this._sortedTradeRouteSellList.sort(function (a, b) { return a.marketPriority - b.marketPriority } );
+            this.priorityList.sort((a, b) => a.marketPriority - b.marketPriority);
+            this._sortedTradeRouteSellList.sort((a, b) => a.marketPriority - b.marketPriority);
         }
 
         /** @param {Resource} resource */
@@ -3349,18 +3348,10 @@
                     }
                 }
 
-                this._sortedTradeRouteSellList.sort(function (a, b) { return b.currentTradeRouteSellPrice - a.currentTradeRouteSellPrice } );
+                this._sortedTradeRouteSellList.sort((a, b) => b.currentTradeRouteSellPrice - a.currentTradeRouteSellPrice);
             }
 
             return this._sortedTradeRouteSellList;
-        }
-
-        /**
-         * @param {number} multiplier
-         */
-        isMultiplierUnlocked(multiplier) {
-            let element = document.querySelector("#market-qty input");
-            return this.isUnlocked() && element !== null;
         }
 
         /**
@@ -3582,8 +3573,8 @@
         }
 
         sortByPriority() {
-            this.priorityList.sort(function (a, b) { return a.storagePriority - b.storagePriority } );
-            this._managedPriorityList.sort(function (a, b) { return a.storagePriority - b.storagePriority } );
+            this.priorityList.sort((a, b) => a.storagePriority - b.storagePriority);
+            this._managedPriorityList.sort((a, b) => a.storagePriority - b.storagePriority);
         }
 
         managedPriorityList() {
@@ -3817,6 +3808,7 @@
             if (this.actionType === "build") {
                 return buildingIds[this.actionId].definition.cost;
             }
+            return {};
         }
 
         isActionPossible() {
@@ -4023,7 +4015,7 @@
         }
 
         sortByPriority() {
-            this.priorityList.sort(function (a, b) { return a.priority - b.priority } );
+            this.priorityList.sort((a, b) => a.priority - b.priority);
         }
 
         /** @return {Trigger} */
@@ -5527,7 +5519,7 @@
 
     function resetBuildingSettings() {
         settings.buildingBuildIfStorageFull = false;
-        settings.buildingShrineType = "any";
+        settings.buildingShrineType = "know";
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
@@ -5777,7 +5769,6 @@
     }
 
     function resetProductionSettings() {
-        settings.productionMoneyIfOnly = true;
         settings.productionPrioritizeDemanded = true;
         settings.productionMinRatio = 0.1;
     }
@@ -5794,12 +5785,12 @@
         // Factory settings
         let productions = state.cityBuildings.Factory.Productions;
         let factorySeq = 0;
-        Object.assign(productions.LuxuryGoods, {seq: factorySeq++, enabled: false, weighting: 1});
-        Object.assign(productions.Furs, {seq: factorySeq++, enabled: false, weighting: 0});
-        Object.assign(productions.Alloy, {seq: factorySeq++, enabled: true, weighting: 2});
-        Object.assign(productions.Polymer, {seq: factorySeq++, enabled: true, weighting: 2});
-        Object.assign(productions.NanoTube, {seq: factorySeq++, enabled: true, weighting: 8});
-        Object.assign(productions.Stanene, {seq: factorySeq++, enabled: true, weighting: 8});
+        Object.assign(productions.LuxuryGoods, {seq: factorySeq++, enabled: true, weighting: 1, priority: 1});
+        Object.assign(productions.Furs, {seq: factorySeq++, enabled: true, weighting: 0, priority: 0});
+        Object.assign(productions.Alloy, {seq: factorySeq++, enabled: true, weighting: 2, priority: 2});
+        Object.assign(productions.Polymer, {seq: factorySeq++, enabled: true, weighting: 2, priority: 2});
+        Object.assign(productions.NanoTube, {seq: factorySeq++, enabled: true, weighting: 8, priority: 2});
+        Object.assign(productions.Stanene, {seq: factorySeq++, enabled: true, weighting: 8, priority: 2});
 
         // Foundry settings
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -5816,11 +5807,11 @@
         resources.Scarletite.weighting = 1;
 
         let droid = state.spaceBuildings.AlphaMiningDroid;
-        let droidPriority = 0;
-        Object.assign(droid.Productions.Adamantite, {priority: droidPriority++, ratio: 1});
-        Object.assign(droid.Productions.Aluminium, {priority: droidPriority++, ratio: 1});
-        Object.assign(droid.Productions.Uranium, {priority: droidPriority++, ratio: 0.5});
-        Object.assign(droid.Productions.Coal, {priority: droidPriority++, ratio: 0.5});
+        let droidSeq = 0;
+        Object.assign(droid.Productions.Adamantite, {seq: droidSeq++, priority: 1, weighting: 1});
+        Object.assign(droid.Productions.Aluminium, {seq: droidSeq++, priority: 2, weighting: 1});
+        Object.assign(droid.Productions.Uranium, {seq: droidSeq++, priority: 3, weighting: 1});
+        Object.assign(droid.Productions.Coal, {seq: droidSeq++, priority: 3, weighting: 1});
     }
 
     function resetTriggerSettings() {
@@ -5847,277 +5838,100 @@
     function updateStateFromSettings() {
         updateStandAloneSettings();
 
-        settings.triggers = settings.triggers || [];
-
+        settings.triggers = settings.triggers ?? [];
         state.triggerManager.clearPriorityList();
         settings.triggers.forEach(trigger => {
             state.triggerManager.AddTriggerFromSetting(trigger.seq, trigger.priority, trigger.requirementType, trigger.requirementId, trigger.requirementCount, trigger.actionType, trigger.actionId, trigger.actionCount);
         });
 
-        // Retrieve settings for resources
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             let resource = state.marketManager.priorityList[i];
-
-            let settingKey = 'res_buy_p_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.marketPriority = parseInt(settings[settingKey]); }
-            else { settings[settingKey] = resource.marketPriority; }
-
-            settingKey = 'buy' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoBuyEnabled = settings[settingKey]; }
-            else { settings[settingKey] = resource.autoBuyEnabled; }
-
-            settingKey = 'res_buy_r_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoBuyRatio = parseFloat(settings[settingKey]); }
-            else { settings[settingKey] = resource.autoBuyRatio; }
-
-            settingKey = 'sell' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoSellEnabled = settings[settingKey]; }
-            else { settings[settingKey] = resource.autoSellEnabled; }
-
-            settingKey = 'res_sell_r_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoSellRatio = parseFloat(settings[settingKey]); }
-            else { settings[settingKey] = resource.autoSellRatio; }
-
-            settingKey = 'res_trade_buy_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoTradeBuyEnabled = settings[settingKey]; }
-            else { settings[settingKey] = resource.autoTradeBuyEnabled; }
-
-            settingKey = 'res_trade_buy_mtr_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoTradeBuyRoutes = parseInt(settings[settingKey]); }
-            else { settings[settingKey] = resource.autoTradeBuyRoutes; }
-
-            settingKey = 'res_trade_sell_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoTradeSellEnabled = settings[settingKey]; }
-            else { settings[settingKey] = resource.autoTradeSellEnabled; }
-
-            settingKey = 'res_trade_sell_mps_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoTradeSellMinPerSecond = parseFloat(settings[settingKey]); }
-            else { settings[settingKey] = resource.autoTradeSellMinPerSecond; }
+            resource.marketPriority = parseInt(settings['res_buy_p_' + resource.id] ?? resource.marketPriority);
+            resource.autoBuyEnabled = settings['buy' + resource.id] ?? resource.autoBuyEnabled;
+            resource.autoBuyRatio = parseFloat(settings['res_buy_r_' + resource.id] ?? resource.autoBuyRatio);
+            resource.autoSellEnabled = settings['sell' + resource.id] ?? resource.autoSellEnabled;
+            resource.autoSellRatio = parseFloat(settings['res_sell_r_' + resource.id] ?? resource.autoSellRatio);
+            resource.autoTradeBuyEnabled = settings['res_trade_buy_' + resource.id] ?? resource.autoTradeBuyEnabled;
+            resource.autoTradeBuyRoutes = parseInt(settings['res_trade_buy_mtr_' + resource.id] ?? resource.autoTradeBuyRoutes);
+            resource.autoTradeSellEnabled = settings['res_trade_sell_' + resource.id] ?? resource.autoTradeSellEnabled;
+            resource.autoTradeSellMinPerSecond = parseFloat(settings['res_trade_sell_mps_' + resource.id] ?? resource.autoTradeSellMinPerSecond);
         }
         state.marketManager.sortByPriority();
 
         for (let i = 0; i < state.storageManager.priorityList.length; i++) {
             let resource = state.storageManager.priorityList[i];
-
-            let settingKey = 'res_storage' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.autoStorageEnabled = settings[settingKey]; }
-            else { settings[settingKey] = resource.autoStorageEnabled; }
-
-            settingKey = 'res_storage_o_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.storeOverflow = settings[settingKey]; }
-            else { settings[settingKey] = resource.storeOverflow; }
-
-            settingKey = 'res_storage_p_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource.storagePriority = parseFloat(settings[settingKey]); }
-            else { settings[settingKey] = resource.storagePriority; }
-
-            settingKey = 'res_crates_m_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource._autoCratesMax = parseInt(settings[settingKey]); }
-            else { settings[settingKey] = resource._autoCratesMax; }
-
-            settingKey = 'res_containers_m_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) { resource._autoContainersMax = parseInt(settings[settingKey]); }
-            else { settings[settingKey] = resource._autoContainersMax; }
+            resource.autoStorageEnabled = settings['res_storage' + resource.id] ?? resource.autoStorageEnabled;
+            resource.storeOverflow = settings['res_storage_o_' + resource.id] ?? resource.storeOverflow;
+            resource.storagePriority = parseFloat(settings['res_storage_p_' + resource.id] ?? resource.storagePriority);
+            resource._autoCratesMax = parseInt(settings['res_crates_m_' + resource.id] ?? resource._autoCratesMax);
+            resource._autoContainersMax = parseInt(settings['res_containers_m_' + resource.id] ?? resource._autoContainersMax);
         }
         state.storageManager.sortByPriority();
 
         for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
             let trait = state.minorTraitManager.priorityList[i];
-
-            let settingKey = 'mTrait_' + trait.traitName;
-            if (settings.hasOwnProperty(settingKey)) { trait.autoMinorTraitEnabled = settings[settingKey]; }
-            else { settings[settingKey] = trait.autoMinorTraitEnabled; }
-
-            settingKey = 'mTrait_w_' + trait.traitName;
-            if (settings.hasOwnProperty(settingKey)) { trait.autoMinorTraitWeighting = parseFloat(settings[settingKey]); }
-            else { settings[settingKey] = trait.autoMinorTraitWeighting; }
-
-            settingKey = 'mTrait_p_' + trait.traitName;
-            if (settings.hasOwnProperty(settingKey)) { trait.priority = parseFloat(settings[settingKey]); }
-            else { settings[settingKey] = trait.priority; }
+            trait.autoMinorTraitEnabled = settings['mTrait_' + trait.traitName] ?? trait.autoMinorTraitEnabled;
+            trait.autoMinorTraitWeighting = parseFloat(settings['mTrait_w_' + trait.traitName] ?? trait.autoMinorTraitWeighting);
+            trait.priority = parseFloat(settings['mTrait_p_' + trait.traitName] ?? trait.priority);
         }
         state.minorTraitManager.sortByPriority();
 
-        // Retrieve settings for crafting resources
         for (let i = 0; i < state.craftableResourceList.length; i++) {
-            const resource = state.craftableResourceList[i];
-
-            let settingKey = 'craft' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                resource.autoCraftEnabled = settings[settingKey];
-            } else {
-                settings[settingKey] = true;
-            }
-
-            settingKey = 'foundry_w_' + resource.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                resource.weighting = parseFloat(settings[settingKey]);
-            } else {
-                settings[settingKey] = resource.weighting;
-            }
+            let resource = state.craftableResourceList[i];
+            resource.autoCraftEnabled = settings['craft' + resource.id] ?? resource.autoCraftEnabled;
+            resource.weighting = parseFloat(settings['foundry_w_' + resource.id] ?? resource.weighting);
         }
 
-        // Retrieve settings for buying buildings
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
-            const building = state.buildingManager.priorityList[i];
-
-            let settingKey = 'bat' + building.settingId;
-            if (settings.hasOwnProperty(settingKey)) {
-                building.autoBuildEnabled = settings[settingKey];
-            } else {
-                settings[settingKey] = building.autoBuildEnabled;
-            }
-
-            settingKey = 'bld_p_' + building.settingId;
-            if (settings.hasOwnProperty(settingKey)) {
-                building.priority = parseInt(settings[settingKey]);
-            } else {
-                settings[settingKey] = building.priority;
-            }
-
-            settingKey = 'bld_s_' + building.settingId;
-            if (settings.hasOwnProperty(settingKey)) {
-                building.autoStateEnabled = settings[settingKey];
-            } else {
-                settings[settingKey] = building.autoStateEnabled;
-            }
-
-            settingKey = 'bld_m_' + building.settingId;
-            if (settings.hasOwnProperty(settingKey)) {
-                building.autoMax = parseInt(settings[settingKey]);
-            } else {
-                settings[settingKey] = building._autoMax;
-            }
-
-            settingKey = 'bld_w_' + building.settingId;
-            if (settings.hasOwnProperty(settingKey)) {
-                building._weighting = parseFloat(settings[settingKey]);
-            } else {
-                settings[settingKey] = building._weighting;
-            }
+            let building = state.buildingManager.priorityList[i];
+            building.autoBuildEnabled = settings['bat' + building.settingId] ?? building.autoBuildEnabled;
+            building.priority = parseInt(settings['bld_p_' + building.settingId] ?? building.priority);
+            building.autoStateEnabled = settings['bld_s_' + building.settingId] ?? building.autoStateEnabled;
+            building.autoMax = parseInt(settings['bld_m_' + building.settingId] ?? building._autoMax);
+            building._weighting = parseFloat(settings['bld_w_' + building.settingId] ?? building._weighting);
         }
         state.buildingManager.sortByPriority();
 
-        // Retrieve settings for assigning jobs
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
-            const job = state.jobManager.priorityList[i];
-
-            let settingKey = 'job_' + job._originalId;
-            if (settings.hasOwnProperty(settingKey)) {
-                job.autoJobEnabled = settings[settingKey];
-            } else {
-                settings[settingKey] = true;
-            }
-
-            settingKey = 'job_p_' + job._originalId;
-            if (settings.hasOwnProperty(settingKey)) {
-                job.priority = parseInt(settings[settingKey]);
-            } else {
-                settings[settingKey] = job.priority;
-            }
-
-            settingKey = 'job_b1_' + job._originalId;
-            if (settings.hasOwnProperty(settingKey)) {
-                job.setBreakpoint(1, settings[settingKey]);
-            } else {
-                settings[settingKey] = job.getBreakpoint(1);
-            }
-
-            settingKey = 'job_b2_' + job._originalId;
-            if (settings.hasOwnProperty(settingKey)) {
-                job.setBreakpoint(2, settings[settingKey]);
-            } else {
-                settings[settingKey] = job.getBreakpoint(2);
-            }
-
-            settingKey = 'job_b3_' + job._originalId;
-            if (settings.hasOwnProperty(settingKey)) {
-                job.setBreakpoint(3, settings[settingKey]);
-            } else {
-                settings[settingKey] = job.getBreakpoint(3);
-            }
+            let job = state.jobManager.priorityList[i];
+            job.autoJobEnabled = settings['job_' + job._originalId] ?? job.autoJobEnabled;
+            job.priority = parseInt(settings['job_p_' + job._originalId] ?? job.priority);
+            job.setBreakpoint(1, settings['job_b1_' + job._originalId] ?? job.getBreakpoint(1));
+            job.setBreakpoint(2, settings['job_b2_' + job._originalId] ?? job.getBreakpoint(2));
+            job.setBreakpoint(3, settings['job_b3_' + job._originalId] ?? job.getBreakpoint(3));
         }
         state.jobManager.sortByPriority();
 
-        settings.arpa = settings.arpa || {};
+        settings.arpa = settings.arpa ?? {};
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
-            const project = state.projectManager.priorityList[i];
-
-            let settingKey = project.id;
-            if (settings.arpa.hasOwnProperty(settingKey)) {
-                project.autoBuildEnabled = settings.arpa[settingKey];
-            } else {
-                settings.arpa[settingKey] = project.autoBuildEnabled;
-            }
-
-            settingKey = 'arpa_p_' + project.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                project.priority = parseInt(settings[settingKey]);
-            } else {
-                settings[settingKey] = project.priority;
-            }
-
-            settingKey = 'arpa_m_' + project.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                project.autoMax = parseInt(settings[settingKey]);
-            } else {
-                settings[settingKey] = project._autoMax;
-            }
-
-            settingKey = 'arpa_ignore_money_' + project.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                project.ignoreMinimumMoneySetting = settings[settingKey];
-            } else {
-                settings[settingKey] = project.ignoreMinimumMoneySetting;
-            }
+            let project = state.projectManager.priorityList[i];
+            project.autoBuildEnabled = settings.arpa[project.id] ?? project.autoBuildEnabled;
+            project.priority = parseInt(settings['arpa_p_' + project.id] ?? project.priority);
+            project.autoMax = parseInt(settings['arpa_m_' + project.id] ?? project._autoMax);
+            project.ignoreMinimumMoneySetting = settings['arpa_ignore_money_' + project.id] ?? project.ignoreMinimumMoneySetting;
         }
         state.projectManager.sortByPriority();
 
         for (let production of Object.values(state.cityBuildings.Factory.Productions)) {
-            let settingKey = "production_" + production.resource.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                production.enabled = settings[settingKey];
-            } else {
-                settings[settingKey] = production.enabled;
-            }
-
-            settingKey = "production_w_" + production.resource.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                production.weighting = parseInt(settings[settingKey]);
-            } else {
-                settings[settingKey] = production.weighting;
-            }
+            production.enabled = settings['production_' + production.resource.id] ?? production.enabled;
+            production.weighting = parseInt(settings['production_w_' + production.resource.id] ?? production.weighting);
+            production.priority = parseInt(settings['production_p_' + production.resource.id] ?? production.priority);
         }
 
         for (let fuel of Object.values(state.cityBuildings.Smelter.Fuels)) {
-            let settingKey = "smelter_fuel_p_" + fuel.cost.resource.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                fuel.priority = parseInt(settings[settingKey]);
-            } else {
-                settings[settingKey] = fuel.priority;
-            }
+            fuel.priority = parseInt(settings['smelter_fuel_p_' + fuel.cost.resource.id] ?? fuel.priority);
         }
 
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
-            let settingKey = "droid_p_" + production.resource.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                production.priority = parseInt(settings[settingKey]);
-            } else {
-                settings[settingKey] = production.priority;
-            }
-            settingKey = "droid_r_" + production.resource.id;
-            if (settings.hasOwnProperty(settingKey)) {
-                production.ratio = parseFloat(settings[settingKey]);
-            } else {
-                settings[settingKey] = production.ratio;
-            }
+            production.weighting = parseInt(settings['droid_w_' + production.resource.id] ?? production.weighting);
+            production.priority = parseInt(settings['droid_pr_' + production.resource.id] ?? production.priority);
         }
     }
 
     function updateSettingsFromState() {
         updateStandAloneSettings();
 
-        settings.triggers = state.triggerManager.priorityList;
+        settings.triggers = JSON.parse(JSON.stringify(state.triggerManager.priorityList));
 
         // Hack for partial back compatibility with original script.
         for (let i = 0; i < settings.triggers.length; i++) {
@@ -6179,7 +5993,7 @@
             settings['mTrait_p_' + trait.traitName] = trait.priority;
         }
 
-        settings.arpa = settings.arpa || {};
+        settings.arpa = settings.arpa ?? {};
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
             settings.arpa[project.id] = project.autoBuildEnabled;
@@ -6191,6 +6005,7 @@
         for (let production of Object.values(state.cityBuildings.Factory.Productions)) {
             settings["production_" + production.resource.id] = production.enabled;
             settings["production_w_" + production.resource.id] = production.weighting;
+            settings["production_p_" + production.resource.id] = production.priority;
         }
 
         for (let fuel of Object.values(state.cityBuildings.Smelter.Fuels)) {
@@ -6198,9 +6013,8 @@
         }
 
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
-            settings["droid_p_" + production.resource.id] = production.priority;
-            settings["droid_r_" + production.resource.id] = production.ratio;
-
+            settings["droid_w_" + production.resource.id] = production.weighting;
+            settings["droid_pr_" + production.resource.id] = production.priority;
         }
 
         localStorage.setItem('settings', JSON.stringify(settings));
@@ -6229,7 +6043,6 @@
         addSetting("arpaBuildIfStorageFullCraftableMin", -1);
         addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
 
-        addSetting("productionMoneyIfOnly", true);
         addSetting("productionPrioritizeDemanded", true);
         addSetting("productionMinRatio", 0.1);
 
@@ -6261,12 +6074,6 @@
             let loggingType = loggingTypes[loggingTypeKey];
             addSetting(loggingType.settingKey, true)
         });
-
-        // Move autoTradeSpecialResources to autoStorage and the delete the setting as it has been moved to autoMarket
-        if (settings.hasOwnProperty("autoTradeSpecialResources")) {
-            settings.autoStorage = settings.autoTradeSpecialResources;
-            delete settings.autoTradeSpecialResources;
-        }
 
         addSetting("autoQuarry", false);
         addSetting("autoSmelter", false);
@@ -6376,8 +6183,8 @@
         addSetting("buildingWeightingMissingSupply", 0);
         addSetting("buildingWeightingQueueHelper", 100);
 
-        addSetting("buildingEnabledAll", false);
-        addSetting("buildingStateAll", false);
+        addSetting("buildingEnabledAll", true);
+        addSetting("buildingStateAll", true);
 
         addSetting("triggerRequest", true);
 
@@ -6441,7 +6248,7 @@
             }
             state.evolutionTarget = races.antid; // That's a hack to not pull another evolution from queue while player selecting universe
             state.resetEvolutionTarget = true;
-            //updateStateFromSettings();
+            updateStateFromSettings();
             updateSettingsFromState();
             buildScriptSettings();
         }
@@ -6572,9 +6379,9 @@
 
         let rna = game.actions.evolution.rna;
         let dna = game.actions.evolution.dna;
-        for (var i = 0; i < RNAForDNA; i++) { rna.action(); }
-        for (var i = 0; i < DNAForEvolution; i++) { dna.action(); }
-        for (var i = 0; i < RNAForEvolution; i++) { rna.action(); }
+        for (let i = 0; i < RNAForDNA; i++) { rna.action(); }
+        for (let i = 0; i < DNAForEvolution; i++) { dna.action(); }
+        for (let i = 0; i < RNAForEvolution; i++) { rna.action(); }
 
         resources.RNA.currentQuantity = RNARemaining + RNAForEvolution;
         resources.DNA.currentQuantity = resources.DNA.currentQuantity + DNAForEvolution;
@@ -6724,16 +6531,6 @@
             document.getElementById(selectedPlanet).dispatchEvent(evObj);
             logClick(document.getElementById(selectedPlanet).children[0], "select planet");
         }
-    }
-
-    function evolutionPlanetSelection (potentialPlanets, planetType) {
-        for (let i = 0; i < potentialPlanets.length; i++) {
-            if (potentialPlanets[i].id.startsWith(planetType)) {
-                return potentialPlanets[i].id;
-            }
-        }
-
-        return "";
     }
 
     //#endregion Auto Evolution
@@ -7136,7 +6933,6 @@
         if (!settings.hellHandlePatrolCount) { return; }
 
         // Determine Patrol size and count
-        let hellGarrison = 0;
         let targetHellSoldiers = 0;
         let targetHellPatrols = 0;
         let targetHellPatrolSize = 0;
@@ -7422,7 +7218,7 @@
             }
 
             // Sort them by amount and weight. Yes, it can be empty, not a problem.
-            availableJobs.sort((a, b) => (a.resource.currentQuantity / a.resource.weighting) - (b.resource.currentQuantity / b.resource.weighting) );
+            availableJobs.sort((a, b) => (a.resource.currentQuantity / a.resource.weighting) - (b.resource.currentQuantity / b.resource.weighting));
 
             for (let i = 0; i < state.jobManager.craftingJobs.length; i++) {
                 const job = state.jobManager.craftingJobs[i];
@@ -7872,107 +7668,100 @@
             return;
         }
 
-        let factoryAdjustments = [];
-        for (let production of Object.values(factory.Productions)) {
-            factoryAdjustments.push({production: production, requiredFactories: 0, completed: !production.enabled || !production.unlocked});
-        }
+        let allProducts = Object.values(factory.Productions);
 
-        let remainingFactories = state.cityBuildings.Factory.maxOperating;
-        while (remainingFactories > 0 && factoryAdjustments.some(production => !production.completed)) {
-            let maxOperatingFactories = remainingFactories;
-            let totalWeight = factoryAdjustments.reduce((sum, adjustment) => sum + (adjustment.completed ? 0 : adjustment.production.weighting), 0);
+        // Init adjustment, and sort groups by priorities
+        let priorityGroups = {};
+        let factoryAdjustments = {};
+        for (let production of allProducts) {
+            if (production.unlocked && production.enabled) {
+                let priority = production.priority;
+                priorityGroups[priority] = priorityGroups[priority] ?? [];
+                priorityGroups[priority].push(production);
 
-            for (let i = 0; i < factoryAdjustments.length; i++) {
-                let adjustment = factoryAdjustments[i];
-
-                if (adjustment.completed) {
-                    continue;
-                }
-
-                let calculatedRequiredFactories = Math.min(remainingFactories, Math.ceil(maxOperatingFactories / totalWeight * adjustment.production.weighting));
-                let actualRequiredFactories = calculatedRequiredFactories;
-                if (adjustment.production.resource.storageRatio > 0.99) {
-                    actualRequiredFactories = 0;
-                }
-
-                adjustment.production.cost.forEach(resourceCost => {
-                    if (!resourceCost.resource.isUnlocked()) {
-                        return;
-                    }
-                    let previousCost = state.cityBuildings.Factory.currentProduction(adjustment.production) * resourceCost.quantity;
-                    let currentCost = adjustment.requiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.calculateRateOfChange({buy: true}) + previousCost - currentCost;
-                    if (resourceCost.resource.storageRatio < 0.98) {
-                        rate -= resourceCost.minRateOfChange;
-                    }
-
-                    // If we can't afford it (it's above our minimum rate of change) then remove a factory
-                    // UNLESS we've got over 80% storage full. In that case lets go wild!
-                    if (resourceCost.resource.storageRatio < 0.8){
-                        let affordableAmount = Math.floor(rate / resourceCost.quantity);
-                        actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
-                    }
-                });
-
-                // If we're going for bioseed - try to balance neutronium\nanotubes ratio
-                if (settings.prestigeBioseedConstruct && settings.prestigeType === "bioseed" && adjustment.production === factory.Productions.NanoTube && resources.Neutronium.currentQuantity < 250) {
-                    actualRequiredFactories = 0;
-                }
-
-                if (actualRequiredFactories > 0){
-                    remainingFactories -= actualRequiredFactories;
-                    adjustment.requiredFactories += actualRequiredFactories;
-                }
-
-                // We assigned less than wanted, i.e. we either don't need this product, or can't afford it. In both cases - we're done with it.
-                if (actualRequiredFactories < calculatedRequiredFactories) {
-                    adjustment.completed = true;
-                }
+                factoryAdjustments[production.id] = 0;
             }
         }
+        let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
 
-        // If we have any remaining factories and the user wants to allocate unallocated factories to money then do it
-        if (settings.productionMoneyIfOnly && remainingFactories > 0) {
-            let luxuryAdjustment = factoryAdjustments.find(adjustment => adjustment.production === factory.Productions.LuxuryGoods);
-            if (luxuryAdjustment.production.resource.storageRatio < 0.99) {
-                let actualRequiredFactories = remainingFactories;
+        // Calculate amount of factories per product
+        let remainingFactories = factory.maxOperating;
+        for (let i = 0; i < priorityList.length && remainingFactories > 0; i++) {
+            let products = priorityList[i];
+            while (remainingFactories > 0) {
+                let factoriesToDistribute = remainingFactories;
+                let totalPriorityWeight = products.reduce((sum, production) => sum + production.weighting, 0);
 
-                luxuryAdjustment.production.cost.forEach(resourceCost => {
-                    let previousCost = state.cityBuildings.Factory.currentProduction(luxuryAdjustment.production) * resourceCost.quantity;
-                    let currentCost = luxuryAdjustment.requiredFactories * resourceCost.quantity;
-                    let rate = resourceCost.resource.calculateRateOfChange({buy: true}) + previousCost - currentCost;
-                    if (resourceCost.resource.storageRatio < 0.98) {
-                        rate -= resourceCost.minRateOfChange;
+                for (let j = products.length - 1; j >= 0 && remainingFactories > 0; j--) {
+                    let production = products[j];
+
+                    let calculatedRequiredFactories = Math.min(remainingFactories, Math.max(1, Math.floor(factoriesToDistribute / totalPriorityWeight * production.weighting)));
+                    let actualRequiredFactories = calculatedRequiredFactories;
+                    if (production.resource.storageRatio > 0.99) {
+                        actualRequiredFactories = 0;
                     }
-                    // If we can't afford it (it's above our minimum rate of change) then remove a factory
-                    // UNLESS we've got over 80% storage full. In that case lets go wild!
-                    if (resourceCost.resource.storageRatio < 0.8){
-                        let affordableAmount = Math.floor(rate / resourceCost.quantity);
-                        actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
-                    }
-                });
 
-                luxuryAdjustment.requiredFactories += actualRequiredFactories;
+                    production.cost.forEach(resourceCost => {
+                        if (!resourceCost.resource.isUnlocked()) {
+                            return;
+                        }
+
+                        let previousCost = factory.currentProduction(production) * resourceCost.quantity;
+                        let currentCost = factoryAdjustments[production.id] * resourceCost.quantity;
+                        let rate = resourceCost.resource.calculateRateOfChange({buy: true}) + previousCost - currentCost;
+                        if (resourceCost.resource.storageRatio < 0.98) {
+                            rate -= resourceCost.minRateOfChange;
+                        }
+
+                        // If we can't afford it (it's above our minimum rate of change) then remove a factory
+                        // UNLESS we've got over 80% storage full. In that case lets go wild!
+                        if (resourceCost.resource.storageRatio < 0.8){
+                            let affordableAmount = Math.floor(rate / resourceCost.quantity);
+                            actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
+                        }
+                    });
+
+                    // If we're going for bioseed - try to balance neutronium\nanotubes ratio
+                    if (settings.prestigeBioseedConstruct && settings.prestigeType === "bioseed" && production === factory.Productions.NanoTube && resources.Neutronium.currentQuantity < 250) {
+                        actualRequiredFactories = 0;
+                    }
+
+                    if (actualRequiredFactories > 0){
+                        remainingFactories -= actualRequiredFactories;
+                        factoryAdjustments[production.id] += actualRequiredFactories;
+                    }
+
+                    // We assigned less than wanted, i.e. we either don't need this product, or can't afford it. In both cases - we're done with it.
+                    if (actualRequiredFactories < calculatedRequiredFactories) {
+                        products.splice(j, 1);
+                    }
+                }
+
+                if (factoriesToDistribute === remainingFactories) {
+                    break;
+                }
             }
         }
 
         // First decrease any production so that we have room to increase others
-        for (let i = 0; i < factoryAdjustments.length; i++) {
-            let adjustment = factoryAdjustments[i];
-            let deltaAdjustments = adjustment.requiredFactories - factory.currentProduction(adjustment.production);
+        for (let production of allProducts) {
+            if (factoryAdjustments[production.id] !== undefined) {
+                let deltaAdjustments = factoryAdjustments[production.id] - factory.currentProduction(production);
 
-            if (deltaAdjustments < 0) {
-                factory.decreaseProduction(adjustment.production, deltaAdjustments * -1);
+                if (deltaAdjustments < 0) {
+                    factory.decreaseProduction(production, deltaAdjustments * -1);
+                }
             }
         }
 
         // Increase any production required (if they are 0 then don't do anything with them)
-        for (let i = 0; i < factoryAdjustments.length; i++) {
-            let adjustment = factoryAdjustments[i];
-            let deltaAdjustments = adjustment.requiredFactories - factory.currentProduction(adjustment.production);
+        for (let production of allProducts) {
+            if (factoryAdjustments[production.id] !== undefined) {
+                let deltaAdjustments = factoryAdjustments[production.id] - factory.currentProduction(production);
 
-            if (deltaAdjustments > 0) {
-                factory.increaseProduction(adjustment.production, deltaAdjustments);
+                if (deltaAdjustments > 0) {
+                    factory.increaseProduction(production, deltaAdjustments);
+                }
             }
         }
     }
@@ -7989,51 +7778,74 @@
             return;
         }
 
-        let droidProducts = droid.productionPriorityList();
-        let droidAdjustments = {};
+        // Сopy of autoFactory stripped of cost\enable\unlocked\bioseed checks
+        let allProducts = Object.values(droid.Productions);
 
-        let usefulProducts = droidProducts.filter(product => {
-            droidAdjustments[product.id] = 0;
-            return product.resource.storageRatio < 0.99;
-        });
+        // Init adjustment, and sort groups by priorities
+        let priorityGroups = {};
+        let factoryAdjustments = {};
+        for (let production of allProducts) {
+                let priority = production.priority;
+                priorityGroups[priority] = priorityGroups[priority] ?? [];
+                priorityGroups[priority].push(production);
 
-        // All storages are full. Don't bother readjust anything.
-        if (usefulProducts.length === 0) {
-            return;
+                factoryAdjustments[production.id] = 0;
         }
+        let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
 
-        let remainingDroids = droid.maxOperating;
-        while (remainingDroids > 0) {
-            let droidsToDistribute = remainingDroids;
-            for (let i = 0; i < usefulProducts.length && remainingDroids > 0; i++){
-                let product = usefulProducts[i];
-                let adjust = Math.min(remainingDroids, Math.max(1, Math.floor(product.ratio * droidsToDistribute)));
-                remainingDroids -= adjust;
-                droidAdjustments[product.id] += adjust;
-            }
-            if (droidsToDistribute === remainingDroids) {
-                // Seems like we stuck. Zero ratio everywhere?
-                break;
+        // Calculate amount of factories per product
+        let remainingFactories = droid.maxOperating;
+        for (let i = 0; i < priorityList.length && remainingFactories > 0; i++) {
+            let products = priorityList[i];
+            while (remainingFactories > 0) {
+                let factoriesToDistribute = remainingFactories;
+                let totalPriorityWeight = products.reduce((sum, production) => sum + production.weighting, 0);
+
+                for (let j = products.length - 1; j >= 0 && remainingFactories > 0; j--) {
+                    let production = products[j];
+
+                    let calculatedRequiredFactories = Math.min(remainingFactories, Math.max(1, Math.floor(factoriesToDistribute / totalPriorityWeight * production.weighting)));
+                    let actualRequiredFactories = calculatedRequiredFactories;
+                    if (production.resource.storageRatio > 0.99) {
+                        actualRequiredFactories = 0;
+                    }
+
+                    if (actualRequiredFactories > 0){
+                        remainingFactories -= actualRequiredFactories;
+                        factoryAdjustments[production.id] += actualRequiredFactories;
+                    }
+
+                    // We assigned less than wanted, i.e. we either don't need this product, or can't afford it. In both cases - we're done with it.
+                    if (actualRequiredFactories < calculatedRequiredFactories) {
+                        products.splice(j, 1);
+                    }
+                }
+
+                if (factoriesToDistribute === remainingFactories) {
+                    break;
+                }
             }
         }
 
         // First decrease any production so that we have room to increase others
-        for (let i = 0; i < droidProducts.length; i++) {
-            let product = droidProducts[i];
-            let deltaProduct = droidAdjustments[product.id] - droid.currentProduction(product);
+        for (let production of allProducts) {
+            if (factoryAdjustments[production.id] !== undefined) {
+                let deltaAdjustments = factoryAdjustments[production.id] - droid.currentProduction(production);
 
-            if (deltaProduct < 0) {
-                droid.decreaseProduction(product, deltaProduct * -1);
+                if (deltaAdjustments < 0) {
+                    droid.decreaseProduction(production, deltaAdjustments * -1);
+                }
             }
         }
 
         // Increase any production required (if they are 0 then don't do anything with them)
-        for (let i = 0; i < droidProducts.length; i++) {
-            let product = droidProducts[i];
-            let deltaProduct = droidAdjustments[product.id] - droid.currentProduction(product);
+        for (let production of allProducts) {
+            if (factoryAdjustments[production.id] !== undefined) {
+                let deltaAdjustments = factoryAdjustments[production.id] - droid.currentProduction(production);
 
-            if (deltaProduct > 0) {
-                droid.increaseProduction(product, deltaProduct);
+                if (deltaAdjustments > 0) {
+                    droid.increaseProduction(production, deltaAdjustments);
+                }
             }
         }
     }
@@ -8237,7 +8049,7 @@
     }
 
     function getBlackholeMass() {
-        if (!game.global['interstellar'] || !game.global.interstellar['stellar_engine'] || !game.global.interstellar.stellar_engine['mass'] || !game.global.interstellar.stellar_engine['exotic']) { return 0 };
+        if (!game.global['interstellar'] || !game.global.interstellar['stellar_engine'] || !game.global.interstellar.stellar_engine['mass'] || !game.global.interstellar.stellar_engine['exotic']) { return 0; }
         return +(game.global.interstellar.stellar_engine.mass + game.global.interstellar.stellar_engine.exotic).toFixed(10);
     }
 
@@ -8438,7 +8250,7 @@
         if (state.cityBuildings.Food.isClickable()){
             let amount = Math.min((resources.Food.maxQuantity - resources.Food.currentQuantity) / resPerClick, settings.buildingClickPerTick);
             let food = game.actions.city.food;
-            for (var i = 0; i < amount; i++) {
+            for (let i = 0; i < amount; i++) {
                 food.action();
             }
             resources.Food.currentQuantity = Math.min(resources.Food.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
@@ -8446,7 +8258,7 @@
         if (state.cityBuildings.Lumber.isClickable()){
             let amount = Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / resPerClick, settings.buildingClickPerTick);
             let lumber = game.actions.city.lumber;
-            for (var i = 0; i < amount; i++) {
+            for (let i = 0; i < amount; i++) {
                 lumber.action();
             }
             resources.Lumber.currentQuantity = Math.min(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
@@ -8454,7 +8266,7 @@
         if (state.cityBuildings.Stone.isClickable()){
             let amount = Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / resPerClick, settings.buildingClickPerTick);
             let stone = game.actions.city.stone;
-            for (var i = 0; i < amount; i++) {
+            for (let i = 0; i < amount; i++) {
                 stone.action();
             }
             resources.Stone.currentQuantity = Math.min(resources.Stone.currentQuantity + amount * resPerClick, resources.Stone.maxQuantity);
@@ -8462,7 +8274,7 @@
         if (state.cityBuildings.Chrysotile.isClickable()){
             let amount = Math.min((resources.Chrysotile.maxQuantity - resources.Chrysotile.currentQuantity) / resPerClick, settings.buildingClickPerTick);
             let chrysotile = game.actions.city.chrysotile;
-            for (var i = 0; i < amount; i++) {
+            for (let i = 0; i < amount; i++) {
                 chrysotile.action();
             }
             resources.Chrysotile.currentQuantity = Math.min(resources.Chrysotile.currentQuantity + amount * resPerClick, resources.Chrysotile.maxQuantity);
@@ -8470,7 +8282,7 @@
         if (state.cityBuildings.Slaughter.isClickable()){
             let amount = Math.min(Math.max(resources.Lumber.maxQuantity - resources.Lumber.currentQuantity, resources.Food.maxQuantity - resources.Food.currentQuantity, resources.Furs.maxQuantity - resources.Furs.currentQuantity) / resPerClick, settings.buildingClickPerTick);
             let slaughter = game.actions.city.slaughter;
-            for (var i = 0; i < amount; i++) {
+            for (let i = 0; i < amount; i++) {
                 slaughter.action();
             }
             resources.Lumber.currentQuantity = Math.min(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
@@ -8736,24 +8548,6 @@
         }
     }
 
-    /**
-     * @param {string} unificationTechId
-     */
-    function isUnificationPossible(unificationTechId) {
-        if (unificationTechId === "tech-wc_reject") {
-            // We can always reject unity
-            return true;
-        } else if (unificationTechId === "tech-wc_money") {
-            return resources.Money.currentQuantity >= techIds[unificationTechId].definition.cost.Money();
-        } else if (unificationTechId === "tech-wc_morale") {
-            let moraleInstance = game.global.city["morale"];
-            if (!moraleInstance) { return false; }
-            return moraleInstance.current >= techIds[unificationTechId].definition.cost.Morale();
-        } else if (unificationTechId === "tech-wc_conquest") {
-            return techIds[unificationTechId].definition.cost.Army();
-        }
-    }
-
     //#endregion Auto Research
 
     //#region Auto ARPA
@@ -8990,14 +8784,14 @@
         let storageAdjustments = [];
 
         // Init storageAdjustments, we need to do it saparately, as loop below can jump to the and of array
-        for (var i = 0; i < storageList.length; i++){
+        for (let i = 0; i < storageList.length; i++){
             storageAdjustments.push({resource: storageList[i], adjustCrates: 0, adjustContainers: 0, calculatedContainers: storageList[i].currentContainers, calculatedCrates: storageList[i].currentCrates});
         }
 
         let totalStorageMissing = 0;
 
         // Calculate storages
-        for (var i = 0; i < storageList.length; i++){
+        for (let i = 0; i < storageList.length; i++){
             let resource = storageList[i];
             let cratesStorage = resource.currentCrates * crateVolume;
             let containersStorage = resource.currentContainers * containerVolume;
@@ -9035,7 +8829,7 @@
                 totalContainers += removedContainers;
                 storageAdjustments[i].adjustContainers -= removedContainers;
                 extraStorage -= removedContainers * containerVolume;
-                freeStorage -= removedContainers * containerVolume;;
+                freeStorage -= removedContainers * containerVolume;
             }
 
             // Check if have extra crates here
@@ -9067,7 +8861,7 @@
                     let maxCratesToUnassign = resource.autoCratesMax - storageAdjustments[i].calculatedCrates;
                     let maxContainersToUnassign = resource.autoContainersMax - storageAdjustments[i].calculatedContainers;
 
-                    for (var j = storageList.length-1; j > i; j--){
+                    for (let j = storageList.length-1; j > i; j--){
                         let otherFreeStorage = storageList[j].maxQuantity - storageList[j].currentQuantity;
 
                         // Unassign crates
@@ -9688,7 +9482,7 @@
         // This comes from the "const towerSize = (function(){" in portal.js in the game code
         let towerSize = 1000;
         if (game.global.hasOwnProperty('pillars')){
-            Object.keys(game.global.pillars).forEach(function(pillar){
+            Object.keys(game.global.pillars).forEach(pillar => {
                 if (game.global.pillars[pillar]){
                     towerSize -= 12;
                 }
@@ -9986,16 +9780,16 @@
                 resourcesByAtomicMass.push({ resource: resource, requirement: 0, });
             }
         });
-        resourcesByAtomicMass.sort((a, b) => b.resource.atomicMass - a.resource.atomicMass );
+        resourcesByAtomicMass.sort((a, b) => b.resource.atomicMass - a.resource.atomicMass);
         // Elerium and infernite are always first as they are the exotic resources which are worth the most DE
-        resourcesByAtomicMass.unshift({ resource: resources.Infernite, requirement: 0, });
-        resourcesByAtomicMass.unshift({ resource: resources.Elerium, requirement: 0, });
+        resourcesByAtomicMass.unshift({resource: resources.Infernite, requirement: 0});
+        resourcesByAtomicMass.unshift({resource: resources.Elerium, requirement: 0});
 
-        new MutationObserver((mutationList, observer) => {
+        new MutationObserver(mutations => {
             if (!settings.autoBuild) {
                 return;
             }
-            mutationList.forEach(mutation => {
+            mutations.forEach(mutation => {
                 mutation.addedNodes.forEach(node => {
                     let building = buildingIds[node.id.substr(3)];
                     if (building?.autoBuildEnabled) {
@@ -10033,7 +9827,7 @@
             if (settings.autoEvolution) {
                 autoEvolution();
             }
-            if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; };
+            if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; }
             return;
         }
 
@@ -10111,7 +9905,7 @@
             autoMassEjector(); // Purge remaining rateOfChange, should be called when it won't be needed anymore
         }
 
-        if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; };
+        if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; }
     }
 
     function mainAutoEvolveScript() {
@@ -10381,7 +10175,14 @@
                 if (saveState && 'scriptName' in saveState && saveState.scriptName === "TMVictor") {
                     console.log("Importing script settings");
                     settings = saveState;
-                    state.triggerManager.clearPriorityList(); // Triggers are special. We save them directly onto the settings object.
+                    resetTriggerState()
+                    resetJobState();
+                    resetMarketState();
+                    resetStorageState();
+                    resetProjectState();
+                    resetProductionState();
+                    resetBuildingState();
+                    resetMinorTraitState();
                     updateStateFromSettings();
                     updateSettingsFromState();
                     $('#autoScriptContainer').remove();
@@ -10403,8 +10204,6 @@
     }
 
     function updateSettingsUI() {
-        let parentNode = $("#script_settings");
-
         updateGeneralSettingsContent();
         updateGovernmentSettingsContent(true);
         updateEvolutionSettingsContent();
@@ -10744,7 +10543,7 @@
         let typeSelectNode = $("#" + typeSelectNodeID);
 
         typeSelectNode.val(settings.prestigeType);
-        typeSelectNode.on('change', function(e) {
+        typeSelectNode.on('change', function() {
             // Special processing for prestige options. If they are ready to prestige then warn the user about enabling them.
             let confirmationText = "";
             if (this.value === "mad" && isResearchUnlocked("mad")) {
@@ -11590,7 +11389,7 @@
         addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignPacifist", "Pacifist", "Turns attacks off and on");
 
         addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignUnification", "Perform unification", "Perform unification once all three powers are subdued. autoResearch should be enabled for this to work.");
-        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignOccupyLast", "Occupy last foreign power", "Occupy last foreign power once other two are subdued, and unification is researched. It will speed up unification. And even if you don't want to unify at all - disabled above checkbox, and just want to plunder enemies, this option still better to keep enabled. As a side effect it will prevent you from wasting money influencing and inciting last foreign power, and allow you to occupy it during looting with sieges, for additional production bonus. Disable it only if you want annex\purchase achievements.");
+        addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignOccupyLast", "Occupy last foreign power", "Occupy last foreign power once other two are subdued, and unification is researched. It will speed up unification. And even if you don't want to unify at all - disabled above checkbox, and just want to plunder enemies, this option still better to keep enabled. As a side effect it will prevent you from wasting money influencing and inciting last foreign power, and allow you to occupy it during looting with sieges, for additional production bonus. Disable it only if you want annex\\purchase achievements.");
 
         addStandardSectionSettingsToggle2(secondaryPrefix, foreignPowerNode, 0, "foreignTrainSpy", "Train spies", "Train spies to use against foreign powers");
         addStandardSectionSettingsNumber2(secondaryPrefix, foreignPowerNode, 0, "foreignSpyMax", "Maximum spies", "Maximum spies per foreign power");
@@ -11628,7 +11427,7 @@
 
         let selectNode = $('#' + computedSelectId);
 
-        for (var i = 0; i < optionsList.length; i++) {
+        for (let i = 0; i < optionsList.length; i++) {
             selectNode.append(`<option value="${optionsList[i]}"}>${optionsList[i]}</option>`);
         }
 
@@ -12070,11 +11869,10 @@
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFactory"></div>');
         addStandardHeading(preTableNode, "Factory");
-        addStandardSectionSettingsToggle(preTableNode, "productionMoneyIfOnly", "Override and produce money if we can't fill factories with other production", "If all other production has been allocated and there are leftover factories then use them to produce money");
 
         // Add table
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:25%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority</th><th class="has-text-warning" style="width:5%"></th></tr>
                 <tbody id="script_productionTableBodyFactory" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12083,11 +11881,11 @@
         let newTableBodyText = "";
 
         let productionSettings = Object.values(state.cityBuildings.Factory.Productions);
-        productionSettings.sort(function (a, b) { return a.seq - b.seq } );
+        productionSettings.sort((a, b) => a.seq - b.seq);
 
         for (let i = 0; i < productionSettings.length; i++) {
             const production = productionSettings[i];
-            newTableBodyText += '<tr value="' + production.resource.id + '"><td id="script_factory_' + production.resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:25%"></td></tr>';
+            newTableBodyText += '<tr value="' + production.resource.id + '"><td id="script_factory_' + production.resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12103,6 +11901,9 @@
 
             productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsInput(production, "production_w_" + production.resource.id, "weighting"));
+
+            productionElement = productionElement.next();
+            productionElement.append(buildStandartSettingsInput(production, "production_p_" + production.resource.id, "priority"));
         }
     }
 
@@ -12151,7 +11952,7 @@
 
         // Add table
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Ratio</th><th class="has-text-warning" style="width:25%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority<th class="has-text-warning" style="width:5%"></th></tr>
                 <tbody id="script_productionTableBodyMiningDrone" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12159,11 +11960,12 @@
         let tableBodyNode = $('#script_productionTableBodyMiningDrone');
         let newTableBodyText = "";
 
-        let droidProducts = state.spaceBuildings.AlphaMiningDroid.productionPriorityList();
+        let droidProducts = Object.values(state.spaceBuildings.AlphaMiningDroid.Productions);
+        droidProducts.sort((a, b) => a.seq - b.seq);
 
         for (let i = 0; i < droidProducts.length; i++) {
             const production = droidProducts[i];
-            newTableBodyText += '<tr value="' + production.resource.id + '"><td id="script_droid_' + production.resource.id + '" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:25%"></td></tr>';
+            newTableBodyText += '<tr value="' + production.resource.id + '"><td id="script_droid_' + production.resource.id + '" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12175,30 +11977,11 @@
             productionElement.append(buildStandartLabel(production.resource.name));
 
             productionElement = productionElement.next().next();
-            productionElement.append(buildStandartSettingsInput(production, "droid_r_" + production.resource.id, "ratio"));
+            productionElement.append(buildStandartSettingsInput(production, "droid_w_" + production.resource.id, "weighting"));
             
             productionElement = productionElement.next();
-            productionElement.append($('<span class="script-lastcolumn"></span>'));
+            productionElement.append(buildStandartSettingsInput(production, "droid_pr_" + production.resource.id, "priority"));
         }
-
-        $('#script_productionTableBodyMiningDrone').sortable( {
-            items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
-            },
-            update: function() {
-                let productIds = $('#script_productionTableBodyMiningDrone').sortable('toArray', {attribute: 'value'});
-
-                let droidProducts = Object.values(state.spaceBuildings.AlphaMiningDroid.Productions);
-                for (let i = 0; i < productIds.length; i++) {
-                    droidProducts.find(product => product.resource.id === productIds[i]).priority = i;
-                }
-
-                updateSettingsFromState();
-            },
-        } );
     }
 
     function buildJobSettings() {
@@ -12444,7 +12227,7 @@
         // Add table
         currentNode.append(
             `<div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings.."></div>
-            <table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Building</th><th class="has-text-warning" style="width:15%">Auto Build</th><th class="has-text-warning" style="width:15%">Max Build</th><th class="has-text-warning" style="width:15%">Weight</th><th class="has-text-warning" style="width:20%">Auto Power</th></tr>
+            <table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Building</th><th class="has-text-warning" style="width:15%">Auto Build</th><th class="has-text-warning" style="width:15%">Max Build</th><th class="has-text-warning" style="width:15%">Weighting</th><th class="has-text-warning" style="width:20%">Auto Power</th></tr>
                 <tbody id="script_buildingTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12773,7 +12556,7 @@
 
     function createSettingToggle(node, name, title, enabledCallBack, disabledCallBack) {
         let checked = settings[name] ? " checked" : "";
-        let toggle = $(`<label tabindex="0" class="switch" id="${name}" style="" title="${title}"><input type="checkbox" value="${settings[name]}"${checked}/> <span class="check"></span><span>${name}</span></label></br>`);
+        let toggle = $(`<label tabindex="0" class="switch" id="${name}" title="${title}"><input type="checkbox" value="${settings[name]}"${checked}/> <span class="check"></span><span>${name}</span></label></br>`);
         node.append(toggle);
 
         if (settings[name]) {
@@ -12908,7 +12691,7 @@
             // It doesn't have such huge impact anymore, as used to before rewriting trigger's tech selectors, but still won't hurt to have an option to increase performance a bit more
             createSettingToggle(scriptNode, 'showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
 
-            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\greatness achievements for yet.');
+            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\\greatness achievements for yet.');
             createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
             createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
             createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
@@ -12950,7 +12733,7 @@
 
             let bulkSell = $('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
             scriptNode.append(bulkSell);
-            bulkSell.on('mouseup', function(e) {
+            bulkSell.on('mouseup', function() {
                 updateScriptData();
                 autoMarket(true, true);
             });
