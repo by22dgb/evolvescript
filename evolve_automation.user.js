@@ -8317,7 +8317,7 @@
         }
 
         // If we haven't got the assemble gene button or don't have full knowledge then return
-        if (game.global.tech["genetics"] < 6 || resources.Knowledge.storageRatio < 0.99 || resources.Knowledge.currentQuantity < 200000) {
+        if (game.global.tech["genetics"] < 6 || resources.Knowledge.currentQuantity < 200000 || resources.Knowledge.maxQuantity - resources.Knowledge.currentQuantity > resources.Knowledge.rateOfChange * (game.global.settings.at > 0 ? 2 : 1)) {
             return;
         }
 
