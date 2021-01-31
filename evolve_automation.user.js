@@ -45,6 +45,11 @@
     var game = null;
     var win = null;
 
+    var showLogging = false;
+    var loggingType = "autoJobs";
+
+    var useMultiplier = false;
+
     // --------------------
 
     //#region Class Declarations
@@ -86,6 +91,25 @@
             if (!settings[loggingType.settingKey]) { return; }
 
             game.messageQueue(text, this._warning);
+        }
+    }
+
+    class NoMultiplier {
+        constructor() {
+            this._remainder = 0;
+        }
+
+        reset(value) {
+            this._remainder = value;
+        }
+
+        get remainder() {
+            return this._remainder;
+        }
+
+        setMultiplier() {
+            this._remainder--;
+            return 1;
         }
     }
 
@@ -4425,7 +4449,7 @@
         lastFarmerCount: Number.MAX_SAFE_INTEGER,
 
         log: new GameLog(),
-        multiplier: new Multiplier(),
+        multiplier: useMultiplier ? new Multiplier() : new NoMultiplier(),
         windowManager: new ModalWindowManager(),
         warManager: new WarManager(),
         jobManager: new JobManager(),
@@ -7086,7 +7110,7 @@
         let availableEmployees = state.jobManager.totalEmployees;
         let availableCraftsmen = state.jobManager.craftingMax;
 
-        // We're only crafting wheh we have enough population to fill all foundries, and still have some employees for other work.  Second part should always be true, usnless you starved to death most of your population...
+        // We're only crafting when we have enough population to fill all foundries, and still have some employees for other work.  Second part should always be true, usnless you starved to death most of your population...
         if (settings.autoCraftsmen && availableEmployees > availableCraftsmen * 4) {
             availableEmployees -= availableCraftsmen;
         } else {
@@ -7262,7 +7286,7 @@
                 let jobsToAssign = Math.min(availableEmployees, job.breakpointEmployees(i));
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
-                if (job === state.jobs.Banker && !isResearchUnlocked("swiss_banking") && resources.Money.storageRatio > 0.98) {
+                if (job === state.jobs.Banker && resources.Money.storageRatio > 0.98 && !isResearchUnlocked("swiss_banking")) {
                     jobsToAssign = 0;
                 }
 
@@ -7271,12 +7295,12 @@
                 // Once we've research shotgun sequencing we get boost and soon autoassemble genes so stop unassigning
                 if (!game.global.race['intelligent'] && !isResearchUnlocked("shotgun_sequencing")) {
                     // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
-                    if (job === state.jobs.Professor && !isResearchUnlocked("indoctrination") && resources.Knowledge.storageRatio > 0.99) {
+                    if (job === state.jobs.Professor && resources.Knowledge.storageRatio > 0.99 && !isResearchUnlocked("indoctrination")) {
                         jobsToAssign = 0;
                     }
 
                     // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our knowledge cap
-                    if (job === state.jobs.Scientist && !isResearchUnlocked("scientific_journal") && resources.Knowledge.storageRatio > 0.99) {
+                    if (job === state.jobs.Scientist && resources.Knowledge.storageRatio > 0.99 && !isResearchUnlocked("scientific_journal")) {
                         jobsToAssign = 0;
                     }
                 }
@@ -7648,7 +7672,7 @@
         // We can afford more steel AND either steel income is too low OR both steel and iron full, but we can use steel smelters to increase titanium income
         if (smelterSteelCount < maxAllowedSteel && smelterIronCount > 0 &&
               (steelTicksToFull > ironTicksToFull) ||
-              (steelTicksToFull === 0 && ironTicksToFull === 0 && isResearchUnlocked("hunter_process") && resources.Titanium.timeToFull > 0)) {
+              (steelTicksToFull === 0 && ironTicksToFull === 0 && resources.Titanium.timeToFull > 0 && isResearchUnlocked("hunter_process"))) {
             state.cityBuildings.Smelter.increaseSmelting(smelter.Productions.Steel, 1);
         }
 
@@ -13174,9 +13198,6 @@
 
         return element.__vue__;
     }
-
-    var showLogging = false;
-    var loggingType = "autoJobs";
 
     /**
      * @param {string} type
