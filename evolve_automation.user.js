@@ -48,6 +48,8 @@
     var showLogging = false;
     var loggingType = "autoJobs";
 
+    // Just calling vue in loop actually much faster than dispatching keyboard events to set multipliers, even loops with dozens of thousands call(tested on ejectors)
+    // Though, i can't exclude the possibility that game have some exceptionally slow vue somewhere That requires more testing and profiling before this multiplayer can be completely removed
     var useMultiplier = false;
 
     // --------------------
@@ -5832,10 +5834,10 @@
 
         let droid = state.spaceBuildings.AlphaMiningDroid;
         let droidSeq = 0;
-        Object.assign(droid.Productions.Adamantite, {seq: droidSeq++, priority: 1, weighting: 1});
+        Object.assign(droid.Productions.Adamantite, {seq: droidSeq++, priority: 3, weighting: 1});
         Object.assign(droid.Productions.Aluminium, {seq: droidSeq++, priority: 2, weighting: 1});
-        Object.assign(droid.Productions.Uranium, {seq: droidSeq++, priority: 3, weighting: 1});
-        Object.assign(droid.Productions.Coal, {seq: droidSeq++, priority: 3, weighting: 1});
+        Object.assign(droid.Productions.Uranium, {seq: droidSeq++, priority: 1, weighting: 1});
+        Object.assign(droid.Productions.Coal, {seq: droidSeq++, priority: 1, weighting: 1});
     }
 
     function resetTriggerSettings() {
@@ -9897,14 +9899,14 @@
         if (settings.autoJobs) {
             autoJobs(); // Can invalidates rateOfChange
         }
-        if (settings.autoPower) {
-            autoPower(); // Underpowering can invalidate count of powered buildings, and whatrever they're doing will be gone
-        }
         if (settings.autoARPA) {
             autoArpa(); // Invalidates progress of constructed projects
         }
         if (settings.autoBuild) {
             autoBuild(); // Invalidates count of constructed buildings
+        }
+        if (settings.autoPower) {
+            autoPower(); // Underpowering can invalidate count of powered buildings, and whatrever they're doing will be gone
         }
         if (settings.autoAssembleGene) {
             autoAssembleGene(); // Called after arpa, buildings, and research to not steal knowledge from them
