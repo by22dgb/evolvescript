@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.16
+// @version      3.3.1.17
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -825,7 +825,8 @@
 
                 // It provides support which we don't need
                 if (consumptionRate < 0 && resourceType.resource.isSupport()) {
-                    if (rateOfChange > 0) {
+                    let minSupport = resourceType.resource == resources.Belt_Support ? 2 : resourceType.resource == resources.Gateway_Support ? 5 : 1;
+                    if (rateOfChange >= minSupport) {
                       uselessSupport += 1;
                     } else {
                       uselessSupport -= 1000;
@@ -1480,8 +1481,6 @@
             super("Power", "powerMeter");
         }
 
-        //#region Standard resource
-
         updateData() {
             if (!this.isUnlocked()) {
                 return;
@@ -1495,8 +1494,6 @@
         isUnlocked() {
             return game.global.city.powered;
         }
-
-        //#endregion Standard resource
     }
 
     class Support extends Resource {
@@ -1514,8 +1511,6 @@
             this._region = region;
             this._inRegionId = inRegionId;
         }
-
-        //#region Standard resource
 
         updateData() {
             if (!this.isUnlocked()) {
@@ -1540,8 +1535,6 @@
         isSupport() {
             return true;
         }
-
-        //#endregion Standard resource
     }
 
     class SpecialResource extends Resource {
@@ -1580,8 +1573,6 @@
             super("Star Power", "StarPower");
         }
 
-        //#region Standard resource
-
         updateData() {
             if (!this.isUnlocked()) {
                 return;
@@ -1596,7 +1587,6 @@
             return game.global.tech.star_forge >= 2;
         }
 
-        //#endregion Standard resource
     }
 
     class RockQuarry extends Action {
@@ -5570,13 +5560,13 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.OilPower);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.FissionPower);
 
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeCompletedStargate);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Apartment);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaLuxuryCondo);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wardenclyffe);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.BioLab);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Mine);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CementPlant);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CoalMine);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Factory);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOutpost);
@@ -5606,7 +5596,6 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumContainer);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldController);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceBarracks);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFactory);
 
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.University);
@@ -5622,7 +5611,6 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.House);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Cottage);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Farm);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SoulWell); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Silo);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shed);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.LumberYard);
@@ -5631,10 +5619,11 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Trade);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Amphitheatre);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Library);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wharf);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Lodge); // Cath only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Smokehouse); // Cath only
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wharf);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MetalRefinery);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SoulWell); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlavePen); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlaveMarket); // Evil only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Graveyard); // Evil only
@@ -5687,7 +5676,6 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Blackhole);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeFarReach);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStellarEngine);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeMassEjector);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalTurret);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSensorDrone);
@@ -5707,7 +5695,6 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeJumpShip);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeWormholeMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStargate);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeCompletedStargate);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMegaFactory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronStellarForge);
@@ -5719,16 +5706,6 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionTrigger); // This is the 10,000 power one
         //state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscend); // This is performing the actual ascension. We'll deal with this in prestige automation
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusThermalCollector);
-
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronCitadel);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSpaceCasino);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Sawmill);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedVrCenter);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaExoticZoo);
-
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionMachine);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GatewayMission);
@@ -5769,6 +5746,18 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianMineLayer);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianExcavator);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianRaider);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeMassEjector);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaExoticZoo);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedVrCenter);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MetalRefinery);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CoalMine);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSpaceCasino);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Sawmill);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronCitadel);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
 
         state.spaceBuildings.PortalAttractor.autoStateEnabled = false;
         state.spaceBuildings.BlackholeCompletedStargate.autoStateEnabled = false;
@@ -5823,14 +5812,14 @@
             const resource = state.craftableResourceList[i];
             resource.autoCraftEnabled = true;
         }
-        resources.Plywood.weighting = 20;
-        resources.Brick.weighting = 20;
-        resources.Wrought_Iron.weighting = 20;
-        resources.Sheet_Metal.weighting = 50;
-        resources.Mythril.weighting = 5;
-        resources.Aerogel.weighting = 1;
-        resources.Nanoweave.weighting = 1;
-        resources.Scarletite.weighting = 1;
+        resources.Plywood.weighting = 1;
+        resources.Brick.weighting = 1;
+        resources.Wrought_Iron.weighting = 1;
+        resources.Sheet_Metal.weighting = 3;
+        resources.Mythril.weighting = 10;
+        resources.Aerogel.weighting = 10;
+        resources.Nanoweave.weighting = 10;
+        resources.Scarletite.weighting = 10;
 
         let droid = state.spaceBuildings.AlphaMiningDroid;
         let droidSeq = 0;
@@ -7915,7 +7904,7 @@
             }
 
             // Only produce graphene above cap if there's working BlackholeMassEjector, otherwise there's no use for excesses for sure.
-            if (resources.Graphene.storageRatio > 0.99 && resources.Graphene.currentEject <= 0) {
+            if (resources.Graphene.storageRatio > 0.999 && resources.Graphene.currentEject <= 0) {
                 maxFueledForConsumption = 0;
             }
 
@@ -8545,8 +8534,13 @@
                 }
 
                 if (settings.userResearchTheology_2 === "auto") {
-                    if (itemId === "tech-study") {
-                        // Just pick study for now
+                    if (settings.prestigeType === "ascension" && itemId === "tech-deify") {
+                        // Only pick deify for ascension
+                        log("autoResearch", "Picking: " + itemId);
+                        click = true;
+                    }
+                    if (settings.prestigeType !== "ascension" && itemId === "tech-study") {
+                        // Otherwise go for study
                         log("autoResearch", "Picking: " + itemId);
                         click = true;
                     }
@@ -8726,7 +8720,7 @@
             }
 
             // Disable tourist center with full money
-            if (building === state.cityBuildings.TouristCenter && resources.Money.storageRatio > 0.98) {
+            if (building === state.cityBuildings.TouristCenter && resources.Food.storageRatio < 0.7 && resources.Money.storageRatio > 0.98) {
                 maxStateOn = Math.min(maxStateOn, state.cityBuildings.TouristCenter.stateOnCount - 1);
             }
 
@@ -10132,21 +10126,26 @@
     function buildScriptSettings() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let scriptContentNode = $('<div id="script_settings" style="margin-top: 30px; margin-bottom: 90px;"></div>');
-        $("#localization").parent().append(scriptContentNode);
-        let parentNode = $('#script_settings');
-        parentNode.empty();
+        let scriptContentNode = $('#script_settings');
+        if (scriptContentNode.length == 0) {
+            scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
+            let settingsNode = $(".settings");
+            settingsNode.append(scriptContentNode);
+            settingsNode.css("height", "calc(100vh - 5.8rem)");
+        } else {
+            scriptContentNode.empty();
+        }
 
         buildImportExport();
-        buildPrestigeSettings(parentNode, true);
+        buildPrestigeSettings(scriptContentNode, true);
         buildGeneralSettings();
-        buildGovernmentSettings(parentNode, true);
+        buildGovernmentSettings(scriptContentNode, true);
         buildEvolutionSettings();
         buildMinorTraitSettings();
         buildTriggerSettings();
         buildResearchSettings();
-        buildWarSettings(parentNode, true);
-        buildHellSettings(parentNode, true);
+        buildWarSettings(scriptContentNode, true);
+        buildHellSettings(scriptContentNode, true);
         buildMarketSettings();
         buildStorageSettings();
         buildProductionSettings();
@@ -10154,7 +10153,7 @@
         buildBuildingSettings();
         buildWeightingSettings();
         buildProjectSettings();
-        buildLoggingSettings(parentNode, true);
+        buildLoggingSettings(scriptContentNode, true);
 
         let collapsibles = document.getElementsByClassName("script-collapsible");
         for (let i = 0; i < collapsibles.length; i++) {
@@ -10568,6 +10567,8 @@
                                         <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
                                       </select>
                                     </div>`);
+        //<option value = "ascension" title = "Build and activate Ascension Machine">Ascension</option>
+
         let typeSelectNode = $("#" + typeSelectNodeID);
 
         typeSelectNode.val(settings.prestigeType);
