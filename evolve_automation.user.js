@@ -6866,7 +6866,7 @@
             let minSiegeSoldiers = m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMinAdvantage, 4, attackIndex));
             if (minSiegeSoldiers <= settings.foreignMaxSiegeBattalion && minSiegeSoldiers <= m.currentCityGarrison) {
                 minSoldiers = minSiegeSoldiers;
-                maxSoldiers = Math.min(m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, 4, attackIndex), settings.foreignMaxSiegeBattalion));
+                maxSoldiers = Math.min(m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, 4, attackIndex)), settings.foreignMaxSiegeBattalion+1);
                 requiredTactic = 4;
             }
         }
@@ -10130,7 +10130,7 @@
     function buildScriptSettings() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
+        let scriptContentNode = $('<div id="script_settings" style="margin-top: 30px; margin-bottom: 90px;"></div>');
         $("#localization").parent().append(scriptContentNode);
         let parentNode = $('#script_settings');
         parentNode.empty();
