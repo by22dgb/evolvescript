@@ -6913,12 +6913,14 @@
 
         if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.wounded) { return; }
 
-        // Log the interaction
-        let campaignTitle = m.getCampaignTitle(requiredTactic);
-        let aproximateSign = game.global.civic.foreign[`gov${attackIndex}`].spy < 1 ? "~" : "";
-        let advantagePercent = getAdvantage(battalionRating, requiredTactic, attackIndex).toFixed(1);
-        state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
-
+        // Log the interaction, unless we're unoccupying
+        let gov = game.global.civic.foreign[`gov${attackIndex}`];
+        if (!gov.anx && !gov.buy && !gov.occ) {
+            let campaignTitle = m.getCampaignTitle(requiredTactic);
+            let aproximateSign = gov.spy < 1 ? "~" : "";
+            let advantagePercent = getAdvantage(battalionRating, requiredTactic, attackIndex).toFixed(1);
+            state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
+        }
         m.launchCampaign(attackIndex);
     }
 
