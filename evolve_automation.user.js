@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.17
+// @version      3.3.1.18
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -18,6 +18,7 @@
 //
 // Changes from original version:
 //   Scripting Edition no longer required, works both with fork and original game
+//   Added Andromeda support, auto fleet, auto galaxy trades, and all buildings with their supports and consumptions
 //   Remade autoBuild, all buildings now can have individual weights, plus dynamic coefficients to weights(like, increasing weights of power plants when you need more energy), plus additional safe-guards checking for resource usage, available support, and such. You can fine-tune script to build what you actually need, and save resources for further constructions.
 //   Added autoQuarry option, which manages stone to chrysotile ratio for smoldering races. autoMiningDroid now configurable, and can mine for resources other than adamantine.
 //   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa. And it also can use star power as fuel.
@@ -819,7 +820,7 @@
                 let rateOfChange = resourceType.resource.rateOfChange;
 
                 // It need something that we're lacking
-                if (consumptionRate > 0 && rateOfChange < consumptionRate) {
+                if (resourceType.resource.storageRatio < 0.99 && consumptionRate > 0 && rateOfChange < consumptionRate) {
                     return resourceType;
                 }
 
@@ -1141,6 +1142,10 @@
             this.autoTradeBuyRoutes = 0;
             this.autoTradeSellEnabled = true;
             this.autoTradeSellMinPerSecond = 0;
+            this.galaxyMarketWeighting = 0;
+            this.galaxyMarketPriority = 0;
+
+            this.ejectEnabled = true;
 
             this.storeOverflow = false;
             this.storagePriority = 0;
@@ -1169,7 +1174,7 @@
             this._vueBinding = "res" + this.id;
             this._stackVueBinding = "stack-" + this.id;
             this._ejectorVueBinding = "eject" + this.id;
-            this.marketVueBinding = "market-" + this.id; // Used by market manager
+            this._marketVueBinding = "market-" + this.id;
         }
 
         //#region Standard resource
@@ -1244,6 +1249,14 @@
             return this.instance.display;
         }
 
+        /**
+         * @param {Resource} resource
+         */
+        isMarketUnlocked() {
+            let node = document.getElementById(this._marketVueBinding);
+            return node !== null && node.style.display !== "none";
+        }
+
         isManagedStorage() {
             return this.hasStorage() && this.autoStorageEnabled;
         }
@@ -1287,40 +1300,6 @@
                 state.multiplier.setMultiplier();
                 vue.ejectLess(this.id);
             }
-        }
-
-        /**
-         * @param {boolean} buy
-         * @param {number} buyRatio
-         * @param {boolean} sell
-         * @param {number} sellRatio
-         * @param {boolean} tradeBuy
-         * @param {number} tradeBuyRoutes
-         * @param {boolean} tradeSell
-         * @param {number} tradeSellMinPerSecond
-         */
-        updateMarketState(buy, buyRatio, sell, sellRatio, tradeBuy, tradeBuyRoutes, tradeSell, tradeSellMinPerSecond) {
-            this.autoBuyEnabled = buy;
-            this.autoBuyRatio = buyRatio;
-            this.autoSellEnabled = sell;
-            this.autoSellRatio = sellRatio;
-            this.autoTradeBuyEnabled = tradeBuy;
-            this.autoTradeBuyRoutes = tradeBuyRoutes;
-            this.autoTradeSellEnabled = tradeSell;
-            this.autoTradeSellMinPerSecond = tradeSellMinPerSecond;
-        }
-
-        /**
-         * @param {boolean} enabled
-         * @param {number} weighting
-         * @param {number} maxCrates
-         * @param {number} maxContainers
-         */
-        updateStorageState(enabled, storeOverflow, maxCrates, maxContainers) {
-            this.autoStorageEnabled = enabled;
-            this.storeOverflow = storeOverflow;
-            this._autoCratesMax = maxCrates;
-            this._autoContainersMax = maxContainers;
         }
 
         isSupport() {
@@ -1806,7 +1785,8 @@
 
         get currentOperating() {
             let total = 0;
-            for (let production of Object.values(this.Productions)){
+            for (let key in this.Productions){
+                let production = this.Productions[key];
                 total += game.global.city.factory[production.id];
             }
             return total;
@@ -1814,7 +1794,8 @@
 
         get maxOperating() {
             let max = state.cityBuildings.Factory.stateOnCount + state.spaceBuildings.RedFactory.stateOnCount + state.spaceBuildings.AlphaMegaFactory.stateOnCount * 2;
-            for (let production of Object.values(this.Productions)){
+            for (let key in this.Productions){
+                let production = this.Productions[key];
                 if (production.unlocked && !production.enabled) {
                     max -= game.global.city.factory[production.id];
                 }
@@ -1895,7 +1876,8 @@
 
         get currentOperating() {
             let total = 0;
-            for (let production of Object.values(this.Productions)){
+            for (let key in this.Productions){
+                let production = this.Productions[key];
                 total += game.global.interstellar.mining_droid[production.id];
             }
             return total;
@@ -2008,6 +1990,74 @@
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
                 sub();
+            }
+
+            return true;
+        }
+    }
+
+    class GorddonFreighter extends Action {
+        constructor() {
+            super("Gorddon Freighter", "galaxy", "freighter", "gxy_gorddon");
+
+            this._industryVueBinding = "galaxyTrade";
+            this._industryVue = undefined;
+        }
+
+        initIndustry() {
+            if (this.count < 1) {
+                return false;
+            }
+
+            this._industryVue = getVueById(this._industryVueBinding);
+            if (this._industryVue === undefined) {
+                return false;
+            }
+
+            return true;
+        }
+
+        get currentOperating() {
+            return game.global.galaxy.trade.cur;
+        }
+
+        get maxOperating() {
+            return game.global.galaxy.trade.max;
+        }
+
+        currentProduction(production) {
+            return game.global.galaxy.trade["f" + production];
+        }
+
+        increaseProduction(production, count) {
+            if (count === 0) {
+                return false;
+            }
+            if (count < 0) {
+                return this.decreaseProduction(production, count * -1);
+            }
+
+            state.multiplier.reset(count, count >= this.maxOperating);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                this._industryVue.more(production);
+            }
+
+            return true;
+        }
+
+        decreaseProduction(production, count) {
+            if (count === 0) {
+                return false;
+            }
+            if (count < 0) {
+                return this.increaseProduction(production, count * -1);
+            }
+
+            state.multiplier.reset(count, this.currentProduction(production) - count <= 0);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                this._industryVue.less(production);
             }
 
             return true;
@@ -3303,12 +3353,6 @@
         constructor() {
             /** @type {Resource[]} */
             this.priorityList = [];
-            this._lastLoopCounter = 0;
-
-            /** @type {Resource[]} */
-            this._sortedTradeRouteSellList = [];
-
-            this._multiplierVueBinding = "market-qty";
 
             this.multiplier = 0;
         }
@@ -3323,51 +3367,13 @@
             return isResearchUnlocked("market");
         }
 
-        clearPriorityList() {
-            this.priorityList.length = 0;
-            this._sortedTradeRouteSellList.length = 0;
-        }
-
-        /**
-         * @param {Resource} resource
-         */
-        addResourceToPriorityList(resource) {
-            if (resource.isTradable()) {
-                resource.marketPriority = this.priorityList.length;
-                this.priorityList.push(resource);
-            }
-        }
-
         sortByPriority() {
             this.priorityList.sort((a, b) => a.marketPriority - b.marketPriority);
-            this._sortedTradeRouteSellList.sort((a, b) => a.marketPriority - b.marketPriority);
         }
 
         /** @param {Resource} resource */
         isBuySellUnlocked(resource) {
             return document.querySelector("#market-" + resource.id + " .order") !== null;
-        }
-
-        getSortedTradeRouteSellList() {
-            if (this._lastLoopCounter != state.loopCounter) {
-                this._sortedTradeRouteSellList.length = 0; // clear array
-            }
-
-            if (this._sortedTradeRouteSellList.length === 0) {
-                this._lastLoopCounter = state.loopCounter;
-
-                for (let i = 0; i < this.priorityList.length; i++) {
-                    const resource = this.priorityList[i];
-
-                    if (this.isResourceUnlocked(resource) && (resource.autoTradeBuyEnabled || resource.autoTradeSellEnabled)) {
-                        this._sortedTradeRouteSellList.push(resource);
-                    }
-                }
-
-                this._sortedTradeRouteSellList.sort((a, b) => b.currentTradeRouteSellPrice - a.currentTradeRouteSellPrice);
-            }
-
-            return this._sortedTradeRouteSellList;
         }
 
         /**
@@ -3396,18 +3402,6 @@
             else {
                 return 100;
             }
-        }
-
-        /**
-         * @param {Resource} resource
-         */
-        isResourceUnlocked(resource) {
-            if (!this.isUnlocked()) {
-                return false;
-            }
-
-            let node = document.getElementById("market-" + resource.id);
-            return node !== null && node.style.display !== "none";
         }
 
         /**
@@ -3462,7 +3456,8 @@
          * @param {Resource} resource
          */
         buy(resource) {
-            if (!this.isResourceUnlocked(resource)) {
+            let vue = getVueById(resource._marketVueBinding);
+            if (vue === undefined || !resource.isUnlocked()) {
                 return false;
             }
 
@@ -3474,14 +3469,15 @@
             resources.Money.currentQuantity -= this.multiplier * this.getUnitSellPrice(resource);
             resource.currentQuantity += this.multiplier;
 
-            getVueById(resource.marketVueBinding).purchase(resource.id);
+            vue.purchase(resource.id);
         }
 
         /**
          * @param {Resource} resource
          */
         sell(resource) {
-            if (!this.isResourceUnlocked(resource)) {
+            let vue = getVueById(resource._marketVueBinding);
+            if (vue === undefined || !resource.isUnlocked()) {
                 return false;
             }
 
@@ -3492,7 +3488,7 @@
             resources.Money.currentQuantity += this.multiplier * this.getUnitSellPrice(resource);
             resource.currentQuantity -= this.multiplier;
 
-            getVueById(resource.marketVueBinding).sell(resource.id);
+            vue.sell(resource.id);
         }
 
         getCurrentTradeRoutes() {
@@ -3515,7 +3511,7 @@
          * @param {Resource} resource
          */
         zeroTradeRoutes(resource) {
-            getVueById(resource.marketVueBinding).zero(resource.id);
+            getVueById(resource._marketVueBinding)?.zero(resource.id);
         }
 
         /**
@@ -3523,8 +3519,8 @@
          * @param {number} count
          */
         addTradeRoutes(resource, count) {
-            let vue = getVueById(resource.marketVueBinding);
-            if (vue === undefined || !this.isResourceUnlocked(resource)) {
+            let vue = getVueById(resource._marketVueBinding);
+            if (vue === undefined || !resource.isUnlocked()) {
                 return false;
             }
 
@@ -3542,8 +3538,8 @@
          * @param {number} count
          */
         removeTradeRoutes(resource, count) {
-            let vue = getVueById(resource.marketVueBinding);
-            if (vue === undefined || !this.isResourceUnlocked(resource)) {
+            let vue = getVueById(resource._marketVueBinding);
+            if (vue === undefined || !resource.isUnlocked()) {
                 return false;
             }
 
@@ -3562,89 +3558,51 @@
             /** @type {Resource[]} */
             this.priorityList = [];
 
-            this._lastLoopCounter = 0;
-            /** @type {Resource[]} */
-            this._managedPriorityList = [];
-
             this._storageVueBinding = "createHead";
+            this._storageVue = undefined;
+        }
+
+        initStorage() {
+            if (!this.isUnlocked) {
+                return false;
+            }
+
+            this._storageVue = getVueById(this._storageVueBinding);
+            if (this._storageVue === undefined) {
+                return false;
+            }
+
+            return true;
         }
 
         isUnlocked() {
             return isResearchUnlocked("containerization");
         }
 
-        clearPriorityList() {
-            this.priorityList.length = 0;
-            this._managedPriorityList.length = 0;
-        }
-
-        /**
-         * @param {Resource} resource
-         */
-        addResourceToPriorityList(resource) {
-            if (resource.hasStorage()) {
-                resource.storagePriority = this.priorityList.length;
-                this.priorityList.push(resource);
-            }
-        }
-
         sortByPriority() {
             this.priorityList.sort((a, b) => a.storagePriority - b.storagePriority);
-            this._managedPriorityList.sort((a, b) => a.storagePriority - b.storagePriority);
-        }
-
-        managedPriorityList() {
-            if (this._lastLoopCounter != state.loopCounter) {
-                this._managedPriorityList.length = 0; // clear array
-            }
-
-            if (this._managedPriorityList.length === 0) {
-                this._lastLoopCounter = state.loopCounter;
-
-                for (let i = 0; i < this.priorityList.length; i++) {
-                    const resource = this.priorityList[i];
-
-                    if (resource.isUnlocked() && resource.isManagedStorage()) {
-                        this._managedPriorityList.push(resource);
-                    }
-                }
-            }
-
-            return this._managedPriorityList;
         }
 
         /**
          * @param {number} count
          */
         tryConstructCrate(count) {
-            if (count === 0) { return true; }
-            let vue = getVueById(this._storageVueBinding);
-            if (vue === undefined) { return false; }
-
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                vue.crate();
+                this._storageVue.crate();
             }
-
-            return true;
         }
 
         /**
          * @param {number} count
          */
         tryConstructContainer(count) {
-            if (count === 0) { return true; }
-            let vue = getVueById(this._storageVueBinding);
-            if (vue === undefined) { return false; }
-
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
-                vue.container();
+                this._storageVue.container();
             }
-
-            return true;
         }
     }
 
@@ -4344,7 +4302,7 @@
                                     "challenge_craft", "challenge_crispr", "challenge_joyless", "challenge_decay", "challenge_steelen",
                                     "challenge_emfield", "challenge_cataclysm", "challenge_junker"];
 
-    var resources = {
+    var resources = { // Resources order follow game order, and used to initialize priorities
         // Evolution resources
         RNA: new Resource("RNA", "RNA"),
         DNA: new Resource("DNA", "DNA"),
@@ -4357,29 +4315,11 @@
         Knowledge: new Resource("Knowledge", "Knowledge"),
         Crates: new Resource("Crates", "Crates"),
         Containers: new Resource("Containers", "Containers"),
-        Plasmid: new SpecialResource("Plasmid", "Plasmid"),
-        Antiplasmid: new SpecialResource("Anti-Plasmid", "AntiPlasmid"),
-        Phage: new SpecialResource("Phage", "Phage"),
-        Dark: new SpecialResource("Dark", "Dark"),
-        Harmony: new SpecialResource("Harmony", "Harmony"),
-        Genes: new Resource("Genes", "Genes"),
-
-        // Special not-really-resources-but-we'll-treat-them-like-resources resources
-        StarPower: new StarPower(),
-        Power: new Power(),
-        Moon_Support: new Support("Moon Support", "srspc_moon", "space", "spc_moon"),
-        Red_Support: new Support("Red Support", "srspc_red", "space", "spc_red"),
-        Sun_Support: new Support("Sun Support", "srspc_sun", "space", "spc_sun"),
-        Belt_Support: new Support("Belt Support", "srspc_belt", "space", "spc_belt"),
-        Alpha_Support: new Support("Alpha Support", "srint_alpha", "interstellar", "int_alpha"),
-        Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
-        Gateway_Support: new Support("Gateway Support", "gxy_gateway", "galaxy", "gxy_gateway"),
-        Alien_Support: new Support("Alien Support", "gxy_alien2", "galaxy", "gxy_alien2"),
 
         // Basic resources (can trade for these)
         Food: new Resource("Food", "Food"),
-        Chrysotile: new Resource("Chrysotile", "Chrysotile"),
         Lumber: new Resource("Lumber", "Lumber"),
+        Chrysotile: new Resource("Chrysotile", "Chrysotile"),
         Stone: new Resource("Stone", "Stone"),
         Crystal: new Resource("Crystal", "Crystal"),
         Furs: new Resource("Furs", "Furs"),
@@ -4397,23 +4337,21 @@
         Iridium: new Resource("Iridium", "Iridium"),
         Helium_3: new Resource("Helium-3", "Helium_3"),
 
-        // Advanced resources (can't trade for these)
-        Elerium: new Resource("Elerium", "Elerium"),
-        Neutronium: new Resource("Neutronium", "Neutronium"),
-        Nano_Tube: new Resource("Nano Tube", "Nano_Tube"),
-
-        // Interstellar
+        // Advanced resources
         Deuterium: new Resource("Deuterium", "Deuterium"),
+        Neutronium: new Resource("Neutronium", "Neutronium"),
         Adamantite: new Resource("Adamantite", "Adamantite"),
         Infernite: new Resource("Infernite", "Infernite"),
+        Elerium: new Resource("Elerium", "Elerium"),
+        Nano_Tube: new Resource("Nano Tube", "Nano_Tube"),
         Graphene: new Resource("Graphene", "Graphene"),
         Stanene: new Resource("Stanene", "Stanene"),
-        Soul_Gem: new Resource("Soul Gem", "Soul_Gem"),
-
-        // Andromeda
         Bolognium: new Resource("Bolognium", "Bolognium"),
         Vitreloy: new Resource("Vitreloy", "Vitreloy"),
         Orichalcum: new Resource("Orichalcum", "Orichalcum"),
+
+        Genes: new Resource("Genes", "Genes"),
+        Soul_Gem: new Resource("Soul Gem", "Soul_Gem"),
 
         // Craftable resources
         Plywood: new Resource("Plywood", "Plywood"),
@@ -4431,6 +4369,25 @@
         Demonic_Essence: new Resource("Demonic Essence", "Demonic_Essence"),
         Blood_Stone: new Resource("Blood Stone", "Blood_Stone"),
         Artifact: new Resource("Artifact", "Artifact"),
+
+        // Prestige resources
+        Plasmid: new SpecialResource("Plasmid", "Plasmid"),
+        Antiplasmid: new SpecialResource("Anti-Plasmid", "AntiPlasmid"),
+        Phage: new SpecialResource("Phage", "Phage"),
+        Dark: new SpecialResource("Dark", "Dark"),
+        Harmony: new SpecialResource("Harmony", "Harmony"),
+
+        // Special not-really-resources-but-we'll-treat-them-like-resources resources
+        Power: new Power(),
+        StarPower: new StarPower(),
+        Moon_Support: new Support("Moon Support", "srspc_moon", "space", "spc_moon"),
+        Red_Support: new Support("Red Support", "srspc_red", "space", "spc_red"),
+        Sun_Support: new Support("Sun Support", "srspc_sun", "space", "spc_sun"),
+        Belt_Support: new Support("Belt Support", "srspc_belt", "space", "spc_belt"),
+        Alpha_Support: new Support("Alpha Support", "srint_alpha", "interstellar", "int_alpha"),
+        Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
+        Gateway_Support: new Support("Gateway Support", "gxy_gateway", "galaxy", "gxy_gateway"),
+        Alien_Support: new Support("Alien Support", "gxy_alien2", "galaxy", "gxy_alien2"),
     }
 
     var state = {
@@ -4717,7 +4674,7 @@
             GasMission: new Action("Gas Mission", "space", "gas_mission", "spc_gas", {mission: true}),
             GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas"),
             GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", "spc_gas"),
-            GasSpaceDock: new SpaceDock(), // has options
+            GasSpaceDock: new SpaceDock(),
             GasSpaceDockProbe: new ModalAction("Gas Space Probe", "starDock", "probes", "", "starDock"),
             GasSpaceDockShipSegment: new ModalAction("Gas Bioseeder Ship Segment", "starDock", "seeder", "", "starDock"),
             GasSpaceDockPrepForLaunch: new ModalAction("Gas Prep Ship", "starDock", "prep_ship", "", "starDock"),
@@ -4746,12 +4703,12 @@
             AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha", {mission: true}),
             AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
             AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
-            AlphaMiningDroid: new MiningDroid(), // has options
+            AlphaMiningDroid: new MiningDroid(),
             AlphaProcessing: new Action("Alpha Processing", "interstellar", "processing", "int_alpha"),
             AlphaFusion: new Action("Alpha Fusion", "interstellar", "fusion", "int_alpha"),
             AlphaLaboratory: new Action("Alpha Laboratory", "interstellar", "laboratory", "int_alpha", {knowledge: true}),
             AlphaExchange: new Action("Alpha Exchange", "interstellar", "exchange", "int_alpha"),
-            AlphaFactory: new GraphenePlant(), // has options
+            AlphaFactory: new GraphenePlant(),
             AlphaWarehouse: new Action("Alpha Warehouse", "interstellar", "warehouse", "int_alpha"),
             AlphaMegaFactory: new Action("Alpha Mega Factory", "interstellar", "int_factory", "int_alpha"),
             AlphaLuxuryCondo: new Action("Alpha Luxury Condo", "interstellar", "luxury_condo", "int_alpha", {housing: true}),
@@ -4814,7 +4771,7 @@
             GorddonEmbassy: new Action("Gorddon Embassy", "galaxy", "embassy", "gxy_gorddon", {housing: true}),
             GorddonDormitory: new Action("Gorddon Dormitory", "galaxy", "dormitory", "gxy_gorddon", {housing: true}),
             GorddonSymposium: new Action("Gorddon Symposium", "galaxy", "symposium", "gxy_gorddon", {knowledge: true}),
-            GorddonFreighter: new Action("Gorddon Freighter", "galaxy", "freighter", "gxy_gorddon"),
+            GorddonFreighter: new GorddonFreighter(),
 
             Alien1Consulate: new Action("Alien 1 Consulate", "galaxy", "consulate", "gxy_alien1", {housing: true}),
             Alien1Resort: new Action("Alien 1 Resort", "galaxy", "resort", "gxy_alien1"),
@@ -4862,8 +4819,6 @@
             Nexus: new Project("Nexus", "nexus"),
             RoidEject: new Project("Asteroid Redirect", "roid_eject"),
         },
-
-        //global: null,
     };
 
     function initialiseState() {
@@ -5336,47 +5291,30 @@
     }
 
     function resetMarketState() {
-        state.marketManager.clearPriorityList();
+        let defaultState = {autoBuyEnabled: false, autoBuyRatio: 0.5, autoSellEnabled: false, autoSellRatio: 0.9, autoTradeBuyEnabled: false, autoTradeBuyRoutes: 0, autoTradeSellEnabled: true, autoTradeSellMinPerSecond: 1};
+        let defaultStateBuy = {autoBuyRatio: 0.8, autoTradeBuyEnabled: true, autoTradeBuyRoutes: 50};
 
-        state.marketManager.addResourceToPriorityList(resources.Helium_3);
-        state.marketManager.addResourceToPriorityList(resources.Iridium);
-        state.marketManager.addResourceToPriorityList(resources.Polymer);
-        state.marketManager.addResourceToPriorityList(resources.Alloy);
-        state.marketManager.addResourceToPriorityList(resources.Titanium);
-        state.marketManager.addResourceToPriorityList(resources.Steel);
-        state.marketManager.addResourceToPriorityList(resources.Uranium);
-        state.marketManager.addResourceToPriorityList(resources.Oil);
-        state.marketManager.addResourceToPriorityList(resources.Coal);
-        state.marketManager.addResourceToPriorityList(resources.Cement);
-        state.marketManager.addResourceToPriorityList(resources.Aluminium);
-        state.marketManager.addResourceToPriorityList(resources.Iron);
-        state.marketManager.addResourceToPriorityList(resources.Copper);
-        state.marketManager.addResourceToPriorityList(resources.Furs);
-        state.marketManager.addResourceToPriorityList(resources.Crystal);
-        state.marketManager.addResourceToPriorityList(resources.Stone);
-        state.marketManager.addResourceToPriorityList(resources.Chrysotile);
-        state.marketManager.addResourceToPriorityList(resources.Lumber);
-        state.marketManager.addResourceToPriorityList(resources.Food);
+        let priorityList = Object.values(resources).filter(r => r.isTradable()).reverse();
+        for (let [index, resource] of priorityList.entries()) {
+            Object.assign(resource, defaultState);
+            resource.marketPriority = index;
+        }
 
-        resources.Food.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Lumber.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Chrysotile.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 0);
-        resources.Stone.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Crystal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Furs.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Copper.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Iron.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Aluminium.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Cement.updateMarketState(false, 0.3, false, 0.9, false, 0, true, 1);
-        resources.Coal.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Oil.updateMarketState(false, 0.5, false, 0.9, true, 5, true, 1);
-        resources.Uranium.updateMarketState(false, 0.5, false, 0.9, true, 2, true, 1);
-        resources.Steel.updateMarketState(false, 0.5, false, 0.9, false, 0, true, 1);
-        resources.Titanium.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
-        resources.Alloy.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
-        resources.Polymer.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
-        resources.Iridium.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
-        resources.Helium_3.updateMarketState(false, 0.8, false, 0.9, true, 50, true, 1);
+        Object.assign(resources.Helium_3, defaultStateBuy);
+        Object.assign(resources.Iridium, defaultStateBuy);
+        Object.assign(resources.Polymer, defaultStateBuy);
+        Object.assign(resources.Alloy, defaultStateBuy);
+        Object.assign(resources.Titanium, defaultStateBuy);
+        Object.assign(resources.Uranium, {autoTradeBuyEnabled: true, autoTradeBuyRoutes: 2});
+        Object.assign(resources.Oil, {autoTradeBuyEnabled: true, autoTradeBuyRoutes: 5});
+
+        state.marketManager.priorityList = priorityList;
+
+        for (let i = 0; i < poly.galaxyOffers.length; i++) {
+            let resource = resources[poly.galaxyOffers[i].buy.res];
+            resource.galaxyMarketWeighting = 1;
+            resource.galaxyMarketPriority = i+1;
+        }
     }
 
     function resetMarketSettings() {
@@ -5386,51 +5324,15 @@
     }
 
     function resetStorageState() {
-        state.storageManager.clearPriorityList();
+        let defaultState = {autoStorageEnabled: true, storeOverflow: false, _autoCratesMax: -1, autoContainersMax: -1};
 
-        state.storageManager.addResourceToPriorityList(resources.Orichalcum);
-        state.storageManager.addResourceToPriorityList(resources.Vitreloy);
-        state.storageManager.addResourceToPriorityList(resources.Bolognium);
-        state.storageManager.addResourceToPriorityList(resources.Stanene);
-        state.storageManager.addResourceToPriorityList(resources.Graphene);
-        state.storageManager.addResourceToPriorityList(resources.Adamantite);
-        state.storageManager.addResourceToPriorityList(resources.Iridium);
-        state.storageManager.addResourceToPriorityList(resources.Polymer);
-        state.storageManager.addResourceToPriorityList(resources.Alloy);
-        state.storageManager.addResourceToPriorityList(resources.Titanium);
-        state.storageManager.addResourceToPriorityList(resources.Steel);
-        state.storageManager.addResourceToPriorityList(resources.Coal);
-        state.storageManager.addResourceToPriorityList(resources.Cement);
-        state.storageManager.addResourceToPriorityList(resources.Aluminium);
-        state.storageManager.addResourceToPriorityList(resources.Iron);
-        state.storageManager.addResourceToPriorityList(resources.Copper);
-        state.storageManager.addResourceToPriorityList(resources.Furs);
-        state.storageManager.addResourceToPriorityList(resources.Stone);
-        state.storageManager.addResourceToPriorityList(resources.Chrysotile);
-        state.storageManager.addResourceToPriorityList(resources.Lumber);
-        state.storageManager.addResourceToPriorityList(resources.Food);
+        let priorityList = Object.values(resources).filter(r => r.hasStorage()).reverse();
+        for (let [index, resource] of priorityList.entries()) {
+            Object.assign(resource, defaultState);
+            resource.storagePriority = index;
+        }
 
-        resources.Food.updateStorageState(true, false, -1, -1);
-        resources.Lumber.updateStorageState(true, false, -1, -1);
-        resources.Chrysotile.updateStorageState(true, false, -1, -1);
-        resources.Stone.updateStorageState(true, false, -1, -1);
-        resources.Furs.updateStorageState(true, false, -1, -1);
-        resources.Copper.updateStorageState(true, false, -1, -1);
-        resources.Iron.updateStorageState(true, false, -1, -1);
-        resources.Aluminium.updateStorageState(true, false, -1, -1);
-        resources.Cement.updateStorageState(true, false, -1, -1);
-        resources.Coal.updateStorageState(true, false, -1, -1);
-        resources.Steel.updateStorageState(true, false, -1, -1);
-        resources.Titanium.updateStorageState(true, false, -1, -1);
-        resources.Alloy.updateStorageState(true, false, -1, -1);
-        resources.Polymer.updateStorageState(true, false, -1, -1);
-        resources.Iridium.updateStorageState(true, false, -1, -1);
-        resources.Adamantite.updateStorageState(true, false, -1, -1);
-        resources.Graphene.updateStorageState(true, false, -1, -1);
-        resources.Stanene.updateStorageState(true, false, -1, -1);
-        resources.Bolognium.updateStorageState(true, false, -1, -1);
-        resources.Vitreloy.updateStorageState(true, false, -1, -1);
-        resources.Orichalcum.updateStorageState(true, false, -1, -1);
+        state.storageManager.priorityList = priorityList;
     }
 
     function resetStorageSettings() {
@@ -5535,6 +5437,7 @@
 
     function resetBuildingSettings() {
         settings.buildingBuildIfStorageFull = false;
+        settings.buildingEstimateTime = true;
         settings.buildingShrineType = "know";
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
@@ -5560,7 +5463,6 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.OilPower);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.FissionPower);
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeCompletedStargate);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Apartment);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaLuxuryCondo);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wardenclyffe);
@@ -5660,6 +5562,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaLaboratory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaExchange);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaFactory);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMegaFactory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaWarehouse);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCargoYard);
@@ -5673,6 +5576,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaEleriumProspector);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMiner);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronStellarForge);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Blackhole);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeFarReach);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStellarEngine);
@@ -5695,9 +5599,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeJumpShip);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeWormholeMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStargate);
-
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMegaFactory);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronStellarForge);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeCompletedStargate);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAnalysis);
@@ -5799,13 +5701,12 @@
 
         // Factory settings
         let productions = state.cityBuildings.Factory.Productions;
-        let factorySeq = 0;
-        Object.assign(productions.LuxuryGoods, {seq: factorySeq++, enabled: true, weighting: 1, priority: 1});
-        Object.assign(productions.Furs, {seq: factorySeq++, enabled: true, weighting: 0, priority: 0});
-        Object.assign(productions.Alloy, {seq: factorySeq++, enabled: true, weighting: 2, priority: 2});
-        Object.assign(productions.Polymer, {seq: factorySeq++, enabled: true, weighting: 2, priority: 2});
-        Object.assign(productions.NanoTube, {seq: factorySeq++, enabled: true, weighting: 8, priority: 2});
-        Object.assign(productions.Stanene, {seq: factorySeq++, enabled: true, weighting: 8, priority: 2});
+        Object.assign(productions.LuxuryGoods, {enabled: true, weighting: 1, priority: 1});
+        Object.assign(productions.Furs, {enabled: true, weighting: 1, priority: 0});
+        Object.assign(productions.Alloy, {enabled: true, weighting: 2, priority: 2});
+        Object.assign(productions.Polymer, {enabled: true, weighting: 2, priority: 2});
+        Object.assign(productions.NanoTube, {enabled: true, weighting: 8, priority: 2});
+        Object.assign(productions.Stanene, {enabled: true, weighting: 8, priority: 2});
 
         // Foundry settings
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -5822,11 +5723,10 @@
         resources.Scarletite.weighting = 10;
 
         let droid = state.spaceBuildings.AlphaMiningDroid;
-        let droidSeq = 0;
-        Object.assign(droid.Productions.Adamantite, {seq: droidSeq++, priority: 3, weighting: 1});
-        Object.assign(droid.Productions.Aluminium, {seq: droidSeq++, priority: 2, weighting: 1});
-        Object.assign(droid.Productions.Uranium, {seq: droidSeq++, priority: 1, weighting: 1});
-        Object.assign(droid.Productions.Coal, {seq: droidSeq++, priority: 1, weighting: 1});
+        Object.assign(droid.Productions.Adamantite, {priority: 3, weighting: 1});
+        Object.assign(droid.Productions.Aluminium, {priority: 2, weighting: 1});
+        Object.assign(droid.Productions.Uranium, {priority: 1, weighting: 1});
+        Object.assign(droid.Productions.Coal, {priority: 1, weighting: 1});
     }
 
     function resetTriggerSettings() {
@@ -5847,7 +5747,7 @@
     }
 
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
-                            "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
+                            "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "fleetSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
                             "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed", "weightingSettingsCollapsed"];
 
     function updateStateFromSettings() {
@@ -5858,30 +5758,6 @@
         settings.triggers.forEach(trigger => {
             state.triggerManager.AddTriggerFromSetting(trigger.seq, trigger.priority, trigger.requirementType, trigger.requirementId, trigger.requirementCount, trigger.actionType, trigger.actionId, trigger.actionCount);
         });
-
-        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
-            let resource = state.marketManager.priorityList[i];
-            resource.marketPriority = parseInt(settings['res_buy_p_' + resource.id] ?? resource.marketPriority);
-            resource.autoBuyEnabled = settings['buy' + resource.id] ?? resource.autoBuyEnabled;
-            resource.autoBuyRatio = parseFloat(settings['res_buy_r_' + resource.id] ?? resource.autoBuyRatio);
-            resource.autoSellEnabled = settings['sell' + resource.id] ?? resource.autoSellEnabled;
-            resource.autoSellRatio = parseFloat(settings['res_sell_r_' + resource.id] ?? resource.autoSellRatio);
-            resource.autoTradeBuyEnabled = settings['res_trade_buy_' + resource.id] ?? resource.autoTradeBuyEnabled;
-            resource.autoTradeBuyRoutes = parseInt(settings['res_trade_buy_mtr_' + resource.id] ?? resource.autoTradeBuyRoutes);
-            resource.autoTradeSellEnabled = settings['res_trade_sell_' + resource.id] ?? resource.autoTradeSellEnabled;
-            resource.autoTradeSellMinPerSecond = parseFloat(settings['res_trade_sell_mps_' + resource.id] ?? resource.autoTradeSellMinPerSecond);
-        }
-        state.marketManager.sortByPriority();
-
-        for (let i = 0; i < state.storageManager.priorityList.length; i++) {
-            let resource = state.storageManager.priorityList[i];
-            resource.autoStorageEnabled = settings['res_storage' + resource.id] ?? resource.autoStorageEnabled;
-            resource.storeOverflow = settings['res_storage_o_' + resource.id] ?? resource.storeOverflow;
-            resource.storagePriority = parseFloat(settings['res_storage_p_' + resource.id] ?? resource.storagePriority);
-            resource._autoCratesMax = parseInt(settings['res_crates_m_' + resource.id] ?? resource._autoCratesMax);
-            resource._autoContainersMax = parseInt(settings['res_containers_m_' + resource.id] ?? resource._autoContainersMax);
-        }
-        state.storageManager.sortByPriority();
 
         for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
             let trait = state.minorTraitManager.priorityList[i];
@@ -5941,6 +5817,38 @@
             production.weighting = parseInt(settings['droid_w_' + production.resource.id] ?? production.weighting);
             production.priority = parseInt(settings['droid_pr_' + production.resource.id] ?? production.priority);
         }
+
+        for (let resource of Object.values(resources)) {
+            if (resource.isEjectable()) {
+                resource.ejectEnabled = settings['res_eject' + resource.id] ?? resource.ejectEnabled;
+            }
+            if (resource.hasStorage()) {
+                resource.autoStorageEnabled = settings['res_storage' + resource.id] ?? resource.autoStorageEnabled;
+                resource.storeOverflow = settings['res_storage_o_' + resource.id] ?? resource.storeOverflow;
+                resource.storagePriority = parseFloat(settings['res_storage_p_' + resource.id] ?? resource.storagePriority);
+                resource._autoCratesMax = parseInt(settings['res_crates_m_' + resource.id] ?? resource._autoCratesMax);
+                resource._autoContainersMax = parseInt(settings['res_containers_m_' + resource.id] ?? resource._autoContainersMax);
+            }
+            if (resource.isTradable()) {
+                resource.marketPriority = parseInt(settings['res_buy_p_' + resource.id] ?? resource.marketPriority);
+                resource.autoBuyEnabled = settings['buy' + resource.id] ?? resource.autoBuyEnabled;
+                resource.autoBuyRatio = parseFloat(settings['res_buy_r_' + resource.id] ?? resource.autoBuyRatio);
+                resource.autoSellEnabled = settings['sell' + resource.id] ?? resource.autoSellEnabled;
+                resource.autoSellRatio = parseFloat(settings['res_sell_r_' + resource.id] ?? resource.autoSellRatio);
+                resource.autoTradeBuyEnabled = settings['res_trade_buy_' + resource.id] ?? resource.autoTradeBuyEnabled;
+                resource.autoTradeBuyRoutes = parseInt(settings['res_trade_buy_mtr_' + resource.id] ?? resource.autoTradeBuyRoutes);
+                resource.autoTradeSellEnabled = settings['res_trade_sell_' + resource.id] ?? resource.autoTradeSellEnabled;
+                resource.autoTradeSellMinPerSecond = parseFloat(settings['res_trade_sell_mps_' + resource.id] ?? resource.autoTradeSellMinPerSecond);
+            }
+        }
+        state.storageManager.sortByPriority();
+        state.marketManager.sortByPriority();
+
+        for (let i = 0; i < poly.galaxyOffers.length; i++) {
+            let resource = resources[poly.galaxyOffers[i].buy.res];
+            resource.galaxyMarketWeighting = parseInt(settings['res_galaxy_w_' + resource.id] ?? resource.galaxyMarketWeighting);
+            resource.galaxyMarketPriority = parseInt(settings['res_galaxy_p_' + resource.id] ?? resource.galaxyMarketPriority);
+        }
     }
 
     function updateSettingsFromState() {
@@ -5979,28 +5887,6 @@
             settings['job_b3_' + job._originalId] = job.getBreakpoint(3);
         }
 
-        for (let i = 0; i < state.marketManager.priorityList.length; i++) {
-            let resource = state.marketManager.priorityList[i];
-            settings['res_buy_p_' + resource.id] = resource.marketPriority;
-            settings['buy' + resource.id] = resource.autoBuyEnabled;
-            settings['res_buy_r_' + resource.id] = resource.autoBuyRatio;
-            settings['sell' + resource.id] = resource.autoSellEnabled;
-            settings['res_sell_r_' + resource.id] = resource.autoSellRatio;
-            settings['res_trade_buy_' + resource.id] = resource.autoTradeBuyEnabled;
-            settings['res_trade_buy_mtr_' + resource.id] = resource.autoTradeBuyRoutes;
-            settings['res_trade_sell_' + resource.id] = resource.autoTradeSellEnabled;
-            settings['res_trade_sell_mps_' + resource.id] = resource.autoTradeSellMinPerSecond;
-        }
-
-        for (let i = 0; i < state.storageManager.priorityList.length; i++) {
-            const resource = state.storageManager.priorityList[i];
-            settings['res_storage' + resource.id] = resource.autoStorageEnabled;
-            settings['res_storage_o_' + resource.id] = resource.storeOverflow;
-            settings['res_storage_p_' + resource.id] = resource.storagePriority;
-            settings['res_crates_m_' + resource.id] = resource._autoCratesMax;
-            settings['res_containers_m_' + resource.id] = resource._autoContainersMax;
-        }
-
         for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
             const trait = state.minorTraitManager.priorityList[i];
             settings['mTrait_' + trait.traitName] = trait.autoMinorTraitEnabled;
@@ -6030,6 +5916,36 @@
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
             settings["droid_w_" + production.resource.id] = production.weighting;
             settings["droid_pr_" + production.resource.id] = production.priority;
+        }
+
+        for (let resource of Object.values(resources)) {
+            if (resource.isEjectable()) {
+                settings['res_eject' + resource.id] = resource.ejectEnabled;
+            }
+            if (resource.hasStorage()) {
+                settings['res_storage' + resource.id] = resource.autoStorageEnabled;
+                settings['res_storage_o_' + resource.id] = resource.storeOverflow;
+                settings['res_storage_p_' + resource.id] = resource.storagePriority;
+                settings['res_crates_m_' + resource.id] = resource._autoCratesMax;
+                settings['res_containers_m_' + resource.id] = resource._autoContainersMax;
+            }
+            if (resource.isTradable()) {
+                settings['res_buy_p_' + resource.id] = resource.marketPriority;
+                settings['buy' + resource.id] = resource.autoBuyEnabled;
+                settings['res_buy_r_' + resource.id] = resource.autoBuyRatio;
+                settings['sell' + resource.id] = resource.autoSellEnabled;
+                settings['res_sell_r_' + resource.id] = resource.autoSellRatio;
+                settings['res_trade_buy_' + resource.id] = resource.autoTradeBuyEnabled;
+                settings['res_trade_buy_mtr_' + resource.id] = resource.autoTradeBuyRoutes;
+                settings['res_trade_sell_' + resource.id] = resource.autoTradeSellEnabled;
+                settings['res_trade_sell_mps_' + resource.id] = resource.autoTradeSellMinPerSecond;
+            }
+        }
+
+        for (let i = 0; i < poly.galaxyOffers.length; i++) {
+            let resource = resources[poly.galaxyOffers[i].buy.res];
+            settings['res_galaxy_w_' + resource.id] = resource.galaxyMarketWeighting;
+            settings['res_galaxy_p_' + resource.id] = resource.galaxyMarketPriority;
         }
 
         localStorage.setItem('settings', JSON.stringify(settings));
@@ -6083,6 +5999,9 @@
         addSetting("autoStorage", false);
         addSetting("autoMinorTrait", false);
         addSetting("autoHell", false);
+        addSetting("autoFleet", false);
+
+        addSetting("autoGalaxyMarket", false);
 
         addSetting("logEnabled", true);
         Object.keys(loggingTypes).forEach(loggingTypeKey => {
@@ -6179,6 +6098,7 @@
         addSetting("userResearchTheology_2", "auto");
 
         addSetting("buildingBuildIfStorageFull", false);
+        addSetting("buildingEstimateTime", true);
         addSetting("buildingShrineType", "any");
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
@@ -6206,6 +6126,11 @@
         // Collapse or expand settings sections
         for (let i = 0; i < settingsSections.length; i++) {
             addSetting(settingsSections[i], true);
+        }
+
+        for (let i = 0; i < galaxyRegions.length; i++) {
+            addSetting("fleet_w_" + galaxyRegions[i], 1);
+            addSetting("fleet_p_" + galaxyRegions[i], galaxyRegions.length - i);
         }
     }
 
@@ -6815,7 +6740,7 @@
             return;
         }
 
-        let bestAttackRating = game.armyRating(m.currentCityGarrison, m._textArmy);
+        let bestAttackRating = game.armyRating(m.currentCityGarrison - m.wounded, m._textArmy);
         let requiredTactic = 0;
 
         let [rank, subdued, attackIndex] = findAttackTarget();
@@ -6834,6 +6759,7 @@
         if (attackIndex < 0) {
             return;
         }
+        let gov = game.global.civic.foreign[`gov${attackIndex}`];
 
         // Check if we want and can unify, unless we're already about to occupy something
         if (requiredTactic !== 4 && subdued >= 2 && isResearchUnlocked("unification")){
@@ -6873,6 +6799,33 @@
         minSoldiers = minSoldiers ?? m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMinAdvantage, requiredTactic, attackIndex));
         maxSoldiers = maxSoldiers ?? m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex));
 
+        // Max soldiers advantage should be above our max. Let's tune it down to stay in prefered range, if we can
+        if (maxSoldiers > minSoldiers) {
+            maxSoldiers--;
+        }
+        maxSoldiers = Math.min(maxSoldiers, m.currentCityGarrison - m.wounded);
+
+        // Occupy can pull soldiers from ships, let's make sure it won't happen
+        if (gov.anx || gov.buy || gov.occ) {
+            // If it occupied currently - we'll get enough soldiers just by unoccupying it
+            m.launchCampaign(attackIndex);
+        } else if (requiredTactic == 4 && m.crew > 0) {
+            let occCost = game.global.civic.govern.type === "federation" ? 15 : 20;
+            let missingSoldiers = occCost - (m.currentCityGarrison - m.wounded - maxSoldiers);
+            if (missingSoldiers > 0) {
+                // Not enough soldiers in city, let's try to pull them from hell
+                if (!m.initHell() || m.hellSoldiers - m.hellSoulForgeSoldiers < missingSoldiers) {
+                    return;
+                }
+                let patrolsToRemove = Math.ceil((missingSoldiers - m.hellGarrison) / m.hellPatrolSize);
+                if (patrolsToRemove > 0) {
+                    m.removeHellPatrol(patrolsToRemove);
+                }
+                m.removeHellGarrison(missingSoldiers);
+            }
+        }
+
+        // Set attack type
         while (m.tactic < requiredTactic) {
             m.increaseCampaignDifficulty();
         }
@@ -6880,36 +6833,22 @@
             m.decreaseCampaignDifficulty();
         }
 
-        if (maxSoldiers > minSoldiers) {
-            maxSoldiers--;
+        // Now adjust our battalion size to fit between our campaign attack rating ranges
+        let deltaBattalion = maxSoldiers - m.raid;
+        if (deltaBattalion > 0) {
+            m.addBattalion(deltaBattalion);
+        }
+        if (deltaBattalion < 0) {
+            m.removeBattalion(deltaBattalion * -1);
         }
 
-        // Best attack type is set. Now adjust our battalion size to fit between our campaign attack rating ranges
-        if (m.raid < maxSoldiers && m.currentCityGarrison > m.raid) {
-            let soldiersToAdd = Math.min(maxSoldiers - m.raid, m.currentCityGarrison - m.raid);
-
-            if (soldiersToAdd > 0) {
-                m.addBattalion(soldiersToAdd);
-            }
-        } else if (m.raid > maxSoldiers) {
-            let soldiersToRemove = m.raid - maxSoldiers;
-
-            if (soldiersToRemove > 0) {
-                m.removeBattalion(soldiersToRemove);
-            }
-        }
+        // Log the interaction
+        let campaignTitle = m.getCampaignTitle(requiredTactic);
+        let aproximateSign = gov.spy < 1 ? "~" : "";
         let battalionRating = game.armyRating(m.raid, "army");
+        let advantagePercent = getAdvantage(battalionRating, requiredTactic, attackIndex).toFixed(1);
+        state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
 
-        if (Math.min(maxSoldiers, m.maxCityGarrison) > m.currentCityGarrison - m.wounded) { return; }
-
-        // Log the interaction, unless we're unoccupying
-        let gov = game.global.civic.foreign[`gov${attackIndex}`];
-        if (!gov.anx && !gov.buy && !gov.occ) {
-            let campaignTitle = m.getCampaignTitle(requiredTactic);
-            let aproximateSign = gov.spy < 1 ? "~" : "";
-            let advantagePercent = getAdvantage(battalionRating, requiredTactic, attackIndex).toFixed(1);
-            state.log.logSuccess(loggingTypes.attack, `Launching ${campaignTitle} campaign against ${getGovName(attackIndex)} with ${aproximateSign}${advantagePercent}% advantage.`);
-        }
         m.launchCampaign(attackIndex);
     }
 
@@ -7690,7 +7629,8 @@
         // Init adjustment, and sort groups by priorities
         let priorityGroups = {};
         let factoryAdjustments = {};
-        for (let production of allProducts) {
+        for (let i = 0; i < allProducts.length; i++) {
+            let production = allProducts[i];
             if (production.unlocked && production.enabled) {
                 let priority = production.priority;
                 priorityGroups[priority] = priorityGroups[priority] ?? [];
@@ -7795,18 +7735,18 @@
             return;
         }
 
-        // Сopy of autoFactory stripped of cost\enable\unlocked\bioseed checks
         let allProducts = Object.values(droid.Productions);
 
         // Init adjustment, and sort groups by priorities
         let priorityGroups = {};
         let factoryAdjustments = {};
-        for (let production of allProducts) {
-                let priority = production.priority;
-                priorityGroups[priority] = priorityGroups[priority] ?? [];
-                priorityGroups[priority].push(production);
+        for (let i = 0; i < allProducts.length; i++) {
+            let production = allProducts[i];
+            let priority = production.priority;
+            priorityGroups[priority] = priorityGroups[priority] ?? [];
+            priorityGroups[priority].push(production);
 
-                factoryAdjustments[production.id] = 0;
+            factoryAdjustments[production.id] = 0;
         }
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
 
@@ -7925,20 +7865,23 @@
     var resourcesByAtomicMass = [];
 
     function autoMassEjector() {
-        if (state.spaceBuildings.BlackholeMassEjector.stateOnCount === 0) { return; }
+        let ejector = state.spaceBuildings.BlackholeMassEjector
+        if (ejector.stateOnCount === 0) {
+            return;
+        }
 
         let adjustMassEjector = false;
 
         // Eject everything!
-        if (state.spaceBuildings.BlackholeMassEjector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
-            let remaining = state.spaceBuildings.BlackholeMassEjector.stateOnCount * 1000;
+        if (ejector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
+            let remaining = ejector.stateOnCount * 1000;
             adjustMassEjector = true;
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
                 let roundedRateOfChange = Math.floor(resource.calculateRateOfChange({buy: true, eject: true}));
 
-                if (remaining <= 0) {
+                if (remaining <= 0 || !resource.ejectEnabled) {
                     resourceRequirement.requirement = 0;
                     return;
                 }
@@ -7976,15 +7919,15 @@
         }
 
         // Limited eject
-        if (state.spaceBuildings.BlackholeMassEjector.stateOnCount < settings.prestigeWhiteholeEjectAllCount) {
-            let remaining = state.spaceBuildings.BlackholeMassEjector.stateOnCount * 1000;
+        if (ejector.stateOnCount < settings.prestigeWhiteholeEjectAllCount) {
+            let remaining = ejector.stateOnCount * 1000;
             adjustMassEjector = true;
 
             // First we want to eject capped resources
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
 
-                if (remaining <= 0 || resource.storageRatio < 0.99) {
+                if (remaining <= 0 || !resource.ejectEnabled || resource.storageRatio < 0.99) {
                     resourceRequirement.requirement = 0;
                     return;
                 }
@@ -7998,15 +7941,15 @@
                 resourcesByAtomicMass.forEach(resourceRequirement => {
                     let resource = resourceRequirement.resource;
 
-                    if (remaining <= 0 || resource.isCraftable()) {
+                    if (remaining <= 0 || !resource.ejectEnabled || resource.isCraftable()) {
                         return;
                     }
 
                     let ejectableAmount = resourceRequirement.requirement;
                     remaining += resourceRequirement.requirement;
 
-                    // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it, or it's Adamantite(we need it to get more ejectors).
-                    if (game.global.race['decay'] && resource.currentTradeRoutes <= 0 && resource !== resources.Adamantite) {
+                    // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless we're buying it.
+                    if (game.global.race['decay'] && resource.currentTradeRoutes <= 0) {
                         ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentDecay * settings.prestigeWhiteholeDecayRate));
                     }
 
@@ -8242,6 +8185,92 @@
 
     //#endregion Auto Market
 
+    function autoGalaxyMarket() {
+        let freighter = state.spaceBuildings.GorddonFreighter;
+
+        // If not unlocked then nothing to do
+        if (!freighter.initIndustry()) {
+            return;
+        }
+
+         // Init adjustment, and sort groups by priorities
+        let priorityGroups = {};
+        let tradeAdjustments = {};
+        for (let i = 0; i < poly.galaxyOffers.length; i++) {
+            let trade = poly.galaxyOffers[i];
+            let buyResource = resources[trade.buy.res];
+
+            let priority = buyResource.galaxyMarketPriority;
+            priorityGroups[priority] = priorityGroups[priority] ?? [];
+            priorityGroups[priority].push(trade);
+
+            tradeAdjustments[buyResource.id] = 0;
+        }
+        let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
+
+        // Calculate amount of factories per product
+        let remainingFreighters = freighter.maxOperating;
+        for (let i = 0; i < priorityList.length && remainingFreighters > 0; i++) {
+            let trades = priorityList[i];
+            while (remainingFreighters > 0) {
+                let freightersToDistribute = remainingFreighters;
+                let totalPriorityWeight = trades.reduce((sum, trade) => sum + resources[trade.buy.res].galaxyMarketPriority, 0);
+
+                for (let j = trades.length - 1; j >= 0 && remainingFreighters > 0; j--) {
+                    let trade = trades[j];
+                    let buyResource = resources[trade.buy.res];
+                    let sellResource = resources[trade.sell.res];
+
+                    let calculatedRequiredFreighters = Math.min(remainingFreighters, Math.max(1, Math.floor(freightersToDistribute / totalPriorityWeight * buyResource.galaxyMarketWeighting)));
+                    let actualRequiredFreighters = calculatedRequiredFreighters;
+                    if (buyResource.storageRatio > 0.99 || sellResource.storageRatio < 0.1) {
+                        actualRequiredFreighters = 0;
+                    }
+
+                    if (actualRequiredFreighters > 0){
+                        remainingFreighters -= actualRequiredFreighters;
+                        tradeAdjustments[buyResource.id] += actualRequiredFreighters;
+                    }
+
+                    // We assigned less than wanted, i.e. we either don't need this product, or can't afford it. In both cases - we're done with it.
+                    if (actualRequiredFreighters < calculatedRequiredFreighters) {
+                        trades.splice(j, 1);
+                    }
+                }
+
+                if (freightersToDistribute === remainingFreighters) {
+                    break;
+                }
+            }
+        }
+
+        // First decrease any production so that we have room to increase others
+        for (let i = 0; i < poly.galaxyOffers.length; i++) {
+            let buyResource = resources[poly.galaxyOffers[i].buy.res];
+
+            if (tradeAdjustments[buyResource.id] !== undefined) {
+                let deltaAdjustments = tradeAdjustments[buyResource.id] - freighter.currentProduction(i);
+
+                if (deltaAdjustments < 0) {
+                    freighter.decreaseProduction(i, deltaAdjustments * -1);
+                }
+            }
+        }
+
+        // Increase any production required (if they are 0 then don't do anything with them)
+        for (let i = 0; i < poly.galaxyOffers.length; i++) {
+            let buyResource = resources[poly.galaxyOffers[i].buy.res];
+
+            if (tradeAdjustments[buyResource.id] !== undefined) {
+                let deltaAdjustments = tradeAdjustments[buyResource.id] - freighter.currentProduction(i);
+
+                if (deltaAdjustments > 0) {
+                    freighter.increaseProduction(i, deltaAdjustments);
+                }
+            }
+        }
+    }
+
     //#region Auto Building
 
     function getResourcesPerClick() {
@@ -8369,9 +8398,8 @@
                 let weightDiffRatio = other.weighting / building.weighting;
 
                 // Calculate time to build for competing building, if it's not cached
-                if (!estimatedTime[other.id]){
+                if (settings.buildingEstimateTime && !estimatedTime[other.id]){
                     estimatedTime[other.id] = [];
-                    estimatedTime[other.id].total = 0;
 
                     for (let k = 0; k < other.resourceRequirements.length; k++) {
                         let resource = other.resourceRequirements[k].resource;
@@ -8382,15 +8410,15 @@
                             continue;
                         }
 
-                        let totalRateOfCharge = resource.calculateRateOfChange({all: true});
+                        let totalRateOfCharge = resource.calculateRateOfChange({buy: true});
                         if (totalRateOfCharge <= 0) {
                             // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
                             estimatedTime[other.id][resource.id] = 0;
                         } else {
                             estimatedTime[other.id][resource.id] = (quantity - resource.currentQuantity) / totalRateOfCharge;
                         }
-                        estimatedTime[other.id].total = Math.max(estimatedTime[other.id].total, estimatedTime[other.id][resource.id]);
                     }
+                    estimatedTime[other.id].total = Math.max(0, ...Object.values(estimatedTime[other.id]));
                 }
 
                 // Compare resource costs
@@ -8416,9 +8444,7 @@
 
                   // We can use up to this amount of resources without delaying competing building
                   // Not very accurate, as income can fluctuate wildly for foundry, factory, and such, but should work as bottom line
-                  let totalRateOfCharge = resource.calculateRateOfChange({all: true});
-                  let spareAmount = (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * totalRateOfCharge;
-                  if (thisRequirement.quantity <= spareAmount) {
+                  if (settings.buildingEstimateTime && thisRequirement.quantity <= (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * resource.calculateRateOfChange({buy: true})) {
                       continue;
                   }
 
@@ -8790,11 +8816,11 @@
         let m = state.storageManager;
 
         // Containers has not been unlocked in game yet (tech not researched)
-        if (!m.isUnlocked()) {
+        if (!m.initStorage()) {
             return;
         }
 
-        let storageList = m.managedPriorityList();
+        let storageList = m.priorityList.filter(r => r.isUnlocked() && r.isManagedStorage());
         if (storageList.length === 0) {
             return;
         }
@@ -9064,7 +9090,7 @@
 
     function adjustTradeRoutes() {
         let m = state.marketManager;
-        let tradableResources = m.getSortedTradeRouteSellList();
+        let tradableResources = m.priorityList.filter(r => r.isMarketUnlocked() && (r.autoTradeBuyEnabled || r.autoTradeSellEnabled));
         let maxTradeRoutes = m.getMaxTradeRoutes();
         let tradeRoutesUsed = 0;
         let currentMoneyPerSecond = resources.Money.rateOfChange;
@@ -9153,7 +9179,8 @@
                     let costMod = 1;
                     if (demandedObject instanceof Project) {
                         // For project let's check what percent of it already constructed
-                        costMod = 1 - demandedObject.instance.complete * 0.01;
+                        //costMod = 1 - demandedObject.instance.complete * 0.01;
+                        costMod = 0.01;
                     }
                     for (let j = 0; j < demandedObject.resourceRequirements.length; j++) {
                         let resource = demandedObject.resourceRequirements[j].resource;
@@ -9311,6 +9338,123 @@
     }
 
     //#endregion Auto Trade Specials
+
+    function autoFleet() { // TODO: This thing is pretty horrible. Refactor me.
+        if (!game.global.tech.piracy) {
+            return;
+        }
+
+        let vue = getVueById("fleet");
+        if (vue === undefined) {
+            return;
+        }
+
+        // Init our current state
+        let allRegions = [
+            {name: "gxy_stargate", piracy: 0.1 * game.global.tech.piracy, armada: state.spaceBuildings.StargateDefensePlatform.stateOnCount * 20, useful: true},
+            {name: "gxy_gateway", piracy: 0.1 * game.global.tech.piracy, armada: state.spaceBuildings.GatewayStarbase.stateOnCount * 25, useful: state.spaceBuildings.BologniumShip.stateOnCount > 0 && resources.Bolognium.storageRatio < 0.99},
+            {name: "gxy_gorddon", piracy: 800, armada: 0, useful: state.spaceBuildings.GorddonFreighter.stateOnCount > 0},
+            {name: "gxy_alien1", piracy: 1000, armada: 0, useful: state.spaceBuildings.Alien1VitreloyPlant.stateOnCount > 0 && resources.Vitreloy.storageRatio < 0.99},
+            {name: "gxy_alien2", piracy: 2500, armada: state.spaceBuildings.Alien2Foothold.stateOnCount * 50 + state.spaceBuildings.Alien2ArmedMiner.stateOnCount * 5, useful: state.spaceBuildings.Alien2Scavenger.stateOnCount > 0 || (state.spaceBuildings.Alien2ArmedMiner.stateOnCount > 0 && (resources.Bolognium.storageRatio < 0.99 || resources.Adamantite.storageRatio < 0.99 || resources.Iridium.storageRatio < 0.99))},
+            {name: "gxy_chthonian", piracy: 7500, armada: state.spaceBuildings.ChthonianMineLayer.stateOnCount * 50 + state.spaceBuildings.ChthonianRaider.stateOnCount * 12, useful: (state.spaceBuildings.ChthonianExcavator.stateOnCount > 0 && resources.Orichalcum.storageRatio < 0.99) || (state.spaceBuildings.ChthonianRaider.stateOnCount > 0 && (resources.Vitreloy.storageRatio < 0.99 || resources.Polymer.storageRatio < 0.99 || resources.Neutronium.storageRatio < 0.99 || resources.Deute.storageRatio < 0.99))},
+        ];
+        let allFleets = [
+            {name: "scout_ship", count: state.spaceBuildings.ScoutShip.stateOnCount, power: game.actions.galaxy.gxy_gateway.scout_ship.ship.rating},
+            {name: "corvette_ship", count: state.spaceBuildings.CorvetteShip.stateOnCount, power: game.actions.galaxy.gxy_gateway.corvette_ship.ship.rating},
+            {name: "frigate_ship", count: state.spaceBuildings.FrigateShip.stateOnCount, power: game.actions.galaxy.gxy_gateway.frigate_ship.ship.rating},
+            {name: "cruiser_ship", count: state.spaceBuildings.CruiserShip.stateOnCount, power: game.actions.galaxy.gxy_gateway.cruiser_ship.ship.rating},
+            {name: "dreadnought", count: state.spaceBuildings.Dreadnought.stateOnCount, power: game.actions.galaxy.gxy_gateway.dreadnought.ship.rating},
+        ];
+
+        // Init adjustment, and sort groups by priorities
+        let priorityGroups = {};
+        for (let i = 0; i < allRegions.length; i++) {
+            let region = allRegions[i];
+            if (region.useful) {
+                region.weighting = settings["fleet_w_" + region.name];
+
+                let priority = settings["fleet_p_" + region.name];
+                priorityGroups[priority] = priorityGroups[priority] ?? [];
+                priorityGroups[priority].push(region);
+            }
+            region.assigned = {};
+            for (let j = 0; j < allFleets.length; j++) {
+                region.assigned[allFleets[j].name] = 0;
+            }
+        }
+        let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
+
+        // Calculate amount of ships per zone
+        for (let i = 0; i < priorityList.length && allFleets.length > 0; i++) {
+            let regions = priorityList[i];
+            while (allFleets.length > 0) {
+                let totalPriorityWeight = regions.reduce((sum, region) => sum + region.weighting, 0);
+                let shipsAssigned = 0;
+                for (let k = allFleets.length - 1; k >= 0; k--) {
+                    allFleets[k].init = allFleets[k].count;
+                }
+                for (let j = regions.length - 1; j >= 0; j--) {
+                    let region = regions[j];
+
+                    let missingDef = region.piracy - region.armada;
+                    if (missingDef > 0) {
+                        for (let k = allFleets.length - 1; k >= 0; k--) {
+                            let ship = allFleets[k];
+                            if (ship.count > 0 && ship.power - missingDef < 10) {
+                                let shipsToAssign = Math.max(1, Math.min(ship.count, Math.floor(missingDef / ship.power), Math.floor(ship.init / totalPriorityWeight * region.weighting)));
+                                region.assigned[ship.name] += shipsToAssign;
+                                region.armada += shipsToAssign * ship.power;
+                                ship.count -= shipsToAssign;
+                                missingDef -= shipsToAssign * ship.power;
+                                shipsAssigned += shipsToAssign;
+                            }
+                            if (ship.count <= 0) {
+                                allFleets.splice(k, 1);
+                            }
+                        }
+                    }
+                    if (missingDef <= 0) {
+                        regions.splice(j, 1);
+                    }
+                }
+                if (shipsAssigned < 1) {
+                    break;
+                }
+            }
+        }
+
+        for (let i = 0; i < allRegions.length; i++) {
+            let region = allRegions[i];
+            for (let ship in region.assigned) {
+                let shipsToAssign = region.assigned[ship];
+                let deltaShip = region.assigned[ship] - game.global.galaxy.defense[region.name][ship];
+
+                if (deltaShip < 0) {
+                    state.multiplier.reset(deltaShip * -1);
+                    while (state.multiplier.remainder > 0) {
+                        state.multiplier.setMultiplier();
+                        vue.sub(region.name, ship);
+                    }
+                }
+            }
+        }
+
+        for (let i = 0; i < allRegions.length; i++) {
+            let region = allRegions[i];
+            for (let ship in region.assigned) {
+                let shipsToAssign = region.assigned[ship];
+                let deltaShip = region.assigned[ship] - game.global.galaxy.defense[region.name][ship];
+
+                if (deltaShip > 0) {
+                    state.multiplier.reset(deltaShip);
+                    while (state.multiplier.remainder > 0) {
+                        state.multiplier.setMultiplier();
+                        vue.add(region.name, ship);
+                    }
+                }
+            }
+        }
+    }
 
     //#region Main Loop
 
@@ -9877,6 +10021,12 @@
         if (settings.autoHell) {
             autoHell(); // All changes cached
         }
+        if (settings.autoFleet) {
+            autoFleet(); // All changes cached
+        }
+        if (settings.autoGalaxyMarket) {
+            autoGalaxyMarket(); // Can invalidate rateOfChange
+        }
         if (settings.autoFactory) {
             autoFactory(); // Can invalidate rateOfChange
         }
@@ -10146,6 +10296,7 @@
         buildResearchSettings();
         buildWarSettings(scriptContentNode, true);
         buildHellSettings(scriptContentNode, true);
+        buildFleetSettings();
         buildMarketSettings();
         buildStorageSettings();
         buildProductionSettings();
@@ -10199,7 +10350,7 @@
             if ($('#importExport').val().length > 0) {
                 //let saveState = JSON.parse(LZString.decompressFromBase64($('#importExport').val()));
                 let saveState = JSON.parse($('#importExport').val());
-                if (saveState && 'scriptName' in saveState && saveState.scriptName === "TMVictor") {
+                if (saveState && typeof saveState === "object" && (saveState.scriptName === "TMVictor" || $.isEmptyObject(saveState))) {
                     console.log("Importing script settings");
                     settings = saveState;
                     resetTriggerState()
@@ -11533,6 +11684,68 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
+    function buildFleetSettings() {
+        let sectionId = "fleet";
+        let sectionName = "Fleet";
+
+        let resetFunction = function() {
+            resetFleetSettings();
+            updateFleetSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateFleetSettingsContent);
+    }
+
+    var galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
+    function updateFleetSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_fleetContent');
+        currentNode.empty().off("*");
+
+        // Add any pre table settings
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_fleetPreTable"></div>');
+
+        // Add table
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Region</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority</th><th class="has-text-warning" style="width:5%"></th></tr>
+                <tbody id="script_fleetTableBody" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_fleetTableBody');
+        let newTableBodyText = "";
+
+        for (let i = 0; i < galaxyRegions.length; i++) {
+            newTableBodyText += '<tr value="' + galaxyRegions[i] + '"><td id="script_fleet_' + galaxyRegions[i] + '" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other productions settings rows
+        for (let i = 0; i < galaxyRegions.length; i++) {
+            let fleetElement = $('#script_fleet_' + galaxyRegions[i]);
+
+            let nameRef = galaxyRegions[i] === "gxy_alien1" ? "Alien 1 System" : galaxyRegions[i] === "gxy_alien2" ? "Alien 2 System" : game.actions.galaxy[galaxyRegions[i]].info.name;
+
+            fleetElement.append(buildStandartLabel(typeof nameRef === "function" ? nameRef() : nameRef));
+
+            fleetElement = fleetElement.next().next();
+            fleetElement.append(buildStandartSettingsInput(settings, "fleet_w_" + galaxyRegions[i], "fleet_w_" + galaxyRegions[i]));
+
+            fleetElement = fleetElement.next();
+            fleetElement.append(buildStandartSettingsInput(settings, "fleet_p_" + galaxyRegions[i], "fleet_p_" + galaxyRegions[i]));
+        }
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function resetFleetSettings() {
+        for (let i = 0; i < galaxyRegions.length; i++) {
+            settings["fleet_w_" + galaxyRegions[i]] = 1;
+            settings["fleet_p_" + galaxyRegions[i]] = galaxyRegions.length - i;
+        }
+    }
+
     function buildMarketSettings() {
         let sectionId = "market";
         let sectionName = "Market";
@@ -11545,8 +11758,7 @@
 
             // Redraw toggles on market tab
             if ( $('.ea-market-toggle').length !== 0 ) {
-              removeMarketToggles();
-              createMarketToggles();
+                createMarketToggles();
             }
         };
 
@@ -11636,6 +11848,45 @@
                 updateSettingsFromState();
             },
         } );
+
+        // Add any pre table settings
+        preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_marketGalaxyPreTable"></div>');
+        addStandardHeading(preTableNode, "Galaxy Trades");
+        addStandardSectionSettingsToggle(preTableNode, "autoGalaxyMarket", "Manage Galaxy Trades", "Automatically adjust galaxy trade routes");
+
+        // Add table
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:30%">Buy</th><th class="has-text-warning" style="width:30%">Sell</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority</th></tr>
+                <tbody id="script_marketGalaxyTableBody" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        tableBodyNode = $('#script_marketGalaxyTableBody');
+        newTableBodyText = "";
+
+        for (let i = 0; i < poly.galaxyOffers.length; i++) {
+            newTableBodyText += '<tr value="' + i + '"><td id="script_market_galaxy_' + i + '" style="width:30%"><td style="width:30%"></td></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other productions settings rows
+        for (let i = 0; i < poly.galaxyOffers.length; i++) {
+            let trade = poly.galaxyOffers[i];
+            let buyResource = resources[trade.buy.res];
+            let sellResource = resources[trade.sell.res];
+            let marketElement = $('#script_market_galaxy_' + i);
+
+            marketElement.append(buildStandartLabel(buyResource.name, "has-text-success"));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildStandartLabel(sellResource.name, "has-text-danger"));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildStandartSettingsInput(buyResource, "res_galaxy_w_" + buyResource.id, "galaxyMarketWeighting"));
+
+            marketElement = marketElement.next();
+            marketElement.append(buildStandartSettingsInput(buyResource, "res_galaxy_p_" + buyResource.id, "galaxyMarketPriority"));
+       }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11910,7 +12161,6 @@
         let newTableBodyText = "";
 
         let productionSettings = Object.values(state.cityBuildings.Factory.Productions);
-        productionSettings.sort((a, b) => a.seq - b.seq);
 
         for (let i = 0; i < productionSettings.length; i++) {
             const production = productionSettings[i];
@@ -11981,7 +12231,7 @@
 
         // Add table
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority<th class="has-text-warning" style="width:5%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority</th><th class="has-text-warning" style="width:5%"></th></tr>
                 <tbody id="script_productionTableBodyMiningDrone" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -11990,7 +12240,6 @@
         let newTableBodyText = "";
 
         let droidProducts = Object.values(state.spaceBuildings.AlphaMiningDroid.Productions);
-        droidProducts.sort((a, b) => a.seq - b.seq);
 
         for (let i = 0; i < droidProducts.length; i++) {
             const production = droidProducts[i];
@@ -12232,6 +12481,7 @@
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
+        addStandardSectionSettingsToggle(preTableNode, "buildingEstimateTime", "Consider estimated time to build for weighting", "This option allow script to use resources required by prioritized buildings when it think that said resources won't be a bottleneck. Usually it speed things up, however, incomes and storages may fluctuate, and that may temporaly confuse script - making it think that it waiting for something else, and spend important resources. If you don't want to delay prioritized building at any cost - turn this option off.");
 
         currentNode.append(`<div style="margin-top: 5px; width: 400px;">
                               <label for="script_buildingShrineType">Prefered Shrine:</label>
@@ -12723,6 +12973,7 @@
             createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\\greatness achievements for yet.');
             createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
             createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
+            createSettingToggle(scriptNode, 'autoFleet', 'Manages Andromeda fleed to supress piracy');
             createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
             createSettingToggle(scriptNode, 'autoCraft', 'Craft when a specified crafting ratio is met. This changes throughout the game - lower in the beginning and rising as the game progresses.', createCraftToggles, removeCraftToggles);
             createSettingToggle(scriptNode, 'autoBuild', 'Builds city and space building when it can an production allows (eg. Won\'t build a Fission Reactor if you don\'t have enough uranium production). Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker.', createBuildingToggles, removeBuildingToggles);
@@ -12814,8 +13065,11 @@
         if (settings.autoBuild && $('.ea-building-toggle').length === 0) {
             createBuildingToggles();
         }
-        if (settings.autoMarket > 0 && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
+        if (settings.autoMarket && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
             createMarketToggles();
+        }
+        if (settings.prestigeWhiteholeEjectEnabled && $('.ea-eject-toggle').length === 0 && state.spaceBuildings.BlackholeMassEjector.count > 0) {
+            createEjectToggles();
         }
         if (settings.autoARPA && $('.ea-arpa-toggle').length === 0) {
             createArpaToggles();
@@ -12929,6 +13183,25 @@
         $('.ea-building-toggle').remove();
     }
 
+    function createEjectToggles() {
+        $('#eject').append('<span style="margin-left: auto; margin-right: 0.2rem;" class="has-text-danger">Auto Eject</span>');
+        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+            let resource = resourcesByAtomicMass[i].resource;
+            if (resource.isUnlocked()) {
+                let ejectRow = $('#eject' + resource.id);
+                let ejectChecked = resource.ejectEnabled ? " checked" : "";
+                let toggleEject = $('<label id="script_eject1_' +  resource.id + '" tabindex="0" title="Enable ejecting of this resource. When to eject is set in the Prestige Settings tab."  class="switch ea-eject-toggle" style="margin-left: auto; margin-right: 0.2rem;"><input type="checkbox"' + ejectChecked + '> <span class="check" style="height:5px;"></span><span class="state"></span></label>');
+                ejectRow.append(toggleEject);
+
+                toggleEject.on('change', function(e) {
+                    let input = e.currentTarget.children[0];
+                    resource.ejectEnabled = input.checked;
+                    updateSettingsFromState();
+                });
+            }
+        }
+    }
+
     /**
      * @param {Resource} resource
      */
@@ -13005,11 +13278,10 @@
     }
 
     function createMarketToggles() {
-        // TODO: Find out *why* it draws twice sometimes, and remove this
         removeMarketToggles();
 
-        $("#market .market-item .res").width("5rem");
-        $("#market .market-item .trade > :first-child").text("R:");
+        $("#market .market-item[id] .res").width("5rem");
+        $("#market .market-item[id] .trade > :first-child").text("R:");
         $("#market .trade .zero").text("x");
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             createMarketToggle(state.marketManager.priorityList[i]);
@@ -13017,8 +13289,8 @@
     }
 
     function removeMarketToggles() {
-        $("#market .market-item .res").width("7.5rem");
-        $("#market .market-item .trade > :first-child").text("Routes:");
+        $("#market .market-item[id] .res").width("7.5rem");
+        $("#market .market-item[id] .trade > :first-child").text("Routes:");
         $("#market .trade .zero").text("Cancel Routes");
         $('.ea-market-toggle').remove();
     }
@@ -13236,11 +13508,13 @@
     //#endregion Utility Functions
 
     var poly = {
-    // Taken directly from game code(v1.0.24) with no functional changes, and minimified:
+    // Taken directly from game code(v1.0.26) with no functional changes, and minimified:
         // export function arpaAdjustCosts(costs) from arpa.js
         arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),poly.adjustCosts(t)},
         // function govPrice(gov) from civics.js
         govPrice: function(e){let i=game.global.civic.foreign[e],o=15384*i.eco;return o*=1+1.6*i.hstl/100,+(o*=1-.25*i.unrest/100).toFixed(0)},
+        // export const galaxyOffers from resources.js
+        galaxyOffers: normalizeProperties([{buy:{res:"Deuterium",vol:5},sell:{res:"Helium_3",vol:25}},{buy:{res:"Neutronium",vol:2.5},sell:{res:"Copper",vol:200}},{buy:{res:"Adamantite",vol:3},sell:{res:"Iron",vol:300}},{buy:{res:"Elerium",vol:1},sell:{res:"Oil",vol:125}},{buy:{res:"Nano_Tube",vol:10},sell:{res:"Titanium",vol:20}},{buy:{res:"Graphene",vol:25},sell:{res:()=>game.global.race.kindling_kindred||game.global.race.smoldering?game.global.race.smoldering?"Chrysotile":"Stone":"Lumber",vol:1e3}},{buy:{res:"Stanene",vol:40},sell:{res:"Aluminium",vol:800}},{buy:{res:"Bolognium",vol:.75},sell:{res:"Uranium",vol:4}},{buy:{res:"Vitreloy",vol:1},sell:{res:"Infernite",vol:1}}]),
 
     // Reimplemented:
         // export function crateValue() from Evolve/src/resources.js
