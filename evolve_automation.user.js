@@ -4724,7 +4724,7 @@
             SiriusAscensionMachine: new Action("Sirius Ascension Machine", "interstellar", "ascension_machine", "int_sirius"),
             SiriusAscensionTrigger: new Action("Sirius Ascension Trigger", "interstellar", "ascension_trigger", "int_sirius"),
             SiriusAscend: new Action("Sirius Ascend", "interstellar", "ascend", "int_sirius"),
-            SiriusThermalCollector: new Action("Sirius ThermalCollector", "interstellar", "thermal_collector", "int_sirius"),
+            SiriusThermalCollector: new Action("Sirius Thermal Collector", "interstellar", "thermal_collector", "int_sirius"),
 
             GatewayMission: new Action("Gateway Mission", "galaxy", "gateway_mission", "gxy_gateway", {mission: true}),
             GatewayStarbase: new Action("Gateway Starbase", "galaxy", "starbase", "gxy_gateway", {garrison: true}),
@@ -10749,7 +10749,7 @@
                                         <option value = "mad" title = "MAD prestige once MAD has been researched and all soldiers are home">Mutual Assured Destruction</option>
                                         <option value = "bioseed" title = "Launches the bioseeder ship to perform prestige when required probes have been constructed">Bioseed</option>
                                         <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
-                                        <option value = "ascension" title = "Not implemented. Only switches auto theology to deity currently.">Ascension</option>
+                                        <option value = "ascension" title = "Not implemented. Only switches auto theology to deify currently.">Ascension</option>
                                       </select>
                                     </div>`);
 
