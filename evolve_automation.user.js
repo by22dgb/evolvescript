@@ -1973,7 +1973,7 @@
 
     class GorddonFreighter extends Action {
         constructor() {
-            super("Gorddon Freighter", "galaxy", "freighter", "gxy_gorddon");
+            super("Gorddon Freighter", "galaxy", "freighter", "gxy_gorddon", {ship: true});
 
             this._industryVueBinding = "galaxyTrade";
             this._industryVue = undefined;
@@ -4730,13 +4730,12 @@
             GatewayStarbase: new Action("Gateway Starbase", "galaxy", "starbase", "gxy_gateway", {garrison: true}),
             GatewayShipDock: new Action("Gateway Ship Dock", "galaxy", "ship_dock", "gxy_gateway"),
 
-            BologniumShip: new Action("Gateway Bolognium Ship", "galaxy", "bolognium_ship", "gxy_gateway"),
-
-            ScoutShip: new Action("Gateway Scout Ship", "galaxy", "scout_ship", "gxy_gateway", {fleet: true}),
-            CorvetteShip: new Action("Gateway Corvette Ship", "galaxy", "corvette_ship", "gxy_gateway", {fleet: true}),
-            FrigateShip: new Action("Gateway Frigate Ship", "galaxy", "frigate_ship", "gxy_gateway", {fleet: true}),
-            CruiserShip: new Action("Gateway Cruiser Ship", "galaxy", "cruiser_ship", "gxy_gateway", {fleet: true}),
-            Dreadnought: new Action("Gateway Dreadnought", "galaxy", "dreadnought", "gxy_gateway", {fleet: true}),
+            BologniumShip: new Action("Gateway Bolognium Ship", "galaxy", "bolognium_ship", "gxy_gateway", {ship: true}),
+            ScoutShip: new Action("Gateway Scout Ship", "galaxy", "scout_ship", "gxy_gateway", {ship: true}),
+            CorvetteShip: new Action("Gateway Corvette Ship", "galaxy", "corvette_ship", "gxy_gateway", {ship: true}),
+            FrigateShip: new Action("Gateway Frigate Ship", "galaxy", "frigate_ship", "gxy_gateway", {ship: true}),
+            CruiserShip: new Action("Gateway Cruiser Ship", "galaxy", "cruiser_ship", "gxy_gateway", {ship: true}),
+            Dreadnought: new Action("Gateway Dreadnought", "galaxy", "dreadnought", "gxy_gateway", {ship: true}),
 
             StargateStation: new Action("Stargate Station", "galaxy", "gateway_station", "gxy_stargate"),
             StargateTelemetryBeacon: new Action("Stargate Telemetry Beacon", "galaxy", "telemetry_beacon", "gxy_stargate", {knowledge: true}),
@@ -4752,18 +4751,18 @@
             Alien1Consulate: new Action("Alien 1 Consulate", "galaxy", "consulate", "gxy_alien1", {housing: true}),
             Alien1Resort: new Action("Alien 1 Resort", "galaxy", "resort", "gxy_alien1"),
             Alien1VitreloyPlant: new Action("Alien 1 Vitreloy Plant", "galaxy", "vitreloy_plant", "gxy_alien1"),
-            Alien1SuperFreighter: new Action("Alien 1 Super Freighter", "galaxy", "super_freighter", "gxy_alien1"),
+            Alien1SuperFreighter: new Action("Alien 1 Super Freighter", "galaxy", "super_freighter", "gxy_alien1", {ship: true}),
 
             Alien2Mission: new Action("Alien 2 Mission", "galaxy", "alien2_mission", "gxy_alien2", {mission: true}),
             Alien2Foothold: new Action("Alien 2 Foothold", "galaxy", "foothold", "gxy_alien2"),
-            Alien2ArmedMiner: new Action("Alien 2 Armed Miner", "galaxy", "armed_miner", "gxy_alien2"),
+            Alien2ArmedMiner: new Action("Alien 2 Armed Miner", "galaxy", "armed_miner", "gxy_alien2", {ship: true}),
             Alien2OreProcessor: new Action("Alien 2 Ore Processor", "galaxy", "ore_processor", "gxy_alien2"),
-            Alien2Scavenger: new Action("Alien 2 Scavenger", "galaxy", "scavenger", "gxy_alien2", {knowledge: true}),
+            Alien2Scavenger: new Action("Alien 2 Scavenger", "galaxy", "scavenger", "gxy_alien2", {knowledge: true, ship: true}),
 
             ChthonianMission: new Action("Chthonian Mission", "galaxy", "chthonian_mission", "gxy_chthonian", {mission: true}),
-            ChthonianMineLayer: new Action("Chthonian Mine Layer", "galaxy", "minelayer", "gxy_chthonian"),
+            ChthonianMineLayer: new Action("Chthonian Mine Layer", "galaxy", "minelayer", "gxy_chthonian", {ship: true}),
             ChthonianExcavator: new Action("Chthonian Excavator", "galaxy", "excavator", "gxy_chthonian"),
-            ChthonianRaider: new Action("Chthonian Raider", "galaxy", "raider", "gxy_chthonian"),
+            ChthonianRaider: new Action("Chthonian Raider", "galaxy", "raider", "gxy_chthonian", {ship: true}),
 
             PortalTurret: new Action("Portal Laser Turret", "portal", "turret", "prtl_fortress"),
             PortalCarport: new Action("Portal Surveyor Carport", "portal", "carport", "prtl_fortress"),
@@ -8804,7 +8803,7 @@
         let warnBuildings = $("span.on.warn");
         for (let i = 0; i < warnBuildings.length; i++) {
             let building = buildingIds[warnBuildings[i].parentNode.id];
-            if (building && !building.is.fleet) {
+            if (building && !building.is.ship) {
                 building.tryAdjustState(-1);
                 break;
             }
