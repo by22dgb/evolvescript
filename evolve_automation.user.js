@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.19
+// @version      3.3.1.20
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -7772,6 +7772,9 @@
                 }
             }
         }
+        if (remainingFactories > 0) {
+            return;
+        }
 
         // First decrease any production so that we have room to increase others
         for (let production of allProducts) {
@@ -9121,7 +9124,7 @@
         // Then for demanded resources
         for (let id in resources) {
             let resource = resources[id];
-            if (resource.isTradable()) {
+            if (resource.requestedQuantity > 0 && resource.isTradable()) {
                 // Calculate amount of routes we need
                 let routes = Math.ceil(resource.requestedQuantity / resource.tradeRouteQuantity);
 
