@@ -7045,22 +7045,14 @@
         // First figure out how many farmers are required
         if (state.jobs.Farmer.isManaged()) {
             let foodRateOfChange = resources.Food.calculateRateOfChange({buy: true});
-            if (!state.jobs.Lumberjack.isUnlocked()
-                    && !state.jobs.QuarryWorker.isUnlocked()
-                    && !state.jobs.CrystalMiner.isUnlocked()
-                    && !state.jobs.Scavenger.isUnlocked()
-                    && !state.jobs.Miner.isUnlocked()
-                    && !state.jobs.CoalMiner.isUnlocked()
-                    && !state.jobs.CementWorker.isUnlocked()
-                    && !state.jobs.Entertainer.isUnlocked()
-                    && !state.jobs.Priest.isUnlocked()
-                    && !state.jobs.Professor.isUnlocked()
-                    && !state.jobs.Scientist.isUnlocked()
-                    && !state.jobs.Banker.isUnlocked()
-                    && !state.jobs.Colonist.isUnlocked()
-                    && !state.jobs.SpaceMiner.isUnlocked()
-                    && !state.jobs.HellSurveyor.isUnlocked()
-                    && !state.jobs.Archaeologist.isUnlocked()) {
+            let minFoodStorage = 0.2;
+            let maxFoodStorage = 0.6;
+            if (game.global.race['ravenous']) {
+                minFoodStorage = 0.01;
+                maxFoodStorage = 0.02;
+                foodRateOfChange++;
+            }
+            if (jobList.length === 1) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs[farmerIndex] = availableEmployees;
                 log("autoJobs", "Pushing all farmers")
@@ -7074,11 +7066,11 @@
                 } else {
                     requiredJobs[farmerIndex] = state.jobs.Farmer.count;
                 }
-            } else if (resources.Food.storageRatio < 0.2 && foodRateOfChange < 0) {
+            } else if (resources.Food.storageRatio < minFoodStorage && foodRateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
                 requiredJobs[farmerIndex] = Math.min(state.jobs.Farmer.count + 1, availableEmployees);
                 log("autoJobs", "Adding one farmer")
-            } else if (resources.Food.storageRatio > 0.6 && foodRateOfChange > 0) {
+            } else if (resources.Food.storageRatio > maxFoodStorage && foodRateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
                 requiredJobs[farmerIndex] = Math.max(state.jobs.Farmer.count - 1, 0);
                 log("autoJobs", "Removing one farmer")
@@ -7108,9 +7100,6 @@
             }
 
             if (requiredJobs[farmerIndex] < 0) { requiredJobs[farmerIndex] = 0; }
-
-            // Wendigo will eat any stockpiles in instant, only assign hunters if storage about to hit zero
-            if ( game.global.race['ravenous'] && resources.Food.storageRatio > 0.01 ) { requiredJobs[farmerIndex] = 0; }
 
             jobAdjustments[farmerIndex] = requiredJobs[farmerIndex] - state.jobs.Farmer.count;
             availableEmployees -= requiredJobs[farmerIndex];
@@ -8085,7 +8074,7 @@
             return;
         }
 
-        let nextTickKnowledge = resources.Knowledge.currentQuantity + resources.Knowledge.rateOfChange * (game.global.settings.at > 0 ? 2 : 1);
+        let nextTickKnowledge = resources.Knowledge.currentQuantity + resources.Knowledge.rateOfChange * (game.global.settings.at > 0 ? 2 : 1) * (game.global.race['hyper'] ? 1.05 : 1) * (game.global.race['slow'] ? 0.9 : 1);
         let overflowKnowledge = nextTickKnowledge - resources.Knowledge.maxQuantity;
         if (overflowKnowledge < 0) {
             return;
@@ -8746,7 +8735,7 @@
             }
 
             // Disable mills with surplus energy
-            if (building === state.cityBuildings.Mill && building.powered && resources.Food.storageRatio < 0.7 && !game.global.race['ravenous']) {
+            if (building === state.cityBuildings.Mill && building.powered && resources.Food.storageRatio < 0.7 && state.jobs.Farmer.count > 0) {
                 maxStateOn = Math.min(maxStateOn, building.stateOnCount - ((resources.Power.currentQuantity - 5) / (-building.powered)));
             }
 
