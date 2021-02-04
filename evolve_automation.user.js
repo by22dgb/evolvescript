@@ -4982,6 +4982,7 @@
                 }
             }
         });
+        state.cityBuildings.Windmill.overridePowered = -1;
         state.spaceBuildings.SunSwarmSatellite.overridePowered = -0.35;
         state.spaceBuildings.ProximaDyson.overridePowered = -1.25;
         state.spaceBuildings.ProximaDysonSphere.overridePowered = -5;
@@ -9792,7 +9793,7 @@
                       if (resources.Slave.currentQuantity >= resources.Slave.maxQuantity) {
                           return "Slave pens already full";
                       }
-                      if (resources.Money.storageRatio < 0.9 && resources.Money.currentQuantity < 10000000){
+                      if (resources.Money.storageRatio < 0.9 && resources.Money.currentQuantity < 1000000){
                           return "Buying slaves only with excess money";
                       }
                   }
@@ -9840,7 +9841,7 @@
               () => settings.buildingWeightingMissingSupply
           ],[
               () => true,
-              (building) => building._tab === "city" && building.stateOffCount > 0,
+              (building) => building._tab === "city" && building !== state.cityBuildings.Mill && building.stateOffCount > 0,
               () => "Still have some non operating buildings",
               () => settings.buildingWeightingNonOperatingCity
           ],[
@@ -9875,7 +9876,7 @@
               () => settings.buildingWeightingNeedfulPowerPlant
           ],[
               () => resources.Power.isUnlocked() && resources.Power.currentQuantity > 1,
-              (building) => building.powered < 0,
+              (building) => building.powered < 0 && building !== state.cityBuildings.Mill,
               () => "No need for more energy",
               () => settings.buildingWeightingUselessPowerPlant
           ],[
