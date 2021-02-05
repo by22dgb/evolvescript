@@ -1213,7 +1213,7 @@
         }
 
         isUnlocked() {
-            return this.instance.display;
+            return this.instance?.display;
         }
 
         /**
