@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.20
+// @version      3.3.1.21
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -784,7 +784,7 @@
          * @param {number} rate
          */
         addResourceConsumption(resource, rate) {
-            this.consumption.push({ resource: resource, rate: rate });
+            this.consumption.push(normalizeProperties({ resource: resource, rate: rate }));
         }
 
         missingSupply() {
@@ -1647,7 +1647,7 @@
         }
 
         initIndustry() {
-            if (this.count < 1) {
+            if (this.count < 1 && !game.global.race['cataclysm']) {
                 return false;
             }
 
@@ -1768,7 +1768,7 @@
         }
 
         initIndustry() {
-            if (this.count < 1) {
+            if (this.count < 1 && state.spaceBuildings.RedFactory.count < 1) {
                 return false;
             }
 
@@ -3111,7 +3111,14 @@
 
             // Iterate over buildings
             for (let i = 0; i < this.priorityList.length; i++){
-                const building = this.priorityList[i];
+                let building = this.priorityList[i];
+
+                if (state.queuedBuildings.includes(building._elementId)) {
+                    building.extraDescription = "AutoBuild weighting: " + settings.buildingWeightingQueued + "<br>Queued building";
+                    building.weighting = settings.buildingWeightingQueued;
+                    continue;
+                }
+
                 // Reset old weighting and note
                 building.extraDescription = "";
                 building.weighting = building._weighting;
@@ -4401,6 +4408,7 @@
 
         lastPopulationCount: Number.MAX_SAFE_INTEGER,
         lastFarmerCount: Number.MAX_SAFE_INTEGER,
+        queuedBuildings: [],
 
         log: new GameLog(),
         multiplier: useMultiplier ? new Multiplier() : new NoMultiplier(),
@@ -4881,25 +4889,23 @@
         state.spaceBuildings.GorddonEmbassy.gameMax = 1;
         state.spaceBuildings.Alien1Consulate.gameMax = 1;
 
-        state.cityBuildings.CoalPower.consumption = normalizeProperties([{resource: () => game.global.race.universe === "magic" ? resources.Mana : resources.Coal, rate: () => game.global.race['environmentalist'] ? 0 : game.global.race.universe === "magic" ? 0.05 : 0.65}]);
-        state.cityBuildings.OilPower.consumption = normalizeProperties([{resource: resources.Oil, rate: game.global.race['environmentalist'] ? 0 : 0.65}]);
-
-        state.spaceBuildings.GatewayShipDock.consumption = normalizeProperties([{resource: resources.Gateway_Support, rate: () => state.spaceBuildings.GatewayStarbase.count * -0.25}]);
-        state.spaceBuildings.SpaceNavBeacon.consumption = normalizeProperties([{resource: resources.Moon_Support, rate: -1}, {resource: resources.Red_Support, rate: () => game.global.tech.luna >= 2 ? -1 : 0}]);
-
+        state.cityBuildings.CoalPower.addResourceConsumption(() => game.global.race.universe === "magic" ? resources.Mana : resources.Coal, () => game.global.race['environmentalist'] ? 0 : game.global.race.universe === "magic" ? 0.05 : 0.65);
+        state.cityBuildings.OilPower.addResourceConsumption(resources.Oil, () => game.global.race['environmentalist'] ? 0 : 0.65);
         state.cityBuildings.FissionPower.addResourceConsumption(resources.Uranium, 0.1);
         state.cityBuildings.TouristCenter.addResourceConsumption(resources.Food, 50);
 
         // Construct space buildings list
+        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.Moon_Support, -1);
+        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.Red_Support, () => game.global.tech.luna >= 2 ? -1 : 0);
         state.spaceBuildings.MoonBase.addResourceConsumption(resources.Moon_Support, -2);
         state.spaceBuildings.MoonBase.addResourceConsumption(resources.Oil, 2);
         state.spaceBuildings.MoonIridiumMine.addResourceConsumption(resources.Moon_Support, 1);
         state.spaceBuildings.MoonHeliumMine.addResourceConsumption(resources.Moon_Support, 1);
         state.spaceBuildings.MoonObservatory.addResourceConsumption(resources.Moon_Support, 1);
-        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.Red_Support, -3);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.Red_Support, () => game.actions.space.spc_red.spaceport.support() * -1);
         state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.Helium_3, 1.25);
-        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.Food, 25);
-        state.spaceBuildings.RedTower.addResourceConsumption(resources.Red_Support, -1);
+        state.spaceBuildings.RedSpaceport.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] ? 2 : 25);
+        state.spaceBuildings.RedTower.addResourceConsumption(resources.Red_Support, () => game.global.race['cataclysm'] ? -2 : -1);
         state.spaceBuildings.RedLivingQuarters.addResourceConsumption(resources.Red_Support, 1);
         state.spaceBuildings.RedMine.addResourceConsumption(resources.Red_Support, 1);
         state.spaceBuildings.RedFabrication.addResourceConsumption(resources.Red_Support, 1);
@@ -4907,14 +4913,14 @@
         state.spaceBuildings.RedBiodome.addResourceConsumption(resources.Red_Support, 1);
         state.spaceBuildings.RedExoticLab.addResourceConsumption(resources.Red_Support, 1);
         state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.Oil, 2);
-        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.Food, 10);
+        state.spaceBuildings.RedSpaceBarracks.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] ? 0 : 10);
         state.spaceBuildings.RedVrCenter.addResourceConsumption(resources.Red_Support, 1);
         state.spaceBuildings.HellGeothermal.addResourceConsumption(resources.Helium_3, 0.5);
         state.spaceBuildings.SunSwarmControl.addResourceConsumption(resources.Sun_Support, -4);
         state.spaceBuildings.SunSwarmSatellite.addResourceConsumption(resources.Sun_Support, 1);
         state.spaceBuildings.GasMoonOutpost.addResourceConsumption(resources.Oil, 2);
         state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.Belt_Support, -3);
-        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.Food, 10);
+        state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] ? 1 : 10);
         state.spaceBuildings.BeltSpaceStation.addResourceConsumption(resources.Helium_3, 2.5);
         state.spaceBuildings.BeltEleriumShip.addResourceConsumption(resources.Belt_Support, 2);
         state.spaceBuildings.BeltIridiumShip.addResourceConsumption(resources.Belt_Support, 1);
@@ -4947,6 +4953,7 @@
         state.spaceBuildings.GatewayStarbase.addResourceConsumption(resources.Gateway_Support, -2);
         state.spaceBuildings.GatewayStarbase.addResourceConsumption(resources.Helium_3, 25);
         state.spaceBuildings.GatewayStarbase.addResourceConsumption(resources.Food, 250);
+        state.spaceBuildings.GatewayShipDock.addResourceConsumption(resources.Gateway_Support, () => state.spaceBuildings.GatewayStarbase.stateOnCount * -0.25);
 
         state.spaceBuildings.BologniumShip.addResourceConsumption(resources.Gateway_Support, 1);
         state.spaceBuildings.BologniumShip.addResourceConsumption(resources.Helium_3, 5);
@@ -5444,7 +5451,7 @@
         settings.buildingWeightingNonOperating = 0;
         settings.buildingWeightingTriggerConflict = 0;
         settings.buildingWeightingMissingSupply = 0;
-        settings.buildingWeightingQueueHelper = 1000000;
+        settings.buildingWeightingQueued = 1000000;
     }
 
     function resetBuildingSettings() {
@@ -6131,7 +6138,7 @@
         addSetting("buildingWeightingNonOperating", 0);
         addSetting("buildingWeightingTriggerConflict", 0);
         addSetting("buildingWeightingMissingSupply", 0);
-        addSetting("buildingWeightingQueueHelper", 1000000);
+        addSetting("buildingWeightingQueued", 1000000);
 
         addSetting("buildingEnabledAll", true);
         addSetting("buildingStateAll", true);
@@ -6150,6 +6157,7 @@
 
         // TODO: Remove me after few more versions. Clean up old fork-only settings, not used neither here, nor in original script.
         delete settings.buildingEstimateTime;
+        delete settings.buildingWeightingQueueHelper;
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
             delete settings["droid_p_" + production.resource.id];
         }
@@ -8423,16 +8431,6 @@
         // Sort array so we'll have prioritized buildings on top. We'll need that below to avoid deathlocks, when building 1 waits for building 2, and building 2 waits for building 3. That's something we don't want to happen when building 1 and building 3 doesn't conflicts with each other.
         buildingList.sort((a, b) => b.weighting - a.weighting);
 
-        let queuedBuildings = [];
-        if (game.global.queue.display) {
-            for (let i = 0; i < game.global.queue.queue.length; i++) {
-                queuedBuildings.push(game.global.queue.queue[i].id);
-                if (!game.global.settings.qAny) {
-                    break;
-                }
-            }
-        }
-
         let estimatedTime = [];
         // Loop through the auto build list and try to buy them
         buildingsLoop:
@@ -8440,7 +8438,7 @@
             let building = buildingList[i];
 
             // Only go further if we can build it right now
-            if (!game.checkAffordable(building.definition, false) || queuedBuildings.includes(building._elementId)) {
+            if (!game.checkAffordable(building.definition, false) || state.queuedBuildings.includes(building._elementId)) {
                 continue;
             }
 
@@ -8452,7 +8450,7 @@
                 // We only care about buildings with highter weight
                 // And we don't want to process clickable buildings - list was sorted by weight, and all buildings with highter priority should already been proccessed.
                 // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                if (building.weighting >= other.weighting || (game.checkAffordable(other.definition, false) && !queuedBuildings.includes(other._elementId))){
+                if (building.weighting >= other.weighting || (game.checkAffordable(other.definition, false) && !state.queuedBuildings.includes(other._elementId))){
                     continue;
                 }
                 let weightDiffRatio = other.weighting / building.weighting;
@@ -9582,18 +9580,8 @@
             resources[id].requestedQuantity = 0;
         }
 
-        let prioritizedTasks = [];
-
         // Buildings queue
-        if (settings.queueRequest && game.global.queue.display) {
-            for (let i = 0; i < game.global.queue.queue.length; i++) {
-                let queue = game.global.queue.queue[i];
-                prioritizedTasks.push(queue.id);
-                if (!game.global.settings.qAny) {
-                    break;
-                }
-            }
-        }
+        let prioritizedTasks = [...state.queuedBuildings];
 
         // Research queue
         if (settings.queueRequest && game.global.r_queue.display) {
@@ -9692,10 +9680,18 @@
             setTimeout(()=> window.location.reload(), 5000);
         }
 
-        // Update data from exposed global
         updateScriptData();
 
-        // Should be called after calculating rate of change
+        state.queuedBuildings = [];
+        if (game.global.queue.display) {
+            for (let i = 0; i < game.global.queue.queue.length; i++) {
+                state.queuedBuildings.push(game.global.queue.queue[i].id);
+                if (!game.global.settings.qAny) {
+                    break;
+                }
+            }
+        }
+
         state.buildingManager.updateWeighting();
 
         state.buildingManager.updateResourceRequirements();
@@ -9970,20 +9966,6 @@
               (building) => building === state.cityBuildings.OilDepot || building === state.spaceBuildings.SpacePropellantDepot || building === state.spaceBuildings.GasStorage,
               () => "Need more fuel",
               () => settings.buildingWeightingMissingFuel
-          ],[
-              () => game.global.queue.display && game.global.queue.queue.length > 0,
-              (building) => {
-                  for (let i = 0; i < game.global.queue.queue.length; i++) {
-                      if (building._elementId === game.global.queue.queue[i].id) {
-                          return true;
-                      }
-                      if (!game.global.settings.qAny) {
-                          break;
-                      }
-                  }
-              },
-              () => "Queued building",
-              () => settings.buildingWeightingQueueHelper
         ]];
     }
 
@@ -10039,7 +10021,7 @@
             mutations.forEach(mutation => {
                 mutation.addedNodes.forEach(node => {
                     let building = buildingIds[node.id.substr(3)];
-                    if (building?.autoBuildEnabled) {
+                    if (building?.weighting > 0) {
                         node.style.pointerEvents = "none";
                         node.innerHTML += `<div>${building.extraDescription}</div>`;
                     }
@@ -12532,7 +12514,7 @@
         addWeighingRule(tableBodyNode, "Building with state (space)", "Some instances of this building are not working", "buildingWeightingNonOperating");
         addWeighingRule(tableBodyNode, "Any", "Conflicts for some resource with active trigger", "buildingWeightingTriggerConflict");
         addWeighingRule(tableBodyNode, "Any", "Missing consumables or support to operate", "buildingWeightingMissingSupply");
-        addWeighingRule(tableBodyNode, "Queued building", "Helper rule for building queue, preventing other buildings from using same resources", "buildingWeightingQueueHelper");
+        addWeighingRule(tableBodyNode, "Queued building", "Overrides weighting with given number, prioritizing it. Unlike other rules it's not a multiplier, thus explicitly queued buildings won't ever be disabled by other rules.", "buildingWeightingQueued");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
