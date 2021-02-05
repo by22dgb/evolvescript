@@ -1298,6 +1298,17 @@
             return this.currentQuantity / this.maxQuantity;
         }
 
+        get usefulRatio() {
+            if (this.maxQuantity === 0) {
+                return 0;
+            }
+            if (this.storageRequired === 0) {
+                return 1;
+            }
+
+            return this.currentQuantity / Math.min(this.maxQuantity, this.storageRequired);
+        }
+
         get timeToFull() {
             if (this.storageRatio > 0.98) {
                 return 0; // Already full.
@@ -1307,6 +1318,17 @@
                 return Number.MAX_SAFE_INTEGER; // Won't ever fill with current rate.
             }
             return (this.maxQuantity - this.currentQuantity) / totalRateOfCharge;
+        }
+
+        get timeToRequired() {
+            if (this.storageRatio > 0.98 || this.storageRequired === 0) {
+                return 0; // Already full.
+            }
+            let totalRateOfCharge = this.calculateRateOfChange({all: true});
+            if (totalRateOfCharge <= 0) {
+                return Number.MAX_SAFE_INTEGER; // Won't ever fill with current rate.
+            }
+            return (Math.min(this.maxQuantity, this.storageRequired) - this.currentQuantity) / totalRateOfCharge;
         }
 
         //#endregion Standard resource
@@ -2590,6 +2612,10 @@
         }
 
         initGarrison() {
+            if (!game.global.civic.garrison) {
+                return false;
+            }
+
             this._garrisonVue = getVueById(this._garrisonVueBinding);
             if (this._garrisonVue === undefined) {
                 return false;
@@ -2599,6 +2625,10 @@
         }
 
         initHell() {
+            if (!game.global.portal.fortress) {
+                return false;
+            }
+
             this._hellVue = getVueById(this._hellVueBinding);
             if (this._hellVue === undefined) {
                 return false;
@@ -5671,6 +5701,7 @@
     function resetProductionSettings() {
         settings.productionPrioritizeDemanded = true;
         settings.productionMinRatio = 0.1;
+        settings.productionSmelting = "storage";
     }
 
     function resetProductionState() {
@@ -5959,6 +5990,7 @@
 
         addSetting("productionPrioritizeDemanded", true);
         addSetting("productionMinRatio", 0.1);
+        addSetting("productionSmelting", "storage");
 
         addSetting("jobSetDefault", true);
         addSetting("jobLumberWeighting", 50);
@@ -7572,18 +7604,42 @@
             }
         }
 
-        let ironTicksToFull = resources.Iron.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : resources.Iron.timeToFull;
-        let steelTicksToFull = resources.Steel.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : resources.Steel.timeToFull;
+        let ironWeighting = 0;
+        let steelWeighting = 0;
+        switch (settings.productionSmelting){
+            case "iron":
+                ironWeighting = 1;
+                break;
+            case "steel":
+                steelWeighting = 1;
+                break;
+            case "storage":
+                ironWeighting = resources.Iron.timeToFull;
+                steelWeighting = resources.Steel.timeToFull;
+                break;
+            case "required":
+                ironWeighting = resources.Iron.timeToRequired;
+                steelWeighting = resources.Steel.timeToRequired;
+                break;
+        }
+
+        if (resources.Iron.requestedQuantity > 0) {
+            ironWeighting = Number.MAX_SAFE_INTEGER;
+        }
+        if (resources.Steel.requestedQuantity > 0) {
+            steelWeighting = Number.MAX_SAFE_INTEGER;
+        }
+
 
         // We have more steel than we can afford OR iron income is too low
-        if (smelterSteelCount > maxAllowedSteel || smelterSteelCount > 0 && ironTicksToFull > steelTicksToFull) {
+        if (smelterSteelCount > maxAllowedSteel || smelterSteelCount > 0 && ironWeighting > steelWeighting) {
             smelter.increaseSmelting(smelter.Productions.Iron, 1);
         }
 
         // We can afford more steel AND either steel income is too low OR both steel and iron full, but we can use steel smelters to increase titanium income
         if (smelterSteelCount < maxAllowedSteel && smelterIronCount > 0 &&
-             ((steelTicksToFull > ironTicksToFull) ||
-              (steelTicksToFull === 0 && ironTicksToFull === 0 && resources.Titanium.timeToFull > 0 && isResearchUnlocked("hunter_process")))) {
+             ((steelWeighting > ironWeighting) ||
+              (steelWeighting === 0 && ironWeighting === 0 && resources.Titanium.storageRatio < 0.99 && isResearchUnlocked("hunter_process")))) {
             smelter.increaseSmelting(smelter.Productions.Steel, 1);
         }
 
@@ -12120,6 +12176,24 @@
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableSmelter"></div>');
         addStandardHeading(preTableNode, "Smelter");
+
+        preTableNode.append(`<div style="margin-top: 5px; width: 400px;">
+                              <label for="script_productionSmelting">Distributing:</label>
+                              <select id="script_productionSmelting" style="width: 200px; float: right;">
+                                <option value = "iron">Prioritize Iron</option>
+                                <option value = "steel">Prioritize Steel</option>
+                                <option value = "storage">Both, up to full storages</option>
+                                <option value = "required">Both, up to required amounts</option>
+                              </select>
+                            </div>`);
+
+        let selectNode = $('#script_productionSmelting');
+
+        selectNode.val(settings.productionSmelting);
+        selectNode.on('change', function() {
+            settings.productionSmelting = this.value;
+            updateSettingsFromState();
+        });
 
         // Add table
         currentNode.append(
