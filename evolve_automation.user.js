@@ -13286,93 +13286,101 @@
      * @param {Resource} resource
      */
     function createMarketToggle(resource) {
-        let autoBuyChecked = resource.autoBuyEnabled ? " checked" : "";
-        let autoSellChecked = resource.autoSellEnabled ? " checked" : "";
+        let marketRow = $('<span class="ea-market-toggle" style="margin-left: auto; margin-right: 0.2rem; float:right;"></span>').appendTo('#market-' + resource.id);
+
+        if (!game.global.race['no_trade']) {
+            let autoBuyChecked = resource.autoBuyEnabled ? " checked" : "";
+            let autoSellChecked = resource.autoSellEnabled ? " checked" : "";
+            let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch"><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="state"></span></label>');
+            let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" title="Enable selling of this resource. When to sell is set in the Settings tab."  class="switch"><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="state"></span></label>');
+            marketRow.append(toggleBuy);
+            marketRow.append(toggleSell);
+
+            toggleBuy.on('change', function(e) {
+                let state = e.currentTarget.children[0].checked;
+                resource.autoBuyEnabled = state;
+                let otherCheckbox = document.querySelector('#script_buy2_' + resource.id + ' input');
+                if (otherCheckbox !== null) {
+                    otherCheckbox.checked = state;
+                }
+                updateSettingsFromState();
+            });
+
+            toggleSell.on('change', function(e) {
+                let state = e.currentTarget.children[0].checked;
+                resource.autoSellEnabled = state;
+                let otherCheckbox = document.querySelector('#script_sell2_' + resource.id + ' input');
+                if (otherCheckbox !== null) {
+                    otherCheckbox.checked = state;
+                }
+                updateSettingsFromState();
+            });
+        }
+
         let autoTradeBuyChecked = resource.autoTradeBuyEnabled ? " checked" : "";
         let autoTradeSellChecked = resource.autoTradeSellEnabled ? " checked" : "";
-        let marketRow = $('#market-' + resource.id);
-        let toggleBuy = $('<label id="script_buy1_' +  resource.id + '" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch ea-market-toggle" style="margin-left: 12px"><input type="checkbox"' + autoBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">buy</span><span class="state"></span></label>');
-        let toggleSell = $('<label id="script_sell1_' +  resource.id + '" tabindex="0" title="Enable selling of this resource. When to sell is set in the Settings tab."  class="switch ea-market-toggle" style=""><input type="checkbox"' + autoSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">sell</span><span class="state"></span></label>');
-        let toggleTradeFor = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" title="Enable trading for this resource. Max routes is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade for</span><span class="state"></span></label>');
-        let toggleTradeAway = $('<label id="script_tsell1_' +  resource.id + '" tabindex="0" title="Enable trading this resource away. Min income is set in the Settings tab." class="switch ea-market-toggle" style=""><input type="checkbox"' + autoTradeSellChecked + '> <span class="check" style="height:5px;"></span><span class="control-label" style="font-size: small;">trade away</span><span class="state"></span></label>');
-        marketRow.append(toggleBuy);
-        marketRow.append(toggleSell);
+        let toggleTradeFor = $('<label id="script_tbuy1_' +  resource.id + '" tabindex="0" title="Enable trading for this resource. Max routes is set in the Settings tab." class="switch"><input type="checkbox"' + autoTradeBuyChecked + '> <span class="check" style="height:5px;"></span><span class="state"></span></label>');
+        let toggleTradeAway = $('<label id="script_tsell1_' +  resource.id + '" tabindex="0" title="Enable trading this resource away. Min income is set in the Settings tab." class="switch"><input type="checkbox"' + autoTradeSellChecked + '> <span class="check" style="height:5px;"></span><span class="state"></span></label>');
         marketRow.append(toggleTradeFor);
         marketRow.append(toggleTradeAway);
 
-        toggleBuy.on('change', function(e) {
-            //console.log(e);
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            resource.autoBuyEnabled = state;
-            let otherCheckbox = document.querySelector('#script_buy2_' + resource.id + ' input');
-            if (otherCheckbox !== null) {
-                // @ts-ignore
-                otherCheckbox.checked = state;
-            }
-            updateSettingsFromState();
-            //console.log(state);
-        });
-
-        toggleSell.on('change', function(e) {
-            //console.log(e);
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-            resource.autoSellEnabled = state;
-            let otherCheckbox = document.querySelector('#script_sell2_' + resource.id + ' input');
-            if (otherCheckbox !== null) {
-                // @ts-ignore
-                otherCheckbox.checked = state;
-            }
-            updateSettingsFromState();
-            //console.log(state);
-        });
-
         toggleTradeFor.on('change', function(e) {
-            //console.log(e);
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
+            let state = e.currentTarget.children[0].checked;
             resource.autoTradeBuyEnabled = state;
             let otherCheckbox = document.querySelector('#script_tbuy2_' + resource.id + ' input');
             if (otherCheckbox !== null) {
-                // @ts-ignore
                 otherCheckbox.checked = state;
             }
             updateSettingsFromState();
-            //console.log(state);
         });
 
         toggleTradeAway.on('change', function(e) {
-            //console.log(e);
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
+            let state = e.currentTarget.children[0].checked;
             resource.autoTradeSellEnabled = state;
             let otherCheckbox = document.querySelector('#script_tsell2_' + resource.id + ' input');
             if (otherCheckbox !== null) {
-                // @ts-ignore
                 otherCheckbox.checked = state;
             }
             updateSettingsFromState();
-            //console.log(state);
         });
     }
 
     function createMarketToggles() {
         removeMarketToggles();
 
-        $("#market .market-item[id] .res").width("5rem");
-        $("#market .market-item[id] .trade > :first-child").text("R:");
-        $("#market .trade .zero").text("x");
+        if (!game.global.race['no_trade']) {
+            $("#market .market-item[id] .res").width("5rem");
+            $("#market .market-item[id] .buy span").text("B");
+            $("#market .market-item[id] .sell span").text("S");
+            $("#market .market-item[id] .trade > :first-child").text("R");
+            $("#market .trade .zero").text("x");
+        }
+
+        $("#market-qty").after(`<div class="market-item vb" id="script_market_top_row" style="overflow:hidden">
+                                  <span style="margin-left: auto; margin-right: 0.2rem; float:right;">
+   ${!game.global.race['no_trade']?'<span class="has-text-success" style="width: 2.75rem; margin-right: 0.3em; display: inline-block; text-align: center;">Buy</span>\
+                                    <span class="has-text-danger" style="width: 2.75rem; margin-right: 0.3em; display: inline-block; text-align: center;">Sell</span>':''}
+                                    <span class="has-text-warning" style="width: 2.75rem; margin-right: 0.3em; display: inline-block; text-align: center;">In</span>
+                                    <span class="has-text-warning" style="width: 2.75rem; display: inline-block; text-align: center;">Away</span>
+                                  </span>
+                                </div>`);
+
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             createMarketToggle(state.marketManager.priorityList[i]);
         }
     }
 
     function removeMarketToggles() {
-        $("#market .market-item[id] .res").width("7.5rem");
-        $("#market .market-item[id] .trade > :first-child").text("Routes:");
-        $("#market .trade .zero").text("Cancel Routes");
         $('.ea-market-toggle').remove();
+        $("#script_market_top_row").remove();
+
+        if (!game.global.race['no_trade']) {
+            $("#market .market-item[id] .res").width("7.5rem");
+            $("#market .market-item[id] .buy span").text("BUY");
+            $("#market .market-item[id] .sell span").text("SELL");
+            $("#market .market-item[id] .trade > :first-child").text("Routes:");
+            $("#market .trade .zero").text("Cancel Routes");
+        }
     }
 
     //#endregion UI
