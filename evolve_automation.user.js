@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.21
+// @version      3.3.1.22
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5472,12 +5472,9 @@
     function resetBuildingState() {
         state.buildingManager.clearPriorityList();
 
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SacrificialAltar);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Windmill);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Mill);
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmControl);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmSatellite);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CoalPower);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.OilPower);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.FissionPower);
@@ -5486,39 +5483,41 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaLuxuryCondo);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wardenclyffe);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.BioLab);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Mine);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CementPlant);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Factory);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CementPlant);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Mine);
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOutpost);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellGeothermal); // produces power
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltSpaceStation); // this building resets ui when clicked
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltEleriumShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellGeothermal);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumReactor);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIridiumShip);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIronShip);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceNavBeacon);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonBase); // this building resets ui when clicked
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonIridiumMine);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonHeliumMine);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMining);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceport); // this building resets ui when clicked
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedTower);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedLivingQuarters);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaStarport);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaHabitat);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaTransferStation);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFabrication);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMine);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedBiodome);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedExoticLab); // this building resets ui when clicked
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOilExtractor);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumContainer);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldController);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceNavBeacon);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonBase); // this building resets ui when clicked
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceport); // this building resets ui when clicked
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedTower);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaTransferStation);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaStarport);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaHabitat);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedLivingQuarters);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedBiodome);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceBarracks);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonHeliumMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonIridiumMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedExoticLab); // this building resets ui when clicked
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFabrication);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFactory);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltSpaceStation); // this building resets ui when clicked
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltEleriumShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIridiumShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIronShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOutpost);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMining);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOilExtractor);
 
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Barracks);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.University);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Smelter);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Temple);
@@ -5526,7 +5525,6 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.StorageYard);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Warehouse);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Bank);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Barracks);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Hospital);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.BootCamp);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.House);
@@ -5540,17 +5538,17 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Trade);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Amphitheatre);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Library);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wharf);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Lodge); // Cath only
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Smokehouse); // Cath only
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SoulWell); // Evil only
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlavePen); // Evil only
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlaveMarket); // Evil only
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Graveyard); // Evil only
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shrine); // Celestial only
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CompostHeap); // Moldling only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Lodge); // Carnivore/Detritivore/Soul Eater trait
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Smokehouse); // Carnivore trait
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SoulWell); // Soul Eater trait
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlavePen); // Slaver trait
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SlaveMarket); // Slaver trait
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Graveyard); // Evil trait
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Shrine); // Magnificent trait
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CompostHeap); // Detritivore trait
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Pylon); // Magic Universe only
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SacrificialAltar); // Cannibalize trait
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
@@ -5563,6 +5561,8 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSwarmPlant);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmControl);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmSatellite);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasStorage);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDock);
@@ -6726,7 +6726,13 @@
     function autoBattle() {
         let m = state.warManager;
 
-        if (!m.initGarrison()) {
+        if (!m.initGarrison() || m.maxCityGarrison <= 0) {
+            return;
+        }
+
+        // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
+        if (state.goal === "PreparingMAD") {
+            m.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
             return;
         }
 
@@ -6751,20 +6757,13 @@
             }
         }
 
-        // Don't send our troops out if we're preparing for MAD as we need all troops at home for maximum plasmids
-        if (state.goal === "PreparingMAD") {
-            m.hireMercenary(); // but hire mercenaries if we can afford it to get there quicker
-            return;
-        }
-
         // Stop here, if we don't want to attack anything
         if (settings.foreignPacifist || !m.isForeignUnlocked()) {
             return;
         }
 
         // If we are not fully ready then return
-        if (m.maxCityGarrison <= 0 ||
-            m.wounded > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison ||
+        if (m.wounded > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison ||
             m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison) {
             return;
         }
@@ -10021,7 +10020,7 @@
             mutations.forEach(mutation => {
                 mutation.addedNodes.forEach(node => {
                     let building = buildingIds[node.id.substr(3)];
-                    if (building?.weighting > 0) {
+                    if (building && (building.autoBuildEnabled || building.weighting > 0)) {
                         node.style.pointerEvents = "none";
                         node.innerHTML += `<div>${building.extraDescription}</div>`;
                     }
@@ -12689,7 +12688,7 @@
 
     function buildBuildingLabel(building) {
         let color = "has-text-info";
-        if (building._tab === "space") {
+        if (building._tab === "space" || building._tab === "starDock") {
             color = "has-text-danger";
         } else if (building._tab === "galaxy") {
             color = "has-text-advanced";
