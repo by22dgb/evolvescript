@@ -9630,8 +9630,8 @@
                         // Only craftables stores their cost in resourceRequirements, factory currently ignored
                         for (let k = 0; k < resource.resourceRequirements.length; k++) {
                             let material = resource.resourceRequirements[k].resource;
-                            if (material.storageRatio < settings.productionMinRatio) {
-                                material.requestedQuantity = Math.max(material.requestedQuantity, required - material.currentQuantity);
+                            if (material.storageRatio < settings.productionMinRatio + 0.05) {
+                                material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (settings.productionMinRatio + 0.05) - material.currentQuantity);
                             }
                         }
                     }
