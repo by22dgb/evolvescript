@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.22
+// @version      3.3.1.23
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -787,7 +787,7 @@
             this.consumption.push(normalizeProperties({ resource: resource, rate: rate }));
         }
 
-        missingSupply() {
+        getMissingSupply() {
             let uselessSupport = 0;
 
             for (let j = 0; j < this.consumption.length; j++) {
@@ -4651,7 +4651,7 @@
             SpaceNavBeacon: new Action("Space Navigation Beacon", "space", "nav_beacon", "spc_home"),
 
             // Moon
-            MoonMission: new Action("Moon Mission", "space", "moon_mission", "spc_moon", {mission: true}),
+            MoonMission: new Action("Moon Launch", "space", "moon_mission", "spc_moon", {mission: true}),
             MoonBase: new Action("Moon Base", "space", "moon_base", "spc_moon"),
             MoonIridiumMine: new Action("Moon Iridium Mine", "space", "iridium_mine", "spc_moon"),
             MoonHeliumMine: new Action("Moon Helium-3 Mine", "space", "helium_mine", "spc_moon"),
@@ -4896,7 +4896,7 @@
 
         // Construct space buildings list
         state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.Moon_Support, -1);
-        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.Red_Support, () => game.global.tech.luna >= 2 ? -1 : 0);
+        state.spaceBuildings.SpaceNavBeacon.addResourceConsumption(resources.Red_Support, () => game.global.tech.luna >= 3 ? -1 : 0);
         state.spaceBuildings.MoonBase.addResourceConsumption(resources.Moon_Support, -2);
         state.spaceBuildings.MoonBase.addResourceConsumption(resources.Oil, 2);
         state.spaceBuildings.MoonIridiumMine.addResourceConsumption(resources.Moon_Support, 1);
@@ -6265,11 +6265,11 @@
                             (settings.prestigeType !== "bioseed" && !race.isMadAchievementUnlocked(achievementLevel))) {
                             remainingRace = race;
                             remainingAchievements++;
-                        }
 
-                        // We're forcing Valdi to be the very last chosen race, when there's no other options, by overriding remainingPercent
-                        if (race === races.junker) {
-                            remainingAchievements = 0.01;
+                            // We're forcing Valdi to be the very last chosen race, when there's no other options, by overriding remainingPercent
+                            if (race === races.junker) {
+                                remainingAchievements = 0.01;
+                            }
                         }
                     }
 
@@ -6468,7 +6468,7 @@
                 if (!isAchievementUnlocked("biome_" + planet.biome, alevel)) {
                     planet.achieve++;
                 }
-                if (!isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
+                if (planet.trait && !isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
                     planet.achieve++;
                 }
                 if (planetBiomeRaces[planet.biome]) {
@@ -7130,7 +7130,7 @@
 
             log("autoJobs", "currentQuantity " + resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0))
             if (isDemonRace()) {
-                if (resources.Population.currentQuantity > breakpoint0Max && requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(1)) {
+                if (availableEmployees > breakpoint0Max && requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(1)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
                     requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(1);
                 } else if (requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(0)) {
@@ -9050,7 +9050,7 @@
                   numberOfContainersWeCanBuild = 0;
               }
               // Only build pre-mad crates when already have Plywood for next level of library
-              if (isLumberRace() && state.cityBuildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity) && (state.cityBuildings.StorageYard.count > 1 || state.cityBuildings.Wharf.count > 1)) {
+              if (isLumberRace() && state.cityBuildings.Library.count < 20 && state.cityBuildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity) && (resources.Crates.maxQuantity !== state.cityBuildings.StorageYard.count * 10)) {
                   numberOfCratesWeCanBuild = 0;
               }
             }
@@ -9337,7 +9337,7 @@
             {name: "gxy_gorddon", piracy: 800, armada: 0, useful: state.spaceBuildings.GorddonFreighter.stateOnCount > 0},
             {name: "gxy_alien1", piracy: 1000, armada: 0, useful: state.spaceBuildings.Alien1VitreloyPlant.stateOnCount > 0 && resources.Vitreloy.storageRatio < 0.99},
             {name: "gxy_alien2", piracy: 2500, armada: state.spaceBuildings.Alien2Foothold.stateOnCount * 50 + state.spaceBuildings.Alien2ArmedMiner.stateOnCount * 5, useful: state.spaceBuildings.Alien2Scavenger.stateOnCount > 0 || (state.spaceBuildings.Alien2ArmedMiner.stateOnCount > 0 && (resources.Bolognium.storageRatio < 0.99 || resources.Adamantite.storageRatio < 0.99 || resources.Iridium.storageRatio < 0.99)) || state.spaceBuildings.Alien2Mission.isUnlocked()},
-            {name: "gxy_chthonian", piracy: 7500, armada: state.spaceBuildings.ChthonianMineLayer.stateOnCount * 50 + state.spaceBuildings.ChthonianRaider.stateOnCount * 12, useful: (state.spaceBuildings.ChthonianExcavator.stateOnCount > 0 && resources.Orichalcum.storageRatio < 0.99) || (state.spaceBuildings.ChthonianRaider.stateOnCount > 0 && (resources.Vitreloy.storageRatio < 0.99 || resources.Polymer.storageRatio < 0.99 || resources.Neutronium.storageRatio < 0.99 || resources.Deute.storageRatio < 0.99)) || state.spaceBuildings.ChthonianMission.isUnlocked()},
+            {name: "gxy_chthonian", piracy: 7500, armada: state.spaceBuildings.ChthonianMineLayer.stateOnCount * 50 + state.spaceBuildings.ChthonianRaider.stateOnCount * 12, useful: (state.spaceBuildings.ChthonianExcavator.stateOnCount > 0 && resources.Orichalcum.storageRatio < 0.99) || (state.spaceBuildings.ChthonianRaider.stateOnCount > 0 && (resources.Vitreloy.storageRatio < 0.99 || resources.Polymer.storageRatio < 0.99 || resources.Neutronium.storageRatio < 0.99 || resources.Deuterium.storageRatio < 0.99)) || state.spaceBuildings.ChthonianMission.isUnlocked()},
         ];
         let allFleets = [
             {name: "scout_ship", count: state.spaceBuildings.ScoutShip.stateOnCount, power: game.actions.galaxy.gxy_gateway.scout_ship.ship.rating},
@@ -9626,6 +9626,14 @@
                             continue;
                         }
                         resource.requestedQuantity = Math.max(resource.requestedQuantity, required - resource.currentQuantity);
+
+                        // Only craftables stores their cost in resourceRequirements, factory currently ignored
+                        for (let k = 0; k < resource.resourceRequirements.length; k++) {
+                            let material = resource.resourceRequirements[k].resource;
+                            if (material.storageRatio < settings.productionMinRatio) {
+                                material.requestedQuantity = Math.max(material.requestedQuantity, required - material.currentQuantity);
+                            }
+                        }
                     }
                 }
             }
@@ -9885,7 +9893,7 @@
               () => settings.buildingWeightingTriggerConflict
           ],[
               () => true,
-              (building) => building.missingSupply(),
+              (building) => building.getMissingSupply(),
               (supply) => supply.rate > 0 ?
                           `Missing ${supply.resource.name} to operate` :
                           `Provided ${supply.resource.name} not currently needed`,
@@ -10107,14 +10115,14 @@
         if (settings.autoJobs) {
             autoJobs(); // Can invalidates rateOfChange
         }
+        if (settings.autoPower) {
+            autoPower(); // Underpowering can invalidate count of powered buildings, and whatrever they're doing will be gone
+        }
         if (settings.autoARPA) {
             autoArpa(); // Invalidates progress of constructed projects
         }
         if (settings.autoBuild) {
             autoBuild(); // Invalidates count of constructed buildings
-        }
-        if (settings.autoPower) {
-            autoPower(); // Underpowering can invalidate count of powered buildings, and whatrever they're doing will be gone
         }
         if (settings.autoAssembleGene) {
             autoAssembleGene(); // Called after arpa, buildings, and research to not steal knowledge from them
@@ -10315,10 +10323,21 @@
 
             .ui-autocomplete {
                 background-color: #000;
+                position: absolute;
+                top: 0;
+                left: 0;
+                cursor: default;
             }
 
             .ui-helper-hidden-accessible {
-                display:none;
+                border: 0;
+                clip: rect(0 0 0 0);
+                height: 1px;
+                margin: -1px;
+                overflow: hidden;
+                padding: 0;
+                position: absolute;
+                width: 1px;
             }
         `
 
