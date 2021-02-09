@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.23
+// @version      3.3.1.24
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2819,6 +2819,9 @@
             // At 10 soldiers there's no hivemind bonus or malus, and the malus gets up to 50%, so start with up to 2x soldiers below 10
 
             maxSoldiers = this.maxSoldiers;
+            if (game.armyRating(maxSoldiers, this._textArmy, "0") < targetRating) {
+                return Number.MAX_SAFE_INTEGER;
+            }
             while (maxSoldiers > 1 && game.armyRating(maxSoldiers - 1, this._textArmy, "0") > targetRating) {
                 maxSoldiers--;
             }
