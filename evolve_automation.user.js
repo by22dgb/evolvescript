@@ -8788,7 +8788,7 @@
             }
 
             // Disable tourist center with full money
-            if (building === state.cityBuildings.TouristCenter && resources.Food.storageRatio < 0.7 && resources.Money.storageRatio > 0.98) {
+            if (building === state.cityBuildings.TouristCenter && !game.global.race['ravenous'] && resources.Food.storageRatio < 0.7 && resources.Money.storageRatio > 0.98) {
                 maxStateOn = Math.min(maxStateOn, state.cityBuildings.TouristCenter.stateOnCount - 1);
             }
 
