@@ -10025,20 +10025,28 @@
         resourcesByAtomicMass.unshift({resource: resources.Infernite, requirement: 0});
         resourcesByAtomicMass.unshift({resource: resources.Elerium, requirement: 0});
 
-        new MutationObserver(mutations => {
-            if (!settings.autoBuild) {
-                return;
-            }
-            mutations.forEach(mutation => {
-                mutation.addedNodes.forEach(node => {
-                    let building = buildingIds[node.id.substr(3)];
-                    if (building && (building.autoBuildEnabled || building.weighting > 0)) {
-                        node.style.pointerEvents = "none";
-                        node.innerHTML += `<div>${building.extraDescription}</div>`;
-                    }
-                });
+        // Normal popups
+        new MutationObserver(addTooltip).observe(document.querySelector("#main"), {childList: true});
+
+        // Modal popups (Space Dock)
+        new MutationObserver(mutations => mutations.forEach(mutation => mutation.addedNodes.forEach(node => node.nodeType === Node.ELEMENT_NODE && node.classList.contains("modal") && new MutationObserver(addTooltip).observe(node, {childList: true})))).observe(document.querySelector("body"), {childList: true});
+    }
+
+    function addTooltip(mutations) {
+        if (!settings.autoBuild) {
+            return;
+        }
+        mutations.forEach(mutation => {
+            mutation.addedNodes.forEach(node => {
+                // "pop[id]" for normal buildings, "popq[id][order]" for queue
+                let id = node.id.match(/\d$/) ? node.id.substr(4, node.id.length-5) : node.id.substr(3);
+                let building = buildingIds[id];
+                if (building && (building.autoBuildEnabled || building.weighting > 0)) {
+                    node.style.pointerEvents = "none";
+                    node.innerHTML += `<div>${building.extraDescription}</div>`;
+                }
             });
-        }).observe(document.querySelector("#main"), {childList: true});
+        });
     }
 
     function automate() {
