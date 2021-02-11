@@ -5353,6 +5353,7 @@
             Object.assign(resource, defaultState);
             resource.storagePriority = index;
         }
+        resources.Orichalcum.storeOverflow = true;
 
         state.storageManager.priorityList = priorityList;
     }
@@ -12293,7 +12294,7 @@
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFoundry"></div>');
         addStandardHeading(preTableNode, "Foundry");
         addStandardSectionSettingsToggle(preTableNode, "productionPrioritizeDemanded", "Prioritize demanded craftables", "Resources above amount required for constructions won't be crafted, if there's better options enabled and available, ignoring weighted ratio");
-        addStandardSectionSettingsNumber(preTableNode, "productionMinRatio", "Preserve ingredients up to ratio", "Craft resources only when storages of all ingridients above given ratio");
+        addStandardSectionSettingsNumber(preTableNode, "productionMinRatio", "Preserve ingredients up to this ratio", "Craft resources only when storages of all ingredients above given ratio");
 
         // Add table
         currentNode.append(
@@ -12583,7 +12584,7 @@
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
-        addStandardSectionSettingsToggle(preTableNode, "buildingStrictMode", "Strict weighting mode", "This option disables all weighting optimizations, gauranting that nothing will delay prioritized buildings. Normally script consider storage caps, current amount of resources, and incomes, trying to determine whether less priority building can be be build without delaying prioritized one, or not. However, all those values may fluctuate, and sudden temporal changes may confuse script, making it think it's safe to use something, which later become a bottleneck. Normally this optimisations speed up building process by a lot, and minor fluctuatons doesn't overweights benefits. Unless you need(e.g. queued) to build something very expensive, and wrong spending may add a hours of delay, and should be avoided at any cost. This option for such cases, with this enabled script will autobuild only when it's absolutely safe.");
+        addStandardSectionSettingsToggle(preTableNode, "buildingStrictMode", "Strict weighting mode", "This option disables all weighting optimizations, guarantying that nothing will delay prioritized buildings. Normally script consider storage caps, current amount of resources, and incomes, trying to determine whether less priority building can be be build without delaying prioritized one, or not. However, all those values may fluctuate, and sudden temporal changes may confuse script, making it think it's safe to use something, which later become a bottleneck. Normally this optimisations speed up building process by a lot, and minor fluctuatons doesn't overweights benefits. Unless you need(e.g. queued) to build something very expensive, and wrong spending may add a hours of delay, and should be avoided at any cost. This option for such cases, with this enabled script will autobuild only when it's absolutely safe.");
 
         currentNode.append(`<div style="margin-top: 5px; width: 400px;">
                               <label for="script_buildingShrineType">Prefered Shrine:</label>
