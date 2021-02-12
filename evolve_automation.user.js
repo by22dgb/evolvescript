@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.24
+// @version      3.3.1.25
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -10806,11 +10806,11 @@
         prestigeHeaderNode.append(`<div style="display: inline-block; width: 80%; text-align: left; margin-bottom: 10px;">
                                       <label for="${typeSelectNodeID}">Prestige Type:</label>
                                       <select id="${typeSelectNodeID}" style="text-align: right; height: 18px; width: 150px; float: right;">
-                                        <option value = "none">None</option>
+                                        <option value = "none" title = "Endless game">None</option>
                                         <option value = "mad" title = "MAD prestige once MAD has been researched and all soldiers are home">Mutual Assured Destruction</option>
                                         <option value = "bioseed" title = "Launches the bioseeder ship to perform prestige when required probes have been constructed">Bioseed</option>
                                         <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
-                                        <option value = "ascension" title = "Not implemented. Only switches auto theology to deify currently.">Ascension</option>
+                                        <option value = "ascension" title = "Not implemented. Same as 'None', but with Deify as auto theology">Ascension</option>
                                       </select>
                                     </div>`);
 
@@ -10957,7 +10957,7 @@
         currentNode.append(`<div style="margin-top: 5px; width: 400px;">
                               <label for="script_userUniverseTargetName">Target Universe:</label>
                               <select id="script_userUniverseTargetName" style="width: 150px; float: right;">
-                                <option value = "none">None</option>
+                                <option value = "none" title = "Wait for user selection">None</option>
                               </select>
                             </div>`);
 
@@ -10977,7 +10977,7 @@
         currentNode.append(`<div style="margin-top: 5px; width: 400px;">
                               <label for="script_userPlanetTargetName">Target Planet:</label>
                               <select id="script_userPlanetTargetName" style="width: 150px; float: right;">
-                                <option value = "none">None</option>
+                                <option value = "none" title = "Wait for user selection">None</option>
                                 <option value = "habitable" title = "Picks most habitable planet, based on biome and trait">Most habitable</option>
                                 <option value = "achieve" title = "Picks planet with most unearned achievements. Takes in account extinction achievements for planet exclusive races, and greatness achievements for planet biome, trait, and exclusive genus.">Most achievements</option>
                               </select>
@@ -11045,10 +11045,22 @@
         addStandardHeading(currentNode, "Evolution Queue");
         addStandardSectionSettingsToggle(currentNode, "evolutionQueueEnabled", "Queue Enabled", "When enabled script with evolve with queued settings, from top to bottom. During that script settings will be overriden with settings stored in queue. Queued target will be removed from list after evolution.");
 
-        let addButton = $('<div style="margin-top: 10px;"><button id="script_evlution_add" class="button">Add New Evolution</button></div>');
-        currentNode.append(addButton);
-        $("#script_evlution_add").on("click", addEvolutionSetting);
+        currentNode.append(`<div style="margin-top: 5px; width: 400px;">
+                              <label for="script_evolution_prestige">Prestige for new evolutions:</label>
+                              <select id="script_evolution_prestige" style="text-align: right; height: 18px; width: 150px; float: right;">
+                                <option value = "auto" title = "Inherited from current Prestige Settings">Current Prestige</option>
+                                <option value = "none" title = "Endless game">None</option>
+                                <option value = "mad" title = "MAD prestige once MAD has been researched and all soldiers are home">Mutual Assured Destruction</option>
+                                <option value = "bioseed" title = "Launches the bioseeder ship to perform prestige when required probes have been constructed">Bioseed</option>
+                                <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
+                                <option value = "ascension" title = "Not implemented. Same as 'None', but with Deify as auto theology">Ascension</option>
+                              </select>
+                            </div>
+                            <div style="margin-top: 10px;">
+                              <button id="script_evlution_add" class="button">Add New Evolution</button>
+                            </div>`);
 
+        $("#script_evlution_add").on("click", addEvolutionSetting);
         currentNode.append(
             `<table style="width:100%"><tr>
                     <th class="has-text-warning" style="width:15%">Race</th>
@@ -11158,6 +11170,11 @@
             let settingName = evolutionSettingsToStore[i];
             let settingValue = settings[settingName];
             queuedEvolution[settingName] = settingValue;
+        }
+
+        let overridePrestige = $("#script_evolution_prestige").first().val();
+        if (overridePrestige && overridePrestige !== "auto") {
+            queuedEvolution.prestigeType = overridePrestige;
         }
 
         let queueLength = settings.evolutionQueue.push(queuedEvolution);
