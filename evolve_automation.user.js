@@ -9624,7 +9624,7 @@
                         let required = demandedObject.resourceRequirements[j].quantity * costMod;
 
                         // We need to check storage ratio here, as queued buildings may be unaffordable
-                        if (resource.currentQuantity >= required || resource.storageRatio > 0.99){
+                        if (resource.currentQuantity >= required || resource.storageRatio > 0.98){
                             continue;
                         }
                         resource.requestedQuantity = Math.max(resource.requestedQuantity, required - resource.currentQuantity);
@@ -9654,10 +9654,10 @@
         }
 
         if (settings.missionRequest) {
-            if (resources.Oil.currentQuantity < state.oilRequiredByMissions) {
+            if (resources.Oil.currentQuantity < state.oilRequiredByMissions && resources.Oil.storageRatio < 0.98) {
                 resources.Oil.requestedQuantity = Math.max(resources.Oil.requestedQuantity, state.oilRequiredByMissions - resources.Oil.requestedQuantity);
             }
-            if (resources.Helium_3.currentQuantity < state.heliumRequiredByMissions) {
+            if (resources.Helium_3.currentQuantity < state.heliumRequiredByMissions && resources.Helium_3.storageRatio < 0.98) {
                 resources.Helium_3.requestedQuantity = Math.max(resources.Helium_3.requestedQuantity, state.heliumRequiredByMissions - resources.Helium_3.requestedQuantity);
             }
         }
