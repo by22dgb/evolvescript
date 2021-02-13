@@ -1124,6 +1124,7 @@
             this._autoContainersMax = -1;
 
             this.weighting = 1;
+            this.preserve = 0;
 
             /** @type {ResourceRequirement[]} */
             this.resourceRequirements = [];
@@ -5711,7 +5712,6 @@
 
     function resetProductionSettings() {
         settings.productionPrioritizeDemanded = true;
-        settings.productionMinRatio = 0.1;
         settings.productionSmelting = "storage";
     }
 
@@ -5733,19 +5733,14 @@
         Object.assign(productions.NanoTube, {enabled: true, weighting: 8, priority: 2});
         Object.assign(productions.Stanene, {enabled: true, weighting: 8, priority: 2});
 
-        // Foundry settings
-        for (let i = 0; i < state.craftableResourceList.length; i++) {
-            const resource = state.craftableResourceList[i];
-            resource.autoCraftEnabled = true;
-        }
-        resources.Plywood.weighting = 1;
-        resources.Brick.weighting = 1;
-        resources.Wrought_Iron.weighting = 1;
-        resources.Sheet_Metal.weighting = 3;
-        resources.Mythril.weighting = 10;
-        resources.Aerogel.weighting = 10;
-        resources.Nanoweave.weighting = 10;
-        resources.Scarletite.weighting = 10;
+        Object.assign(resources.Plywood, {autoCraftEnabled: true, weighting: 1, preserve: 0});
+        Object.assign(resources.Brick, {autoCraftEnabled: true, weighting: 1, preserve: 0});
+        Object.assign(resources.Wrought_Iron, {autoCraftEnabled: true, weighting: 1, preserve: 0});
+        Object.assign(resources.Sheet_Metal, {autoCraftEnabled: true, weighting: 3, preserve: 0});
+        Object.assign(resources.Mythril, {autoCraftEnabled: true, weighting: 10, preserve: 0.1});
+        Object.assign(resources.Aerogel, {autoCraftEnabled: true, weighting: 10, preserve: 0.1});
+        Object.assign(resources.Nanoweave, {autoCraftEnabled: true, weighting: 10, preserve: 0.1});
+        Object.assign(resources.Scarletite, {autoCraftEnabled: true, weighting: 10, preserve: 0.1});
 
         let droid = state.spaceBuildings.AlphaMiningDroid;
         Object.assign(droid.Productions.Adamantite, {priority: 3, weighting: 1});
@@ -5795,6 +5790,7 @@
             let resource = state.craftableResourceList[i];
             resource.autoCraftEnabled = settings['craft' + resource.id] ?? resource.autoCraftEnabled;
             resource.weighting = parseFloat(settings['foundry_w_' + resource.id] ?? resource.weighting);
+            resource.preserve = parseFloat(settings['foundry_p_' + resource.id] ?? resource.preserve);
         }
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
@@ -5900,6 +5896,7 @@
             const resource = state.craftableResourceList[i];
             settings['craft' + resource.id] = resource.autoCraftEnabled;
             settings["foundry_w_" + resource.id] = resource.weighting;
+            settings["foundry_p_" + resource.id] = resource.preserve;
         }
 
         for (let i = 0; i < state.jobManager.priorityList.length; i++) {
@@ -5999,7 +5996,6 @@
         addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
 
         addSetting("productionPrioritizeDemanded", true);
-        addSetting("productionMinRatio", 0.1);
         addSetting("productionSmelting", "storage");
 
         addSetting("jobSetDefault", true);
@@ -6161,6 +6157,7 @@
         }
 
         // TODO: Remove me after few more versions. Clean up old fork-only settings, not used neither here, nor in original script.
+        delete settings.productionMinRatio;
         delete settings.buildingEstimateTime;
         delete settings.buildingWeightingQueueHelper;
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
@@ -7178,7 +7175,7 @@
                   }
                 );
 
-                if (afforableAmount < availableCraftsmen || lowestRatio < settings.productionMinRatio){
+                if (afforableAmount < availableCraftsmen || lowestRatio < job.resource.preserve){
                     continue;
                 }
 
@@ -9635,8 +9632,8 @@
                         // Only craftables stores their cost in resourceRequirements, factory currently ignored
                         for (let k = 0; k < resource.resourceRequirements.length; k++) {
                             let material = resource.resourceRequirements[k].resource;
-                            if (material.storageRatio < settings.productionMinRatio + 0.05) {
-                                material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (settings.productionMinRatio + 0.05) - material.currentQuantity);
+                            if (material.storageRatio < resource.preserve + 0.05) {
+                                material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (resource.preserve + 0.05) - material.currentQuantity);
                             }
                         }
                     }
@@ -12348,12 +12345,11 @@
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTableFoundry"></div>');
         addStandardHeading(preTableNode, "Foundry");
-        addStandardSectionSettingsToggle(preTableNode, "productionPrioritizeDemanded", "Prioritize demanded craftables", "Resources above amount required for constructions won't be crafted, if there's better options enabled and available, ignoring weighted ratio");
-        addStandardSectionSettingsNumber(preTableNode, "productionMinRatio", "Preserve ingredients up to this ratio", "Craft resources only when storages of all ingredients above given ratio");
+        addStandardSectionSettingsToggle(preTableNode, "productionPrioritizeDemanded", "Prioritize demanded craftables", "Resources already produced above maximum amount required for constructing buildings won't be crafted, if there's better options enabled and available, ignoring weighted ratio");
 
         // Add table
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:25%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Min Ingredients</th><th class="has-text-warning" style="width:5%"></th></tr>
                 <tbody id="script_productionTableBodyFoundry" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12363,7 +12359,7 @@
 
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             const resource = state.craftableResourceList[i];
-            newTableBodyText += '<tr value="' + resource.id + '"><td id="script_foundry_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:25%"></td></tr>';
+            newTableBodyText += '<tr value="' + resource.id + '"><td id="script_foundry_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12379,6 +12375,9 @@
 
             productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsInput(resource, "foundry_w_" + resource.id, "weighting"));
+
+            productionElement = productionElement.next();
+            productionElement.append(buildStandartSettingsInput(resource, "foundry_p_" + resource.id, "preserve"));
         }
     }
 
