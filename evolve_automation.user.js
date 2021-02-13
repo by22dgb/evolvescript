@@ -5257,7 +5257,10 @@
     }
 
     function resetGeneralSettings() {
+        settings.triggerRequest = true;
         settings.queueRequest = true;
+        settings.researchRequest = true;
+        settings.missionRequest = true;
         settings.genesAssembleGeneAlways = false;
         settings.buildingAlwaysClick = false;
         settings.buildingClickPerTick = 50;
@@ -5314,8 +5317,8 @@
     }
 
     function resetMarketState() {
-        let defaultState = {autoBuyEnabled: false, autoBuyRatio: 0.5, autoSellEnabled: false, autoSellRatio: 0.9, autoTradeBuyEnabled: false, autoTradeBuyRoutes: 0, autoTradeSellEnabled: true, autoTradeSellMinPerSecond: 1};
-        let defaultStateBuy = {autoBuyRatio: 0.8, autoTradeBuyEnabled: true, autoTradeBuyRoutes: 50};
+        let defaultState = {autoBuyEnabled: false, autoBuyRatio: 0.5, autoSellEnabled: false, autoSellRatio: 0.9, autoTradeBuyEnabled: false, autoTradeBuyRoutes: 0, autoTradeSellEnabled: true, autoTradeSellMinPerSecond: 0};
+        let defaultStateBuy = {autoBuyRatio: 0.8, autoTradeBuyEnabled: true, autoTradeBuyRoutes: 1000};
 
         let priorityList = Object.values(resources).filter(r => r.isTradable()).reverse();
         for (let [index, resource] of priorityList.entries()) {
@@ -5323,13 +5326,10 @@
             resource.marketPriority = index;
         }
 
-        Object.assign(resources.Helium_3, defaultStateBuy);
         Object.assign(resources.Iridium, defaultStateBuy);
         Object.assign(resources.Polymer, defaultStateBuy);
         Object.assign(resources.Alloy, defaultStateBuy);
         Object.assign(resources.Titanium, defaultStateBuy);
-        Object.assign(resources.Uranium, {autoTradeBuyEnabled: true, autoTradeBuyRoutes: 2});
-        Object.assign(resources.Oil, {autoTradeBuyEnabled: true, autoTradeBuyRoutes: 5});
 
         state.marketManager.priorityList = priorityList;
 
@@ -5755,7 +5755,6 @@
     }
 
     function resetTriggerSettings() {
-        settings.triggerRequest = true;
     }
 
     function resetTriggerState() {
@@ -6056,7 +6055,6 @@
 
         addSetting("minimumMoney", 0);
         addSetting("minimumMoneyPercentage", 0);
-        addSetting("queueRequest", true);
         addSetting("tradeRouteMinimumMoneyPerSecond", 300);
         addSetting("tradeRouteMinimumMoneyPercentage", 50);
         addSetting("generalMinimumTaxRate", 0);
@@ -6148,6 +6146,9 @@
         addSetting("buildingStateAll", true);
 
         addSetting("triggerRequest", true);
+        addSetting("queueRequest", true);
+        addSetting("researchRequest", true);
+        addSetting("missionRequest", true);
 
         // Collapse or expand settings sections
         for (let i = 0; i < settingsSections.length; i++) {
@@ -9171,7 +9172,7 @@
         // Then for demanded resources
         for (let id in resources) {
             let resource = resources[id];
-            if (resource.requestedQuantity > 0 && resource.isTradable()) {
+            if (resource.requestedQuantity > 0 && resource.isUnlocked() && resource.isTradable()) {
                 // Calculate amount of routes we need
                 let routes = Math.ceil(resource.requestedQuantity / resource.tradeRouteQuantity);
 
@@ -9642,6 +9643,27 @@
                 }
             }
         }
+
+        // Resources required by unlocked and affordable techs
+        if (settings.researchRequest) {
+            $("#tech .action:not(.cnam) a:first-child").each(function() {
+                Object.entries($(this).data()).forEach(([name, amount]) => {
+                    let resource = resLowIds[name];
+                    if (resource !== undefined && resource.currentQuantity < amount) {
+                        resource.requestedQuantity = Math.max(resource.requestedQuantity, amount - resource.currentQuantity);
+                    }
+                });
+            });
+        }
+
+        if (settings.missionRequest) {
+            if (resources.Oil.currentQuantity < state.oilRequiredByMissions) {
+                resources.Oil.requestedQuantity = Math.max(resources.Oil.requestedQuantity, state.oilRequiredByMissions - resources.Oil.requestedQuantity);
+            }
+            if (resources.Helium_3.currentQuantity < state.heliumRequiredByMissions) {
+                resources.Helium_3.requestedQuantity = Math.max(resources.Helium_3.requestedQuantity, state.heliumRequiredByMissions - resources.Helium_3.requestedQuantity);
+            }
+        }
     }
 
     function updateState() {
@@ -9972,6 +9994,11 @@
               (building) => building === state.cityBuildings.Warehouse,
               () => "Still have some unused containers",
               () => settings.buildingWeightingCrateUseless
+          ],[
+              () => resources.Oil.maxQuantity < state.oilRequiredByMissions && state.cityBuildings.OilWell.count <= 0 && state.spaceBuildings.GasMoonOilExtractor.count <= 0,
+              (building) => building === state.cityBuildings.OilWell,
+              () => "Need more fuel",
+              () => settings.buildingWeightingMissingFuel
           ],[
               () => resources.Helium_3.maxQuantity < state.heliumRequiredByMissions || resources.Oil.maxQuantity < state.oilRequiredByMissions,
               (building) => building === state.cityBuildings.OilDepot || building === state.spaceBuildings.SpacePropellantDepot || building === state.spaceBuildings.GasStorage,
@@ -10766,7 +10793,12 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_generalPreTable"></div>');
-        addStandardSectionSettingsToggle(preTableNode, "queueRequest", "Prioritize resources for queue", "Readjust trade routes and production to resources missed by buildings in queue");
+
+        addStandardSectionSettingsToggle(preTableNode, "triggerRequest", "Prioritize resources for triggers", "Readjust trade routes and production to resources required for active triggers");
+        addStandardSectionSettingsToggle(preTableNode, "queueRequest", "Prioritize resources for queue", "Readjust trade routes and production to resources required for buildings and researches in queue");
+        addStandardSectionSettingsToggle(preTableNode, "researchRequest", "Prioritize resources for researches", "Readjust trade routes and production to resources required for unlocked and affordable researches");
+        addStandardSectionSettingsToggle(preTableNode, "missionRequest", "Prioritize resources for missions", "Readjust trade routes and production to resources required for unlocked and affordable missions");
+
         addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
         addStandardSectionSettingsToggle(preTableNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of autoBuild, to bootstrap production. With this toggled on it will continue clicking forever");
         addStandardSectionSettingsNumber(preTableNode, "buildingClickPerTick", "Maximum clicks per second", "Number of clicks performed at once, each second. Hardcapped by amount of missed resources");
@@ -10897,7 +10929,7 @@
         // Government selector
         buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govInterim", "Interim Government", "Temporary low tier government until you research other governments");
         buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govFinal", "Second Government", "Second government choice, chosen once becomes avaiable. Can be the same as above");
-        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govSpace", "Space Government", "Government for bioseed+. Chosen once you researced Quantum Manufacturing. Can be the same as above");
+        buildGovernmentSelectorSetting(secondaryPrefix, preTableNode, "govSpace", "Space Government", "Government for bioseed+. Chosen once you researched Quantum Manufacturing. Can be the same as above");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11213,8 +11245,6 @@
         let addButton = $('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
         preTableNode.append(addButton);
         $("#script_trigger_add").on("click", addTriggerSetting);
-
-        addStandardSectionSettingsToggle(preTableNode, "triggerRequest", "Prioritize resources for triggers", "Once trigger requirements are met, and you have enough storage, readjust trade routes and production to resources required to complete task.");
 
         // Add table
         currentNode.append(
