@@ -5318,8 +5318,8 @@
     }
 
     function resetMarketState() {
-        let defaultState = {autoBuyEnabled: false, autoBuyRatio: 0.5, autoSellEnabled: false, autoSellRatio: 0.9, autoTradeBuyEnabled: false, autoTradeBuyRoutes: 0, autoTradeSellEnabled: true, autoTradeSellMinPerSecond: 0};
-        let defaultStateBuy = {autoBuyRatio: 0.8, autoTradeBuyEnabled: true, autoTradeBuyRoutes: 1000};
+        let defaultState = {autoBuyEnabled: false, autoBuyRatio: 0.5, autoSellEnabled: false, autoSellRatio: 0.9, autoTradeBuyEnabled: false, autoTradeBuyRoutes: 1000, autoTradeSellEnabled: true, autoTradeSellMinPerSecond: 0};
+        let defaultStateBuy = {autoBuyRatio: 0.8, autoTradeBuyEnabled: true};
 
         let priorityList = Object.values(resources).filter(r => r.isTradable()).reverse();
         for (let [index, resource] of priorityList.entries()) {
@@ -13130,17 +13130,17 @@
             createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\\greatness achievements for yet.');
             createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
             createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
-            createSettingToggle(scriptNode, 'autoFleet', 'Manages Andromeda fleed to supress piracy');
+            createSettingToggle(scriptNode, 'autoFleet', 'Manages Andromeda fleet to supress piracy');
             createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
             createSettingToggle(scriptNode, 'autoCraft', 'Craft when a specified crafting ratio is met. This changes throughout the game - lower in the beginning and rising as the game progresses.', createCraftToggles, removeCraftToggles);
-            createSettingToggle(scriptNode, 'autoBuild', 'Builds city and space building when it can an production allows (eg. Won\'t build a Fission Reactor if you don\'t have enough uranium production). Currently has a few smarts for higher plasmid counts to get certain building built a little bit quicker.', createBuildingToggles, removeBuildingToggles);
+            createSettingToggle(scriptNode, 'autoBuild', 'Builds city and space building when it can an production allows (eg. Won\'t build a Fission Reactor if you don\'t have enough uranium production).', createBuildingToggles, removeBuildingToggles);
             createSettingToggle(scriptNode, 'autoPower', 'Manages power based on a priority order of buildings. Starts with city based building then space based.');
             createSettingToggle(scriptNode, 'autoStorage', 'Assigns crates to allow storage of resources.');
             createSettingToggle(scriptNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes.', createMarketToggles, removeMarketToggles);
             createSettingToggle(scriptNode, 'autoResearch', 'Performs research when minimum requirements are met. ');
             createSettingToggle(scriptNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(scriptNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
-            createSettingToggle(scriptNode, 'autoCraftsmen', 'Enable this when performing challenge runs and autoJobs will also manage craftsmen.');
+            createSettingToggle(scriptNode, 'autoCraftsmen', 'Enable this and autoJobs will also manage craftsmen.');
             createSettingToggle(scriptNode, 'autoQuarry', 'Manages rock quarry stone to chrysotile ratio for smoldering races');
             createSettingToggle(scriptNode, 'autoSmelter', 'Manages smelter output at different stages at the game.');
             createSettingToggle(scriptNode, 'autoFactory', 'Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.');
