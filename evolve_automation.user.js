@@ -9655,14 +9655,6 @@
                             continue;
                         }
                         resource.requestedQuantity = Math.max(resource.requestedQuantity, required - resource.currentQuantity);
-
-                        // Only craftables stores their cost in resourceRequirements, factory currently ignored
-                        for (let k = 0; k < resource.resourceRequirements.length; k++) {
-                            let material = resource.resourceRequirements[k].resource;
-                            if (material.storageRatio < resource.preserve + 0.05) {
-                                material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (resource.preserve + 0.05) - material.currentQuantity);
-                            }
-                        }
                     }
                 }
             }
@@ -9686,6 +9678,20 @@
             }
             if (resources.Helium_3.currentQuantity < state.heliumRequiredByMissions && resources.Helium_3.storageRatio < 0.98) {
                 resources.Helium_3.requestedQuantity = Math.max(resources.Helium_3.requestedQuantity, state.heliumRequiredByMissions - resources.Helium_3.requestedQuantity);
+            }
+        }
+
+        // Prioritize material for craftables
+        for (let id in resources) {
+            let resource = resources[id];
+            if (resource.requestedQuantity > 0) {
+                // Only craftables stores their cost in resourceRequirements, no need for additional checks
+                for (let i = 0; i < resource.resourceRequirements.length; i++) {
+                    let material = resource.resourceRequirements[i].resource;
+                    if (material.storageRatio < resource.preserve + 0.05) {
+                        material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (resource.preserve + 0.05) - material.currentQuantity);
+                    }
+                }
             }
         }
     }
