@@ -5728,12 +5728,12 @@
 
         // Factory settings
         let productions = state.cityBuildings.Factory.Productions;
-        Object.assign(productions.LuxuryGoods, {enabled: true, weighting: 1, priority: 1});
-        Object.assign(productions.Furs, {enabled: false, weighting: 0, priority: 0});
-        Object.assign(productions.Alloy, {enabled: true, weighting: 2, priority: 2});
-        Object.assign(productions.Polymer, {enabled: true, weighting: 2, priority: 2});
-        Object.assign(productions.NanoTube, {enabled: true, weighting: 8, priority: 2});
-        Object.assign(productions.Stanene, {enabled: true, weighting: 8, priority: 2});
+        Object.assign(productions.LuxuryGoods, {enabled: true, weighting: 1, priority: 2});
+        Object.assign(productions.Furs, {enabled: true, weighting: 1, priority: 1});
+        Object.assign(productions.Alloy, {enabled: true, weighting: 1, priority: 3});
+        Object.assign(productions.Polymer, {enabled: true, weighting: 1, priority: 3});
+        Object.assign(productions.NanoTube, {enabled: true, weighting: 4, priority: 3});
+        Object.assign(productions.Stanene, {enabled: true, weighting: 4, priority: 3});
 
         Object.assign(resources.Plywood, {autoCraftEnabled: true, weighting: 1, preserve: 0});
         Object.assign(resources.Brick, {autoCraftEnabled: true, weighting: 1, preserve: 0});
@@ -8358,7 +8358,7 @@
         let resPerClick = getResourcesPerClick();
         let amount = 0;
         if (state.cityBuildings.Food.isClickable()){
-            if (global.tech['conjuring']) {
+            if (game.global.tech['conjuring']) {
                 amount = Math.floor(Math.min((resources.Food.maxQuantity - resources.Food.currentQuantity) / (resPerClick * 10), resources.Mana.currentQuantity, settings.buildingClickPerTick));
                 resources.Mana.currentQuantity -= amount;
                 resources.Food.currentQuantity += amount * resPerClick;
@@ -8372,7 +8372,7 @@
             }
         }
         if (state.cityBuildings.Lumber.isClickable()){
-            if (global.tech['conjuring'] >= 2) {
+            if (game.global.tech['conjuring'] >= 2) {
                 amount = Math.floor(Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / (resPerClick * 10), resources.Mana.currentQuantity, settings.buildingClickPerTick));
                 resources.Mana.currentQuantity -= amount;
                 resources.Lumber.currentQuantity += amount * resPerClick;
@@ -8386,7 +8386,7 @@
             }
         }
         if (state.cityBuildings.Stone.isClickable()){
-            if (global.tech['conjuring'] >= 2) {
+            if (game.global.tech['conjuring'] >= 2) {
                 amount = Math.floor(Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / (resPerClick * 10), resources.Mana.currentQuantity, settings.buildingClickPerTick));
                 resources.Mana.currentQuantity -= amount;
                 resources.Stone.currentQuantity += amount * resPerClick;
@@ -8400,7 +8400,7 @@
             }
         }
         if (state.cityBuildings.Chrysotile.isClickable()){
-            if (global.tech['conjuring'] >= 2) {
+            if (game.global.tech['conjuring'] >= 2) {
                 amount = Math.floor(Math.min((resources.Chrysotile.maxQuantity - resources.Chrysotile.currentQuantity) / (resPerClick * 10), resources.Mana.currentQuantity, settings.buildingClickPerTick));
                 resources.Mana.currentQuantity -= amount;
                 resources.Chrysotile.currentQuantity += amount * resPerClick;
@@ -10045,8 +10045,7 @@
         }
 
         // And for buildings popups
-        for (let i = 0; i < state.buildingManager.priorityList.length; i++){
-            let building = state.buildingManager.priorityList[i];
+        for (let building of [...Object.values(state.cityBuildings), ...Object.values(state.spaceBuildings)]){
             buildingIds[building.settingId] = building;
         }
 
