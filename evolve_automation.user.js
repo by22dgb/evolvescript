@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.26
+// @version      3.3.1.27
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -8350,7 +8350,7 @@
 
     function autoGatherResources() {
         // Don't spam click once we've got a bit of population going
-        if (!settings.buildingAlwaysClick && resources.Population.currentQuantity > 15 && state.cityBuildings.RockQuarry.count > 0) {
+        if (!settings.buildingAlwaysClick && resources.Population.currentQuantity > 15 && (state.cityBuildings.RockQuarry.count > 0 || game.global.race['sappy'])) {
             return;
         }
 
@@ -9512,8 +9512,11 @@
         }
 
         // Add clicking to rate of change, so we can sell or eject it. TODO: Not accurate in magic universe.
-        if (settings.buildingAlwaysClick || (settings.autoBuild && (resources.Population.currentQuantity <= 15 || state.cityBuildings.RockQuarry.count < 1))) {
+        if (settings.buildingAlwaysClick || (settings.autoBuild && (resources.Population.currentQuantity <= 15 || (state.cityBuildings.RockQuarry.count < 1 && !game.global.race['sappy'])))) {
             let resPerClick = getResourcesPerClick();
+            if (game.global.settings.at > 0) {
+                resPerClick /= 2;
+            }
             if (state.cityBuildings.Food.isClickable()) {
                 resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
             }
