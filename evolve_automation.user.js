@@ -5487,39 +5487,6 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.FissionPower);
 
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Apartment);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaLuxuryCondo);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wardenclyffe);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.BioLab);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Factory);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CementPlant);
-
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellGeothermal);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumReactor);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeCompletedStargate);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumContainer);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldController);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceNavBeacon);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonBase); // this building resets ui when clicked
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceport); // this building resets ui when clicked
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedTower);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaTransferStation);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaStarport);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaHabitat);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedLivingQuarters);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedBiodome);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceBarracks);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonHeliumMine);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonIridiumMine);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedExoticLab); // this building resets ui when clicked
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFabrication);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFactory);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMine);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltSpaceStation); // this building resets ui when clicked
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltEleriumShip);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIridiumShip);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIronShip);
-
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Barracks);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.University);
@@ -5554,34 +5521,29 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Pylon); // Magic Universe only
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.SacrificialAltar); // Cannibalize trait
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceGps);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpacePropellantDepot);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedGarage);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedZiggurat);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSwarmPlant);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmControl);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmSatellite);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasStorage);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDock);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDockProbe);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDockShipSegment);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonDrone);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumReactor);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldCollider);
 
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellGeothermal);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSwarmPlant);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaTransferStation);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCargoYard);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCruiser);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaDyson);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaDysonSphere);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaOrichalcumSphere);
+
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaStarport);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaFusion);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaHabitat);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaLuxuryCondo);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMiningDroid);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaProcessing);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaFusion);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaLaboratory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaMegaFactory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaExoticZoo);
@@ -5589,35 +5551,46 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaFactory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.AlphaWarehouse);
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCargoYard);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaCruiser);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaDyson);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaDysonSphere);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ProximaOrichalcumSphere);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaNexus);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaHarvestor);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaEleriumProspector);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronStellarForge);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceTestLaunch);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceSatellite);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceGps);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpacePropellantDepot);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SpaceNavBeacon);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedTower);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceport);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedLivingQuarters);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedBiodome);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedSpaceBarracks);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedExoticLab);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFabrication);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedVrCenter);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedZiggurat);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedGarage);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonBase);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonObservatory);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonHeliumMine);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.MoonIridiumMine);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmControl);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SunSwarmSatellite);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasStorage);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDock);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDockProbe);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasSpaceDockShipSegment);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonDrone);
+
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Blackhole);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStellarEngine);
-
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalTurret);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWarDroid);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWarDrone);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAttractor);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalCarport);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSoulForge);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalGunEmplacement);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSoulAttractor);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalRepairDroid);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalPitMission);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAssaultForge);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalEastTower);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWestTower);
-
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeJumpShip);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeWormholeMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeStargate);
@@ -5630,8 +5603,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionMachine);
         //state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscend); // This is performing the actual ascension. We'll deal with this in prestige automation
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionTrigger); // This is the 10,000 power one
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeMassEjector);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeCompletedStargate); // Should be powered before Andromeda
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GatewayMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GatewayStarbase);
@@ -5647,14 +5619,14 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.CorvetteShip);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ScoutShip);
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDepot);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDefensePlatform);
-
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonEmbassy);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonDormitory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonSymposium);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GorddonFreighter);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.SiriusAscensionTrigger); // This is the 10,000 power one, buildings below this one should be safe to underpower for ascension. Buildings above this either provides, or support population
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeMassEjector); // Top priority of safe buildings, disable *only* for ascension, otherwise we want to have them on at any cost, to keep pumping black hole
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien1Consulate);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.Alien1Resort);
@@ -5672,24 +5644,61 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianExcavator);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.ChthonianRaider);
 
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSensorDrone);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Wardenclyffe);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.BioLab);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfWorldController);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BlackholeFarReach);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaNexus);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaHarvestor);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NebulaEleriumProspector);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltSpaceStation);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltEleriumShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIridiumShip);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.BeltIronShip);
+
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CementPlant);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Factory);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOutpost);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedVrCenter);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMiner);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.RedFactory);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDefensePlatform);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDepot);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumContainer);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalTurret);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSensorDrone);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWarDroid);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWarDrone);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAttractor);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalCarport);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSoulForge);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalGunEmplacement);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSoulAttractor);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalRepairDroid);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalPitMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAssaultForge);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalEastTower);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWestTower);
+
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMining);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMiner);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronStellarForge);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronCitadel);
+
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MetalRefinery);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Mine);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CoalMine);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSpaceCasino);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOilExtractor);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Sawmill);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOilExtractor);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
-
-        state.spaceBuildings.PortalAttractor.autoStateEnabled = false;
     }
 
     function resetProjectSettings() {
