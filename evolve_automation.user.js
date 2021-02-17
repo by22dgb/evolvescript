@@ -7902,7 +7902,7 @@
             }
 
             // Only produce graphene above cap if there's working BlackholeMassEjector, otherwise there's no use for excesses for sure.
-            if (resources.Graphene.storageRatio > 0.999 && resources.Graphene.currentEject <= 0) {
+            if (resources.Graphene.storageRatio > 0.99 && resources.Graphene.currentEject <= 0) {
                 maxFueledForConsumption = 0;
             }
 
@@ -7985,7 +7985,7 @@
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
 
-                if (remaining <= 0 || !resource.ejectEnabled || resource.storageRatio < 0.99) {
+                if (remaining <= 0 || !resource.ejectEnabled || resource.storageRatio < 0.985) {
                     resourceRequirement.requirement = 0;
                     return;
                 }
