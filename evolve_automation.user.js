@@ -8734,6 +8734,13 @@
                     break;
                 }
 
+                // Don't use all Deuterium, we need it for upkeep
+                if (requirement.resource === resources.Deuterium && requirement.resource.currentQuantity - onePercentOfRequirementQuantity < 100) {
+                    log("autoARPA", "break: Deuterium current - requirement < 100");
+                    allowBuild = false;
+                    break;
+                }
+
                 if (!requirement.resource.isCraftable() && requirement.resource.storageRatio <= 0.98) {
                     log("autoARPA", "break: storage < 98%");
                     allowBuild = false;
