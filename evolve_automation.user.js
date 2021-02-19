@@ -7638,7 +7638,7 @@
                     return;
                 }
 
-                let maxAllowedUnits = fuel.id === "Star" ? game.global.city.smelter.StarCap : remainingSmelters;
+                let maxAllowedUnits = remainingSmelters;
                 fuel.cost.forEach(productionCost => {
                     let resource = productionCost.resource;
 
@@ -7648,7 +7648,7 @@
                         remainingRateOfChange -= productionCost.minRateOfChange;
                     }
 
-                    if (resource.storageRatio < 0.8){
+                    if (resource.storageRatio < 0.8 || resource === resources.StarPower){
                         let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
                         maxAllowedUnits = Math.min(maxAllowedUnits, affordableAmount);
                     }
