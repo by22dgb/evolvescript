@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.27
+// @version      3.3.1.28
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -100,10 +100,17 @@
     class NoMultiplier {
         constructor() {
             this._remainder = 0;
+            this._lastLoopCounter = 0;
         }
 
         reset(value) {
             this._remainder = value;
+            if (this._lastLoopCounter !== state.loopCounter) {
+                this._lastLoopCounter = state.loopCounter
+                document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x10}));
+                document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x25}));
+                document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x100}));
+            }
         }
 
         get remainder() {
@@ -1640,10 +1647,11 @@
             }, [ResourceProductionCost]);
 
             this.Fuels = normalizeProperties({
-                Oil: {id: "Oil", unlocked: () => game.global.resource.Oil.display, cost: new ResourceProductionCost(resources.Oil, 0.35, 2)},
-                Coal: {id: "Coal", unlocked: () => game.global.resource.Coal.display, cost: new ResourceProductionCost(resources.Coal, () => !isLumberRace() ? 0.15 : 0.25, 2)},
-                Wood: {id: "Wood", unlocked: () => isLumberRace() || game.global.race['evil'], cost: new ResourceProductionCost(resources.Lumber, () => game.global.race['evil'] && !game.global.race['soul_eater'] ? 1 : 3, 6)},
-                Star: {id: "Star", unlocked: () => game.global.tech.star_forge >= 2, cost: new ResourceProductionCost(resources.StarPower, 1, 0)},
+                Oil: {id: "Oil", unlocked: () => game.global.resource.Oil.display, cost: [new ResourceProductionCost(resources.Oil, 0.35, 2)]},
+                Coal: {id: "Coal", unlocked: () => game.global.resource.Coal.display, cost: [new ResourceProductionCost(resources.Coal, () => !isLumberRace() ? 0.15 : 0.25, 2)]},
+                Wood: {id: "Wood", unlocked: () => isLumberRace() || game.global.race['evil'], cost: [new ResourceProductionCost(resources.Lumber, () => game.global.race['evil'] && !game.global.race['soul_eater'] ? 1 : 3, 6)]},
+                Star: {id: "Star", unlocked: () => game.global.tech.star_forge >= 2, cost: [new ResourceProductionCost(resources.StarPower, 1, 0)]},
+                Inferno: {id: "Inferno", unlocked: () => game.global.tech.smelting >= 8, cost: [new ResourceProductionCost(resources.Coal, 50, 50), new ResourceProductionCost(resources.Oil, 35, 50), new ResourceProductionCost(resources.Infernite, 0.5, 50)]},
             }, [ResourceProductionCost]);
         }
 
@@ -2678,7 +2686,7 @@
         }
 
         get hellGarrison()  {
-            return this.hellSoldiers - this.hellPatrolSize * this.hellPatrols - this.hellSoulForgeSoldiers;
+            return this.hellSoldiers - this.hellPatrolSize * this.hellPatrols - this.hellReservedSoldiers;
         }
 
         /**
@@ -2731,19 +2739,20 @@
             return true;
         }
 
-        // export function soulForgeSoldiers() from Evolve/src/portal.js
-        get hellSoulForgeSoldiers(){
-            if (!game.global.portal.soul_forge || !game.global.portal.soul_forge.on) return 0;
-
-            // Taken from the game code, so should give the same result
-            let soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
-            if (game.global.portal.gun_emplacement) {
-                soldiers -= game.global.portal.gun_emplacement.on * (game.global.tech.hell_gun >= 2 ? 2 : 1);
-                if (soldiers < 0){
-                    soldiers = 0;
+        get hellReservedSoldiers(){
+            let soldiers = 0;
+            if (state.spaceBuildings.PortalSoulForge.stateOnCount > 0) {
+                // export function soulForgeSoldiers() from Evolve/src/portal.js
+                soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
+                if (game.global.portal.gun_emplacement) {
+                    soldiers -= game.global.portal.gun_emplacement.on * (game.global.tech.hell_gun >= 2 ? 2 : 1);
+                    if (soldiers < 0){
+                        soldiers = 0;
+                    }
                 }
             }
-            return soldiers;
+
+            return soldiers + state.spaceBuildings.PortalGuardPost.stateOnCount;
         }
 
         increaseCampaignDifficulty() {
@@ -2857,7 +2866,7 @@
                 this._hellVue.aLast();
             }
 
-            let min = this.hellPatrols * this.hellPatrolSize + this.hellSoulForgeSoldiers + state.spaceBuildings.PortalGuardPost.stateOnCount;
+            let min = this.hellPatrols * this.hellPatrolSize + this.hellReservedSoldiers;
             this.hellSoldiers = Math.max(this.hellSoldiers - count, min);
             this.hellAssigned = this.hellSoldiers;
 
@@ -3402,7 +3411,7 @@
 
             this.multiplier = Math.min(Math.max(1, multiplier), this.getMaxMultiplier());
 
-            $("#market-qty .input").val(this.multiplier);
+            getVueById("market-qty").qty = this.multiplier;
 
             return false;
         }
@@ -4824,13 +4833,15 @@
             PortalSurveyRuins: new Action("Portal Survey Ruins", "portal", "ruins_mission", "prtl_ruins", {mission: true}),
             PortalGuardPost: new Action("Portal Guard Post", "portal", "guard_post", "prtl_ruins"),
             PortalVault: new Action("Portal Vault", "portal", "vault", "prtl_ruins"),
-            PortalArchaeology: new Action("Portal Vault", "portal", "archaeology", "prtl_ruins"),
+            PortalArchaeology: new Action("Portal Archaeology", "portal", "archaeology", "prtl_ruins"),
             PortalArcology: new Action("Portal Arcology", "portal", "arcology", "prtl_ruins"),
             PortalHellForge: new Action("Portal Infernal Forge", "portal", "hell_forge", "prtl_ruins"),
             PortalInfernoPower: new Action("Portal Inferno Reactor", "portal", "inferno_power", "prtl_ruins"),
             PortalAncientPillars: new Action("Portal Ancient Pillars", "portal", "ancient_pillars", "prtl_ruins"),
             PortalEastTower: new Action("Portal East Tower", "portal", "east_tower", "prtl_gate"),
             PortalWestTower: new Action("Portal West Tower", "portal", "west_tower", "prtl_gate"),
+            PortalGateTurret: new Action("Portal Gate Turret", "portal", "gate_turret", "prtl_gate"),
+            PortalInferniteMine: new Action("Portal Infernite Mine", "portal", "infernite_mine", "prtl_gate"),
         },
 
         projects: {
@@ -4858,6 +4869,7 @@
         resources.Crates.resourceRequirements = normalizeProperties([() => isLumberRace() ? {resource: resources.Plywood, quantity: 10} : {resource: resources.Stone, quantity: 200}]);
         resources.Containers.resourceRequirements.push(new ResourceRequirement(resources.Steel, 125));
 
+        state.jobManager.addCraftingJob(state.jobs.Scarletite); // Scarletite should be on top
         state.jobManager.addCraftingJob(state.jobs.Plywood);
         state.jobManager.addCraftingJob(state.jobs.Brick);
         state.jobManager.addCraftingJob(state.jobs.WroughtIron);
@@ -4865,7 +4877,6 @@
         state.jobManager.addCraftingJob(state.jobs.Mythril);
         state.jobManager.addCraftingJob(state.jobs.Aerogel);
         state.jobManager.addCraftingJob(state.jobs.Nanoweave);
-        state.jobManager.addCraftingJob(state.jobs.Scarletite);
 
         resetJobState();
 
@@ -4890,6 +4901,7 @@
         state.spaceBuildings.PortalSoulForge.gameMax = 1;
         state.spaceBuildings.PortalEastTower.gameMax = 1;
         state.spaceBuildings.PortalWestTower.gameMax = 1;
+        state.spaceBuildings.PortalVault.gameMax = 2;
         state.spaceBuildings.GorddonEmbassy.gameMax = 1;
         state.spaceBuildings.Alien1Consulate.gameMax = 1;
 
@@ -4995,6 +5007,10 @@
 
         state.spaceBuildings.ChthonianMineLayer.addResourceConsumption(resources.Helium_3, 8);
         state.spaceBuildings.ChthonianRaider.addResourceConsumption(resources.Helium_3, 18);
+
+        state.spaceBuildings.PortalInfernoPower.addResourceConsumption(resources.Infernite, 5);
+        state.spaceBuildings.PortalInfernoPower.addResourceConsumption(resources.Coal, 100);
+        state.spaceBuildings.PortalInfernoPower.addResourceConsumption(resources.Oil, 80);
 
         state.evolutionChallengeList.push(state.evolutions.Bunker);
         state.evolutionChallengeList.push(state.evolutions.Plasmid);
@@ -5317,6 +5333,7 @@
     function resetResearchSettings() {
         settings.userResearchTheology_1 = "auto";
         settings.userResearchTheology_2 = "auto";
+        settings.researchAlienGift = true;
     }
 
     function resetMarketState() {
@@ -5357,6 +5374,8 @@
             resource.storagePriority = index;
         }
         resources.Orichalcum.storeOverflow = true;
+        resources.Vitreloy.storeOverflow = true;
+        resources.Bolognium.storeOverflow = true;
 
         state.storageManager.priorityList = priorityList;
     }
@@ -5681,8 +5700,20 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalRepairDroid);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalPitMission);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAssaultForge);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalAncientPillars);
+
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSurveyRuins);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalGuardPost);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalVault);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalArchaeology);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalArcology);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalHellForge);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalInfernoPower);
+
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalEastTower);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWestTower);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalGateTurret);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalInferniteMine);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMining);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.NeutronMission);
@@ -5699,6 +5730,27 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Sawmill);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOilExtractor);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
+
+        // AutoBuild disabled by default for buildings consuming Soul Gems
+        state.spaceBuildings.RedVrCenter.autoBuildEnabled = false;
+        state.spaceBuildings.NeutronCitadel.autoBuildEnabled = false;
+        state.spaceBuildings.PortalWarDroid.autoBuildEnabled = false;
+        state.spaceBuildings.PortalWarDrone.autoBuildEnabled = false;
+        state.spaceBuildings.PortalRepairDroid.autoBuildEnabled = false;
+        state.spaceBuildings.Dreadnought.autoBuildEnabled = false;
+        state.spaceBuildings.CruiserShip.autoBuildEnabled = false;
+        state.spaceBuildings.FrigateShip.autoBuildEnabled = false;
+        state.spaceBuildings.BologniumShip.autoBuildEnabled = false;
+        state.spaceBuildings.CorvetteShip.autoBuildEnabled = false;
+        state.spaceBuildings.ScoutShip.autoBuildEnabled = false;
+        state.spaceBuildings.Alien2ArmedMiner.autoBuildEnabled = false;
+        state.spaceBuildings.PortalVault.autoBuildEnabled = false;
+        state.spaceBuildings.PortalHellForge.autoBuildEnabled = false;
+
+        // Same for Scarletite
+        state.spaceBuildings.PortalAncientPillars.autoBuildEnabled = false;
+        state.spaceBuildings.PortalEastTower.autoBuildEnabled = false;
+        state.spaceBuildings.PortalWestTower.autoBuildEnabled = false;
     }
 
     function resetProjectSettings() {
@@ -5731,6 +5783,7 @@
         let smelter = state.cityBuildings.Smelter;
         let smelterPriority = 0;
         smelter.Fuels.Star.priority = smelterPriority++;
+        smelter.Fuels.Inferno.priority = smelterPriority++;
         smelter.Fuels.Oil.priority = smelterPriority++;
         smelter.Fuels.Coal.priority = smelterPriority++;
         smelter.Fuels.Wood.priority = smelterPriority++;
@@ -5841,7 +5894,7 @@
         }
 
         for (let fuel of Object.values(state.cityBuildings.Smelter.Fuels)) {
-            fuel.priority = parseInt(settings['smelter_fuel_p_' + fuel.cost.resource.id] ?? fuel.priority);
+            fuel.priority = parseInt(settings['smelter_fuel_p_' + fuel.id] ?? fuel.priority);
         }
 
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
@@ -5942,7 +5995,7 @@
         }
 
         for (let fuel of Object.values(state.cityBuildings.Smelter.Fuels)) {
-            settings["smelter_fuel_p_" + fuel.cost.resource.id] = fuel.priority;
+            settings["smelter_fuel_p_" + fuel.id] = fuel.priority;
         }
 
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
@@ -6127,6 +6180,7 @@
 
         addSetting("userResearchTheology_1", "auto");
         addSetting("userResearchTheology_2", "auto");
+        addSetting("researchAlienGift", true);
 
         addSetting("buildingBuildIfStorageFull", false);
         addSetting("buildingStrictMode", false);
@@ -6171,6 +6225,7 @@
         delete settings.productionMinRatio;
         delete settings.buildingEstimateTime;
         delete settings.buildingWeightingQueueHelper;
+        delete settings.smelter_fuel_p_StarPower;
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
             delete settings["droid_p_" + production.resource.id];
         }
@@ -6855,7 +6910,7 @@
             let missingSoldiers = occCost - (m.currentCityGarrison - m.wounded - maxSoldiers);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
-                if (!m.initHell() || m.hellSoldiers - m.hellSoulForgeSoldiers < missingSoldiers) {
+                if (!m.initHell() || m.hellSoldiers - m.hellReservedSoldiers < missingSoldiers) {
                     return;
                 }
                 let patrolsToRemove = Math.ceil((missingSoldiers - m.hellGarrison) / m.hellPatrolSize);
@@ -6938,7 +6993,7 @@
         if (m.maxSoldiers > settings.hellHomeGarrison + settings.hellMinSoldiers &&
            (m.hellSoldiers > settings.hellMinSoldiers || (m.currentSoldiers >= m.maxSoldiers * settings.hellMinSoldiersPercent / 100))) {
             targetHellSoldiers = Math.min(m.currentSoldiers, m.maxSoldiers - settings.hellHomeGarrison); // Leftovers from an incomplete patrol go to hell garrison
-            let availableHellSoldiers = targetHellSoldiers - m.hellSoulForgeSoldiers;
+            let availableHellSoldiers = targetHellSoldiers - m.hellReservedSoldiers;
 
             // Determine target hell garrison size
             // Estimated average damage is roughly 35 * threat / defense, so required defense = 35 * threat / targetDamage
@@ -7167,9 +7222,7 @@
             let costMod = speed * craft_costs / 140;
 
             // Get list of craftabe resources
-
             let availableJobs = [];
-
             for (let i = 0; i < state.jobManager.craftingJobs.length; i++) {
                 let job = state.jobManager.craftingJobs[i];
                 // Check if we're allowed to craft this resource
@@ -7186,7 +7239,22 @@
                   }
                 );
 
-                if (afforableAmount < availableCraftsmen || lowestRatio < job.resource.preserve){
+                if (lowestRatio < job.resource.preserve) {
+                    continue;
+                }
+
+                if (job === state.jobs.Scarletite) {
+                    let maxScar = state.spaceBuildings.PortalHellForge.stateOnCount;
+                    if (afforableAmount < maxScar) {
+                        jobAdjustments[jobList.indexOf(job)] = 0 - job.count;
+                    } else {
+                        jobAdjustments[jobList.indexOf(job)] = maxScar - job.count;
+                        availableCraftsmen -= maxScar;
+                    }
+                    continue;
+                }
+
+                if (afforableAmount < availableCraftsmen){
                     continue;
                 }
 
@@ -7210,7 +7278,7 @@
                 const job = state.jobManager.craftingJobs[i];
                 const jobIndex = jobList.indexOf(job);
 
-                if (jobIndex === -1) {
+                if (jobIndex === -1 || job === state.jobs.Scarletite) {
                     continue;
                 }
 
@@ -7570,19 +7638,21 @@
                     return;
                 }
 
-                let productionCost = fuel.cost;
-                let resource = productionCost.resource;
+                let maxAllowedUnits = fuel.id === "Star" ? game.global.city.smelter.StarCap : remainingSmelters;
+                fuel.cost.forEach(productionCost => {
+                    let resource = productionCost.resource;
 
-                let remainingRateOfChange = resource.calculateRateOfChange({buy: true}) + (smelter.fueledCount(fuel) * productionCost.quantity);
-                // No need to preserve minimum income when storage is full
-                if (resource.storageRatio < 0.98) {
-                    remainingRateOfChange -= productionCost.minRateOfChange;
-                }
-                let maxAllowedUnits = remainingSmelters;
-                if (resource.storageRatio < 0.8){
-                    let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
-                    maxAllowedUnits = Math.min(maxAllowedUnits, affordableAmount);
-                }
+                    let remainingRateOfChange = resource.calculateRateOfChange({buy: true}) + (smelter.fueledCount(fuel) * productionCost.quantity);
+                    // No need to preserve minimum income when storage is full
+                    if (resource.storageRatio < 0.98) {
+                        remainingRateOfChange -= productionCost.minRateOfChange;
+                    }
+
+                    if (resource.storageRatio < 0.8){
+                        let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
+                        maxAllowedUnits = Math.min(maxAllowedUnits, affordableAmount);
+                    }
+                });
 
                 remainingSmelters -= maxAllowedUnits;
                 fuelAdjust[fuel.id] = maxAllowedUnits - smelter.fueledCount(fuel);
@@ -8593,7 +8663,6 @@
 
         for (let i = 0; i < items.length; i++) {
             const itemId = items[i].id;
-            let click = false;
 
             // Block research that conflics with active triggers, but never block research that is wanted by an active trigger
             // @ts-ignore
@@ -8601,73 +8670,53 @@
                 continue;
             }
 
-            // Whitehole researches
-            if (itemId === "tech-stabilize_blackhole" && settings.prestigeWhiteholeStabiliseMass && getBlackholeMass() < settings.prestigeWhiteholeMinMass) {
-                // If user wants to stabilise blackhole when under minimum solar mass then do it
-                click = true;
-            } else if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" || itemId === "tech-stabilize_blackhole"
-                || itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion" || itemId == "tech-dark_bomb") {
-                // Don't click any of the whitehole / cataclysm reset options without user consent... that would be a dick move, man.
+            // Don't click any reset options without user consent... that would be a dick move, man.
+            if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" ||
+                itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion" || itemId == "tech-dark_bomb") {
                 continue;
             }
 
-            if (itemId !== "tech-anthropology" && itemId !== "tech-fanaticism" && itemId !== "tech-unification2"
-                && itemId !== "tech-study" && itemId !== "tech-deify") {
-                    click = true;
-            } else {
-                if (itemId === settings.userResearchTheology_1) {
-                    // use the user's override choice
-                    log("autoResearch", "Picking user's choice of theology 1: " + itemId);
-                    click = true;
+            // Don't waste phage and plasmid on ascension techs if we're not going there
+            if ((itemId === "tech-incorporeal" || itemId === "tech-tech_ascension") && settings.prestigeType !== "ascension") {
+                continue;
+            }
+
+            // Alien Gift
+            if (itemId === "tech-xeno_gift" && !settings.researchAlienGift) {
+                continue;
+            }
+
+            // Unification
+            if (itemId === "tech-unification2" && !settings.foreignUnification) {
+                continue;
+            }
+
+            // If user wants to stabilise blackhole when under minimum solar mass then do it
+            if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || getBlackholeMass() >= settings.prestigeWhiteholeMinMass)) {
+                continue;
+            }
+
+            if (itemId !== settings.userResearchTheology_1) {
+                if (itemId === "tech-anthropology" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType === "mad")) {
+                    continue;
                 }
 
-                if (settings.userResearchTheology_1 === "auto") {
-                    if (settings.prestigeType === "mad" && itemId === "tech-anthropology") {
-                        // If we're not going to space then research anthropology
-                        log("autoResearch", "Picking: " + itemId);
-                        click = true;
-                    }
-                    if (settings.prestigeType !== "mad" && itemId === "tech-fanaticism") {
-                        // If we're going to space then research fanaticism
-                        log("autoResearch", "Picking: " + itemId);
-                        click = true;
-                    }
-                }
-
-                if (itemId === settings.userResearchTheology_2) {
-                    // use the user's override choice
-                    log("autoResearch", "Picking user's choice of theology 2: " + itemId);
-                    click = true;
-                }
-
-                if (settings.userResearchTheology_2 === "auto") {
-                    if (settings.prestigeType === "ascension" && itemId === "tech-deify") {
-                        // Only pick deify for ascension
-                        log("autoResearch", "Picking: " + itemId);
-                        click = true;
-                    }
-                    if (settings.prestigeType !== "ascension" && itemId === "tech-study") {
-                        // Otherwise go for study
-                        log("autoResearch", "Picking: " + itemId);
-                        click = true;
-                    }
-                }
-
-                // Hey, we can get both theology researches
-                if (itemId === "tech-anthropology" && isResearchUnlocked("fanaticism")) {
-                    click = true;
-                }
-                if (itemId === "tech-fanaticism" && isResearchUnlocked("anthropology")) {
-                    click = true;
-                }
-
-                // Unify, if allowed
-                if (itemId === "tech-unification2" && settings.foreignUnification) {
-                    click = true;
+                if (itemId === "tech-fanaticism" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType !== "mad")) {
+                    continue;
                 }
             }
 
-            if (click && techIds[itemId].click()) {
+            if (itemId !== settings.userResearchTheology_2) {
+                if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType !== "bioseed")) {
+                    continue;
+                }
+
+                if (itemId === "tech-study" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType === "bioseed")) {
+                    continue;
+                }
+            }
+
+            if (techIds[itemId].click()) {
                 // The unification techs are special as they are always "clickable" even if they can't be afforded.
                 // We don't want to continually remove the poppers if the script is clicking one every second that
                 // it can't afford
@@ -8817,7 +8866,16 @@
             let building = buildingList[i];
 
             let maxStateOn = building.count;
-            if (building.powered > 0) {
+
+            if (building === state.spaceBuildings.NeutronCitadel) {
+                while (maxStateOn > 0) {
+                    if (availablePower >= (30 + (maxStateOn - 1) * 2.5) * maxStateOn * (game.global.race['emfield'] ? 1.5 : 1)) {
+                        break;
+                    } else {
+                        maxStateOn--;
+                    }
+                }
+            } else if (building.powered > 0) {
                 maxStateOn = Math.min(maxStateOn, availablePower / building.powered)
             }
 
@@ -8882,10 +8940,9 @@
 
                 resourceType.resource.rateOfChange -= consumptionRate * maxStateOn;
             }
-            availablePower -= building.powered * maxStateOn;
 
-            let adjustment = maxStateOn - building.stateOnCount;
-            building.tryAdjustState(adjustment);
+            building.tryAdjustState(maxStateOn - building.stateOnCount);
+            availablePower -= building.powered * maxStateOn;
         }
         resources.Power.currentQuantity = availablePower;
         resources.Power.rateOfChange = availablePower;
@@ -8920,6 +8977,9 @@
 
         let crateVolume = poly.crateValue();
         let containerVolume = poly.containerValue();
+        if (!(crateVolume > 0 && containerVolume > 0)) {
+            return;
+        }
         let totalCrates = resources.Crates.currentQuantity;
         let totalContainers = resources.Containers.currentQuantity;
         let storageAdjustments = [];
@@ -8943,7 +9003,7 @@
 
             // If we're overflowing, and want to store more - just request one more crate volume
             if (resource.storeOverflow) {
-                extraStorageRequired = Math.max(extraStorageRequired, resource.currentQuantity * 1.01 - rawStorage);
+                extraStorageRequired = Math.max(1, extraStorageRequired, resource.currentQuantity * 1.01 - rawStorage);
             }
 
             // We don't need any extra storage here, and don't care about wasting, just remove everything and go to next resource
@@ -9381,8 +9441,8 @@
             {name: "gxy_gateway", piracy: 0.1 * game.global.tech.piracy, armada: state.spaceBuildings.GatewayStarbase.stateOnCount * 25, useful: state.spaceBuildings.BologniumShip.stateOnCount > 0 && resources.Bolognium.storageRatio < 0.99},
             {name: "gxy_gorddon", piracy: 800, armada: 0, useful: state.spaceBuildings.GorddonFreighter.stateOnCount > 0},
             {name: "gxy_alien1", piracy: 1000, armada: 0, useful: state.spaceBuildings.Alien1VitreloyPlant.stateOnCount > 0 && resources.Vitreloy.storageRatio < 0.99},
-            {name: "gxy_alien2", piracy: 2500, armada: state.spaceBuildings.Alien2Foothold.stateOnCount * 50 + state.spaceBuildings.Alien2ArmedMiner.stateOnCount * 5, useful: state.spaceBuildings.Alien2Scavenger.stateOnCount > 0 || (state.spaceBuildings.Alien2ArmedMiner.stateOnCount > 0 && (resources.Bolognium.storageRatio < 0.99 || resources.Adamantite.storageRatio < 0.99 || resources.Iridium.storageRatio < 0.99)) || state.spaceBuildings.Alien2Mission.isUnlocked()},
-            {name: "gxy_chthonian", piracy: 7500, armada: state.spaceBuildings.ChthonianMineLayer.stateOnCount * 50 + state.spaceBuildings.ChthonianRaider.stateOnCount * 12, useful: (state.spaceBuildings.ChthonianExcavator.stateOnCount > 0 && resources.Orichalcum.storageRatio < 0.99) || (state.spaceBuildings.ChthonianRaider.stateOnCount > 0 && (resources.Vitreloy.storageRatio < 0.99 || resources.Polymer.storageRatio < 0.99 || resources.Neutronium.storageRatio < 0.99 || resources.Deuterium.storageRatio < 0.99)) || state.spaceBuildings.ChthonianMission.isUnlocked()},
+            {name: "gxy_alien2", piracy: 2500, armada: state.spaceBuildings.Alien2Foothold.stateOnCount * 50 + state.spaceBuildings.Alien2ArmedMiner.stateOnCount * 5, useful: state.spaceBuildings.Alien2Scavenger.stateOnCount > 0 || (state.spaceBuildings.Alien2ArmedMiner.stateOnCount > 0 && (resources.Bolognium.storageRatio < 0.99 || resources.Adamantite.storageRatio < 0.99 || resources.Iridium.storageRatio < 0.99))},
+            {name: "gxy_chthonian", piracy: 7500, armada: state.spaceBuildings.ChthonianMineLayer.stateOnCount * 50 + state.spaceBuildings.ChthonianRaider.stateOnCount * 12, useful: (state.spaceBuildings.ChthonianExcavator.stateOnCount > 0 && resources.Orichalcum.storageRatio < 0.99) || (state.spaceBuildings.ChthonianRaider.stateOnCount > 0 && (resources.Vitreloy.storageRatio < 0.99 || resources.Polymer.storageRatio < 0.99 || resources.Neutronium.storageRatio < 0.99 || resources.Deuterium.storageRatio < 0.99))},
         ];
         let allFleets = [
             {name: "scout_ship", count: state.spaceBuildings.ScoutShip.stateOnCount, power: game.actions.galaxy.gxy_gateway.scout_ship.ship.rating},
@@ -9894,6 +9954,11 @@
               (building) => !game.checkAffordable(building.definition, true),
               () => "Not enough storage",
               () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
+          ],[
+              () => state.spaceBuildings.PortalAncientPillars.isUnlocked(),
+              (building) => building === state.spaceBuildings.PortalAncientPillars && (game.global.tech.pillars !== 1 || game.global.race.universe === 'micro'),
+              () => "Locked",
+              () => 0 // Pillars can't be activated in micro, and without tech.
           ],[
               () => game.global.race['magnificent'] && settings.buildingShrineType !== "any",
               (building) => {
@@ -10890,7 +10955,7 @@
                                         <option value = "mad" title = "MAD prestige once MAD has been researched and all soldiers are home">Mutual Assured Destruction</option>
                                         <option value = "bioseed" title = "Launches the bioseeder ship to perform prestige when required probes have been constructed">Bioseed</option>
                                         <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
-                                        <option value = "ascension" title = "Not implemented. Same as 'None', but with Deify as auto theology">Ascension</option>
+                                        <option value = "ascension" title = "Allows research of Incorporeal Existence and Ascension. Ascension Machine managed by autoPower. User input still required to trigger reset, and create custom race.">Ascension</option>
                                       </select>
                                     </div>`);
 
@@ -11133,7 +11198,7 @@
                                 <option value = "mad" title = "MAD prestige once MAD has been researched and all soldiers are home">Mutual Assured Destruction</option>
                                 <option value = "bioseed" title = "Launches the bioseeder ship to perform prestige when required probes have been constructed">Bioseed</option>
                                 <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
-                                <option value = "ascension" title = "Not implemented. Same as 'None', but with Deify as auto theology">Ascension</option>
+                                <option value = "ascension" title = "Allows research of Incorporeal Existence and Ascension. Ascension Machine managed by autoPower. User input still required to trigger reset, and create custom race.">Ascension</option>
                               </select>
                             </div>
                             <div style="margin-top: 10px;">
@@ -11687,6 +11752,9 @@
 
         let currentNode = $('#script_researchContent');
         currentNode.empty().off("*");
+
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_researchPreTable"></div>');
+        addStandardSectionSettingsToggle(preTableNode, "researchAlienGift", "Research Alien Gift", "Alien Gift increases piracy, you can disable auto research of it if you want to postpone that");
 
         // Theology 1
         currentNode.append(`<div style="margin-top: 5px; width: 400px">
@@ -12316,16 +12384,16 @@
 
         for (let i = 0; i < smelterFuels.length; i++) {
             const fuel = smelterFuels[i];
-            newTableBodyText += '<tr value="' + fuel.cost.resource.id + '"><td id="script_smelter_' + fuel.cost.resource.id + '" style="width:35%"></td><td style="width:65%"></td></tr>';
+            newTableBodyText += '<tr value="' + fuel.id + '"><td id="script_smelter_' + fuel.id + '" style="width:35%"></td><td style="width:65%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < smelterFuels.length; i++) {
             const fuel = smelterFuels[i];
-            let productionElement = $('#script_smelter_' + fuel.cost.resource.id);
+            let productionElement = $('#script_smelter_' + fuel.id);
 
-            productionElement.append(buildStandartLabel(fuel.cost.resource.name));
+            productionElement.append(buildStandartLabel(fuel.id));
 
             productionElement = productionElement.next();
             productionElement.append($('<span class="script-lastcolumn"></span>'));
@@ -12343,7 +12411,7 @@
 
                 let smelterFuels = Object.values(state.cityBuildings.Smelter.Fuels);
                 for (let i = 0; i < fuelIds.length; i++) {
-                    smelterFuels.find(fuel => fuel.cost.resource.id === fuelIds[i]).priority = i;
+                    smelterFuels.find(fuel => fuel.id === fuelIds[i]).priority = i;
                 }
 
                 updateSettingsFromState();
@@ -12425,7 +12493,11 @@
             productionElement.append(buildStandartSettingsToggle(resource, "autoCraftEnabled", "script_craft2_" + resource.id, "script_craft1_" + resource.id));
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsInput(resource, "foundry_w_" + resource.id, "weighting"));
+            if (resource == resources.Scarletite) {
+                productionElement.append('<span>Managed</span>');
+            } else {
+                productionElement.append(buildStandartSettingsInput(resource, "foundry_w_" + resource.id, "weighting"));
+            }
 
             productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsInput(resource, "foundry_p_" + resource.id, "preserve"));
