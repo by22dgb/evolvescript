@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.28
+// @version      3.3.1.29
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5505,6 +5505,8 @@
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.OilPower);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.FissionPower);
 
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalInfernoPower);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalArcology);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Apartment);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Barracks);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.TouristCenter);
@@ -5706,9 +5708,7 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalGuardPost);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalVault);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalArchaeology);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalArcology);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalHellForge);
-        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalInfernoPower);
 
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalEastTower);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWestTower);
@@ -7138,13 +7138,6 @@
         let availableEmployees = state.jobManager.totalEmployees;
         let availableCraftsmen = state.jobManager.craftingMax;
 
-        // We're only crafting when we have enough population to fill all foundries, and still have some employees for other work.  Second part should always be true, usnless you starved to death most of your population...
-        if (settings.autoCraftsmen && availableEmployees > availableCraftsmen * 4) {
-            availableEmployees -= availableCraftsmen;
-        } else {
-            availableCraftsmen = 0;
-        }
-
         let requiredJobs = [];
         let jobAdjustments = [];
 
@@ -7211,6 +7204,13 @@
 
             jobAdjustments[farmerIndex] = requiredJobs[farmerIndex] - state.jobs.Farmer.count;
             availableEmployees -= requiredJobs[farmerIndex];
+        }
+
+        // We're only crafting when we have enough population to fill farmers, all foundries, and still have some employees for other work.
+        if (settings.autoCraftsmen && availableEmployees > availableCraftsmen * 2) {
+            availableEmployees -= availableCraftsmen;
+        } else {
+            availableCraftsmen = 0;
         }
 
         // Now assign crafters
@@ -7355,6 +7355,8 @@
                         jobsToAssign = job.count;
                     }
                 }
+
+                jobsToAssign = Math.max(0, jobsToAssign);
 
                 requiredJobs[j] = jobsToAssign;
                 jobAdjustments[j] = jobsToAssign - job.count;
@@ -10219,15 +10221,6 @@
             return;
         }
 
-        if (settings.prestigeType === "whitehole") {
-            autoWhiteholePrestige();
-        }
-        if (settings.prestigeType === "bioseed") {
-            autoSeederPrestige();
-        }
-        if (settings.prestigeType === "mad") {
-            autoMadPrestige();
-        }
         if (settings.autoStorage) {
             autoStorage(); // All changes cached
         }
@@ -10297,6 +10290,15 @@
         }
         if (settings.prestigeWhiteholeEjectEnabled) {
             autoMassEjector(); // Purge remaining rateOfChange, should be called when it won't be needed anymore
+        }
+        if (settings.prestigeType === "whitehole") {
+            autoWhiteholePrestige();
+        }
+        if (settings.prestigeType === "bioseed") {
+            autoSeederPrestige();
+        }
+        if (settings.prestigeType === "mad") {
+            autoMadPrestige();
         }
 
         if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; }
