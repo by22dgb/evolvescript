@@ -8709,11 +8709,11 @@
             }
 
             if (itemId !== settings.userResearchTheology_2) {
-                if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType !== "bioseed")) {
+                if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType === "ascension")) {
                     continue;
                 }
 
-                if (itemId === "tech-study" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType === "bioseed")) {
+                if (itemId === "tech-study" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType !== "ascension")) {
                     continue;
                 }
             }
