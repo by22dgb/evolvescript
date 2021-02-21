@@ -105,7 +105,7 @@
 
         reset(value) {
             this._remainder = value;
-            if (this._lastLoopCounter !== state.loopCounter) {
+            if (this._lastLoopCounter !== state.loopCounter && game.global.settings.mKeys) {
                 this._lastLoopCounter = state.loopCounter
                 document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x10}));
                 document.dispatchEvent(new KeyboardEvent("keyup", {key: game.global.settings.keyMap.x25}));
@@ -7700,10 +7700,16 @@
         let steelWeighting = 0;
         switch (settings.productionSmelting){
             case "iron":
-                ironWeighting = 1;
+                ironWeighting = resources.Iron.timeToFull;
+                if (!ironWeighting) {
+                    steelWeighting = resources.Steel.timeToFull;
+                }
                 break;
             case "steel":
-                steelWeighting = 1;
+                steelWeighting = resources.Steel.timeToFull;
+                if (!steelWeighting) {
+                    ironWeighting = resources.Iron.timeToFull;
+                }
                 break;
             case "storage":
                 ironWeighting = resources.Iron.timeToFull;
@@ -8735,7 +8741,7 @@
     function autoArpa() {
         let projectList = state.projectManager.managedPriorityList();
 
-        if (settings.prestigeMADIgnoreArpa && !isResearchUnlocked("mad")) {
+        if (settings.prestigeMADIgnoreArpa && !game.global.race['cataclysm'] && !isResearchUnlocked("mad")) {
             return;
         }
 
@@ -9151,7 +9157,7 @@
                 numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
             );
 
-            if (settings.storageLimitPreMad && !isResearchUnlocked("mad")) {
+            if (settings.storageLimitPreMad && !game.global.race['cataclysm'] && !isResearchUnlocked("mad")) {
               // Only build pre-mad containers when steel storage is over 80%
               if (resources.Steel.storageRatio < 0.8) {
                   numberOfContainersWeCanBuild = 0;
@@ -9755,10 +9761,10 @@
 
         if (settings.missionRequest) {
             if (resources.Oil.currentQuantity < state.oilRequiredByMissions && resources.Oil.storageRatio < 0.98) {
-                resources.Oil.requestedQuantity = Math.max(resources.Oil.requestedQuantity, state.oilRequiredByMissions - resources.Oil.requestedQuantity);
+                resources.Oil.requestedQuantity = Math.max(resources.Oil.requestedQuantity, state.oilRequiredByMissions - resources.Oil.currentQuantity);
             }
             if (resources.Helium_3.currentQuantity < state.heliumRequiredByMissions && resources.Helium_3.storageRatio < 0.98) {
-                resources.Helium_3.requestedQuantity = Math.max(resources.Helium_3.requestedQuantity, state.heliumRequiredByMissions - resources.Helium_3.requestedQuantity);
+                resources.Helium_3.requestedQuantity = Math.max(resources.Helium_3.requestedQuantity, state.heliumRequiredByMissions - resources.Helium_3.currentQuantity);
             }
         }
 
