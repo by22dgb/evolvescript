@@ -9689,18 +9689,20 @@
             resources[id].requestedQuantity = 0;
         }
 
-        // Buildings queue
-        let prioritizedTasks = [...state.queuedBuildings];
+        let prioritizedTasks = [];
 
-        // Research queue
-        if (settings.queueRequest && game.global.r_queue.display) {
-            for (let i = 0; i < game.global.r_queue.queue.length; i++) {
-                let queue = game.global.r_queue.queue[i];
-                if (techIds[queue.id]) {
-                    prioritizedTasks.push(techIds[queue.id].id);
-                }
-                if (!game.global.settings.qAny) {
-                    break;
+        // Queue
+        if (settings.queueRequest) {
+            prioritizedTasks = state.queuedBuildings.slice();
+            if (game.global.r_queue.display) {
+                for (let i = 0; i < game.global.r_queue.queue.length; i++) {
+                    let queue = game.global.r_queue.queue[i];
+                    if (techIds[queue.id]) {
+                        prioritizedTasks.push(techIds[queue.id].id);
+                    }
+                    if (!game.global.settings.qAny) {
+                        break;
+                    }
                 }
             }
         }
@@ -9834,8 +9836,7 @@
         }
 
         // TODO: Remove me once it's fixed in game
-        if (($("#civics .garrison").length == 2) || // Workround for game bug dublicating of garrison and governmment div's after reset
-            (state.spaceBuildings.BlackholeMassEjector.count > 0  && $('#resEjector').children().length === 0)) { // Same for bug with Ejector tab
+        if (state.spaceBuildings.BlackholeMassEjector.count > 0 && $('#resEjector').children().length === 0) { // Workround for game bug with Ejector tab
             state.goal = "GameOverMan";
             setTimeout(()=> window.location.reload(), 5000);
         }
