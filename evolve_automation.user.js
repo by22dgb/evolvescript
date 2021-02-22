@@ -9836,7 +9836,8 @@
         }
 
         // TODO: Remove me once it's fixed in game
-        if (state.spaceBuildings.BlackholeMassEjector.count > 0 && $('#resEjector').children().length === 0) { // Workround for game bug with Ejector tab
+        if (($("#civics .garrison").length == 2) || // Workround for game bug dublicating of garrison and governmment div's after reset
+            (state.spaceBuildings.BlackholeMassEjector.count > 0  && $('#resEjector').children().length === 0)) { // Same for bug with Ejector tab
             state.goal = "GameOverMan";
             setTimeout(()=> window.location.reload(), 5000);
         }
