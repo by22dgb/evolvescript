@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.29
+// @version      3.3.1.30
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -21,7 +21,7 @@
 //   Added Andromeda support, auto fleet, auto galaxy trades, and all buildings with their supports and consumptions
 //   Remade autoBuild, all buildings now can have individual weights, plus dynamic coefficients to weights(like, increasing weights of power plants when you need more energy), plus additional safe-guards checking for resource usage, available support, and such. You can fine-tune script to build what you actually need, and save resources for further constructions.
 //   Added autoQuarry option, which manages stone to chrysotile ratio for smoldering races. autoMiningDroid now configurable, and can mine for resources other than adamantine.
-//   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa. And it also can use star power as fuel.
+//   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa. And it also can use star power and inferno as fuel.
 //   Remade autoCraftsmen, it assigns all crafters to same resource at once, to utilize apprentice bonus, and rotates them between resources aiming to desired ratio of stored resources
 //   Remade autoStorage, it calculates required storages, based on available techs and buildings, and assign storages to make them all affordable. Weighting option is gone as it not needed anymore, just rearrange list to change filling order when storages are scarce. Max crate\containers for individual reources still exist, and respected by adjustments.
 //   Required amount of resources also taken in account by autoCraftsmen(they can prioritize what's actually needed), and ARPA got an option("-1" craftables to keep) to keep required amount of craftables, instead of some static number
@@ -31,9 +31,9 @@
 //   Added option to prioritize resources for queued\triggered buildings\researches, it can adjust trades and production to get requested thing sooner
 //   Reworked fighting\spying. At first glance it have less configurable options now, but range of possible outcomes is wider, and route to them is more optimal. With default settings it'll sabotage, plunder, and then annex all foreign powers, gradually moving from top to bottom of the list, as they becomes weak enough, and then occupy last city to finish unification. By tweaking settings it's possible to configure script to get any unification achievement(annex\purchase\occupy\reject, with or without pacifism).
 //   Added options to configure auto clicking resources. Abusable, works like in original script by default. Spoil your game at your own risk.
-//   Added evolution queue. If queue enabled and not empty, settings from top of the list will be applied before next evolution, and then removed from queue. When you add new evolution to queue script stores currently configured race, prestige type, and challenges. Evolution settings can also be edited manualy, and can store any settings, but be very careful doing that, as those data will be imported intro script settings without any validation, except for synthax and type checks.
+//   Added evolutions queue. If queue enabled and not empty, settings from top of the list will be applied before next evolution, and then removed from queue. When you add new evolution to queue script stores currently configured race, prestige type, and challenges. Evolution settings can also be edited manualy, and can store any settings, but be very careful doing that, as those data will be imported intro script settings without any validation, except for synthax and type checks.
 //   Standalone autoAchievements option is gone. It's now selectable as a race. Conditional races now can be chosen by auto achievements during random evolution. With mass extinction perk conditional races will be prioritized, so you can faster finish with planet's achievments, and move to the next one. During bioseed runs it'll go for races with no greatness achievement. Auto planet selection also can go for planet with most achievements.
-//   Added option to restore backup after evolution, and try another race group, if you got a race who already earned MAD achievement. Not very stable due to game page reload, and chosen implementation. And probably won't get better as i've got mass extinction perk already. Consider it as a mere increased chance to get someting new, if you'll dare to try it. And reset evolution settings if you'll have issues with it.
+//   Added option to soft reset after evolution, when sentience gives wrong races.
 //   A lot of other small changes all around, optimisations, bug fixes, refactoring, etc. Most certainly added bunch of new bugs :)
 //
 // And, of course, you can do whatever you want with my changes. Fork further, backport any patches back(no credits required). Whatever.
@@ -2430,12 +2430,12 @@
     class EvolutionAction extends Action {
         /**
          * @param {string} name
-         * @param {string} tab
          * @param {string} id
          * @param {string} location
          */
-        constructor(name, tab, id, location) {
-            super(name, tab, id, location);
+        constructor(name, id, location) {
+            // TODO: Remove me. Temporal workaround for compatibility between original game .28 and scripted .27
+            super(name, ($('#versionLog').text() === "v1.0.27" ? "evo" : "evolution"), id, location);
         }
 
         get definition() {
@@ -2459,13 +2459,12 @@
     class ChallengeEvolutionAction extends EvolutionAction {
         /**
          * @param {string} name
-         * @param {string} tab
          * @param {string} id
          * @param {string} location
          * @param {string} effectId
          */
-        constructor(name, tab, id, location, effectId) {
-            super(name, tab, id, location);
+        constructor(name, id, location, effectId) {
+            super(name, id, location);
 
             this.effectId = effectId;
         }
@@ -3657,7 +3656,7 @@
             return isAchievementUnlocked("extinct_" + this.id, level);
         }
 
-        isGreatnessAchievmentUnlocked(level) {
+        isGreatnessAchievementUnlocked(level) {
             return isAchievementUnlocked("genus_" + game.races[this.id].type, level);
         }
     }
@@ -4480,107 +4479,107 @@
         },
 
         evolutions: {
-            Rna: new EvolutionAction("RNA", "evo", "rna", ""),
-            Dna: new EvolutionAction("DNA", "evo", "dna", ""),
-            Membrane: new EvolutionAction("Membrane", "evo", "membrane", ""),
-            Organelles: new EvolutionAction("Organelles", "evo", "organelles", ""),
-            Nucleus: new EvolutionAction("Nucleus", "evo", "nucleus", ""),
-            EukaryoticCell: new EvolutionAction("Eukaryotic Cell", "evo", "eukaryotic_cell", ""),
-            Mitochondria: new EvolutionAction("Mitochondria", "evo", "mitochondria", ""),
+            Rna: new EvolutionAction("RNA", "rna", ""),
+            Dna: new EvolutionAction("DNA", "dna", ""),
+            Membrane: new EvolutionAction("Membrane", "membrane", ""),
+            Organelles: new EvolutionAction("Organelles", "organelles", ""),
+            Nucleus: new EvolutionAction("Nucleus", "nucleus", ""),
+            EukaryoticCell: new EvolutionAction("Eukaryotic Cell", "eukaryotic_cell", ""),
+            Mitochondria: new EvolutionAction("Mitochondria", "mitochondria", ""),
 
-            SexualReproduction: new EvolutionAction("", "evo", "sexual_reproduction", ""),
-                Phagocytosis: new EvolutionAction("", "evo", "phagocytosis", ""),
-                    Multicellular: new EvolutionAction("", "evo", "multicellular", ""),
-                        BilateralSymmetry: new EvolutionAction("", "evo", "bilateral_symmetry", ""),
-                            Arthropods: new EvolutionAction("", "evo", "athropods", ""),
-                                Sentience: new EvolutionAction("", "evo", "sentience", ""),
-                                Mantis: new EvolutionAction("", "evo", "mantis", ""),
-                                Scorpid: new EvolutionAction("", "evo", "scorpid", ""),
-                                Antid: new EvolutionAction("Antid", "evo", "antid", ""),
+            SexualReproduction: new EvolutionAction("", "sexual_reproduction", ""),
+                Phagocytosis: new EvolutionAction("", "phagocytosis", ""),
+                    Multicellular: new EvolutionAction("", "multicellular", ""),
+                        BilateralSymmetry: new EvolutionAction("", "bilateral_symmetry", ""),
+                            Arthropods: new EvolutionAction("", "athropods", ""),
+                                Sentience: new EvolutionAction("", "sentience", ""),
+                                Mantis: new EvolutionAction("", "mantis", ""),
+                                Scorpid: new EvolutionAction("", "scorpid", ""),
+                                Antid: new EvolutionAction("Antid", "antid", ""),
 
-                            Mammals: new EvolutionAction("", "evo", "mammals", ""),
-                                Humanoid: new EvolutionAction("", "evo", "humanoid", ""),
-                                    Human: new EvolutionAction("", "evo", "human", ""),
-                                    Orc: new EvolutionAction("", "evo", "orc", ""),
-                                    Elven: new EvolutionAction("", "evo", "elven", ""),
-                                Gigantism: new EvolutionAction("", "evo", "gigantism", ""),
-                                    Troll: new EvolutionAction("", "evo", "troll", ""),
-                                    Ogre: new EvolutionAction("", "evo", "ogre", ""),
-                                    Cyclops: new EvolutionAction("", "evo", "cyclops", ""),
-                                Dwarfism: new EvolutionAction("", "evo", "dwarfism", ""),
-                                    Kobold: new EvolutionAction("", "evo", "kobold", ""),
-                                    Goblin: new EvolutionAction("", "evo", "goblin", ""),
-                                    Gnome: new EvolutionAction("", "evo", "gnome", ""),
-                                Animalism: new EvolutionAction("", "evo", "animalism", ""),
-                                    Cath: new EvolutionAction("", "evo", "cath", ""),
-                                    Wolven: new EvolutionAction("", "evo", "wolven", ""),
-                                    Centaur: new EvolutionAction("", "evo", "centaur", ""),
-                                Demonic: new EvolutionAction("", "evo", "demonic", ""), // hellscape only
-                                    Balorg: new EvolutionAction("", "evo", "balorg", ""),
-                                    Imp: new EvolutionAction("", "evo", "imp", ""),
-                                Celestial: new EvolutionAction("", "evo", "celestial", ""), // eden only
-                                    Seraph: new EvolutionAction("", "evo", "seraph", ""),
-                                    Unicorn: new EvolutionAction("", "evo", "unicorn", ""),
-                                Fey: new EvolutionAction("", "evo", "fey", ""), // forest only
-                                    Dryad: new EvolutionAction("", "evo", "dryad", ""),
-                                    Satyr: new EvolutionAction("", "evo", "satyr", ""),
-                                Heat: new EvolutionAction("", "evo", "heat", ""), // volcanic only
-                                    Phoenix: new EvolutionAction("", "evo", "phoenix", ""),
-                                    Salamander: new EvolutionAction("", "evo", "salamander", ""),
-                                Polar: new EvolutionAction("", "evo", "polar", ""), // tundra only
-                                    Yeti: new EvolutionAction("", "evo", "yeti", ""),
-                                    Wendigo: new EvolutionAction("", "evo", "wendigo", ""),
-                                Sand: new EvolutionAction("", "evo", "sand", ""), // desert only
-                                    Tuskin: new EvolutionAction("", "evo", "tuskin", ""),
-                                    Kamel: new EvolutionAction("", "evo", "kamel", ""),
+                            Mammals: new EvolutionAction("", "mammals", ""),
+                                Humanoid: new EvolutionAction("", "humanoid", ""),
+                                    Human: new EvolutionAction("", "human", ""),
+                                    Orc: new EvolutionAction("", "orc", ""),
+                                    Elven: new EvolutionAction("", "elven", ""),
+                                Gigantism: new EvolutionAction("", "gigantism", ""),
+                                    Troll: new EvolutionAction("", "troll", ""),
+                                    Ogre: new EvolutionAction("", "ogre", ""),
+                                    Cyclops: new EvolutionAction("", "cyclops", ""),
+                                Dwarfism: new EvolutionAction("", "dwarfism", ""),
+                                    Kobold: new EvolutionAction("", "kobold", ""),
+                                    Goblin: new EvolutionAction("", "goblin", ""),
+                                    Gnome: new EvolutionAction("", "gnome", ""),
+                                Animalism: new EvolutionAction("", "animalism", ""),
+                                    Cath: new EvolutionAction("", "cath", ""),
+                                    Wolven: new EvolutionAction("", "wolven", ""),
+                                    Centaur: new EvolutionAction("", "centaur", ""),
+                                Demonic: new EvolutionAction("", "demonic", ""), // hellscape only
+                                    Balorg: new EvolutionAction("", "balorg", ""),
+                                    Imp: new EvolutionAction("", "imp", ""),
+                                Celestial: new EvolutionAction("", "celestial", ""), // eden only
+                                    Seraph: new EvolutionAction("", "seraph", ""),
+                                    Unicorn: new EvolutionAction("", "unicorn", ""),
+                                Fey: new EvolutionAction("", "fey", ""), // forest only
+                                    Dryad: new EvolutionAction("", "dryad", ""),
+                                    Satyr: new EvolutionAction("", "satyr", ""),
+                                Heat: new EvolutionAction("", "heat", ""), // volcanic only
+                                    Phoenix: new EvolutionAction("", "phoenix", ""),
+                                    Salamander: new EvolutionAction("", "salamander", ""),
+                                Polar: new EvolutionAction("", "polar", ""), // tundra only
+                                    Yeti: new EvolutionAction("", "yeti", ""),
+                                    Wendigo: new EvolutionAction("", "wendigo", ""),
+                                Sand: new EvolutionAction("", "sand", ""), // desert only
+                                    Tuskin: new EvolutionAction("", "tuskin", ""),
+                                    Kamel: new EvolutionAction("", "kamel", ""),
 
-                            Eggshell: new EvolutionAction("", "evo", "eggshell", ""),
-                                Endothermic: new EvolutionAction("", "evo", "endothermic", ""),
-                                    Arraak: new EvolutionAction("", "evo", "arraak", ""),
-                                    Pterodacti: new EvolutionAction("", "evo", "pterodacti", ""),
-                                    Dracnid: new EvolutionAction("", "evo", "dracnid", ""),
+                            Eggshell: new EvolutionAction("", "eggshell", ""),
+                                Endothermic: new EvolutionAction("", "endothermic", ""),
+                                    Arraak: new EvolutionAction("", "arraak", ""),
+                                    Pterodacti: new EvolutionAction("", "pterodacti", ""),
+                                    Dracnid: new EvolutionAction("", "dracnid", ""),
 
-                                Ectothermic: new EvolutionAction("", "evo", "ectothermic", ""),
-                                    Tortoisan: new EvolutionAction("", "evo", "tortoisan", ""),
-                                    Gecko: new EvolutionAction("", "evo", "gecko", ""),
-                                    Slitheryn: new EvolutionAction("", "evo", "slitheryn", ""),
+                                Ectothermic: new EvolutionAction("", "ectothermic", ""),
+                                    Tortoisan: new EvolutionAction("", "tortoisan", ""),
+                                    Gecko: new EvolutionAction("", "gecko", ""),
+                                    Slitheryn: new EvolutionAction("", "slitheryn", ""),
 
-                            Aquatic: new EvolutionAction("", "evo", "aquatic", ""), // ocean only
-                                Sharkin: new EvolutionAction("", "evo", "sharkin", ""),
-                                Octigoran: new EvolutionAction("", "evo", "octigoran", ""),
+                            Aquatic: new EvolutionAction("", "aquatic", ""), // ocean only
+                                Sharkin: new EvolutionAction("", "sharkin", ""),
+                                Octigoran: new EvolutionAction("", "octigoran", ""),
 
-                Custom: new EvolutionAction("", "evo", "custom", ""),
+                Custom: new EvolutionAction("", "custom", ""),
 
-                Chloroplasts: new EvolutionAction("", "evo", "chloroplasts", ""),
-                    //Multicellular: new EvolutionAction("", "evo", "multicellular", ""),
-                        Poikilohydric: new EvolutionAction("", "evo", "poikilohydric", ""),
-                            Bryophyte: new EvolutionAction("", "evo", "bryophyte", ""),
-                                Entish: new EvolutionAction("", "evo", "entish", ""),
-                                Cacti: new EvolutionAction("", "evo", "cacti", ""),
-                                Pinguicula: new EvolutionAction("", "evo", "pinguicula", ""),
-
-
-                Chitin: new EvolutionAction("", "evo", "chitin", ""),
-                    //Multicellular: new EvolutionAction("", "evo", "multicellular", ""),
-                        Spores: new EvolutionAction("", "evo", "spores", ""),
-                            //Bryophyte: new EvolutionAction("", "evo", "bryophyte", ""),
-                                Sporgar: new EvolutionAction("", "evo", "sporgar", ""),
-                                Shroomi: new EvolutionAction("", "evo", "shroomi", ""),
-                                Moldling: new EvolutionAction("", "evo", "moldling", ""),
+                Chloroplasts: new EvolutionAction("", "chloroplasts", ""),
+                    //Multicellular: new EvolutionAction("", "multicellular", ""),
+                        Poikilohydric: new EvolutionAction("", "poikilohydric", ""),
+                            Bryophyte: new EvolutionAction("", "bryophyte", ""),
+                                Entish: new EvolutionAction("", "entish", ""),
+                                Cacti: new EvolutionAction("", "cacti", ""),
+                                Pinguicula: new EvolutionAction("", "pinguicula", ""),
 
 
-            Bunker: new ChallengeEvolutionAction("", "evo", "bunker", "", ""),
-            Plasmid: new ChallengeEvolutionAction("Plasmid", "evo", "plasmid", "", "no_plasmid"),
-            Trade: new ChallengeEvolutionAction("Trade", "evo", "trade", "", "no_trade"),
-            Craft: new ChallengeEvolutionAction("Craft", "evo", "craft", "", "no_craft"),
-            Crispr: new ChallengeEvolutionAction("Crispr", "evo", "crispr", "", "no_crispr"),
-            Mastery: new ChallengeEvolutionAction("Mastery", "evo", "mastery", "", "weak_mastery"),
-            Joyless: new ChallengeEvolutionAction("Joyless", "evo", "joyless", "", "joyless"),
-            Decay: new ChallengeEvolutionAction("Decay", "evo", "decay", "", "decay"),
-            Junker: new ChallengeEvolutionAction("Junker", "evo", "junker", "", "junker"),
-            Steelen: new ChallengeEvolutionAction("Steelen", "evo", "steelen", "", "steelen"),
-            EmField: new ChallengeEvolutionAction("EM Field", "evo", "emfield", "", "emfield"),
-            Cataclysm: new ChallengeEvolutionAction("Cataclysm", "evo", "cataclysm", "", "cataclysm"),
+                Chitin: new EvolutionAction("", "chitin", ""),
+                    //Multicellular: new EvolutionAction("", "multicellular", ""),
+                        Spores: new EvolutionAction("", "spores", ""),
+                            //Bryophyte: new EvolutionAction("", "bryophyte", ""),
+                                Sporgar: new EvolutionAction("", "sporgar", ""),
+                                Shroomi: new EvolutionAction("", "shroomi", ""),
+                                Moldling: new EvolutionAction("", "moldling", ""),
+
+
+            Bunker: new ChallengeEvolutionAction("", "bunker", "", ""),
+            Plasmid: new ChallengeEvolutionAction("Plasmid", "plasmid", "", "no_plasmid"),
+            Trade: new ChallengeEvolutionAction("Trade", "trade", "", "no_trade"),
+            Craft: new ChallengeEvolutionAction("Craft", "craft", "", "no_craft"),
+            Crispr: new ChallengeEvolutionAction("Crispr", "crispr", "", "no_crispr"),
+            Mastery: new ChallengeEvolutionAction("Mastery", "mastery", "", "weak_mastery"),
+            Joyless: new ChallengeEvolutionAction("Joyless", "joyless", "", "joyless"),
+            Decay: new ChallengeEvolutionAction("Decay", "decay", "", "decay"),
+            Junker: new ChallengeEvolutionAction("Junker", "junker", "", "junker"),
+            Steelen: new ChallengeEvolutionAction("Steelen", "steelen", "", "steelen"),
+            EmField: new ChallengeEvolutionAction("EM Field", "emfield", "", "emfield"),
+            Cataclysm: new ChallengeEvolutionAction("Cataclysm", "cataclysm", "", "cataclysm"),
 
         },// weak_mastery
 
@@ -5313,7 +5312,6 @@
         settings.userUniverseTargetName = "none";
         settings.userPlanetTargetName = "none";
         settings.userEvolutionTarget = "auto";
-        settings.evolutionIgnore = {};
         settings.evolutionQueue = [];
         settings.evolutionQueueEnabled = false;
         settings.evolutionBackup = false;
@@ -6049,7 +6047,6 @@
     function updateStandAloneSettings() {
         settings['scriptName'] = "TMVictor";
 
-        addSetting("evolutionIgnore", {});
         addSetting("evolutionQueue", []);
         addSetting("evolutionQueueEnabled", false);
 
@@ -6222,6 +6219,7 @@
         }
 
         // TODO: Remove me after few more versions. Clean up old fork-only settings, not used neither here, nor in original script.
+        delete settings.evolutionIgnore;
         delete settings.productionMinRatio;
         delete settings.buildingEstimateTime;
         delete settings.buildingWeightingQueueHelper;
@@ -6312,10 +6310,6 @@
                 let targetedGroup = { group: null, race: null, remainingPercent: 0 };
 
                 for (let i = 0; i < state.raceGroupAchievementList.length; i++) {
-                    // Skip if we already tried that group, and failed
-                    if (settings.evolutionBackup && settings.evolutionIgnore[i]) {
-                      continue;
-                    }
                     let raceGroup = state.raceGroupAchievementList[i];
                     let remainingAchievements = 0;
                     let remainingRace = null;
@@ -6329,7 +6323,7 @@
                         }
 
                         // We're going for greatness achievement only when bioseeding, if not - go for extinction
-                        if ((settings.prestigeType === "bioseed" && !race.isGreatnessAchievmentUnlocked(achievementLevel)) ||
+                        if ((settings.prestigeType === "bioseed" && !race.isGreatnessAchievementUnlocked(achievementLevel)) ||
                             (settings.prestigeType !== "bioseed" && !race.isMadAchievementUnlocked(achievementLevel))) {
                             remainingRace = race;
                             remainingAchievements++;
@@ -9788,39 +9782,55 @@
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
-            if (settings.autoEvolution && settings.userEvolutionTarget === "auto" && settings.evolutionBackup){
-                let stars = game.alevel();
-                let newRace = races[game.global.race.species];
+            if (settings.autoEvolution && settings.evolutionBackup){
+                let needReset = false;
 
-                console.log("Race: " + newRace.name + ", " + (stars-1) + "★ achievement: " + newRace.isMadAchievementUnlocked(stars));
-                if (newRace.isMadAchievementUnlocked(stars)) {
-                    let raceGroup = state.raceGroupAchievementList.findIndex(group => group.includes(newRace));
+                if (settings.userEvolutionTarget === "auto") {
+                    let stars = game.alevel();
+                    let newRace = races[game.global.race.species];
 
-                    if (!settings.evolutionIgnore[raceGroup]) {
-                      // Let's double check it's actually *soft* reset
-                      let resetButton = document.querySelector(".reset .button:not(.right)");
-                      if (resetButton.innerText === game.loc("reset_soft")) {
-                          state.log.logSuccess(loggingTypes.special, `${newRace.name} extinction achievement already earned, ignoring group, and restoring backup.`);
+                    if (settings.prestigeType !== "bioseed" && newRace.isMadAchievementUnlocked(stars)) {
+                        for (let j = 0; j < planetBiomeRaces[game.global.city.biome].length; j++) {
+                            let race = planetBiomeRaces[game.global.city.biome][j];
+                            if (!race.isMadAchievementUnlocked(stars)) {
+                                state.log.logSuccess(loggingTypes.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`);
+                                needReset = true;
+                                break;
+                            }
+                        }
+                    }
 
-                          // Restoring backup reloads page, so we need to store list of ignored groups in settings
-                          settings.evolutionIgnore[raceGroup] = true;
-                          updateSettingsFromState();
+                    if (settings.prestigeType === "bioseed" && newRace.isGreatnessAchievementUnlocked(stars)) {
+                        let genus = game.races[planetBiomeRaces[game.global.city.biome][0]].type;
+                        if (!race.isGreatnessAchievementUnlocked(stars)) {
+                            state.log.logSuccess(loggingTypes.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`);
+                            needReset = true;
+                        }
+                    }
+                } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].evolutionCondition()) {
+                    state.log.logSuccess(loggingTypes.special, `Wrong race, soft resetting and trying again.`);
+                    needReset = true;
+                }
 
-                          state.goal = "GameOverMan";
-                          resetButton.click();
-                          return;
-                      }
-                    } else {
-                      // Group already ignored - probably we tried all available options, and using fallback race now.
-                      state.log.logSuccess(loggingTypes.special, `Couldn't select race with unearned achievements. Continuing with ${newRace}.`);
+                if (needReset) {
+                    // Let's double check it's actually *soft* reset
+                    let resetButton = document.querySelector(".reset .button:not(.right)");
+                    if (resetButton.querySelector(".tooltip-trigger").innerText === game.loc("reset_soft")) {
+                        if (settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
+                            addEvolutionSetting();
+                            settings.evolutionQueue.unshift(settings.evolutionQueue.pop());
+                        }
+                        updateSettingsFromState();
+
+                        state.goal = "GameOverMan";
+                        resetButton.disabled = false;
+                        resetButton.click();
+                        return;
                     }
                 }
             }
             state.goal = "Standard";
             updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
-        } else {
-            // Not evolving anymore, clear ignore list
-            settings.evolutionIgnore = {};
         }
 
         // TODO: Remove me once it's fixed in game
@@ -11181,7 +11191,7 @@
             content.style.height = content.offsetHeight + "px"
         });
 
-        addStandardSectionSettingsToggle(currentNode, "evolutionBackup", "Restore Backups", "If Auto Achievements enabled script will restore last backup if evolved as a race with already earned MAD achievement.");
+        addStandardSectionSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets untill you'll get chosen race. Useless after getting mass exintion perk.");
         // Challenges
         addStandardSectionSettingsToggle(currentNode, "challenge_plasmid", "No Plasmids", "Challenge mode - no plasmids");
         addStandardSectionSettingsToggle(currentNode, "challenge_mastery", "Weak Mastery", "Challenge mode - weak mastery");
