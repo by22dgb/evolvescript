@@ -4615,7 +4615,7 @@
             AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
             AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
             AlphaMiningDroid: new MiningDroid(),
-            AlphaProcessing: new Action("Alpha Processing", "interstellar", "processing", "int_alpha"),
+            AlphaProcessing: new Action("Alpha Processing Facility", "interstellar", "processing", "int_alpha"),
             AlphaFusion: new Action("Alpha Fusion", "interstellar", "fusion", "int_alpha"),
             AlphaLaboratory: new Action("Alpha Laboratory", "interstellar", "laboratory", "int_alpha", {knowledge: true}),
             AlphaExchange: new Action("Alpha Exchange", "interstellar", "exchange", "int_alpha"),
@@ -7144,6 +7144,9 @@
                 job.resource.resourceRequirements.forEach(requirement => {
                     afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / (requirement.quantity * costMod) / 2);
                     lowestRatio = Math.min(lowestRatio, requirement.resource.storageRatio);
+                    if (requirement.resource.requestedQuantity > 0 && job.resource.requestedQuantity <= 0) {
+                        afforableAmount = 0;
+                    }
                   }
                 );
 
@@ -7716,6 +7719,9 @@
                         if (resourceCost.resource.storageRatio < 0.8){
                             let affordableAmount = Math.floor(rate / resourceCost.quantity);
                             actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
+                        }
+                        if (resourceCost.resource.requestedQuantity > 0 && production.resource.requestedQuantity <= 0) {
+                            actualRequiredFactories = 0;
                         }
                     });
 
@@ -8525,7 +8531,7 @@
                   }
 
                   // If we reached here - then we want to delay with our current building. Return all way back to main loop, and try to build something else
-                  building.extraDescription += `Conflicts with ${other.name} for ${resource.name}<br>`;
+                  building.extraDescription += `Conflicts with ${other.title} for ${resource.name}<br>`;
                   continue buildingsLoop;
                 }
               }
@@ -12680,7 +12686,7 @@
         addWeighingRule(tableBodyNode, "All fuel depots", "Missing Oil or Helium for techs and missions", "buildingWeightingMissingFuel");
         addWeighingRule(tableBodyNode, "Building with state (city)", "Some instances of this building are not working", "buildingWeightingNonOperatingCity");
         addWeighingRule(tableBodyNode, "Building with state (space)", "Some instances of this building are not working", "buildingWeightingNonOperating");
-        addWeighingRule(tableBodyNode, "Any", "Conflicts for some resource with active trigger", "buildingWeightingTriggerConflict");
+        addWeighingRule(tableBodyNode, "Any", "Conflicts for some resource with active trigger or queue", "buildingWeightingTriggerConflict");
         addWeighingRule(tableBodyNode, "Any", "Missing consumables or support to operate", "buildingWeightingMissingSupply");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
