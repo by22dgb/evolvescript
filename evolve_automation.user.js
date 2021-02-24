@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.30
+// @version      3.3.1.31
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -38,7 +38,6 @@
 //
 // And, of course, you can do whatever you want with my changes. Fork further, backport any patches back(no credits required). Whatever.
 
-//@ts-check
 (function($) {
     'use strict';
     var settings = JSON.parse(localStorage.getItem('settings')) ?? {};
@@ -718,21 +717,6 @@
             }
         }
 
-        /**
-         * @param {Action} testAction
-         */
-        isResourceRequirementConflict(testAction) {
-            for (let i = 0; i < this.resourceRequirements.length; i++) {
-                for (let j = 0; j < testAction.resourceRequirements.length; j++) {
-                    if (this.resourceRequirements[i].resource === testAction.resourceRequirements[j].resource) {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
         // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
         isClickable() {
             if (!this.isUnlocked()) {
@@ -837,10 +821,11 @@
                 }
             }
             // We're checking this after loop, to make sure *all* provided supports are useless.
-            if (uselessSupport > 0) {
+            // Starbase is exception here, as it house soldiers, which always useful
+            if (uselessSupport > 0 && this !== state.spaceBuildings.GatewayStarbase) {
                 return this.consumption[0];
             }
-            return false; // false means we have all we need for this to operate
+            return null;
         }
         //#endregion Standard actions
 
@@ -1282,7 +1267,7 @@
         }
 
         isTradable() {
-            return this.instance ? this.instance.hasOwnProperty("trade") : false;
+            return game.tradeRatio.hasOwnProperty(this.id);
         }
 
         isCraftable() {
@@ -2303,7 +2288,6 @@
             if (state.windowManager.isOpen()) { return; } // Don't try anything if a window is already open
 
             let optionsSpan = document.querySelector(`#gov${govIndex} div span:nth-child(3)`);
-            // @ts-ignore
             if (optionsSpan.style.display === "none") { return; }
 
             let optionsNode = document.querySelector(`#gov${govIndex} div span:nth-child(3) button`);
@@ -2427,44 +2411,14 @@
         }
     }
 
-    class EvolutionAction extends Action {
+    class ChallengeEvolutionAction extends Action {
         /**
          * @param {string} name
          * @param {string} id
-         * @param {string} location
-         */
-        constructor(name, id, location) {
-            // TODO: Remove me. Temporal workaround for compatibility between original game .28 and scripted .27
-            super(name, ($('#versionLog').text() === "v1.0.27" ? "evo" : "evolution"), id, location);
-        }
-
-        get definition() {
-            if (this._location !== "") {
-                return game.actions.evolution[this._location][this._id];
-            } else {
-                return game.actions.evolution[this._id];
-            }
-        }
-
-        get instance() {
-            return game.global.evolution[this._id];
-        }
-
-        isUnlocked() {
-            let containerNode = document.getElementById(this._elementId);
-            return containerNode !== null && containerNode.style.display !== "none" && !containerNode.classList.contains("is-hidden");
-        }
-    }
-
-    class ChallengeEvolutionAction extends EvolutionAction {
-        /**
-         * @param {string} name
-         * @param {string} id
-         * @param {string} location
          * @param {string} effectId
          */
-        constructor(name, id, location, effectId) {
-            super(name, id, location);
+        constructor(name, id, effectId) {
+            super(name, "evolution", id, "");
 
             this.effectId = effectId;
         }
@@ -3099,6 +3053,12 @@
         }
     }
 
+
+    const wrGlobalCondition = 0;
+    const wrIndividualCondition = 1;
+    const wrDescription = 2;
+    const wrMultiplier = 3;
+
     class BuildingManager {
         constructor() {
             /** @type {Action[]} */
@@ -3119,15 +3079,18 @@
 
         updateWeighting() {
              // Check generic conditions, and multiplier - x1 have no effect, so skip them too.
-            let activeRules = weightingRules.filter(rule => rule[0]() && rule[3]() !== 1);
+            let activeRules = weightingRules.filter(rule => rule[wrGlobalCondition]() && rule[wrMultiplier]() !== 1);
 
             // Iterate over buildings
             for (let i = 0; i < this.priorityList.length; i++){
                 let building = this.priorityList[i];
 
-                if (state.queuedBuildings.includes(building._elementId)) {
-                    building.extraDescription = "AutoBuild weighting: " + settings.buildingWeightingQueued + "<br>Queued building";
-                    building.weighting = settings.buildingWeightingQueued;
+                if (state.queuedTargets.includes(building)) {
+                    building.extraDescription = "Queued building, processng...";
+                    continue;
+                }
+                if (state.triggerTargets.includes(building)) {
+                    building.extraDescription = "Active trigger, processng...";
                     continue;
                 }
 
@@ -3137,11 +3100,11 @@
 
                 // Apply weighting rules
                 for (let j = 0; j < activeRules.length; j++) {
-                    let result = activeRules[j][1](building);
+                    let result = activeRules[j][wrIndividualCondition](building);
                     // Rule passed
                     if (result) {
-                      building.extraDescription += activeRules[j][2](result, building) + "<br>";
-                      building.weighting *= activeRules[j][3](result);
+                      building.extraDescription += activeRules[j][wrDescription](result, building) + "<br>";
+                      building.weighting *= activeRules[j][wrMultiplier](result);
 
 
                       // Last rule disabled building, no need to check the rest
@@ -3709,7 +3672,7 @@
                 return false
             }
 
-            this.updateResourceRequirements();
+            //this.updateResourceRequirements();
             this.resourceRequirements.forEach(requirement =>
                 requirement.resource.currentQuantity -= requirement.quantity
             );
@@ -3778,7 +3741,7 @@
             let label = "";
             // Actions
             if (this.actionType === "research") {
-                label += `Research ${tech[this.actionId].title}`;
+                label += `Research ${techIds[this.actionId].title}`;
             }
             if (this.actionType === "build") {
                 label += `Build ${this.actionCount} ${buildingIds[this.actionId].name}`;
@@ -3788,10 +3751,10 @@
 
             // Requirements
             if (this.requirementType === "unlocked") {
-                label += `${tech[this.requirementId].title} available`;
+                label += `${techIds[this.requirementId].title} available`;
             }
             if (this.requirementType === "researched") {
-                label += `${tech[this.requirementId].title} researched`;
+                label += `${techIds[this.requirementId].title} researched`;
             }
             if (this.requirementType === "built") {
                 label += `${this.requirementCount} ${buildingIds[this.requirementId].name} built`;
@@ -3801,7 +3764,7 @@
 
         get cost() {
             if (this.actionType === "research") {
-                return tech[this.actionId].definition.cost;
+                return techIds[this.actionId].definition.cost;
             }
             if (this.actionType === "build") {
                 return buildingIds[this.actionId].definition.cost;
@@ -3812,7 +3775,7 @@
         isActionPossible() {
             // check against MAX as we want to know if it is possible...
             if (this.actionType === "research") {
-                return tech[this.actionId].isUnlocked() && game.checkAffordable(tech[this.actionId].definition, true);
+                return techIds[this.actionId].isUnlocked() && game.checkAffordable(techIds[this.actionId].definition, true);
             }
             if (this.actionType === "build") {
                 return buildingIds[this.actionId].isUnlocked() && game.checkAffordable(buildingIds[this.actionId].definition, true);
@@ -3826,7 +3789,7 @@
             }
 
             if (this.actionType === "research") {
-                if (tech[this.actionId].isResearched()) {
+                if (techIds[this.actionId].isResearched()) {
                     this.complete = true;
                     return true;
                 }
@@ -3842,12 +3805,12 @@
 
         areRequirementsMet() {
             if (this.requirementType === "unlocked") {
-                if (tech[this.requirementId].isUnlocked()) {
+                if (techIds[this.requirementId].isUnlocked()) {
                     return true;
                 }
             }
             if (this.requirementType === "researched") {
-                if (tech[this.requirementId].isResearched()) {
+                if (techIds[this.requirementId].isResearched()) {
                     return true;
                 }
             }
@@ -3895,8 +3858,6 @@
 
             this.requirementId = requirementId;
             this.complete = false;
-
-            // changing id doesn't change other requirements
         }
 
         /** @param {number} requirementCount */
@@ -3907,8 +3868,6 @@
 
             this.requirementCount = requirementCount;
             this.complete = false;
-
-            // changing count doesn't change other requirements
         }
 
         /** @param {string} actionType */
@@ -3954,49 +3913,78 @@
         }
     }
 
-    class TriggerManager {
-        constructor() {
-            /** @type {Trigger[]} */
-            this.priorityList = [];
+    function getCostConflict(action) {
+        for (let i = 0; i < state.queuedTargets.length; i++) {
+            let otherObject = state.queuedTargets[i];
 
-            /** @type {Trigger[]} */
-            this._targetTriggers = null;
-        }
-
-        get targetTriggers() {
-            if (this._targetTriggers === null) {
-                this._targetTriggers = [];
-
-                //console.log(this.priorityList.length)
-
-                this.priorityList.forEach(trigger => {
-                    //console.log("trigger " + trigger.complete + " is possible? " + trigger.isActionPossible() + " conflicts? " + this.actionConflicts(trigger))
-                    if (!trigger.complete && trigger.areRequirementsMet() && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
-                        this._targetTriggers.push(trigger);
-                    }
-                });
-            }
-
-            return this._targetTriggers;
-        }
-
-        resetTargetTriggers() {
-            //console.log("resetting")
-            this._targetTriggers = null;
-        }
-
-        updateCompleteTriggers() {
-            let resetTargets = false;
-
-            for (let i = 0; i < this.priorityList.length; i++) {
-                const trigger = this.priorityList[i];
-                if (trigger.updateComplete()) {
-                    resetTargets = true;
+            let blockKnowledge = true;
+            for (let j = 0; j < otherObject.resourceRequirements.length; j++) {
+                let otherReq = otherObject.resourceRequirements[j];
+                if (otherReq.resource !== resources.Knowledge && otherReq.resource.currentQuantity < otherReq.quantity) {
+                    blockKnowledge = false;
                 }
             }
 
-            if (resetTargets) {
-                state.triggerManager.resetTargetTriggers();
+            for (let j = 0; j < otherObject.resourceRequirements.length; j++) {
+                let otherReq = otherObject.resourceRequirements[j];
+                let resource = otherReq.resource;
+                for (let k = 0; k < action.resourceRequirements.length; k++) {
+                    let actionReq = action.resourceRequirements[k];
+
+                    if ((resource !== resources.Knowledge || blockKnowledge) && actionReq.resource === resource && otherReq.quantity > resource.currentQuantity - actionReq.quantity) {
+                        return {res: resource, target: otherObject, cause: "queue"};
+                    }
+                }
+            }
+        }
+
+        for (let i = 0; i < state.triggerTargets.length; i++) {
+            let otherObject = state.triggerTargets[i];
+            // Unlike queue triggers won't be processed without respective script option enabled, no need to reserve resources for something that won't ever happen
+            if (!settings.autoBuild && otherObject instanceof Action) {
+                continue;
+            }
+            if (!settings.autoResearch && otherObject instanceof Technology) {
+                continue;
+            }
+
+            let blockKnowledge = true;
+            for (let j = 0; j < otherObject.resourceRequirements.length; j++) {
+                let otherReq = otherObject.resourceRequirements[j];
+                if (otherReq.resource !== resources.Knowledge && otherReq.resource.currentQuantity < otherReq.quantity) {
+                    blockKnowledge = false;
+                }
+            }
+
+            for (let j = 0; j < otherObject.resourceRequirements.length; j++) {
+                let otherReq = otherObject.resourceRequirements[j];
+                let resource = otherReq.resource;
+                for (let k = 0; k < action.resourceRequirements.length; k++) {
+                    let actionReq = action.resourceRequirements[k];
+
+                    if ((resource !== resources.Knowledge || blockKnowledge) && actionReq.resource === resource && otherReq.quantity > resource.currentQuantity - actionReq.quantity) {
+                        return {res: resource, target: otherObject, cause: "trigger"};
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    class TriggerManager {
+        constructor() {
+            this.priorityList = [];
+            this.targetTriggers = [];
+        }
+
+        resetTargetTriggers() {
+            this.targetTriggers = [];
+            for (let i = 0; i < this.priorityList.length; i++) {
+                let trigger = this.priorityList[i];
+                trigger.updateComplete();
+                if ((settings.autoResearch || trigger.actionType !== "research") && (settings.autoBuild || trigger.actionType !== "build") && !trigger.complete && trigger.areRequirementsMet() && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
+                    this.targetTriggers.push(trigger);
+                }
             }
         }
 
@@ -4048,124 +4036,15 @@
         }
 
         /**
-         * Helper function that checks if the costs of a trigger and an action conflict.
-         * Multiplier is applied to actionCosts, this is needed for ARPA
-         * @param {Object} origTriggerCosts
-         * @param {Object} origActionCosts
-         * @param {Number} multiplier
-         * @return {boolean}
-        */
-        costsConflict(origTriggerCosts, origActionCosts, multiplier = 1) {
-            if (!origTriggerCosts || !origActionCosts) {
-                return false;
-            }
-
-            const triggerCosts = poly.adjustCosts(origTriggerCosts);
-            const actionCosts = poly.adjustCosts(origActionCosts);
-            // console.log("triggerCosts");
-            // Object.keys(triggerCosts).forEach(ele => (console.log(ele + ' ' + triggerCosts[ele]())));
-            // console.log("actionCosts");
-            // Object.keys(actionCosts).forEach(ele => (console.log(ele + ' ' + actionCosts[ele]() * multiplier)));
-
-            // Only block Knowledge spending if there is a Knowledge cost to the Trigger and all other resource demands are already met
-            let triggerBlocksKnowledge = false;
-            // @ts-ignore
-            if (Object.keys(triggerCosts).includes("Knowledge")) {
-                // Check if all other costs can be paid out of storage
-                if (Object.keys(triggerCosts).every(res => res === "Knowledge" || triggerCosts[res]() <= game.global.resource[res].amount)) {
-                    triggerBlocksKnowledge = true;
-                }
-            }
-            // console.log("triggerBlocksKnowledge " + triggerBlocksKnowledge)
-
-            // Log the checks of the next if for each resource
-            // Object.keys(triggerCosts).forEach(res => (console.log(res + ' ' + (triggerBlocksKnowledge || res != "Knowledge") + ' '
-            //                                          + Object.keys(actionCosts).includes(res) + ' '
-            //                                          + (Object.keys(actionCosts).includes(res) &&
-            //                                              (triggerCosts[res]() >= game.global.resource[res].amount - actionCosts[res]() * multiplier)))));
-
-            if (Object.keys(triggerCosts).some(res => (triggerBlocksKnowledge || res != "Knowledge")       // Only block Knowledge if we need to
-                                                    // @ts-ignore
-                                                    && Object.keys(actionCosts).includes(res)           // Check if the Trigger resource is required by the action
-                                                    && (!game.global.resource[res]                      // The next check is only done for "normal" resources, other ones are always blocked if needed by both
-                                                        || (game.global.resource[res]                   // Only block if we can't afford the trigger after doing the action
-                                                            && triggerCosts[res]() > game.global.resource[res].amount - actionCosts[res]() * multiplier)))) {
-                return true;
-            }
-
-            return false;
-        }
-
-        /**
          * This function only checks if two triggers use the same resource, it does not check storage
          * @param {Trigger} trigger
          * @return {boolean}
          */
         actionConflicts(trigger) {
-            if (this._targetTriggers === null) {
-                return false;
-            }
+            for (let i = 0; i < this.targetTriggers.length; i++) {
+                let targetTrigger = this.targetTriggers[i];
 
-            for (let i = 0; i < this._targetTriggers.length; i++) {
-                const targetTrigger = this._targetTriggers[i];
-
-                //@ts-ignore
                 if (Object.keys(targetTrigger.cost).some(cost => Object.keys(trigger.cost).includes(cost))) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /**
-         * @param {Action} building
-         * @return {boolean}
-         */
-        buildingConflicts(building) {
-            for (let i = 0; i < this.targetTriggers.length; i++) {
-                const targetTrigger = this.targetTriggers[i];
-
-                if (this.costsConflict(targetTrigger.cost, building.definition.cost)) {
-                    //console.log("building " + building.id + " CONFLICTS with target")
-                    return targetTrigger;
-                }
-            }
-
-            return false;
-        }
-
-        /**
-         * @param {Project} project
-         * @return {boolean}
-         */
-        projectConflicts(project) {
-            for (let i = 0; i < this.targetTriggers.length; i++) {
-                const targetTrigger = this.targetTriggers[i];
-
-                //@ts-ignore
-                // Divide costs by 100 to get the cost for a single segment and subtract the creative flat bonus
-                if (this.costsConflict(targetTrigger.cost, project.definition.cost, 0.01 * (game.global.race['creative'] ? 0.8 : 1))) {
-
-                    //console.log("project " + project.id + " CONFLICTS with target")
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /**
-         * @param {Action} research
-         * @return {boolean}
-         */
-        researchConflicts(research) {
-            for (let i = 0; i < this.targetTriggers.length; i++) {
-                const targetTrigger = this.targetTriggers[i];
-                //@ts-ignore
-                if (this.costsConflict(targetTrigger.cost, research.definition.cost)) {
-
-                    //console.log("research " + research.id + " CONFLICTS with target")
                     return true;
                 }
             }
@@ -4178,16 +4057,12 @@
 
     //#region State and Initialisation
 
-    var tech = {};
+    // Lookup tables
     var techIds = {};
+    var buildingIds = {};
+    var apraIds = {};
 
     var weightingRules = null;
-
-    // Data attribtes have IDs in lower case for some reason, we're going to use it as lookup table
-    var resLowIds = {};
-
-    // Lookup table for buildings
-    var buildingIds = {}
 
     function alwaysAllowed() {
         return true;
@@ -4420,7 +4295,10 @@
 
         lastPopulationCount: Number.MAX_SAFE_INTEGER,
         lastFarmerCount: Number.MAX_SAFE_INTEGER,
-        queuedBuildings: [],
+
+        // We need to keep them separated, as we *don't* want to click on queue targets. Game will handle that. We're just managing resources for them.
+        queuedTargets: [],
+        triggerTargets: [],
 
         log: new GameLog(),
         multiplier: useMultiplier ? new Multiplier() : new NoMultiplier(),
@@ -4479,109 +4357,109 @@
         },
 
         evolutions: {
-            Rna: new EvolutionAction("RNA", "rna", ""),
-            Dna: new EvolutionAction("DNA", "dna", ""),
-            Membrane: new EvolutionAction("Membrane", "membrane", ""),
-            Organelles: new EvolutionAction("Organelles", "organelles", ""),
-            Nucleus: new EvolutionAction("Nucleus", "nucleus", ""),
-            EukaryoticCell: new EvolutionAction("Eukaryotic Cell", "eukaryotic_cell", ""),
-            Mitochondria: new EvolutionAction("Mitochondria", "mitochondria", ""),
+            Rna: new Action("RNA", "evolution", "rna", ""),
+            Dna: new Action("DNA", "evolution", "dna", ""),
+            Membrane: new Action("Membrane", "evolution", "membrane", ""),
+            Organelles: new Action("Organelles", "evolution", "organelles", ""),
+            Nucleus: new Action("Nucleus", "evolution", "nucleus", ""),
+            EukaryoticCell: new Action("Eukaryotic Cell", "evolution", "eukaryotic_cell", ""),
+            Mitochondria: new Action("Mitochondria", "evolution", "mitochondria", ""),
 
-            SexualReproduction: new EvolutionAction("", "sexual_reproduction", ""),
-                Phagocytosis: new EvolutionAction("", "phagocytosis", ""),
-                    Multicellular: new EvolutionAction("", "multicellular", ""),
-                        BilateralSymmetry: new EvolutionAction("", "bilateral_symmetry", ""),
-                            Arthropods: new EvolutionAction("", "athropods", ""),
-                                Sentience: new EvolutionAction("", "sentience", ""),
-                                Mantis: new EvolutionAction("", "mantis", ""),
-                                Scorpid: new EvolutionAction("", "scorpid", ""),
-                                Antid: new EvolutionAction("Antid", "antid", ""),
+            SexualReproduction: new Action("", "evolution", "sexual_reproduction", ""),
+                Phagocytosis: new Action("", "evolution", "phagocytosis", ""),
+                    Multicellular: new Action("", "evolution", "multicellular", ""),
+                        BilateralSymmetry: new Action("", "evolution", "bilateral_symmetry", ""),
+                            Arthropods: new Action("", "evolution", "athropods", ""),
+                                Sentience: new Action("", "evolution", "sentience", ""),
+                                Mantis: new Action("", "evolution", "mantis", ""),
+                                Scorpid: new Action("", "evolution", "scorpid", ""),
+                                Antid: new Action("Antid", "evolution", "antid", ""),
 
-                            Mammals: new EvolutionAction("", "mammals", ""),
-                                Humanoid: new EvolutionAction("", "humanoid", ""),
-                                    Human: new EvolutionAction("", "human", ""),
-                                    Orc: new EvolutionAction("", "orc", ""),
-                                    Elven: new EvolutionAction("", "elven", ""),
-                                Gigantism: new EvolutionAction("", "gigantism", ""),
-                                    Troll: new EvolutionAction("", "troll", ""),
-                                    Ogre: new EvolutionAction("", "ogre", ""),
-                                    Cyclops: new EvolutionAction("", "cyclops", ""),
-                                Dwarfism: new EvolutionAction("", "dwarfism", ""),
-                                    Kobold: new EvolutionAction("", "kobold", ""),
-                                    Goblin: new EvolutionAction("", "goblin", ""),
-                                    Gnome: new EvolutionAction("", "gnome", ""),
-                                Animalism: new EvolutionAction("", "animalism", ""),
-                                    Cath: new EvolutionAction("", "cath", ""),
-                                    Wolven: new EvolutionAction("", "wolven", ""),
-                                    Centaur: new EvolutionAction("", "centaur", ""),
-                                Demonic: new EvolutionAction("", "demonic", ""), // hellscape only
-                                    Balorg: new EvolutionAction("", "balorg", ""),
-                                    Imp: new EvolutionAction("", "imp", ""),
-                                Celestial: new EvolutionAction("", "celestial", ""), // eden only
-                                    Seraph: new EvolutionAction("", "seraph", ""),
-                                    Unicorn: new EvolutionAction("", "unicorn", ""),
-                                Fey: new EvolutionAction("", "fey", ""), // forest only
-                                    Dryad: new EvolutionAction("", "dryad", ""),
-                                    Satyr: new EvolutionAction("", "satyr", ""),
-                                Heat: new EvolutionAction("", "heat", ""), // volcanic only
-                                    Phoenix: new EvolutionAction("", "phoenix", ""),
-                                    Salamander: new EvolutionAction("", "salamander", ""),
-                                Polar: new EvolutionAction("", "polar", ""), // tundra only
-                                    Yeti: new EvolutionAction("", "yeti", ""),
-                                    Wendigo: new EvolutionAction("", "wendigo", ""),
-                                Sand: new EvolutionAction("", "sand", ""), // desert only
-                                    Tuskin: new EvolutionAction("", "tuskin", ""),
-                                    Kamel: new EvolutionAction("", "kamel", ""),
+                            Mammals: new Action("", "evolution", "mammals", ""),
+                                Humanoid: new Action("", "evolution", "humanoid", ""),
+                                    Human: new Action("", "evolution", "human", ""),
+                                    Orc: new Action("", "evolution", "orc", ""),
+                                    Elven: new Action("", "evolution", "elven", ""),
+                                Gigantism: new Action("", "evolution", "gigantism", ""),
+                                    Troll: new Action("", "evolution", "troll", ""),
+                                    Ogre: new Action("", "evolution", "ogre", ""),
+                                    Cyclops: new Action("", "evolution", "cyclops", ""),
+                                Dwarfism: new Action("", "evolution", "dwarfism", ""),
+                                    Kobold: new Action("", "evolution", "kobold", ""),
+                                    Goblin: new Action("", "evolution", "goblin", ""),
+                                    Gnome: new Action("", "evolution", "gnome", ""),
+                                Animalism: new Action("", "evolution", "animalism", ""),
+                                    Cath: new Action("", "evolution", "cath", ""),
+                                    Wolven: new Action("", "evolution", "wolven", ""),
+                                    Centaur: new Action("", "evolution", "centaur", ""),
+                                Demonic: new Action("", "evolution", "demonic", ""), // hellscape only
+                                    Balorg: new Action("", "evolution", "balorg", ""),
+                                    Imp: new Action("", "evolution", "imp", ""),
+                                Celestial: new Action("", "evolution", "celestial", ""), // eden only
+                                    Seraph: new Action("", "evolution", "seraph", ""),
+                                    Unicorn: new Action("", "evolution", "unicorn", ""),
+                                Fey: new Action("", "evolution", "fey", ""), // forest only
+                                    Dryad: new Action("", "evolution", "dryad", ""),
+                                    Satyr: new Action("", "evolution", "satyr", ""),
+                                Heat: new Action("", "evolution", "heat", ""), // volcanic only
+                                    Phoenix: new Action("", "evolution", "phoenix", ""),
+                                    Salamander: new Action("", "evolution", "salamander", ""),
+                                Polar: new Action("", "evolution", "polar", ""), // tundra only
+                                    Yeti: new Action("", "evolution", "yeti", ""),
+                                    Wendigo: new Action("", "evolution", "wendigo", ""),
+                                Sand: new Action("", "evolution", "sand", ""), // desert only
+                                    Tuskin: new Action("", "evolution", "tuskin", ""),
+                                    Kamel: new Action("", "evolution", "kamel", ""),
 
-                            Eggshell: new EvolutionAction("", "eggshell", ""),
-                                Endothermic: new EvolutionAction("", "endothermic", ""),
-                                    Arraak: new EvolutionAction("", "arraak", ""),
-                                    Pterodacti: new EvolutionAction("", "pterodacti", ""),
-                                    Dracnid: new EvolutionAction("", "dracnid", ""),
+                            Eggshell: new Action("", "evolution", "eggshell", ""),
+                                Endothermic: new Action("", "evolution", "endothermic", ""),
+                                    Arraak: new Action("", "evolution", "arraak", ""),
+                                    Pterodacti: new Action("", "evolution", "pterodacti", ""),
+                                    Dracnid: new Action("", "evolution", "dracnid", ""),
 
-                                Ectothermic: new EvolutionAction("", "ectothermic", ""),
-                                    Tortoisan: new EvolutionAction("", "tortoisan", ""),
-                                    Gecko: new EvolutionAction("", "gecko", ""),
-                                    Slitheryn: new EvolutionAction("", "slitheryn", ""),
+                                Ectothermic: new Action("", "evolution", "ectothermic", ""),
+                                    Tortoisan: new Action("", "evolution", "tortoisan", ""),
+                                    Gecko: new Action("", "evolution", "gecko", ""),
+                                    Slitheryn: new Action("", "evolution", "slitheryn", ""),
 
-                            Aquatic: new EvolutionAction("", "aquatic", ""), // ocean only
-                                Sharkin: new EvolutionAction("", "sharkin", ""),
-                                Octigoran: new EvolutionAction("", "octigoran", ""),
+                            Aquatic: new Action("", "evolution", "aquatic", ""), // ocean only
+                                Sharkin: new Action("", "evolution", "sharkin", ""),
+                                Octigoran: new Action("", "evolution", "octigoran", ""),
 
-                Custom: new EvolutionAction("", "custom", ""),
+                Custom: new Action("", "evolution", "custom", ""),
 
-                Chloroplasts: new EvolutionAction("", "chloroplasts", ""),
-                    //Multicellular: new EvolutionAction("", "multicellular", ""),
-                        Poikilohydric: new EvolutionAction("", "poikilohydric", ""),
-                            Bryophyte: new EvolutionAction("", "bryophyte", ""),
-                                Entish: new EvolutionAction("", "entish", ""),
-                                Cacti: new EvolutionAction("", "cacti", ""),
-                                Pinguicula: new EvolutionAction("", "pinguicula", ""),
-
-
-                Chitin: new EvolutionAction("", "chitin", ""),
-                    //Multicellular: new EvolutionAction("", "multicellular", ""),
-                        Spores: new EvolutionAction("", "spores", ""),
-                            //Bryophyte: new EvolutionAction("", "bryophyte", ""),
-                                Sporgar: new EvolutionAction("", "sporgar", ""),
-                                Shroomi: new EvolutionAction("", "shroomi", ""),
-                                Moldling: new EvolutionAction("", "moldling", ""),
+                Chloroplasts: new Action("", "evolution", "chloroplasts", ""),
+                    //Multicellular: new Action("", "evolution", "multicellular", ""),
+                        Poikilohydric: new Action("", "evolution", "poikilohydric", ""),
+                            Bryophyte: new Action("", "evolution", "bryophyte", ""),
+                                Entish: new Action("", "evolution", "entish", ""),
+                                Cacti: new Action("", "evolution", "cacti", ""),
+                                Pinguicula: new Action("", "evolution", "pinguicula", ""),
 
 
-            Bunker: new ChallengeEvolutionAction("", "bunker", "", ""),
-            Plasmid: new ChallengeEvolutionAction("Plasmid", "plasmid", "", "no_plasmid"),
-            Trade: new ChallengeEvolutionAction("Trade", "trade", "", "no_trade"),
-            Craft: new ChallengeEvolutionAction("Craft", "craft", "", "no_craft"),
-            Crispr: new ChallengeEvolutionAction("Crispr", "crispr", "", "no_crispr"),
-            Mastery: new ChallengeEvolutionAction("Mastery", "mastery", "", "weak_mastery"),
-            Joyless: new ChallengeEvolutionAction("Joyless", "joyless", "", "joyless"),
-            Decay: new ChallengeEvolutionAction("Decay", "decay", "", "decay"),
-            Junker: new ChallengeEvolutionAction("Junker", "junker", "", "junker"),
-            Steelen: new ChallengeEvolutionAction("Steelen", "steelen", "", "steelen"),
-            EmField: new ChallengeEvolutionAction("EM Field", "emfield", "", "emfield"),
-            Cataclysm: new ChallengeEvolutionAction("Cataclysm", "cataclysm", "", "cataclysm"),
+                Chitin: new Action("", "evolution", "chitin", ""),
+                    //Multicellular: new Action("", "evolution", "multicellular", ""),
+                        Spores: new Action("", "evolution", "spores", ""),
+                            //Bryophyte: new Action("", "evolution", "bryophyte", ""),
+                                Sporgar: new Action("", "evolution", "sporgar", ""),
+                                Shroomi: new Action("", "evolution", "shroomi", ""),
+                                Moldling: new Action("", "evolution", "moldling", ""),
 
-        },// weak_mastery
+
+            Bunker: new ChallengeEvolutionAction("", "bunker", ""),
+            Plasmid: new ChallengeEvolutionAction("Plasmid", "plasmid", "no_plasmid"),
+            Trade: new ChallengeEvolutionAction("Trade", "trade", "no_trade"),
+            Craft: new ChallengeEvolutionAction("Craft", "craft", "no_craft"),
+            Crispr: new ChallengeEvolutionAction("Crispr", "crispr", "no_crispr"),
+            Mastery: new ChallengeEvolutionAction("Mastery", "mastery", "weak_mastery"),
+            Joyless: new ChallengeEvolutionAction("Joyless", "joyless", "joyless"),
+            Decay: new ChallengeEvolutionAction("Decay", "decay", "decay"),
+            Junker: new ChallengeEvolutionAction("Junker", "junker", "junker"),
+            Steelen: new ChallengeEvolutionAction("Steelen", "steelen", "steelen"),
+            EmField: new ChallengeEvolutionAction("EM Field", "emfield", "emfield"),
+            Cataclysm: new ChallengeEvolutionAction("Cataclysm", "cataclysm", "cataclysm"),
+
+        },
 
         /** @type {Race[][]} */
         raceGroupAchievementList: [],
@@ -5288,6 +5166,7 @@
         settings.prestigeType = "none";
 
         settings.prestigeMADIgnoreArpa = true;
+        settings.prestigeMADWait = true;
         settings.prestigeBioseedConstruct = true;
         settings.prestigeBioseedProbes = 3;
         settings.prestigeWhiteholeMinMass = 8;
@@ -5475,12 +5354,10 @@
         settings.buildingWeightingNonOperating = 0;
         settings.buildingWeightingTriggerConflict = 0;
         settings.buildingWeightingMissingSupply = 0;
-        settings.buildingWeightingQueued = 1000000;
     }
 
     function resetBuildingSettings() {
         settings.buildingBuildIfStorageFull = false;
-        settings.buildingStrictMode = false;
         settings.buildingShrineType = "know";
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
@@ -5837,6 +5714,13 @@
         settings.triggers = settings.triggers ?? [];
         state.triggerManager.clearPriorityList();
         settings.triggers.forEach(trigger => {
+            // Hack for partial back compatibility with original script.
+            if (techIds["tech-" + trigger.actionId]) {
+                trigger.actionId = "tech-" + trigger.actionId;
+            }
+            if (techIds["tech-" + trigger.requirementId]) {
+                trigger.requirementId = "tech-" + trigger.requirementId;
+            }
             state.triggerManager.AddTriggerFromSetting(trigger.seq, trigger.priority, trigger.requirementType, trigger.requirementId, trigger.requirementCount, trigger.actionType, trigger.actionId, trigger.actionCount);
         });
 
@@ -5940,8 +5824,15 @@
 
         // Hack for partial back compatibility with original script.
         for (let i = 0; i < settings.triggers.length; i++) {
-            if (settings.triggers[i].requirementType === "unlocked" && settings.triggers[i].actionType === "research") {
-                settings.triggers[i].type = "tech";
+            let trigger = settings.triggers[i];
+            if (trigger.requirementType === "unlocked" && trigger.actionType === "research") {
+                trigger.type = "tech";
+            }
+            if (techIds[trigger.requirementId]) {
+                trigger.requirementId = techIds[trigger.requirementId].id;
+            }
+            if (techIds[trigger.actionId]) {
+                trigger.actionId = techIds[trigger.actionId].id;
             }
         }
 
@@ -6098,6 +5989,7 @@
         addSetting("autoGraphenePlant", false);
         addSetting("prestigeType", "none");
         addSetting("prestigeMADIgnoreArpa", true);
+        addSetting("prestigeMADWait", true);
         addSetting("prestigeBioseedConstruct", true);
         addSetting("prestigeBioseedProbes", 3);
         addSetting("prestigeWhiteholeMinMass", 8);
@@ -6180,7 +6072,6 @@
         addSetting("researchAlienGift", true);
 
         addSetting("buildingBuildIfStorageFull", false);
-        addSetting("buildingStrictMode", false);
         addSetting("buildingShrineType", "any");
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
@@ -6198,7 +6089,6 @@
         addSetting("buildingWeightingNonOperating", 0);
         addSetting("buildingWeightingTriggerConflict", 0);
         addSetting("buildingWeightingMissingSupply", 0);
-        addSetting("buildingWeightingQueued", 1000000);
 
         addSetting("buildingEnabledAll", true);
         addSetting("buildingStateAll", true);
@@ -6219,6 +6109,8 @@
         }
 
         // TODO: Remove me after few more versions. Clean up old fork-only settings, not used neither here, nor in original script.
+        delete settings.buildingWeightingQueued;
+        delete settings.buildingStrictMode;
         delete settings.evolutionIgnore;
         delete settings.productionMinRatio;
         delete settings.buildingEstimateTime;
@@ -8171,7 +8063,7 @@
             return; // Give the UI time to update
         }
 
-        if (state.warManager.currentSoldiers === state.warManager.maxSoldiers && resources.Population.currentQuantity === resources.Population.maxQuantity) {
+        if (!settings.prestigeMADWait || (state.warManager.currentSoldiers === state.warManager.maxSoldiers && resources.Population.currentQuantity === resources.Population.maxQuantity)) {
             // Push... the button
             console.log("Soft resetting game with MAD");
             state.goal = "GameOverMan";
@@ -8518,20 +8410,15 @@
             }
         }
 
-        // Check for active build triggers
-        for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
-            const trigger = state.triggerManager.targetTriggers[i];
-            if (trigger.actionType === "build") {
-                const building = buildingIds[trigger.actionId];
-
-                // We don't care about autoBuild settings, weight, amount, etc - trigger overrides everything if we have a trigger, and can build - do it.
-                if (building.isClickable()) {
-                    building.click();
-                    if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
-                        removePoppers();
-                    }
-                    return;
+        // Check for active build triggers, and click if possible
+        for (let i = 0; i < state.triggerTargets.length; i++) {
+            let building = state.triggerTargets[i];
+            if (building instanceof Action && building.isClickable()) {
+                building.click();
+                if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
+                    removePoppers();
                 }
+                return;
             }
         }
 
@@ -8547,7 +8434,7 @@
             let building = buildingList[i];
 
             // Only go further if we can build it right now
-            if (!game.checkAffordable(building.definition, false) || state.queuedBuildings.includes(building._elementId)) {
+            if (!game.checkAffordable(building.definition, false) || state.queuedTargets.includes(building)) {
                 continue;
             }
 
@@ -8559,13 +8446,13 @@
                 // We only care about buildings with highter weight
                 // And we don't want to process clickable buildings - list was sorted by weight, and all buildings with highter priority should already been proccessed.
                 // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                if (building.weighting >= other.weighting || (game.checkAffordable(other.definition, false) && !state.queuedBuildings.includes(other._elementId))){
+                if (building.weighting >= other.weighting || (game.checkAffordable(other.definition, false) && !state.queuedTargets.includes(other))){
                     continue;
                 }
                 let weightDiffRatio = other.weighting / building.weighting;
 
                 // Calculate time to build for competing building, if it's not cached
-                if (!settings.buildingStrictMode && !estimatedTime[other.id]){
+                if (!estimatedTime[other.id]){
                     estimatedTime[other.id] = [];
 
                     for (let k = 0; k < other.resourceRequirements.length; k++) {
@@ -8594,7 +8481,7 @@
                   let resource = thisRequirement.resource;
 
                   // Ignore locked and capped resources
-                  if (!resource.isUnlocked() || (!settings.buildingStrictMode && resource.storageRatio > 0.98)){
+                  if (!resource.isUnlocked() || resource.storageRatio > 0.98){
                       continue;
                   }
 
@@ -8611,7 +8498,7 @@
 
                   // We can use up to this amount of resources without delaying competing building
                   // Not very accurate, as income can fluctuate wildly for foundry, factory, and such, but should work as bottom line
-                  if (!settings.buildingStrictMode && thisRequirement.quantity <= (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * resource.calculateRateOfChange({buy: true})) {
+                  if (thisRequirement.quantity <= (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * resource.calculateRateOfChange({buy: true})) {
                       continue;
                   }
 
@@ -8650,25 +8537,21 @@
             return;
         }
 
-        // Check for active research triggers
-        let targetResearch = [];
-        for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
-            const trigger = state.triggerManager.targetTriggers[i];
-
-            if (trigger.actionType === "research") {
-                const techId = tech[trigger.actionId].definition.id;
-                if (items.filter("#" + techId).length > 0){
-                  targetResearch.push(techId);
-                }
+        // Check for active triggers, and click if possible
+        for (let i = 0; i < state.triggerTargets.length; i++) {
+            let tech = state.triggerTargets[i];
+            if (tech instanceof Technology && tech.isClickable()) {
+                tech.click();
+                removePoppers();
+                return;
             }
         }
 
         for (let i = 0; i < items.length; i++) {
-            const itemId = items[i].id;
+            let itemId = items[i].id;
 
-            // Block research that conflics with active triggers, but never block research that is wanted by an active trigger
-            // @ts-ignore
-            if (!targetResearch.includes(itemId) && state.triggerManager.researchConflicts(techIds[itemId])) {
+            // Block research that conflics with active triggers or queue
+            if (getCostConflict(techIds[itemId])) {
                 continue;
             }
 
@@ -8748,7 +8631,7 @@
                 continue;
             }
 
-            if (!state.triggerManager.projectConflicts(project)) {
+            if (!getCostConflict(project)) {
                 log("autoARPA", "standard build " + project.id)
                 project.tryBuild(true);
             }
@@ -8814,7 +8697,7 @@
                 }
             }
 
-            if (allowBuild && !state.triggerManager.projectConflicts(project)) {
+            if (allowBuild && !getCostConflict(project)) {
                 log("autoARPA", "full resources build " + project.id)
                 project.tryBuild(false);
             }
@@ -9589,23 +9472,20 @@
             }
         }
 
-        // Add clicking to rate of change, so we can sell or eject it. TODO: Not accurate in magic universe.
+        // Add clicking to rate of change, so we can sell or eject it.
         if (settings.buildingAlwaysClick || (settings.autoBuild && (resources.Population.currentQuantity <= 15 || (state.cityBuildings.RockQuarry.count < 1 && !game.global.race['sappy'])))) {
-            let resPerClick = getResourcesPerClick();
-            if (game.global.settings.at > 0) {
-                resPerClick /= 2;
-            }
+            let resPerClick = getResourcesPerClick() / (game.global.settings.at > 0 ? 2 : 1) / (game.global.race['hyper'] ? 1.05 : 1) / (game.global.race['slow'] ? 0.9 : 1);
             if (state.cityBuildings.Food.isClickable()) {
-                resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick * (game.global.tech['conjuring'] ? 10 : 1);
             }
             if (state.cityBuildings.Lumber.isClickable()) {
-                resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick  * (game.global.tech['conjuring'] >= 2 ? 10 : 1);
             }
             if (state.cityBuildings.Stone.isClickable()) {
-                resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick  * (game.global.tech['conjuring'] >= 2 ? 10 : 1);
             }
             if (state.cityBuildings.Chrysotile.isClickable()) {
-                resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick;
+                resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick  * (game.global.tech['conjuring'] >= 2 ? 10 : 1);
             }
             if (state.cityBuildings.Slaughter.isClickable()){
                 resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
@@ -9634,17 +9514,16 @@
 
         // Get list of all unlocked techs, and find biggest numbers for each resource
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
-        $("#tech .action a:first-child").each(function() {
-            Object.entries($(this).data()).forEach(([name, amount]) => {
-                let resource = resLowIds[name];
-                if (resource !== undefined) {
-                    resource.storageRequired = Math.max(amount*1.03, resource.storageRequired);
-                    if (resource === resources.Helium_3){
-                        state.heliumRequiredByMissions = Math.max(amount*1.03, state.heliumRequiredByMissions);
-                    }
-                    if (resource === resources.Oil){
-                        state.oilRequiredByMissions = Math.max(amount*1.03, state.oilRequiredByMissions);
-                    }
+        $("#tech .action").each(function() {
+            let research = techIds[this.id];
+            research.updateResourceRequirements();
+            research.resourceRequirements.forEach(requirement => {
+                requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
+                if (requirement.resource === resources.Helium_3){
+                    state.heliumRequiredByMissions = Math.max(requirement.quantity*1.03, state.heliumRequiredByMissions);
+                }
+                if (requirement.resource === resources.Oil){
+                    state.oilRequiredByMissions = Math.max(requirement.quantity*1.03, state.oilRequiredByMissions);
                 }
             });
         });
@@ -9655,7 +9534,7 @@
         // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
         state.knowledgeRequiredByTechs = resources.Knowledge.storageRequired;
 
-        // For building using data attributes is not optimal, as they doesn't updates in real time
+        // Now we're checking costs of buildings
         state.buildingManager.priorityList.forEach(building => {
             if (building.isUnlocked() && building.autoBuildEnabled){
                 building.resourceRequirements.forEach(requirement => {
@@ -9691,68 +9570,37 @@
 
         let prioritizedTasks = [];
 
-        // Queue
+        // Building and research queues
         if (settings.queueRequest) {
-            prioritizedTasks = state.queuedBuildings.slice();
-            if (game.global.r_queue.display) {
-                for (let i = 0; i < game.global.r_queue.queue.length; i++) {
-                    let queue = game.global.r_queue.queue[i];
-                    if (techIds[queue.id]) {
-                        prioritizedTasks.push(techIds[queue.id].id);
-                    }
-                    if (!game.global.settings.qAny) {
-                        break;
-                    }
-                }
-            }
+            prioritizedTasks = prioritizedTasks.concat(state.queuedTargets);
         }
 
         // Active triggers
         if (settings.triggerRequest) {
-            for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
-                let trigger = state.triggerManager.targetTriggers[i];
-                prioritizedTasks.push(trigger.actionId);
-            }
+            prioritizedTasks = prioritizedTasks.concat(state.triggerTargets)
+        }
+
+        // Unlocked and affordable techs
+        if (settings.researchRequest) {
+            $("#tech .action:not(.cnam)").each(function() {
+                let tech = techIds[this.id];
+                if (tech) {
+                    prioritizedTasks.push(tech);
+                }
+            });
         }
 
         if (prioritizedTasks.length > 0) {
             for (let i = 0; i < prioritizedTasks.length; i++){
-                let id = prioritizedTasks[i];
-
-                // Look for building, tech, or project. We have no lookup table for arpa, but it shouldn't be the issue, as there's only few of them
-                let demandedObject = buildingIds[id] || tech[id] || state.projectManager.priorityList.find(project => ("arpa" + project.id) === id);
-
-                // Got something
-                if (demandedObject) {
-                    if (demandedObject instanceof Technology) {
-                        // Techs doesn't updates automatically, unlike buildings or projects, we need to do it explicitly
-                        demandedObject.updateResourceRequirements();
-                    }
-                    let costMod = demandedObject instanceof Project ? 0.01 : 1;
-                    for (let j = 0; j < demandedObject.resourceRequirements.length; j++) {
-                        let resource = demandedObject.resourceRequirements[j].resource;
-                        let required = demandedObject.resourceRequirements[j].quantity * costMod;
-
-                        // We need to check storage ratio here, as queued buildings may be unaffordable
-                        if (resource.currentQuantity >= required || resource.storageRatio > 0.98){
-                            continue;
-                        }
-                        resource.requestedQuantity = Math.max(resource.requestedQuantity, required - resource.currentQuantity);
-                    }
+                let demandedObject = prioritizedTasks[i];
+                let costMod = demandedObject instanceof Project ? 0.01 : 1;
+                for (let j = 0; j < demandedObject.resourceRequirements.length; j++) {
+                    let req = demandedObject.resourceRequirements[j];
+                    let resource = req.resource;
+                    let required = req.quantity * costMod;
+                    resource.requestedQuantity = Math.max(resource.requestedQuantity, required - resource.currentQuantity);
                 }
             }
-        }
-
-        // Resources required by unlocked and affordable techs
-        if (settings.researchRequest) {
-            $("#tech .action:not(.cnam) a:first-child").each(function() {
-                Object.entries($(this).data()).forEach(([name, amount]) => {
-                    let resource = resLowIds[name];
-                    if (resource !== undefined && resource.currentQuantity < amount) {
-                        resource.requestedQuantity = Math.max(resource.requestedQuantity, amount - resource.currentQuantity);
-                    }
-                });
-            });
         }
 
         if (settings.missionRequest) {
@@ -9844,22 +9692,50 @@
 
         updateScriptData();
 
-        state.queuedBuildings = [];
+        state.queuedTargets = [];
+        // Buildings queue
         if (game.global.queue.display) {
             for (let i = 0; i < game.global.queue.queue.length; i++) {
-                state.queuedBuildings.push(game.global.queue.queue[i].id);
+                let id = game.global.queue.queue[i].id;
+                let obj = buildingIds[id] || apraIds[id];
+                if (obj && game.checkAffordable(obj.definition, true)) {
+                    state.queuedTargets.push(obj);
+                }
+                if (!game.global.settings.qAny) {
+                    break;
+                }
+            }
+        }
+        // Research queue
+        if (game.global.r_queue.display) {
+            for (let i = 0; i < game.global.r_queue.queue.length; i++) {
+                let id = game.global.r_queue.queue[i].id;
+                let obj = techIds[id];
+                if (obj && game.checkAffordable(obj.definition, true)) {
+                    state.queuedTargets.push(obj);
+                }
                 if (!game.global.settings.qAny) {
                     break;
                 }
             }
         }
 
-        state.buildingManager.updateWeighting();
+        state.triggerManager.resetTargetTriggers();
 
+        state.triggerTargets = [];
+        for (let i = 0; i < state.triggerManager.targetTriggers.length; i++) {
+            let trigger = state.triggerManager.targetTriggers[i];
+            if (trigger.actionType === "research" && techIds[trigger.actionId]) {
+                state.triggerTargets.push(techIds[trigger.actionId]);
+            }
+            if (trigger.actionType === "build" && buildingIds[trigger.actionId]) {
+                state.triggerTargets.push(buildingIds[trigger.actionId]);
+            }
+        }
+
+        state.buildingManager.updateWeighting();
         state.buildingManager.updateResourceRequirements();
         state.projectManager.updateResourceRequirements();
-        state.triggerManager.updateCompleteTriggers();
-        state.triggerManager.resetTargetTriggers();
 
         if (settings.minimumMoneyPercentage > 0) {
             state.minimumMoneyAllowed = resources.Money.maxQuantity * settings.minimumMoneyPercentage / 100;
@@ -10046,10 +9922,8 @@
               () => 0 // Sacrificial Altar
           ],[
               () => true,
-              (building) => state.triggerManager.buildingConflicts(building),
-              (trigger, building) => trigger.actionType === "build" && trigger.actionId === building.settingId ?
-                          `Processing trigger: ${trigger.desc}` :
-                          `Conflicts with trigger: ${trigger.desc}`,
+              (building) => getCostConflict(building),
+              (result) => `Conflicts with ${result.target.name} for ${result.res.name} (${result.cause})`,
               () => settings.buildingWeightingTriggerConflict
           ],[
               () => true,
@@ -10079,7 +9953,7 @@
               () => "Ignored on Bioseed runs",
               () => 0
           ],[
-              () => settings.prestigeType === "mad" && (tech['mad'].isResearched() || game.checkAffordable(tech['mad'].definition, true)),
+              () => settings.prestigeType === "mad" && (techIds['tech-mad'].isResearched() || game.checkAffordable(techIds['tech-mad'].definition, true)),
               (building) => !building.is.housing && !building.is.garrison,
               () => "Awaiting MAD prestige",
               () => settings.buildingWeightingMADUseless
@@ -10143,20 +10017,16 @@
 
     function initialiseScript() {
         for (let [key, action] of Object.entries(game.actions.tech)) {
-            let technology = new Technology(key);
-            tech[key] = technology;
-            techIds[action.id] = technology;
-        }
-
-        // Filling lookup table for data attributes
-        for (let id in resources) {
-            let resource = resources[id];
-            resLowIds[resource.id.toLowerCase()] = resource;
+            techIds[action.id] = new Technology(key);
         }
 
         // And for buildings popups
         for (let building of [...Object.values(state.cityBuildings), ...Object.values(state.spaceBuildings)]){
             buildingIds[building.settingId] = building;
+        }
+
+        for (let project of Object.values(state.projects)){
+            apraIds[project._vueBinding] = project;
         }
 
         updateStateFromSettings();
@@ -10530,14 +10400,15 @@
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
         let scriptContentNode = $('#script_settings');
-        if (scriptContentNode.length == 0) {
-            scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
-            let settingsNode = $(".settings");
-            settingsNode.append(scriptContentNode);
-            settingsNode.css("height", "calc(100vh - 5.8rem)");
-        } else {
-            scriptContentNode.empty();
+        if (scriptContentNode.length !== 0) {
+            return;
         }
+
+        scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
+        let settingsNode = $(".settings");
+        settingsNode.append(scriptContentNode);
+        settingsNode.css("height", "calc(100vh - 5.8rem)");
+
 
         buildImportExport();
         buildPrestigeSettings(scriptContentNode, true);
@@ -10671,7 +10542,6 @@
             let element = document.getElementById(sectionId + "SettingsCollapsed");
             element.classList.toggle("script-contentactive");
             let content = element.nextElementSibling;
-            //@ts-ignore
             content.style.display = "block";
         }
 
@@ -10716,7 +10586,6 @@
                 let element = document.getElementById(mainSectionId + "SettingsCollapsed");
                 element.classList.toggle("script-contentactive");
                 let content = element.nextElementSibling;
-                //@ts-ignore
                 content.style.display = "block";
             }
         }
@@ -10822,7 +10691,6 @@
             updateSettingsFromState();
 
             if (secondaryPrefix !== "" && settings.showSettings) {
-                // @ts-ignore
                 document.getElementById(mainSettingName).children[0].checked = e.currentTarget.checked;
             }
         });
@@ -11006,9 +10874,10 @@
             updateSettingsFromState();
         });
 
-        // Bioseed
+        // MAD
         addStandardSectionHeader1(prestigeHeaderNode, "Mutual Assured Destruction");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeMADIgnoreArpa", "Pre-MAD: Ignore A.R.P.A.", "Disables building A.R.P.A. projects untill MAD is researched");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeMADWait", "Wait for maximum population", "Wait for maximum population and soldiers to maximize plasmids gain");
 
         // Bioseed
         addStandardSectionHeader1(prestigeHeaderNode, "Bioseed");
@@ -11093,7 +10962,6 @@
             updateSettingsFromState();
 
             if (secondaryPrefix !== "" && settings.showSettings) {
-                // @ts-ignore
                 document.getElementById(mainSelectId).value = settings[settingName];
             }
         });
@@ -11460,12 +11328,8 @@
         buildTriggerSettingsColumn(trigger);
 
         let content = document.querySelector('#script_triggerSettings .script-content');
-        // @ts-ignore
         content.style.height = null;
-        // @ts-ignore
         content.style.height = content.offsetHeight + "px"
-
-        state.triggerManager.resetTargetTriggers();
     }
 
     /**
@@ -11487,7 +11351,6 @@
 
         typeSelectNode.on('change', function() {
             trigger.updateRequirementType(this.value);
-            state.triggerManager.resetTargetTriggers();
 
             buildTriggerRequirementId(trigger);
             buildTriggerRequirementCount(trigger);
@@ -11547,7 +11410,6 @@
 
         typeSelectNode.on('change', function() {
             trigger.updateActionType(this.value);
-            state.triggerManager.resetTargetTriggers();
 
             buildTriggerActionId(trigger);
             buildTriggerActionCount(trigger);
@@ -11599,12 +11461,9 @@
             state.triggerManager.RemoveTrigger(trigger.seq);
             updateSettingsFromState();
             updateTriggerSettingsContent();
-            state.triggerManager.resetTargetTriggers();
 
             let content = document.querySelector('#script_triggerSettings .script-content');
-            // @ts-ignore
             content.style.height = null;
-            // @ts-ignore
             content.style.height = content.offsetHeight + "px"
         });
     }
@@ -11618,14 +11477,14 @@
 
             // If it wasn't selected from list
             if(ui.item === null){
-                let typedTech = Object.values(tech).find(technology => technology.title === this.value);
+                let typedTech = Object.values(techIds).find(technology => technology.title === this.value);
                 if (typedTech !== undefined){
-                    ui.item = {label: this.value, value: typedTech.id};
+                    ui.item = {label: this.value, value: typedTech._vueBinding};
                 }
             }
 
             // We have a tech to switch
-            if (ui.item !== null && tech.hasOwnProperty(ui.item.value)) {
+            if (ui.item !== null && techIds.hasOwnProperty(ui.item.value)) {
                 if (trigger[property] === ui.item.value) {
                     return;
                 }
@@ -11633,7 +11492,6 @@
                 trigger[property] = ui.item.value;
                 trigger.complete = false;
 
-                state.triggerManager.resetTargetTriggers();
                 updateSettingsFromState();
 
                 this.value = ui.item.label;
@@ -11641,8 +11499,8 @@
             }
 
             // No tech selected, don't change trigger, just restore old title in text field
-            if (tech.hasOwnProperty(trigger[property])) {
-                this.value = tech[trigger[property]].title;
+            if (techIds.hasOwnProperty(trigger[property])) {
+                this.value = techIds[trigger[property]].title;
                 return;
             }
         };
@@ -11652,10 +11510,10 @@
             source: function(request, response) {
                 let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
                 let techList = [];
-                Object.values(tech).forEach(technology => {
+                Object.values(techIds).forEach(technology => {
                     let title = technology.title;
                     if(matcher.test(title)){
-                        techList.push({label: title, value: technology.id});
+                        techList.push({label: title, value: technology._vueBinding});
                     }
                 });
                 response(techList);
@@ -11665,8 +11523,8 @@
             change: onChange // Keyboard type
         });
 
-        if (tech.hasOwnProperty(trigger[property])) {
-            typeSelectNode.val(tech[trigger[property]].title);
+        if (techIds.hasOwnProperty(trigger[property])) {
+            typeSelectNode.val(techIds[trigger[property]].title);
         }
 
         return typeSelectNode;
@@ -11696,7 +11554,6 @@
                 trigger[property] = ui.item.value;
                 trigger.complete = false;
 
-                state.triggerManager.resetTargetTriggers();
                 updateSettingsFromState();
 
                 this.value = ui.item.label;
@@ -11746,7 +11603,6 @@
                 trigger[property] = parsedValue;
                 trigger.complete = false;
 
-                state.triggerManager.resetTargetTriggers();
                 updateSettingsFromState();
             }
         });
@@ -12733,7 +12589,6 @@
         addWeighingRule(tableBodyNode, "Building with state (space)", "Some instances of this building are not working", "buildingWeightingNonOperating");
         addWeighingRule(tableBodyNode, "Any", "Conflicts for some resource with active trigger", "buildingWeightingTriggerConflict");
         addWeighingRule(tableBodyNode, "Any", "Missing consumables or support to operate", "buildingWeightingMissingSupply");
-        addWeighingRule(tableBodyNode, "Queued building", "Overrides weighting with given number, prioritizing it. Unlike other rules it's not a multiplier, thus explicitly queued buildings won't ever be disabled by other rules.", "buildingWeightingQueued");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -12781,7 +12636,6 @@
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
-        addStandardSectionSettingsToggle(preTableNode, "buildingStrictMode", "Strict weighting mode", "This option disables all weighting optimizations, guarantying that nothing will delay prioritized buildings. Normally script consider storage caps, current amount of resources, and incomes, trying to determine whether less priority building can be be build without delaying prioritized one, or not. However, all those values may fluctuate, and sudden temporal changes may confuse script, making it think it's safe to use something, which later become a bottleneck. Normally this optimisations speed up building process by a lot, and minor fluctuatons doesn't overweights benefits. Unless you need(e.g. queued) to build something very expensive, and wrong spending may add a hours of delay, and should be avoided at any cost. This option for such cases, with this enabled script will autobuild only when it's absolutely safe.");
 
         currentNode.append(`<div style="margin-top: 5px; width: 400px;">
                               <label for="script_buildingShrineType">Prefered Shrine:</label>
@@ -12884,7 +12738,6 @@
     function filterBuildingSettingsTable() {
         // Declare variables
         let input = document.getElementById("script_buildingSearch");
-        //@ts-ignore
         let filter = input.value.toUpperCase();
         let table = document.getElementById("script_buildingTableBody");
         let trs = table.getElementsByTagName("tr");
@@ -12941,7 +12794,6 @@
             let toggles = document.querySelectorAll('[id^="script_bat"] input');
 
             for (let i = 0; i < toggles.length; i++) {
-                // @ts-ignore
                 toggles[i].checked = state;
             }
 
@@ -12995,7 +12847,6 @@
             let toggles = document.querySelectorAll('[id^="script_bld_s_"] input');
 
             for (let i = 0; i < toggles.length; i++) {
-                // @ts-ignore
                 toggles[i].checked = state;
             }
 
@@ -13393,10 +13244,8 @@
             let input = e.currentTarget.children[0];
             let state = input.checked;
             project.autoBuildEnabled = state;
-            // @ts-ignore
             let otherCheckbox = document.querySelector('#script_arpa2_' + project.id + ' input');
             if (otherCheckbox !== null) {
-                // @ts-ignore
                 otherCheckbox.checked = state;
             }
             updateSettingsFromState();
@@ -13464,7 +13313,6 @@
             building.autoBuildEnabled = state;
             let otherCheckbox = document.querySelector('#script_bat2_' + building.settingId + ' input');
             if (otherCheckbox !== null) {
-                // @ts-ignore
                 otherCheckbox.checked = state;
             }
             updateSettingsFromState();
@@ -13839,5 +13687,4 @@
 
     $().ready(mainAutoEvolveScript);
 
-// @ts-ignore
 })($);
