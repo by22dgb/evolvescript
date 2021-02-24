@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.31
+// @version      3.3.1.33
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1106,7 +1106,7 @@
             this.galaxyMarketWeighting = 0;
             this.galaxyMarketPriority = 0;
 
-            this.ejectEnabled = true;
+            this.ejectEnabled = false;
 
             this.storeOverflow = false;
             this.storagePriority = 0;
@@ -1267,7 +1267,7 @@
         }
 
         isTradable() {
-            return game.tradeRatio.hasOwnProperty(this.id);
+            return game.tradeRatio.hasOwnProperty(this.id) && (this.instance ? this.instance.hasOwnProperty("trade") : false);
         }
 
         isCraftable() {
@@ -3219,6 +3219,14 @@
             return game.actions.arpa[this.id];
         }
 
+        get title() {
+            if (this.definition !== undefined) {
+                return typeof this.definition.title === 'string' ? this.definition.title : this.definition.title();
+            }
+
+            return this.name;
+        }
+
         // This is the resource requirements for 100% of the project
         updateResourceRequirements() {
             if (!this.isUnlocked()) {
@@ -4903,6 +4911,7 @@
         state.evolutionChallengeList.push(state.evolutions.Cataclysm);
 
         resetMarketState();
+        resetEjectorState();
         resetStorageState();
         resetProjectState();
         resetProductionState();
@@ -5706,7 +5715,7 @@
 
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "fleetSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
-                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed", "weightingSettingsCollapsed"];
+                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed", "weightingSettingsCollapsed", "ejectorSettingsCollapsed"];
 
     function updateStateFromSettings() {
         updateStandAloneSettings();
@@ -6109,6 +6118,19 @@
         }
 
         // TODO: Remove me after few more versions. Clean up old fork-only settings, not used neither here, nor in original script.
+        for (let resource of Object.values(resources)) {
+            if (!resource.isTradable()) {
+                delete settings['res_buy_p_' + resource.id];
+                delete settings['buy' + resource.id];
+                delete settings['res_buy_r_' + resource.id];
+                delete settings['sell' + resource.id];
+                delete settings['res_sell_r_' + resource.id];
+                delete settings['res_trade_buy_' + resource.id];
+                delete settings['res_trade_buy_mtr_' + resource.id];
+                delete settings['res_trade_sell_' + resource.id];
+                delete settings['res_trade_sell_mps_' + resource.id];
+            }
+        }
         delete settings.buildingWeightingQueued;
         delete settings.buildingStrictMode;
         delete settings.evolutionIgnore;
@@ -7892,12 +7914,9 @@
             return;
         }
 
-        let adjustMassEjector = false;
-
         // Eject everything!
         if (ejector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
             let remaining = ejector.stateOnCount * 1000;
-            adjustMassEjector = true;
 
             resourcesByAtomicMass.forEach(resourceRequirement => {
                 let resource = resourceRequirement.resource;
@@ -7943,7 +7962,6 @@
         // Limited eject
         if (ejector.stateOnCount < settings.prestigeWhiteholeEjectAllCount) {
             let remaining = ejector.stateOnCount * 1000;
-            adjustMassEjector = true;
 
             // First we want to eject capped resources
             resourcesByAtomicMass.forEach(resourceRequirement => {
@@ -7963,7 +7981,7 @@
                 resourcesByAtomicMass.forEach(resourceRequirement => {
                     let resource = resourceRequirement.resource;
 
-                    if (remaining <= 0 || !resource.ejectEnabled || resource.isCraftable()) {
+                    if (remaining <= 0 || !resource.ejectEnabled) {
                         return;
                     }
 
@@ -7984,8 +8002,6 @@
                 });
             }
         }
-
-        if (!adjustMassEjector) { return; }
 
         // Decrement first to free up space
         resourcesByAtomicMass.forEach(resourceRequirement => {
@@ -9698,7 +9714,7 @@
             for (let i = 0; i < game.global.queue.queue.length; i++) {
                 let id = game.global.queue.queue[i].id;
                 let obj = buildingIds[id] || apraIds[id];
-                if (obj && game.checkAffordable(obj.definition, true)) {
+                if (obj && (obj instanceof Project || game.checkAffordable(obj.definition, true))) {
                     state.queuedTargets.push(obj);
                 }
                 if (!game.global.settings.qAny) {
@@ -9923,7 +9939,7 @@
           ],[
               () => true,
               (building) => getCostConflict(building),
-              (result) => `Conflicts with ${result.target.name} for ${result.res.name} (${result.cause})`,
+              (result) => `Conflicts with ${result.target.title} for ${result.res.name} (${result.cause})`,
               () => settings.buildingWeightingTriggerConflict
           ],[
               () => true,
@@ -10421,6 +10437,7 @@
         buildWarSettings(scriptContentNode, true);
         buildHellSettings(scriptContentNode, true);
         buildFleetSettings();
+        buildEjectorSettings();
         buildMarketSettings();
         buildStorageSettings();
         buildProductionSettings();
@@ -11261,8 +11278,7 @@
 
         for (let i = 0; i < state.triggerManager.priorityList.length; i++) {
             const trigger = state.triggerManager.priorityList[i];
-            let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '"' + classAttribute + '><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '" class="script-draggable"><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -11312,8 +11328,7 @@
         let tableBodyNode = $('#script_triggerTableBody');
         let newTableBodyText = "";
 
-        let classAttribute = ' class="script-draggable"';
-        newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '"' + classAttribute + '><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+        newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '" class="script-draggable"><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
 
         tableBodyNode.append($(newTableBodyText));
 
@@ -11879,6 +11894,87 @@
         }
     }
 
+    function buildEjectorSettings() {
+        let sectionId = "ejector";
+        let sectionName = "Mass Ejector";
+
+        let resetFunction = function() {
+            resetEjectorState();
+            updateSettingsFromState();
+            updateEjectorSettingsContent();
+
+            // Redraw toggles on market tab
+            if ( $('.ea-eject-toggle').length !== 0 ) {
+                createEjectToggles();
+            }
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateEjectorSettingsContent);
+    }
+
+    function updateEjectorSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_ejectorContent');
+        currentNode.empty().off("*");
+
+        // Add table
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:45%">Atomic Mass</th><th class="has-text-warning" style="width:20%">Allow Eject</th></tr>
+                <tbody id="script_ejectorTableBody" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_ejectorTableBody');
+        let newTableBodyText = "";
+
+        for (let id in resources) {
+            let resource = resources[id];
+            if (resource.isEjectable()) {
+                newTableBodyText += '<tr value="' + resource.id + '"><td id="script_eject_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:45%"></td><td style="width:20%"></td></tr>';
+            }
+        }
+
+        tableBodyNode.append($(newTableBodyText));
+
+        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+            let resource = resourcesByAtomicMass[i].resource;
+            let ejectElement = $('#script_eject_' + resource.id + 'Toggle');
+
+            ejectElement.append(buildEjectorLabel(resource));
+
+            ejectElement = ejectElement.next();
+            ejectElement.append(`<span class="mass">Mass per unit: <span class="has-text-warning">${resource.atomicMass}</span> kt</span>`);
+
+            ejectElement = ejectElement.next();
+            ejectElement.append(buildStandartSettingsToggle(resource, "ejectEnabled", "script_eject2_" + resource.id, "script_eject1_" + resource.id));
+        }
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function buildEjectorLabel(resource) {
+        let color = "has-text-info";
+        if (resource === resources.Elerium || resource === resources.Infernite) {
+            color = "has-text-caution";
+        } else if (resource.isCraftable()) {
+            color = "has-text-danger";
+        } else if (!resource.isTradable()) {
+            color = "has-text-advanced";
+        }
+
+        return $(`<span class="${color}">${resource.name}</span>`);
+    }
+
+    function resetEjectorState() {
+        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+            let resource = resourcesByAtomicMass[i].resource;
+            resource.ejectEnabled = resource.isTradable();
+        }
+        resources.Elerium.ejectEnabled = true;
+        resources.Infernite.ejectEnabled = true;
+    }
+
     function buildMarketSettings() {
         let sectionId = "market";
         let sectionName = "Market";
@@ -11921,8 +12017,7 @@
 
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             const resource = state.marketManager.priorityList[i];
-            let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_market_' + resource.id + 'Toggle" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"></td></tr>';
+            newTableBodyText += '<tr value="' + resource.id + '" class="script-draggable"><td id="script_market_' + resource.id + 'Toggle" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12059,8 +12154,7 @@
 
         for (let i = 0; i < state.storageManager.priorityList.length; i++) {
             const resource = state.storageManager.priorityList[i];
-            let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + resource.id + '"' + classAttribute + '><td id="script_storage_' + resource.id + 'Toggle" style="width:50%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += '<tr value="' + resource.id + '" class="script-draggable"><td id="script_storage_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12145,8 +12239,7 @@
 
         for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
             const trait = state.minorTraitManager.priorityList[i];
-            let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + trait.traitName + '"' + classAttribute + '><td id="script_minorTrait_' + trait.traitName + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
+            newTableBodyText += '<tr value="' + trait.traitName + '" class="script-draggable"><td id="script_minorTrait_' + trait.traitName + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12895,8 +12988,7 @@
 
         for (let i = 0; i < state.projectManager.priorityList.length; i++) {
             const project = state.projectManager.priorityList[i];
-            let classAttribute = ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + project.id + '"' + classAttribute + '><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
+            newTableBodyText += '<tr value="' + project.id + '" class="script-draggable"><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -13332,7 +13424,9 @@
     }
 
     function createEjectToggles() {
-        $('#eject').append('<span style="margin-left: auto; margin-right: 0.2rem;" class="has-text-danger">Auto Eject</span>');
+        removeEjectToggles();
+
+        $('#eject').append('<span id="script_eject_top_row" style="margin-left: auto; margin-right: 0.2rem;" class="has-text-danger">Auto Eject</span>');
         for (let i = 0; i < resourcesByAtomicMass.length; i++) {
             let resource = resourcesByAtomicMass[i].resource;
             if (resource.isUnlocked()) {
@@ -13344,10 +13438,19 @@
                 toggleEject.on('change', function(e) {
                     let input = e.currentTarget.children[0];
                     resource.ejectEnabled = input.checked;
+                    let otherCheckbox = document.querySelector('#script_eject2_' + resource.id + ' input');
+                    if (otherCheckbox !== null) {
+                        otherCheckbox.checked = input.checked;
+                    }
                     updateSettingsFromState();
                 });
             }
         }
+    }
+
+    function removeEjectToggles() {
+        $('.ea-eject-toggle').remove();
+        $("#script_eject_top_row").remove();
     }
 
     /**
