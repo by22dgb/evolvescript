@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.33
+// @version      3.3.1.34
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -20,7 +20,7 @@
 //   Scripting Edition no longer required, works both with fork and original game
 //   Added Andromeda support, auto fleet, auto galaxy trades, and all buildings with their supports and consumptions
 //   Remade autoBuild, all buildings now can have individual weights, plus dynamic coefficients to weights(like, increasing weights of power plants when you need more energy), plus additional safe-guards checking for resource usage, available support, and such. You can fine-tune script to build what you actually need, and save resources for further constructions.
-//   Added autoQuarry option, which manages stone to chrysotile ratio for smoldering races. autoMiningDroid now configurable, and can mine for resources other than adamantine.
+//   Added autoQuarry option, which manages stone to chrysotile ratio for smoldering races; autoPylon to manage rituals; autoMiningDroid now configurable, and can mine for resources other than adamantine.
 //   Remade autoSmelter, now it tries to balance iron and steel income to numbers where both of resources will be full at same time(as close to that as possible). Less you have, more time it'll take to fill, more smelters will be reassigned to lacking resource, and vice versa. And it also can use star power and inferno as fuel.
 //   Remade autoCraftsmen, it assigns all crafters to same resource at once, to utilize apprentice bonus, and rotates them between resources aiming to desired ratio of stored resources
 //   Remade autoStorage, it calculates required storages, based on available techs and buildings, and assign storages to make them all affordable. Weighting option is gone as it not needed anymore, just rearrange list to change filling order when storages are scarce. Max crate\containers for individual reources still exist, and respected by adjustments.
@@ -1131,13 +1131,17 @@
 
             this.requestedQuantity = 0;
 
-            this._vueBinding = "res" + this.id;
-            this._stackVueBinding = "stack-" + this.id;
-            this._ejectorVueBinding = "eject" + this.id;
-            this._marketVueBinding = "market-" + this.id;
+            this._vueBinding = "res" + id;
+            this._stackVueBinding = "stack-" + id;
+            this._ejectorVueBinding = "eject" + id;
+            this._marketVueBinding = "market-" + id;
         }
 
         //#region Standard resource
+
+        get title() {
+            return this.instance?.name || this.name;
+        }
 
         get instance() {
             return game.global.resource[this.id];
@@ -1532,7 +1536,7 @@
 
         get id() {
             // The population node is special and its id will change to the race name
-            return getRaceId();
+            return game.global.race.species;
         }
     }
 
@@ -1556,6 +1560,82 @@
             return game.global.tech.star_forge >= 2;
         }
 
+    }
+
+    class Pylon extends Action {
+        constructor() {
+            super("Pylon", "city", "pylon", "");
+
+            this._industryVueBinding = "iPylon";
+            this._industryVue = undefined;
+
+            this.Productions = normalizeProperties({
+                Farmer: {id: 'farmer', unlocked: () => !game.global.race['carnivore'] && !game.global.race['soul_eater']},
+                Miner: {id: 'miner', unlocked: () => true},
+                Lumberjack: {id: 'lumberjack', unlocked: () => isLumberRace() && !game.global.race['evil']},
+                Science: {id: 'science', unlocked: () => true},
+                Factory: {id: 'factory', unlocked: () => true},
+                Army: {id: 'army', unlocked: () => true},
+                Hunting: {id: 'hunting', unlocked: () => true},
+                Crafting: {id: 'crafting', unlocked: () => game.global.tech.magic >= 4},
+            });
+        }
+
+        initIndustry() {
+            if (this.count < 1 || !game.global.race['casting']) {
+                return false;
+            }
+
+            this._industryVue = getVueById(this._industryVueBinding);
+            if (this._industryVue === undefined) {
+                return false;
+            }
+
+            return true;
+        }
+
+        currentSpells(spell) {
+            return game.global.race.casting[spell.id];
+        }
+
+        // export function manaCost(spell,rate) from Evolve/src/industry.js
+        manaCost(spell) {
+            return spell * ((1.0025) ** spell - 1);
+        }
+
+        increaseRitual(spell, count) {
+            if (count === 0 || !spell.unlocked) {
+                return false;
+            }
+            if (count < 0) {
+                return this.decreaseRitual(spell, count * -1);
+            }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                this._industryVue.addSpell(spell.id);
+            }
+
+            return true;
+        }
+
+        decreaseRitual(spell, count) {
+            if (count === 0 || !spell.unlocked) {
+                return false;
+            }
+            if (count < 0) {
+                return this.increaseRitual(count * -1);
+            }
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                this._industryVue.subSpell(spell.id);
+            }
+
+            return true;
+        }
     }
 
     class RockQuarry extends Action {
@@ -1634,7 +1714,7 @@
             this.Fuels = normalizeProperties({
                 Oil: {id: "Oil", unlocked: () => game.global.resource.Oil.display, cost: [new ResourceProductionCost(resources.Oil, 0.35, 2)]},
                 Coal: {id: "Coal", unlocked: () => game.global.resource.Coal.display, cost: [new ResourceProductionCost(resources.Coal, () => !isLumberRace() ? 0.15 : 0.25, 2)]},
-                Wood: {id: "Wood", unlocked: () => isLumberRace() || game.global.race['evil'], cost: [new ResourceProductionCost(resources.Lumber, () => game.global.race['evil'] && !game.global.race['soul_eater'] ? 1 : 3, 6)]},
+                Wood: {id: "Wood", unlocked: () => isLumberRace() || game.global.race['evil'], cost: [new ResourceProductionCost(() => game.global.race['evil'] ? game.global.race['soul_eater'] && game.global.race.species !== 'wendigo' ? resources.Food : resources.Furs : resources.Lumber, () => game.global.race['evil'] && !game.global.race['soul_eater'] || game.global.race.species === 'wendigo' ? 1 : 3, 6)]},
                 Star: {id: "Star", unlocked: () => game.global.tech.star_forge >= 2, cost: [new ResourceProductionCost(resources.StarPower, 1, 0)]},
                 Inferno: {id: "Inferno", unlocked: () => game.global.tech.smelting >= 8, cost: [new ResourceProductionCost(resources.Coal, 50, 50), new ResourceProductionCost(resources.Oil, 35, 50), new ResourceProductionCost(resources.Infernite, 0.5, 50)]},
             }, [ResourceProductionCost]);
@@ -4179,21 +4259,12 @@
         custom: new Race("custom", "Custom", customAllowed, "Custom designed race", "Lab Failure"),
     }
 
-    /** @type {Race[]} */
-    var raceAchievementList = [
-        races.antid, races.mantis, races.scorpid, races.human, races.orc, races.elven, races.troll, races.ogre, races.cyclops,
-        races.kobold, races.goblin, races.gnome, races.cath, races.wolven, races.centaur, races.balorg, races.imp, races.seraph, races.unicorn,
-        races.arraak, races.pterodacti, races.dracnid, races.tortoisan, races.gecko, races.slitheryn, races.sharkin, races.octigoran,
-        races.entish, races.cacti, races.pinguicula, races.sporgar, races.shroomi, races.moldling, races.junker, races.dryad, races.satyr, races.phoenix, races.salamander,
-        races.yeti, races.wendigo, races.tuskin, races.kamel, races.custom
-    ];
-
     // All minor traits and the currently two special traits
     var minorTraits = ["tactical", "analytical", "promiscuous", "resilient", "cunning", "hardy", "ambidextrous", "industrious", "content", "fibroblast", "metallurgist", "gambler", "persuasive", "fortify", "mastery"];
 
     var universes = ['standard','heavy','antimatter','evil','micro','magic'];
 
-    var planetBiomes = ["oceanic", "forest", "grassland","desert", "volcanic", "tundra", "hellscape", "eden"];
+    var planetBiomes = ["oceanic", "forest", "grassland", "desert", "volcanic", "tundra", "eden", "hellscape"];
     var planetTraits = ["magnetic", "rage", "elliptical", "stormy", "toxic", "ozone", "mellow", "trashed", "flare", "unstable", "dense"];
     var planetBiomeRaces = {
         hellscape: ["balorg", "imp"],
@@ -4535,9 +4606,8 @@
             SlaveMarket: new Action("Slave Market", "city", "slave_market", ""),
             Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
             Shrine: new Action ("Shrine", "city", "shrine", ""),
-            CompostHeap: new Action ("Compost Heap", "city", "compost", ""),
-
-            Pylon: new Action ("Pylon", "city", "pylon", "")
+            CompostHeap: new Action("Compost Heap", "city", "compost", ""),
+            Pylon: new Pylon(),
         },
 
         spaceBuildings: {
@@ -5659,6 +5729,7 @@
 
     function resetProductionSettings() {
         settings.productionPrioritizeDemanded = true;
+        settings.productionWaitMana = true;
         settings.productionSmelting = "storage";
     }
 
@@ -5695,6 +5766,10 @@
         Object.assign(droid.Productions.Aluminium, {priority: 2, weighting: 1});
         Object.assign(droid.Productions.Uranium, {priority: 1, weighting: 1});
         Object.assign(droid.Productions.Coal, {priority: 1, weighting: 1});
+
+        for (let spell of Object.values(state.cityBuildings.Pylon.Productions)) {
+            spell.weighting = 1;
+        }
     }
 
     function resetTriggerSettings() {
@@ -5715,7 +5790,7 @@
 
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "fleetSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
-                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed", "weightingSettingsCollapsed", "ejectorSettingsCollapsed"];
+                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed", "weightingSettingsCollapsed", "ejectorSettingsCollapsed", "planetSettingsCollapser"];
 
     function updateStateFromSettings() {
         updateStandAloneSettings();
@@ -5777,6 +5852,10 @@
             project.ignoreMinimumMoneySetting = settings['arpa_ignore_money_' + project.id] ?? project.ignoreMinimumMoneySetting;
         }
         state.projectManager.sortByPriority();
+
+        for (let spell of Object.values(state.cityBuildings.Pylon.Productions)) {
+            spell.weighting = parseInt(settings['spell_w_' + spell.id] ?? spell.weighting);
+        }
 
         for (let production of Object.values(state.cityBuildings.Factory.Productions)) {
             production.enabled = settings['production_' + production.resource.id] ?? production.enabled;
@@ -5886,6 +5965,10 @@
             settings['arpa_ignore_money_' + project.id] = project.ignoreMinimumMoneySetting;
         }
 
+        for (let spell of Object.values(state.cityBuildings.Pylon.Productions)) {
+            settings['spell_w_' + spell.id] = spell.weighting;
+        }
+
         for (let production of Object.values(state.cityBuildings.Factory.Productions)) {
             settings["production_" + production.resource.id] = production.enabled;
             settings["production_w_" + production.resource.id] = production.weighting;
@@ -5957,6 +6040,7 @@
         addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
 
         addSetting("productionPrioritizeDemanded", true);
+        addSetting("productionWaitMana", true);
         addSetting("productionSmelting", "storage");
 
         addSetting("jobSetDefault", true);
@@ -5991,6 +6075,7 @@
             addSetting(loggingType.settingKey, true)
         });
 
+        addSetting("autoPylon", false);
         addSetting("autoQuarry", false);
         addSetting("autoSmelter", false);
         addSetting("autoFactory", false);
@@ -6117,6 +6202,16 @@
             addSetting("fleet_p_" + galaxyRegions[i], galaxyRegions.length - i);
         }
 
+        for (let i = 0; i < biomeList.length; i++) {
+            addSetting("biome_w_" + biomeList[i], 0);
+        }
+        for (let i = 0; i < traitList.length; i++) {
+            addSetting("trait_w_" + traitList[i], 0);
+        }
+        for (let i = 0; i < extraList.length; i++) {
+            addSetting("extra_w_" + extraList[i], 0);
+        }
+
         // TODO: Remove me after few more versions. Clean up old fork-only settings, not used neither here, nor in original script.
         for (let resource of Object.values(resources)) {
             if (!resource.isTradable()) {
@@ -6199,6 +6294,7 @@
             state.resetEvolutionTarget = true;
             updateStateFromSettings();
             updateSettingsFromState();
+            removeScriptSettings();
             buildScriptSettings();
         }
 
@@ -6277,6 +6373,11 @@
                     // Race specified, and condition is met
                     state.evolutionTarget = userRace
                 }
+            }
+
+            // Try to pull next race from queue
+            if (state.evolutionTarget === null && settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
+                return;
             }
 
             // Still no target. Fallback to antid.
@@ -6378,55 +6479,113 @@
         }
     }
 
+    // function setPlanet from Evolve/src/actions.js
+    // Produces same set of planets, accurate for v1.0.29
+    function generatePlanets() {
+        let seed = game.global.race.seed;
+        let seededRandom = function(min = 0, max = 1) {
+            seed = (seed * 9301 + 49297) % 233280;
+            let rnd = seed / 233280;
+            return min + rnd * (max - min);
+        }
+
+        let biomes = ['grassland', 'oceanic', 'forest', 'desert', 'volcanic', 'tundra', game.global.race.universe === 'evil' ? 'eden' : 'hellscape'];
+        let traits = ['toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable', 'none', 'none', 'none', 'none', 'none'];
+        let geologys = ['Copper', 'Iron', 'Aluminium', 'Coal', 'Oil', 'Titanium', 'Uranium'];
+        if (game.global.stats.achieve['whitehole']) {
+            geologys.push('Iridium');
+        }
+
+        let planets = [];
+        let hell = false;
+        let maxPlanets = Math.max(1, game.global.race.probes);
+        for (let i = 0; i < maxPlanets; i++){
+            let planet = {geology: {}};
+            let max_bound = !hell && game.global.stats.portals >= 1 ? 7 : 6;
+            planet.biome = biomes[Math.floor(seededRandom(0, max_bound))];
+            planet.trait = traits[Math.floor(seededRandom(0, 16))];
+
+            let max = Math.floor(seededRandom(0,3));
+            let top = planet.biome === 'eden' ? 35 : 30;
+            if (game.global.stats.achieve['whitehole']){
+                max += game.global.stats.achieve['whitehole'].l;
+                top += game.global.stats.achieve['whitehole'].l * 5;
+            }
+
+            for (let i = 0; i < max; i++){
+                let index = Math.floor(seededRandom(0, 10));
+                if (geologys[index]) {
+                    planet.geology[geologys[index]] = ((Math.floor(seededRandom(0, top)) - 10) / 100);
+                }
+            }
+
+            let id = planet.biome + Math.floor(seededRandom(0,10000));
+            planet.id = id.charAt(0).toUpperCase() + id.slice(1);
+
+            if (planet.biome !== 'hellscape' && planet.biome !== 'eden') {
+                seededRandom(); // We don't need orbit. Call it just to sync seed with game math.
+            } else {
+                hell = true;
+            }
+            planets.push(planet);
+        }
+        return planets;
+    }
+
     function autoPlanetSelection() {
         if (!game.global.race.seeded || game.global.race['chose']) { return; }
         if (settings.userPlanetTargetName === 'none') { return; }
 
-        // This section is for if we bioseeded life and we get to choose our path a little bit
-        let planetNodes = document.querySelectorAll('#evolution .action');
+        let planets = generatePlanets();
 
-        let planets = [];
-        for (let i = 0; i < planetNodes.length; i++) {
-            let planetNode = planetNodes[i];
-            try {
-                let planetTitle = planetNode.innerText.split(" ");
-                let planet = {id: planetNode.id};
+        // Let's try to calculate how many achievements we can get here
+        let alevel = getConfiguredAchievementLevel();
+        for (let i = 0; i < planets.length; i++){
+            let planet = planets[i];
+            planet.achieve = 0;
 
-                let planetTraitName = null;
-                let planetBiomeName = null;
-
-                // Planets titles consists of two or three parts: [Optional trait] Biome ID
-                if (planetTitle.length === 3) {
-                    planetTraitName = planetTitle[0];
-                    planetBiomeName = planetTitle[1];
-                } else {
-                    planetBiomeName = planetTitle[0];
-                }
-
-                // Parsing titles
-                for (let j = 0; j < planetBiomes.length; j++){
-                    if (planetBiomeName === game.loc("biome_" +  planetBiomes[j] + "_name")) {
-                        planet.biome = planetBiomes[j];
-                        break;
-                    }
-                }
-                if (!planet.biome) { throw true; }
-
-                if (planetTraitName) {
-                    for (let j = 0; j < planetTraits.length; j++){
-                        if (planetTraitName === game.loc("planet_" + planetTraits[j])) {
-                            planet.trait = planetTraits[j];
-                            break;
-                        }
-                    }
-                    if (!planet.trait) { throw true; }
-                }
-
-                planets.push(planet);
-            } catch {
-                console.log("Failed to parse planet: " + planetNode.innerText);
-                continue;
+            if (!isAchievementUnlocked("biome_" + planet.biome, alevel)) {
+                planet.achieve++;
             }
+            if (planet.trait && !isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
+                planet.achieve++;
+            }
+            if (planetBiomeRaces[planet.biome]) {
+                for (let j = 0; j < planetBiomeRaces[planet.biome].length; j++) {
+                    let race = planetBiomeRaces[planet.biome][j];
+                    if (!isAchievementUnlocked("extinct_" + race, alevel)) {
+                        planet.achieve++;
+                    }
+                }
+                // Both races have same genus, no need to check both
+                let genus = game.races[planetBiomeRaces[planet.biome][0]].type;
+                if (!isAchievementUnlocked("genus_" + genus, alevel)) {
+                    planet.achieve++;
+                }
+            }
+        }
+
+        // Now calculate weightings
+        for (let i = 0; i < planets.length; i++){
+            let planet = planets[i];
+            planet.weighting = 0;
+
+            planet.weighting += settings["biome_w_" + planet.biome];
+            planet.weighting += settings["trait_w_" + planet.trait];
+
+            planet.weighting += planet.achieve * settings["extra_w_Achievement"];
+
+            let numShow = game.global.stats.achieve['miners_dream'] ? game.global.stats.achieve['miners_dream'].l >= 4 ? game.global.stats.achieve['miners_dream'].l * 2 - 3 : game.global.stats.achieve['miners_dream'].l : 0;
+            for (let id in planet.geology) {
+                if (numShow-- <= 0) {
+                    break;
+                }
+                planet.weighting += (planet.geology[id] / 0.01) * settings["extra_w_" + id];
+            }
+        }
+
+        if (settings.userPlanetTargetName === "weighting") {
+            planets.sort((a, b) => b.weighting - a.weighting);
         }
 
         if (settings.userPlanetTargetName === "habitable") {
@@ -6435,33 +6594,6 @@
         }
 
         if (settings.userPlanetTargetName === "achieve") {
-            // Let's try to calculate how many achievements we can get here
-            let alevel = getConfiguredAchievementLevel();
-            for (let i = 0; i < planets.length; i++){
-                let planet = planets[i];
-                planet.achieve = 0;
-
-                if (!isAchievementUnlocked("biome_" + planet.biome, alevel)) {
-                    planet.achieve++;
-                }
-                if (planet.trait && !isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
-                    planet.achieve++;
-                }
-                if (planetBiomeRaces[planet.biome]) {
-                    for (let j = 0; j < planetBiomeRaces[planet.biome].length; j++) {
-                        let race = planetBiomeRaces[planet.biome][j];
-                        if (!isAchievementUnlocked("extinct_" + race, alevel)) {
-                            planet.achieve++;
-                        }
-                    }
-                    // Both races have same genus, no need to check both
-                    let genus = game.races[planetBiomeRaces[planet.biome][0]].type;
-                    if (!isAchievementUnlocked("genus_" + genus, alevel)) {
-                        planet.achieve++;
-                    }
-                }
-            }
-
             planets.sort((a, b) => a.achieve !== b.achieve ? b.achieve - a.achieve :
                                    (planetBiomes.indexOf(a.biome) + planetTraits.indexOf(a.trait)) -
                                    (planetBiomes.indexOf(b.biome) + planetTraits.indexOf(b.trait)));
@@ -6469,12 +6601,12 @@
 
         // This one is a little bit special. We need to trigger the "mouseover" first as it creates a global javascript varaible
         // that is then destroyed in the "click"
-        if (planets.length > 0) {
-            let selectedPlanet = planets[0].id;
+        let selectedPlanet = document.getElementById(planets[0].id);
+        if (selectedPlanet) {
             let evObj = document.createEvent("Events");
             evObj.initEvent("mouseover", true, false);
-            document.getElementById(selectedPlanet).dispatchEvent(evObj);
-            logClick(document.getElementById(selectedPlanet).children[0], "select planet");
+            selectedPlanet.dispatchEvent(evObj);
+            logClick(selectedPlanet.children[0], "select planet");
         }
     }
 
@@ -7503,6 +7635,57 @@
 
     //#endregion Auto Tax
 
+    function autoPylon() {
+        let pylon = state.cityBuildings.Pylon;
+
+        // If not unlocked then nothing to do
+        if (!pylon.initIndustry()) {
+            return;
+        }
+
+        let spells = Object.values(pylon.Productions).filter(spell => spell.unlocked);
+
+        // Init adjustment, and sort groups by priorities
+        let pylonAdjustments = {};
+        for (let spell of spells) {
+            pylonAdjustments[spell.id] = 0;
+            resources.Mana.rateOfChange += pylon.manaCost(pylon.currentSpells(spell));
+        }
+
+        let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
+        let ritualsAllowed = !settings.productionWaitMana || resources.Mana.storageRatio > 0.99;
+        while(ritualsAllowed) {
+            let spell = spells.sort(spellSorter)[0];
+            let amount = pylonAdjustments[spell.id];
+            let cost = pylon.manaCost(amount + 1) - pylon.manaCost(amount);
+
+            if (cost <= resources.Mana.rateOfChange) {
+                pylonAdjustments[spell.id] = amount + 1;
+                resources.Mana.rateOfChange -= cost;
+            } else {
+                break;
+            }
+        }
+
+        // First decrease any production so that we have room to increase others
+        for (let spell of spells) {
+            let deltaAdjustments = pylonAdjustments[spell.id] - pylon.currentSpells(spell);
+
+            if (deltaAdjustments < 0) {
+                pylon.decreaseRitual(spell, deltaAdjustments * -1);
+            }
+        }
+
+        // Increase any production required (if they are 0 then don't do anything with them)
+        for (let spell of spells) {
+            let deltaAdjustments = pylonAdjustments[spell.id] - pylon.currentSpells(spell);
+
+            if (deltaAdjustments > 0) {
+                pylon.increaseRitual(spell, deltaAdjustments);
+            }
+        }
+    }
+
     function autoQuarry() {
         let quarry = state.cityBuildings.RockQuarry;
 
@@ -7928,7 +8111,7 @@
                 let resource = resourceRequirement.resource;
                 let roundedRateOfChange = Math.floor(resource.calculateRateOfChange({buy: true, eject: true}));
 
-                if (remaining <= 0 || !resource.ejectEnabled) {
+                if (remaining <= 0 || !resource.ejectEnabled || resource.requestedQuantity > 0) {
                     resourceRequirement.requirement = 0;
                     return;
                 }
@@ -9332,7 +9515,7 @@
 
     //#endregion Auto Trade Specials
 
-    function autoFleet() { // TODO: This thing is pretty horrible. Refactor me.
+    function autoFleet() {
         if (!game.global.tech.piracy) {
             return;
         }
@@ -9706,8 +9889,7 @@
         }
 
         // TODO: Remove me once it's fixed in game
-        if (($("#civics .garrison").length == 2) || // Workround for game bug dublicating of garrison and governmment div's after reset
-            (state.spaceBuildings.BlackholeMassEjector.count > 0  && $('#resEjector').children().length === 0)) { // Same for bug with Ejector tab
+        if (state.spaceBuildings.BlackholeMassEjector.count > 0 && $('#resEjector').children().length === 0) { // Bug with Ejector tab
             state.goal = "GameOverMan";
             setTimeout(()=> window.location.reload(), 5000);
         }
@@ -10147,7 +10329,7 @@
             autoHell(); // All changes cached
         }
         if (settings.autoFleet) {
-            autoFleet(); // All changes cached
+            autoFleet(); // Can invalidate ships layout
         }
         if (settings.autoGalaxyMarket) {
             autoGalaxyMarket(); // Can invalidate rateOfChange
@@ -10160,6 +10342,9 @@
         }
         if (settings.autoGraphenePlant) {
             autoGraphenePlant(); // Can invalidate rateOfChange
+        }
+        if (settings.autoPylon) {
+            autoPylon(); // Can invalidate rateOfChange
         }
         if (settings.autoQuarry) {
             autoQuarry(); // Can invalidate rateOfChange
@@ -10429,14 +10614,13 @@
         scriptContentNode = $('<div id="script_settings" style="margin-top: 30px;"></div>');
         let settingsNode = $(".settings");
         settingsNode.append(scriptContentNode);
-        settingsNode.css("height", "calc(100vh - 5.8rem)");
-
 
         buildImportExport();
         buildPrestigeSettings(scriptContentNode, true);
         buildGeneralSettings();
         buildGovernmentSettings(scriptContentNode, true);
         buildEvolutionSettings();
+        buildPlanetSettings();
         buildMinorTraitSettings();
         buildTriggerSettings();
         buildResearchSettings();
@@ -11036,6 +11220,7 @@
                                 <option value = "none" title = "Wait for user selection">None</option>
                                 <option value = "habitable" title = "Picks most habitable planet, based on biome and trait">Most habitable</option>
                                 <option value = "achieve" title = "Picks planet with most unearned achievements. Takes in account extinction achievements for planet exclusive races, and greatness achievements for planet biome, trait, and exclusive genus.">Most achievements</option>
+                                <option value = "weighting" title = "Picks planet with highest weighting. Should be configured in Planet Weighting Settings section.">Highest weighting</option>
                               </select>
                             </div>`);
 
@@ -11057,8 +11242,8 @@
 
         selectNode = $('#script_userEvolutionTarget');
 
-        for (let i = 0; i < raceAchievementList.length; i++) {
-            let race = raceAchievementList[i];
+        for (let id in races) {
+            let race = races[id];
             selectNode.append('<option value = "' + race.id + '">' + race.name + '</option>');
         }
         selectNode.val(settings.userEvolutionTarget);
@@ -11242,6 +11427,88 @@
         let content = document.querySelector('#script_evolutionSettings .script-content');
         content.style.height = null;
         content.style.height = content.offsetHeight + "px"
+    }
+
+    function buildPlanetSettings() {
+        let sectionId = "planet";
+        let sectionName = "Planet Weighting";
+
+        let resetFunction = function() {
+            resetPlanetSettings();
+            updateSettingsFromState();
+            updatePlanetSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updatePlanetSettingsContent);
+    }
+
+    var biomeList = ['grassland', 'oceanic', 'forest', 'desert', 'volcanic', 'tundra', 'hellscape', 'eden'];
+    var traitList = ['none', 'toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable'];
+    var extraList = ['Achievement', 'Copper', 'Iron', 'Aluminium', 'Coal', 'Oil', 'Titanium', 'Uranium', 'Iridium'];
+
+    function updatePlanetSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_planetContent');
+        currentNode.empty().off("*");
+
+        // Add table
+        currentNode.append(`<span>Planet Weighting = Biome Weighting + Trait Weighting + (Extras Intensity * Extras Weightings)</span>
+            <table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Biome</th><th class="has-text-warning" style="width:calc(40% / 3)">Weighting</th><th class="has-text-warning" style="width:20%">Trait</th><th class="has-text-warning" style="width:calc(40% / 3)">Weighting</th><th class="has-text-warning" style="width:20%">Extra</th><th class="has-text-warning" style="width:calc(100% / 3)">Weighting</th></tr>
+                <tbody id="script_planetTableBody" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_planetTableBody');
+        let newTableBodyText = "";
+
+        let tableSize = Math.max(biomeList.length, traitList.length, extraList.length);
+        for (let i = 0; i < tableSize; i++) {
+            newTableBodyText += '<tr><td id="script_planet_' + i + '" style="width:20%"></td><td style="width:calc(40% / 3);border-right-width:1px"></td><td style="width:20%"></td><td style="width:calc(40% / 3);border-right-width:1px"></td><td style="width:20%"></td><td style="width:calc(40% / 3)"></td>/tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        for (let i = 0; i < tableSize; i++) {
+            let tableElement = $('#script_planet_' + i);
+
+            if (i < biomeList.length) {
+                tableElement.append(buildStandartLabel(game.loc("biome_" +  biomeList[i] + "_name")));
+                tableElement = tableElement.next();
+                tableElement.append(buildStandartSettingsInput(settings, "biome_w_" + biomeList[i], "biome_w_" + biomeList[i]));
+            } else {
+                tableElement = tableElement.next()
+            }
+            tableElement = tableElement.next();
+
+            if (i < traitList.length) {
+                tableElement.append(buildStandartLabel(i == 0 ? "None" : game.loc("planet_" + traitList[i])));
+                tableElement = tableElement.next();
+                tableElement.append(buildStandartSettingsInput(settings, "trait_w_" + traitList[i], "trait_w_" + traitList[i]));
+            } else {
+                tableElement = tableElement.next();
+            }
+            tableElement = tableElement.next();
+
+            if (i < extraList.length) {
+                tableElement.append(buildStandartLabel(extraList[i]));
+                tableElement = tableElement.next();
+                tableElement.append(buildStandartSettingsInput(settings, "extra_w_" + extraList[i], "extra_w_" + extraList[i]));
+            }
+        }
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function resetPlanetSettings() {
+        for (let i = 0; i < biomeList.length; i++) {
+            settings["biome_w_" + biomeList[i]] = 0;
+        }
+        for (let i = 0; i < traitList.length; i++) {
+            settings["trait_w_" + traitList[i]] = 0;
+        }
+        for (let i = 0; i < extraList.length; i++) {
+            settings["extra_w_" + extraList[i]] = 0;
+        }
     }
 
     function buildTriggerSettings() {
@@ -12318,6 +12585,7 @@
         updateProductionTableFoundry(currentNode);
         updateProductionTableFactory(currentNode);
         updateProductionTableMiningDrone(currentNode);
+        updateProductionTablePylon(currentNode);
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -12358,17 +12626,17 @@
         let smelterFuels = state.cityBuildings.Smelter.fuelPriorityList();
 
         for (let i = 0; i < smelterFuels.length; i++) {
-            const fuel = smelterFuels[i];
+            let fuel = smelterFuels[i];
             newTableBodyText += '<tr value="' + fuel.id + '"><td id="script_smelter_' + fuel.id + '" style="width:35%"></td><td style="width:65%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < smelterFuels.length; i++) {
-            const fuel = smelterFuels[i];
+            let fuel = smelterFuels[i];
             let productionElement = $('#script_smelter_' + fuel.id);
 
-            productionElement.append(buildStandartLabel(fuel.id));
+            productionElement.append(buildStandartLabel(fuel.cost[0].resource.title));
 
             productionElement = productionElement.next();
             productionElement.append($('<span class="script-lastcolumn"></span>'));
@@ -12412,14 +12680,14 @@
         let productionSettings = Object.values(state.cityBuildings.Factory.Productions);
 
         for (let i = 0; i < productionSettings.length; i++) {
-            const production = productionSettings[i];
+            let production = productionSettings[i];
             newTableBodyText += '<tr value="' + production.resource.id + '"><td id="script_factory_' + production.resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < productionSettings.length; i++) {
-            const production = productionSettings[i];
+            let production = productionSettings[i];
             let productionElement = $('#script_factory_' + production.resource.id + 'Toggle');
 
             productionElement.append(buildStandartLabel(production.resource.name));
@@ -12452,14 +12720,14 @@
         let newTableBodyText = "";
 
         for (let i = 0; i < state.craftableResourceList.length; i++) {
-            const resource = state.craftableResourceList[i];
+            let resource = state.craftableResourceList[i];
             newTableBodyText += '<tr value="' + resource.id + '"><td id="script_foundry_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < state.craftableResourceList.length; i++) {
-            const resource = state.craftableResourceList[i];
+            let resource = state.craftableResourceList[i];
             let productionElement = $('#script_foundry_' + resource.id + 'Toggle');
 
             productionElement.append(buildStandartLabel(resource.name));
@@ -12497,23 +12765,59 @@
         let droidProducts = Object.values(state.spaceBuildings.AlphaMiningDroid.Productions);
 
         for (let i = 0; i < droidProducts.length; i++) {
-            const production = droidProducts[i];
+            let production = droidProducts[i];
             newTableBodyText += '<tr value="' + production.resource.id + '"><td id="script_droid_' + production.resource.id + '" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < droidProducts.length; i++) {
-            const production = droidProducts[i];
+            let production = droidProducts[i];
             let productionElement = $('#script_droid_' + production.resource.id);
 
             productionElement.append(buildStandartLabel(production.resource.name));
 
             productionElement = productionElement.next().next();
             productionElement.append(buildStandartSettingsInput(production, "droid_w_" + production.resource.id, "weighting"));
-            
+
             productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsInput(production, "droid_pr_" + production.resource.id, "priority"));
+        }
+    }
+
+    function updateProductionTablePylon(currentNode) {
+        // Add any pre table settings
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_productionPreTablePylon"></div>');
+        addStandardHeading(preTableNode, "Pylon");
+        addStandardSectionSettingsToggle(preTableNode, "productionWaitMana", "Wait for full mana", "Cast rituals only with full mana");
+
+        // Add table
+        currentNode.append(
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Ritual</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:25%"></th></tr>
+                <tbody id="script_productionTableBodyPylon" class="script-contenttbody"></tbody>
+            </table>`
+        );
+
+        let tableBodyNode = $('#script_productionTableBodyPylon');
+        let newTableBodyText = "";
+
+        let pylonProducts = Object.values(state.cityBuildings.Pylon.Productions);
+
+        for (let i = 0; i < pylonProducts.length; i++) {
+            let production = pylonProducts[i];
+            newTableBodyText += '<tr value="' + production.id + '"><td id="script_pylon_' + production.id + '" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:25%"></td></tr>';
+        }
+        tableBodyNode.append($(newTableBodyText));
+
+        // Build all other productions settings rows
+        for (let i = 0; i < pylonProducts.length; i++) {
+            let production = pylonProducts[i];
+            let productionElement = $('#script_pylon_' + production.id);
+
+            productionElement.append(buildStandartLabel(game.loc(`modal_pylon_spell_${production.id}`)));
+
+            productionElement = productionElement.next().next();
+            productionElement.append(buildStandartSettingsInput(production, "spell_w_" + production.id, "weighting"));
         }
     }
 
@@ -13233,6 +13537,7 @@
             createSettingToggle(scriptNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(scriptNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
             createSettingToggle(scriptNode, 'autoCraftsmen', 'Enable this and autoJobs will also manage craftsmen.');
+            createSettingToggle(scriptNode, 'autoPylon', 'Manages pylon rituals');
             createSettingToggle(scriptNode, 'autoQuarry', 'Manages rock quarry stone to chrysotile ratio for smoldering races');
             createSettingToggle(scriptNode, 'autoSmelter', 'Manages smelter output at different stages at the game.');
             createSettingToggle(scriptNode, 'autoFactory', 'Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.');
@@ -13606,29 +13911,6 @@
      */
     function isResearchUnlocked(research) {
         return document.querySelector("#tech-" + research + " .oldTech") !== null;
-    }
-
-    /**
-     * @return {string}
-     */
-    function getRaceId() {
-
-        let raceNameNode = document.querySelector('#race .name');
-        if (raceNameNode === null) {
-            return "";
-        }
-
-        let race = raceAchievementList.find(race => race.name === raceNameNode.textContent);
-
-        if (!race) {
-            if (game !== null) {
-                return game.global.race.species;
-            } else {
-                return "custom";
-            }
-        }
-
-        return race.id;
     }
 
     function isHunterRace() {
