@@ -3926,7 +3926,7 @@
             }
 
             if (this.requirementType === "unlocked" || this.requirementType === "researched") {
-                this.requirementId = "club";
+                this.requirementId = "tech-club";
                 this.requirementCount = 0;
                 return;
             }
@@ -3968,7 +3968,7 @@
             this.complete = false;
 
             if (this.actionType === "research") {
-                this.actionId = "club";
+                this.actionId = "tech-club";
                 this.actionCount = 0;
                 return;
             }
@@ -11595,7 +11595,7 @@
 
 
     function addTriggerSetting() {
-        let trigger = state.triggerManager.AddTrigger("unlocked", "club", 0, "research", "club", 0);
+        let trigger = state.triggerManager.AddTrigger("unlocked", "tech-club", 0, "research", "tech-club", 0);
         updateSettingsFromState();
 
         let tableBodyNode = $('#script_triggerTableBody');
