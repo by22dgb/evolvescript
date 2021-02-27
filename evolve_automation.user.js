@@ -7643,7 +7643,7 @@
             return;
         }
 
-        let spells = Object.values(pylon.Productions).filter(spell => spell.unlocked);
+        let spells = Object.values(pylon.Productions).filter(spell => spell.unlocked && spell.weighting > 0);
 
         // Init adjustment, and sort groups by priorities
         let pylonAdjustments = {};
@@ -7652,18 +7652,23 @@
             resources.Mana.rateOfChange += pylon.manaCost(pylon.currentSpells(spell));
         }
 
-        let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
-        let ritualsAllowed = !settings.productionWaitMana || resources.Mana.storageRatio > 0.99;
-        while(ritualsAllowed) {
-            let spell = spells.sort(spellSorter)[0];
-            let amount = pylonAdjustments[spell.id];
-            let cost = pylon.manaCost(amount + 1) - pylon.manaCost(amount);
+        if (!settings.productionWaitMana || resources.Mana.storageRatio > 0.99) {
+            let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
+            let remainingSpells = spells.slice();
+            while(true) {
+                let spell = remainingSpells.sort(spellSorter)[0];
+                let amount = pylonAdjustments[spell.id];
+                let cost = pylon.manaCost(amount + 1) - pylon.manaCost(amount);
 
-            if (cost <= resources.Mana.rateOfChange) {
-                pylonAdjustments[spell.id] = amount + 1;
-                resources.Mana.rateOfChange -= cost;
-            } else {
-                break;
+                if (cost <= resources.Mana.rateOfChange) {
+                    pylonAdjustments[spell.id] = amount + 1;
+                    resources.Mana.rateOfChange -= cost;
+                } else {
+                    remainingSpells.shift();
+                    if (remainingSpells.length < 1) {
+                        break;
+                    }
+                }
             }
         }
 
