@@ -5721,6 +5721,7 @@
             let project = state.projects[key];
             project._autoMax = -1;
             project.autoBuildEnabled = false;
+            project.ignoreMinimumMoneySetting = false;
             state.projectManager.addProjectToPriorityList(project);
         }
 
@@ -8059,7 +8060,8 @@
         // We've already got our cached values so just check if there is any need to change our ratios
         let remainingPlants = plant.stateOnCount;
 
-        let sortedFuel = Object.values(plant.Fuels).sort((a, b) => b.resource.storageRatio - a.resource.storageRatio);
+
+        let sortedFuel = Object.values(plant.Fuels).sort((a, b) => b.resource.storageRatio < 0.995 || a.resource.storageRatio < 0.995 ? b.resource.storageRatio - a.resource.storageRatio : b.resource.rateOfChange - a.resource.rateOfChange);
         for (let fuel of sortedFuel) {
             let resource = fuel.resource;
             let quantity = fuel.quantity;
