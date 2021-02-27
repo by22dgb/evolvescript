@@ -7154,7 +7154,7 @@
         let scavengerIndex = jobList.indexOf(state.jobs.Scavenger);
 
         let lumberjackIndex = -1;
-        if (isDemonRace()) {
+        if (isDemonRace() && isLumberRace()) {
             lumberjackIndex = farmerIndex;
         } else {
             lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
@@ -7230,7 +7230,7 @@
             }
 
             log("autoJobs", "currentQuantity " + resources.Population.currentQuantity + " breakpoint1Max " + breakpoint1Max + " requiredJobs[0] " + requiredJobs[0] + " breakpointEmployees(1) " + state.jobs.Lumberjack.breakpointEmployees(1) +  " breakpointEmployees(0) " + state.jobs.Lumberjack.breakpointEmployees(0))
-            if (isDemonRace()) {
+            if (isDemonRace() && lumberjackIndex !== -1) {
                 if (availableEmployees > breakpoint0Max && requiredJobs[farmerIndex] < state.jobs.Lumberjack.breakpointEmployees(1)) {
                     log("autoJobs", "Setting required hunters to breakpoint 1")
                     requiredJobs[farmerIndex] = state.jobs.Lumberjack.breakpointEmployees(1);
