@@ -9080,7 +9080,7 @@
 
         // Init storageAdjustments, we need to do it saparately, as loop below can jump to the and of array
         for (let i = 0; i < storageList.length; i++){
-            storageAdjustments.push({resource: storageList[i], adjustCrates: 0, adjustContainers: 0, calculatedContainers: storageList[i].currentContainers, calculatedCrates: storageList[i].currentCrates});
+            storageAdjustments.push({resource: storageList[i], adjustCrates: 0, adjustContainers: 0});
         }
 
         let totalStorageMissing = 0;
@@ -9088,8 +9088,11 @@
         // Calculate storages
         for (let i = 0; i < storageList.length; i++){
             let resource = storageList[i];
-            let cratesStorage = resource.currentCrates * crateVolume;
-            let containersStorage = resource.currentContainers * containerVolume;
+            let adjustment = storageAdjustments[i];
+            let calculatedCrates = resource.currentCrates + adjustment.adjustCrates;
+            let calculatedContainers = resource.currentContainers + adjustment.adjustContainers;
+            let cratesStorage = calculatedCrates * crateVolume;
+            let containersStorage = calculatedContainers * containerVolume;
             let extraStorage = cratesStorage + containersStorage;
             let rawStorage = resource.maxQuantity - extraStorage;
             let freeStorage = resource.maxQuantity - resource.currentQuantity;
@@ -9102,18 +9105,18 @@
 
             // We don't need any extra storage here, and don't care about wasting, just remove everything and go to next resource
             if (!settings.storageSafeReassign && extraStorageRequired <= 0){
-                totalCrates += storageAdjustments[i].calculatedCrates;
-                totalContainers += storageAdjustments[i].calculatedContainers;
-                storageAdjustments[i].adjustCrates -= storageAdjustments[i].calculatedCrates;
-                storageAdjustments[i].adjustContainers -= storageAdjustments[i].calculatedContainers;
+                totalCrates += calculatedCrates;
+                totalContainers += calculatedContainers;
+                adjustment.adjustCrates = resource.currentCrates * -1;
+                adjustment.adjustContainers = resource.currentContainers * -1;
                 continue;
             }
 
             // Check if have extra containers here
-            if (containersStorage > 0 && ((extraStorage - containerVolume) > extraStorageRequired || storageAdjustments[i].calculatedContainers > resource.autoContainersMax)){
+            if (containersStorage > 0 && ((extraStorage - containerVolume) > extraStorageRequired || calculatedContainers > resource.autoContainersMax)){
                 let uselessContainers = Math.floor((extraStorage - extraStorageRequired) / containerVolume);
-                let extraContainers = Math.min(storageAdjustments[i].calculatedContainers, uselessContainers);
-                let overcapContainers = storageAdjustments[i].calculatedContainers - resource.autoContainersMax;
+                let extraContainers = Math.min(calculatedContainers, uselessContainers);
+                let overcapContainers = calculatedContainers - resource.autoContainersMax;
                 let removedContainers = Math.max(overcapContainers, extraContainers);
 
                 if (settings.storageSafeReassign || resource.storeOverflow) {
@@ -9122,16 +9125,17 @@
                 }
 
                 totalContainers += removedContainers;
-                storageAdjustments[i].adjustContainers -= removedContainers;
+                adjustment.adjustContainers -= removedContainers;
+                calculatedContainers -= removedContainers;
                 extraStorage -= removedContainers * containerVolume;
                 freeStorage -= removedContainers * containerVolume;
             }
 
             // Check if have extra crates here
-            if (cratesStorage > 0 && ((extraStorage - crateVolume) > extraStorageRequired || storageAdjustments[i].calculatedCrates > resource.autoCratesMax)){
+            if (cratesStorage > 0 && ((extraStorage - crateVolume) > extraStorageRequired || calculatedCrates > resource.autoCratesMax)){
                 let uselessCrates = Math.floor((extraStorage - extraStorageRequired) / crateVolume);
-                let extraCrates = Math.min(storageAdjustments[i].calculatedCrates, uselessCrates);
-                let overcapCrates = storageAdjustments[i].calculatedCrates - resource.autoCratesMax;
+                let extraCrates = Math.min(calculatedCrates, uselessCrates);
+                let overcapCrates = calculatedCrates - resource.autoCratesMax;
                 let removedCrates = Math.max(overcapCrates, extraCrates);
 
                 if (settings.storageSafeReassign || resource.storeOverflow) {
@@ -9140,7 +9144,7 @@
                 }
 
                 totalCrates += removedCrates;
-                storageAdjustments[i].adjustCrates -= removedCrates;
+                adjustment.adjustCrates -= removedCrates;
                 extraStorage -= removedCrates * crateVolume;
                 //freeStorage -= removedCrates * crateVolume;
             }
@@ -9153,24 +9157,25 @@
 
                 // We don't have enough containers, let's try to unassign something less prioritized
                 if (availableStorage < missingStorage){
-                    let maxCratesToUnassign = resource.autoCratesMax - storageAdjustments[i].calculatedCrates;
-                    let maxContainersToUnassign = resource.autoContainersMax - storageAdjustments[i].calculatedContainers;
+                    let maxCratesToUnassign = resource.autoCratesMax - calculatedCrates;
+                    let maxContainersToUnassign = resource.autoContainersMax - calculatedContainers;
 
                     for (let j = storageList.length-1; j > i; j--){
-                        let otherFreeStorage = storageList[j].maxQuantity - storageList[j].currentQuantity;
+                        let otherFreeStorage = storageList[j].maxQuantity - storageList[j].currentQuantity + (storageAdjustments[j].adjustCrates * crateVolume) + (storageAdjustments[j].adjustContainers * containerVolume);
+                        let otherCalculatedCrates = storageList[j].currentCrates + storageAdjustments[j].adjustCrates;
+                        let otherCalculatedContainers = storageList[j].currentContainers + storageAdjustments[j].adjustContainers;
 
                         // Unassign crates
-                        if (maxCratesToUnassign > 0 && storageAdjustments[j].calculatedCrates > 0) {
+                        if (maxCratesToUnassign > 0 && otherCalculatedCrates > 0) {
                             let missingCrates = Math.ceil(missingStorage / crateVolume);
-                            let cratesToUnassign = Math.min(storageAdjustments[j].calculatedCrates, missingCrates, maxCratesToUnassign);
+                            let cratesToUnassign = Math.min(otherCalculatedCrates, missingCrates, maxCratesToUnassign);
 
                             if (settings.storageSafeReassign || storageList[j].storeOverflow) {
-                                let emptyCrates = Math.floor(otherFreeStorage / containerVolume);
+                                let emptyCrates = Math.floor(otherFreeStorage / crateVolume);
                                 cratesToUnassign = Math.min(cratesToUnassign, emptyCrates);
                             }
 
                             storageAdjustments[j].adjustCrates -= cratesToUnassign;
-                            storageAdjustments[j].calculatedCrates -= cratesToUnassign;
                             totalCrates += cratesToUnassign;
                             maxCratesToUnassign -= cratesToUnassign;
                             missingStorage -= cratesToUnassign * crateVolume;
@@ -9178,9 +9183,9 @@
                         }
 
                         // Unassign containers, if we still need them
-                        if (maxContainersToUnassign > 0 && storageAdjustments[j].calculatedContainers > 0 && missingStorage > 0){
+                        if (maxContainersToUnassign > 0 && otherCalculatedContainers > 0 && missingStorage > 0){
                             let missingContainers = Math.ceil(missingStorage / containerVolume);
-                            let containersToUnassign = Math.min(storageAdjustments[j].calculatedContainers, missingContainers, maxContainersToUnassign);
+                            let containersToUnassign = Math.min(otherCalculatedContainers, missingContainers, maxContainersToUnassign);
 
                             if (settings.storageSafeReassign || storageList[j].storeOverflow) {
                                 let emptyContainers = Math.floor(otherFreeStorage / containerVolume);
@@ -9188,7 +9193,6 @@
                             }
 
                             storageAdjustments[j].adjustContainers -= containersToUnassign;
-                            storageAdjustments[j].calculatedContainers -= containersToUnassign;
                             totalContainers += containersToUnassign;
                             maxContainersToUnassign -= containersToUnassign;
                             missingStorage -= containersToUnassign * containerVolume;
@@ -9207,20 +9211,20 @@
                 // Add crates
                 if (totalCrates > 0) {
                     let missingCrates = Math.ceil(missingStorage / crateVolume);
-                    let allowedCrates = resource.autoCratesMax - storageAdjustments[i].calculatedCrates;
+                    let allowedCrates = resource.autoCratesMax - calculatedCrates;
                     let addCrates = Math.min(totalCrates, allowedCrates, missingCrates);
                     totalCrates -= addCrates;
-                    storageAdjustments[i].adjustCrates += addCrates;
+                    adjustment.adjustCrates += addCrates;
                     missingStorage -= addCrates * crateVolume;
                 }
 
                 // Add containers
                 if (totalContainers > 0 && missingStorage > 0){
                     let missingContainers = Math.ceil(missingStorage / containerVolume);
-                    let allowedContainers = resource.autoContainersMax - storageAdjustments[i].calculatedContainers;
+                    let allowedContainers = resource.autoContainersMax - calculatedContainers;
                     let addContainers = Math.min(totalContainers, allowedContainers, missingContainers);
                     totalContainers -= addContainers;
-                    storageAdjustments[i].adjustContainers += addContainers;
+                    adjustment.adjustContainers += addContainers;
                     missingStorage -= addContainers * containerVolume;
                 }
 
@@ -12018,7 +12022,7 @@
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignAttackLivingSoldiersPercent", "Attack only if at least this percentage of your garrison soldiers are alive", "Only attacks if you ALSO have the target battalion size of healthy soldiers available, so this setting will only take effect if your battalion does not include all of your soldiers");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignAttackHealthySoldiersPercent", "... and at least this percentage of your garrison is not injured", "Set to less than 100 to take advantage of being able to heal more soldiers in a game day than get wounded in a typical attack");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercMoneyStoragePercent", "Hire mercenary if money storage greater than percent", "Hire a mercenary if remaining money will be greater than this percent");
-        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercCostLowerThanIncome", "OR if cost lower than money income of amount seconds", "Combines with the money storage percent setting to determine when to hire mercenaries");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercCostLowerThanIncome", "OR if cost lower than money earned in X seconds", "Combines with the money storage percent setting to determine when to hire mercenaries");
 
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down this advantage, reducing potential loses");
