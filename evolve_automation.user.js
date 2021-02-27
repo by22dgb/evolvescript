@@ -5190,7 +5190,7 @@
         settings.foreignAttackLivingSoldiersPercent = 90;
         settings.foreignAttackHealthySoldiersPercent = 90;
         settings.foreignHireMercMoneyStoragePercent = 90;
-        settings.foreignHireMercCostLowerThan = 50000;
+        settings.foreignHireMercCostLowerThanIncome = 1;
         settings.foreignMinAdvantage = 40;
         settings.foreignMaxAdvantage = 50;
         settings.foreignMaxSiegeBattalion = 15;
@@ -5235,6 +5235,7 @@
         settings.triggerRequest = true;
         settings.queueRequest = true;
         settings.researchRequest = true;
+        settings.researchRequestSpace = false;
         settings.missionRequest = true;
         settings.genesAssembleGeneAlways = false;
         settings.buildingAlwaysClick = false;
@@ -6111,7 +6112,7 @@
         addSetting("foreignAttackLivingSoldiersPercent", 90);
         addSetting("foreignAttackHealthySoldiersPercent", 90);
         addSetting("foreignHireMercMoneyStoragePercent", 90);
-        addSetting("foreignHireMercCostLowerThan", 50000);
+        addSetting("foreignHireMercCostLowerThanIncome", 1);
         addSetting("foreignMinAdvantage", 40);
         addSetting("foreignMaxAdvantage", 50);
         addSetting("foreignMaxSiegeBattalion", 15);
@@ -6190,6 +6191,7 @@
         addSetting("triggerRequest", true);
         addSetting("queueRequest", true);
         addSetting("researchRequest", true);
+        addSetting("researchRequestSpace", false);
         addSetting("missionRequest", true);
 
         // Collapse or expand settings sections
@@ -6847,14 +6849,11 @@
         // Mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
         if (m.isMercenaryUnlocked()) {
             let mercenariesHired = 0;
-            while (m.currentSoldiers < m.maxSoldiers && resources.Money.storageRatio > settings.foreignHireMercMoneyStoragePercent / 100) {
-                let mercenaryCost = m.getMercenaryCost();
-                if (mercenaryCost > settings.foreignHireMercCostLowerThan || mercenaryCost > resources.Money.currentQuantity) {
-                    break;
-                }
-
+            let mercenaryCost = m.getMercenaryCost();
+            while (m.currentSoldiers < m.maxSoldiers && resources.Money.currentQuantity > mercenaryCost && ((resources.Money.currentQuantity - mercenaryCost > resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100) || (mercenaryCost < resources.Money.rateOfChange * settings.foreignHireMercCostLowerThanIncome))) {
                 m.hireMercenary();
                 mercenariesHired++;
+                mercenaryCost = m.getMercenaryCost();
             }
 
             // Log the interaction
@@ -9791,7 +9790,8 @@
         }
 
         // Unlocked and affordable techs
-        if (settings.researchRequest) {
+        let postMad = techIds['tech-mad'].isResearched();
+        if ((!postMad && settings.researchRequest) || (postMad && settings.researchRequestSpace)) {
             $("#tech .action:not(.cnam)").each(function() {
                 let tech = techIds[this.id];
                 if (tech) {
@@ -9799,6 +9799,7 @@
                 }
             });
         }
+
 
         if (prioritizedTasks.length > 0) {
             for (let i = 0; i < prioritizedTasks.length; i++){
@@ -10154,12 +10155,17 @@
           ],[
               () => settings.prestigeBioseedConstruct && settings.prestigeType !== "bioseed",
               (building) => building === state.spaceBuildings.GasSpaceDock || building === state.spaceBuildings.GasSpaceDockShipSegment || building === state.spaceBuildings.GasSpaceDockProbe,
-              () => "Bioseed prestige disabled",
+              () => "Not needed for current prestige",
               () => 0
           ],[
               () => settings.prestigeBioseedConstruct && settings.prestigeType === "bioseed",
               (building) => building === state.spaceBuildings.DwarfWorldCollider,
-              () => "Ignored on Bioseed runs",
+              () => "Not needed for current prestige",
+              () => 0
+          ],[
+              () => settings.prestigeBioseedConstruct && settings.prestigeType === "whitehole",
+              (building) => building === state.spaceBuildings.BlackholeJumpShip,
+              () => "Not needed for current prestige",
               () => 0
           ],[
               () => settings.prestigeType === "mad" && (techIds['tech-mad'].isResearched() || game.checkAffordable(techIds['tech-mad'].definition, true)),
@@ -11009,7 +11015,8 @@
 
         addStandardSectionSettingsToggle(preTableNode, "triggerRequest", "Prioritize resources for triggers", "Readjust trade routes and production to resources required for active triggers");
         addStandardSectionSettingsToggle(preTableNode, "queueRequest", "Prioritize resources for queue", "Readjust trade routes and production to resources required for buildings and researches in queue");
-        addStandardSectionSettingsToggle(preTableNode, "researchRequest", "Prioritize resources for researches", "Readjust trade routes and production to resources required for unlocked and affordable researches");
+        addStandardSectionSettingsToggle(preTableNode, "researchRequest", "Prioritize resources for Pre-MAD researches", "Readjust trade routes and production to resources required for unlocked and affordable researches");
+        addStandardSectionSettingsToggle(preTableNode, "researchRequestSpace", "Prioritize resources for Space+ for researches", "Readjust trade routes and production to resources required for unlocked and affordable researches");
         addStandardSectionSettingsToggle(preTableNode, "missionRequest", "Prioritize resources for missions", "Readjust trade routes and production to resources required for unlocked and affordable missions");
 
         addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
@@ -11085,6 +11092,7 @@
             settings.prestigeType = this.value;
             updateSettingsFromState();
         });
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Non-Bioseed: Ignore Space Dock, Bioseeder Ship and Probes<br>Bioseed: Ignore World Collider<br>Whitehole: Ignore Jump Ship", "Construct the space dock, bioseeder ship segments and probes only when bioseed is current prestige goal, and skip building world collider");
 
         // MAD
         addStandardSectionHeader1(prestigeHeaderNode, "Mutual Assured Destruction");
@@ -11093,7 +11101,6 @@
 
         // Bioseed
         addStandardSectionHeader1(prestigeHeaderNode, "Bioseed");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedConstruct", "Non-Bioseed: Ignore Space Dock, Bioseeder Ship and Probes<br>Bioseed: Ignore World Collider", "Construct the space dock, bioseeder ship segments and probes only when bioseed is current prestige goal, and skip building world collider");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeBioseedProbes", "Required probes", "Required number of probes before launching bioseeder ship");
 
         // Whitehole
@@ -12010,8 +12017,8 @@
         addStandardSectionHeader1(currentNode, "Campaigns");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignAttackLivingSoldiersPercent", "Attack only if at least this percentage of your garrison soldiers are alive", "Only attacks if you ALSO have the target battalion size of healthy soldiers available, so this setting will only take effect if your battalion does not include all of your soldiers");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignAttackHealthySoldiersPercent", "... and at least this percentage of your garrison is not injured", "Set to less than 100 to take advantage of being able to heal more soldiers in a game day than get wounded in a typical attack");
-        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercMoneyStoragePercent", "Hire mercenary if money storage greater than percent", "Hire a mercenary if money storage is greater than this percent");
-        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercCostLowerThan", "AND if cost lower than amount", "Combines with the money storage percent setting to determine when to hire mercenaries");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercMoneyStoragePercent", "Hire mercenary if money storage greater than percent", "Hire a mercenary if remaining money will be greater than this percent");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignHireMercCostLowerThanIncome", "OR if cost lower than money income of amount seconds", "Combines with the money storage percent setting to determine when to hire mercenaries");
 
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down this advantage, reducing potential loses");
