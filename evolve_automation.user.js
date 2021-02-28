@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.34
+// @version      3.3.1.35
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -712,7 +712,9 @@
             for (let resourceName in adjustedCosts) {
                 if (resources[resourceName]) {
                     let resourceAmount = Number(adjustedCosts[resourceName]());
-                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
+                    if (resourceAmount > 0) {
+                        this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
+                    }
                 }
             }
         }
@@ -821,8 +823,8 @@
                 }
             }
             // We're checking this after loop, to make sure *all* provided supports are useless.
-            // Starbase is exception here, as it house soldiers, which always useful
-            if (uselessSupport > 0 && this !== state.spaceBuildings.GatewayStarbase) {
+            // Starbase and habitat are exceptions here, as soldiers and population are always useful
+            if (uselessSupport > 0 && this !== state.spaceBuildings.GatewayStarbase && this !== state.spaceBuildings.AlphaHabitat) {
                 return this.consumption[0];
             }
             return null;
@@ -3319,7 +3321,9 @@
             for (let resourceName in adjustedCosts) {
                 if (resources[resourceName]) {
                     let resourceAmount = Number(adjustedCosts[resourceName]());
-                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
+                    if (resourceAmount > 0) {
+                        this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
+                    }
                 }
             }
         }
@@ -3793,7 +3797,9 @@
             for (let resourceName in adjustedCosts) {
                 if (resources[resourceName]) {
                     let resourceAmount = Number(adjustedCosts[resourceName]());
-                    this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
+                    if (resourceAmount > 0) {
+                        this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
+                    }
                 }
             }
         }
@@ -10200,7 +10206,7 @@
               () => settings.buildingWeightingUnderpowered
           ],[
               () => state.knowledgeRequiredByTechs < resources.Knowledge.maxQuantity,
-              (building) => building.is.knowledge,
+              (building) => building.is.knowledge && building !== state.cityBuildings.Wardenclyffe, // We want Wardenclyffe for morale
               () => "No need for more knowledge",
               () => settings.buildingWeightingUselessKnowledge
           ],[
