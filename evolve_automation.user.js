@@ -3168,7 +3168,7 @@
                 let building = this.priorityList[i];
 
                 if (state.queuedTargets.includes(building)) {
-                    building.extraDescription = "Queued building, processng...";
+                    building.extraDescription = "Queued building, processing...";
                     continue;
                 }
                 if (state.triggerTargets.includes(building)) {
