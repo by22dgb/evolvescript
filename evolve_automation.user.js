@@ -7878,6 +7878,10 @@
             }
         }
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
+        if (priorityGroups["-1"]) {
+            priorityList.splice(priorityList.indexOf(priorityGroups["-1"], 1));
+            priorityList[0] = priorityList[0].concat(priorityGroups["-1"]);
+        }
 
         // Calculate amount of factories per product
         let remainingFactories = factory.maxOperating;
@@ -7990,6 +7994,10 @@
             factoryAdjustments[production.id] = 0;
         }
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
+        if (priorityGroups["-1"]) {
+            priorityList.splice(priorityList.indexOf(priorityGroups["-1"], 1));
+            priorityList[0] = priorityList[0].concat(priorityGroups["-1"]);
+        }
 
         // Calculate amount of factories per product
         let remainingFactories = droid.maxOperating;
@@ -8460,6 +8468,10 @@
             tradeAdjustments[buyResource.id] = 0;
         }
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
+        if (priorityGroups["-1"]) {
+            priorityList.splice(priorityList.indexOf(priorityGroups["-1"], 1));
+            priorityList[0] = priorityList[0].concat(priorityGroups["-1"]);
+        }
 
         // Calculate amount of factories per product
         let remainingFreighters = freighter.maxOperating;
