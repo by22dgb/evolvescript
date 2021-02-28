@@ -6854,7 +6854,7 @@
         }
 
         // Mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
-        if (m.isMercenaryUnlocked()) {
+        if (m.isMercenaryUnlocked() && resources.Money.requestedQuantity <= 0) {
             let mercenariesHired = 0;
             let mercenaryCost = m.getMercenaryCost();
             while (m.currentSoldiers < m.maxSoldiers && resources.Money.currentQuantity > mercenaryCost && ((resources.Money.currentQuantity - mercenaryCost > resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100) || (mercenaryCost < resources.Money.rateOfChange * settings.foreignHireMercCostLowerThanIncome))) {
