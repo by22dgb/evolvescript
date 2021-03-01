@@ -3309,7 +3309,7 @@
             return this.name;
         }
 
-        // This is the resource requirements for 100% of the project
+        // This is the resource requirements for 1% of the project
         updateResourceRequirements() {
             if (!this.isUnlocked()) {
                 return;
@@ -3322,7 +3322,7 @@
                 if (resources[resourceName]) {
                     let resourceAmount = Number(adjustedCosts[resourceName]());
                     if (resourceAmount > 0) {
-                        this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
+                        this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount / 100));
                     }
                 }
             }
@@ -3356,19 +3356,18 @@
             //this.updateResourceRequirements();
             for (let i = 0; i < this.resourceRequirements.length; i++) {
                 let res = this.resourceRequirements[i];
-                let stepCost = res.quantity / 100;
 
-                if (!this.ignoreMinimumMoneySetting && res.resource === resources.Money && stepCost > 0 && resources.Money.currentQuantity - stepCost < state.minimumMoneyAllowed) {
+                if (!this.ignoreMinimumMoneySetting && res.resource === resources.Money && res.quantity > 0 && resources.Money.currentQuantity - res.quantity < state.minimumMoneyAllowed) {
                     return false;
                 }
 
-                if (res.resource.currentQuantity < stepCost) {
+                if (res.resource.currentQuantity < res.quantity) {
                     return false;
                 }
             }
 
             this.resourceRequirements.forEach(requirement =>
-                requirement.resource.currentQuantity -= requirement.quantity / 100
+                requirement.resource.currentQuantity -= requirement.quantity
             );
 
             getVueById(this._vueBinding).build(this.id, 1);
@@ -6752,8 +6751,12 @@
                 if (spiesRequired < 0) {
                     spiesRequired = Math.MAX_SAFE_INTEGER;
                 }
-                // We need 3 spies to purchase
-                if (settings[`foreignPolicy${rank[i]}`] === "Purchase" && spiesRequired < 3) {
+                // We need 3 spies to purchase, but only if we have enough money
+                // City price affected by unrest, and we can't see unrest without 3 spies. So, instead of checking real number we're comparing max money with hardcoded minimum cost
+                if (settings[`foreignPolicy${rank[i]}`] === "Purchase" && spiesRequired < 3 && (!settings.foreignOccupyLast || i !== lastTarget) &&
+                   ((i == 0 && resources.Money.maxQuantity >= 865350) ||
+                    (i == 1 && resources.Money.maxQuantity >= 1153800) ||
+                    (i == 2 && resources.Money.maxQuantity >= 1730700))) {
                     spiesRequired = 3;
                 }
 
@@ -8875,7 +8878,7 @@
         projectList = state.projectManager.priorityList;
 
         for (let i = 0; i < projectList.length; i++) {
-            const project = projectList[i];
+            let project = projectList[i];
             let allowBuild = true;
 
             if (project.resourceRequirements.length === 0) {
@@ -8883,22 +8886,20 @@
             }
 
             for (let j = 0; j < project.resourceRequirements.length; j++) {
-                const requirement = project.resourceRequirements[j];
-                let onePercentOfRequirementQuantity = requirement.quantity / 100;
+                let requirement = project.resourceRequirements[j];
 
-                log("autoARPA", "project " + project.id + ", resource " + requirement.resource.id + ", one percent, " + onePercentOfRequirementQuantity);
+                log("autoARPA", "project " + project.id + ", resource " + requirement.resource.id + ", one percent, " + requirement.quantity);
 
-                if (onePercentOfRequirementQuantity === 0) { log("autoARPA", "continue: cost is zero"); continue; } // Monument can be made of different things. Sometimes these requirements will be zero.
                 if (requirement.resource === resources.Money) { log("autoARPA", "continue: resource is money"); continue; } // Don't check if money is full. We can build if we are above our minimum money setting (which is checked in tryBuild)
 
-                if (requirement.resource.currentQuantity < onePercentOfRequirementQuantity) {
+                if (requirement.resource.currentQuantity < requirement.quantity) {
                     log("autoARPA", "break: current < requirement");
                     allowBuild = false;
                     break;
                 }
 
                 // Don't use all Deuterium, we need it for upkeep
-                if (requirement.resource === resources.Deuterium && requirement.resource.currentQuantity - onePercentOfRequirementQuantity < 100) {
+                if (requirement.resource === resources.Deuterium && requirement.resource.currentQuantity - requirement.quantity < 100) {
                     log("autoARPA", "break: Deuterium current - requirement < 100");
                     allowBuild = false;
                     break;
@@ -8910,7 +8911,7 @@
                     break;
                 }
 
-                if (onePercentOfRequirementQuantity / requirement.resource.currentQuantity > (settings.arpaBuildIfStorageFullResourceMaxPercent / 100)) {
+                if (requirement.quantity / requirement.resource.currentQuantity > (settings.arpaBuildIfStorageFullResourceMaxPercent / 100)) {
                     log("autoARPA", "break: storage ratio < setting");
                     allowBuild = false;
                     break;
@@ -8918,7 +8919,7 @@
 
                 if (requirement.resource.isCraftable()) {
                     let amountToKeep = (settings.arpaBuildIfStorageFullCraftableMin === -1 ? requirement.resource.storageRequired : settings.arpaBuildIfStorageFullCraftableMin);
-                    if (requirement.resource.currentQuantity - onePercentOfRequirementQuantity < amountToKeep){
+                    if (requirement.resource.currentQuantity - requirement.quantity < amountToKeep){
                         log("autoARPA", "break: craftables < setting");
                         allowBuild = false;
                         break;
@@ -9828,11 +9829,10 @@
         if (prioritizedTasks.length > 0) {
             for (let i = 0; i < prioritizedTasks.length; i++){
                 let demandedObject = prioritizedTasks[i];
-                let costMod = demandedObject instanceof Project ? 0.01 : 1;
                 for (let j = 0; j < demandedObject.resourceRequirements.length; j++) {
                     let req = demandedObject.resourceRequirements[j];
                     let resource = req.resource;
-                    let required = req.quantity * costMod;
+                    let required = req.quantity;
                     resource.requestedQuantity = Math.max(resource.requestedQuantity, required - resource.currentQuantity);
                 }
             }
