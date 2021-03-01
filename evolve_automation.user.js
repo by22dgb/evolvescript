@@ -3417,7 +3417,7 @@
                 for (let i = 0; i < this.priorityList.length; i++) {
                     const project = this.priorityList[i];
 
-                    if (project.isUnlocked() && project.autoBuildEnabled) {
+                    if (project.isUnlocked() && project.autoBuildEnabled && project.level < project.autoMax) {
                         this._managedPriorityList.push(project);
                     }
                 }
@@ -6209,6 +6209,8 @@
         for (let i = 0; i < galaxyRegions.length; i++) {
             addSetting("fleet_pr_" + galaxyRegions[i], i);
         }
+        addSetting("fleetMaxCover", false);
+
         for (let i = 0; i < biomeList.length; i++) {
             addSetting("biome_w_" + biomeList[i], 0);
         }
@@ -8859,13 +8861,7 @@
 
         // Loop through our managed projects
         for (let i = 0; i < projectList.length; i++) {
-            const project = projectList[i];
-
-            // Only level up to user defined max
-            if (project.level >= project.autoMax) {
-                continue;
-            }
-
+            let project = projectList[i];
             if (!getCostConflict(project)) {
                 log("autoARPA", "standard build " + project.id)
                 project.tryBuild(true);
@@ -9614,9 +9610,11 @@
 
         // Calculate actual amount of ships per zone
         let priorityList = regionsToProtect.sort((a, b) => a.priority - b.priority);
-        for (let i = 0; i < priorityList.length && allFleets.length > 0; i++) {
+        for (let i = 0; i < priorityList.length; i++) {
             let region = priorityList[i];
             let missingDef = region.piracy - region.armada;
+
+            // First pass, try to assign ships without overuse (unless we have enough ships to overuse everything)
             for (let k = allFleets.length - 1; k >= 0 && missingDef > 0; k--) {
                 let ship = allFleets[k];
                 if (ship.cover <= missingDef) {
@@ -9625,12 +9623,43 @@
                         shipsToAssign++;
                     }
                     region.assigned[ship.name] += shipsToAssign;
-                    //region.armada += shipsToAssign * ship.power;
                     ship.count -= shipsToAssign;
                     missingDef -= shipsToAssign * ship.power;
                 }
-                if (ship.count <= 0) {
-                    allFleets.splice(k, 1);
+            }
+
+            if (settings.fleetMaxCover && missingDef > 0) {
+                // Second pass, try to fill remaining gaps, if wasteful overuse is allowed
+                let index = -1;
+                while (++index < allFleets.length) {
+                    let ship = allFleets[index];
+                    if (ship.count > 0) {
+                        let shipsToAssign = Math.min(ship.count, Math.ceil(missingDef / ship.power));
+                        region.assigned[ship.name] += shipsToAssign;
+                        ship.count -= shipsToAssign;
+                        missingDef -= shipsToAssign * ship.power;
+                    }
+                    if (missingDef <= 0) {
+                        break;
+                    }
+                }
+
+                // If we're still missing defense it means we have no more ships to assign
+                if (missingDef > 0) {
+                    break;
+                }
+
+                // Third pass, retrive ships which not needed after second pass
+                while (--index >= 0) {
+                    let ship = allFleets[index];
+                    if (region.assigned[ship.name] > 0 && missingDef + ship.power <= 0) {
+                        let uselesShips = Math.min(region.assigned[ship.name], Math.floor(missingDef / ship.power * -1));
+                        if (uselesShips > 0) {
+                            region.assigned[ship.name] -= uselesShips;
+                            ship.count += uselesShips;
+                            missingDef += uselesShips * ship.power;
+                        }
+                    }
                 }
             }
         }
@@ -12128,6 +12157,7 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_fleetPreTable"></div>');
+        addStandardSectionSettingsToggle(preTableNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ship distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is *not* required: all your dreadnoughts still will be used even without this option.");
 
         // Add table
         currentNode.append(
@@ -12176,6 +12206,7 @@
         for (let i = 0; i < galaxyRegions.length; i++) {
             settings["fleet_pr_" + galaxyRegions[i]] = i;
         }
+        settings.fleetMaxCover = false;
     }
 
     function buildEjectorSettings() {
