@@ -5312,6 +5312,7 @@
         Object.assign(resources.Polymer, defaultStateBuy);
         Object.assign(resources.Alloy, defaultStateBuy);
         Object.assign(resources.Titanium, defaultStateBuy);
+        Object.assign(resources.Crystal, defaultStateBuy);
 
         state.marketManager.priorityList = priorityList;
 
@@ -10706,8 +10707,14 @@
                     resetMinorTraitState();
                     updateStateFromSettings();
                     updateSettingsFromState();
+                    removeScriptSettings();
+                    removeMarketToggles();
+                    removeArpaToggles();
+                    removeCraftToggles();
+                    removeBuildingToggles();
+                    removeEjectToggles();
                     $('#autoScriptContainer').remove();
-                    updateSettingsUI();
+                    updateUI();
                     $('#importExport').val("");
                 }
             }
@@ -10724,24 +10731,6 @@
         });
     }
 
-    function updateSettingsUI() {
-        updateGeneralSettingsContent();
-        updateGovernmentSettingsContent(true);
-        updateEvolutionSettingsContent();
-        updateMinorTraitSettingsContent();
-        updateTriggerSettingsContent();
-        updateResearchSettingsContent();
-        updateWarSettingsContent(true);
-        updateHellSettingsContent(true);
-        updateMarketSettingsContent();
-        updateStorageSettingsContent();
-        updateProductionSettingsContent();
-        updateJobSettingsContent();
-        updateBuildingSettingsContent();
-        updateWeightingSettingsContent();
-        updateProjectSettingsContent();
-        updateLoggingSettingsContent(true);
-    }
 
     function buildSettingsSection(sectionId, sectionName, resetFunction, updateSettingsContentFunction) {
         let scriptContentNode = $("#script_settings");
