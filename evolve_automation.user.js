@@ -10308,10 +10308,10 @@
         mutations.forEach(mutation => {
             mutation.addedNodes.forEach(node => {
                 // "pop[id]" for normal buildings, "popq[id][order]" for queue
+                node.style.pointerEvents = "none";
                 let id = node.id.match(/\d$/) ? node.id.substr(4, node.id.length-5) : node.id.substr(3);
                 let building = buildingIds[id];
                 if (building && (building.autoBuildEnabled || building.weighting > 0)) {
-                    node.style.pointerEvents = "none";
                     node.innerHTML += `<div>${building.extraDescription}</div>`;
                 }
             });
