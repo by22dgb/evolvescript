@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.35
+// @version      3.3.1.36
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -6206,10 +6206,8 @@
         }
 
         for (let i = 0; i < galaxyRegions.length; i++) {
-            addSetting("fleet_w_" + galaxyRegions[i], 1);
-            addSetting("fleet_p_" + galaxyRegions[i], galaxyRegions.length - i);
+            addSetting("fleet_pr_" + galaxyRegions[i], i);
         }
-
         for (let i = 0; i < biomeList.length; i++) {
             addSetting("biome_w_" + biomeList[i], 0);
         }
@@ -6221,6 +6219,10 @@
         }
 
         // TODO: Remove me after few more versions. Clean up old fork-only settings, not used neither here, nor in original script.
+        for (let i = 0; i < galaxyRegions.length; i++) {
+            delete settings["fleet_w_" + galaxyRegions[i]];
+            delete settings["fleet_p_" + galaxyRegions[i]];
+        }
         for (let resource of Object.values(resources)) {
             if (!resource.isTradable()) {
                 delete settings['res_buy_p_' + resource.id];
@@ -8583,7 +8585,7 @@
                 resources.Lumber.currentQuantity += amount * resPerClick;
             } else {
                 amount = Math.ceil(Math.min((resources.Lumber.maxQuantity - resources.Lumber.currentQuantity) / resPerClick, settings.buildingClickPerTick));
-                resources.Lumber.currentQuantity = Math.min(resources.Lumber.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
+                resources.Lumber.currentQuantity = Math.min(resources.Lumber.currentQuantity + amount * resPerClick, resources.Lumber.maxQuantity);
             }
             let lumber = game.actions.city.lumber;
             for (let i = 0; i < amount; i++) {
@@ -8597,7 +8599,7 @@
                 resources.Stone.currentQuantity += amount * resPerClick;
             } else {
                 amount = Math.ceil(Math.min((resources.Stone.maxQuantity - resources.Stone.currentQuantity) / resPerClick, settings.buildingClickPerTick));
-                resources.Stone.currentQuantity = Math.min(resources.Stone.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
+                resources.Stone.currentQuantity = Math.min(resources.Stone.currentQuantity + amount * resPerClick, resources.Stone.maxQuantity);
             }
             let stone = game.actions.city.stone;
             for (let i = 0; i < amount; i++) {
@@ -8611,7 +8613,7 @@
                 resources.Chrysotile.currentQuantity += amount * resPerClick;
             } else {
                 amount = Math.ceil(Math.min((resources.Chrysotile.maxQuantity - resources.Chrysotile.currentQuantity) / resPerClick, settings.buildingClickPerTick));
-                resources.Chrysotile.currentQuantity = Math.min(resources.Chrysotile.currentQuantity + amount * resPerClick, resources.Food.maxQuantity);
+                resources.Chrysotile.currentQuantity = Math.min(resources.Chrysotile.currentQuantity + amount * resPerClick, resources.Chrysotile.maxQuantity);
             }
             let chrysotile = game.actions.city.chrysotile;
             for (let i = 0; i < amount; i++) {
@@ -9571,8 +9573,20 @@
             {name: "dreadnought", count: state.spaceBuildings.Dreadnought.stateOnCount, power: game.actions.galaxy.gxy_gateway.dreadnought.ship.rating},
         ];
 
-        // Here we calculating min allowed coverage, if we have more ships than we can allocate without overflowing.
-        let missingDef = allRegions.filter(region => region.useful && region.piracy - region.armada > 0).map(region => region.piracy - region.armada);
+        let regionsToProtect = allRegions.filter(region => region.useful && region.piracy - region.armada > 0);
+        let allFleet = allFleets.filter(ship => ship.count > 0);
+
+        for (let i = 0; i < allRegions.length; i++) {
+            let region = allRegions[i];
+            region.priority = settings["fleet_pr_" + region.name];
+            region.assigned = {};
+            for (let j = 0; j < allFleets.length; j++) {
+                region.assigned[allFleets[j].name] = 0;
+            }
+        }
+
+        // Calculate min allowed coverage, if we have more ships than we can allocate without overflowing.
+        let missingDef = regionsToProtect.map(region => region.piracy - region.armada);
         for (let i = allFleets.length - 1; i >= 0; i--) {
             let ship = allFleets[i];
             let maxAllocate = missingDef.reduce((sum, def) => sum + Math.floor(def / ship.power), 0);
@@ -9597,62 +9611,25 @@
             }
         }
 
-
-        // Init adjustment, and sort groups by priorities
-        let priorityGroups = {};
-        for (let i = 0; i < allRegions.length; i++) {
-            let region = allRegions[i];
-            if (region.useful) {
-                region.weighting = settings["fleet_w_" + region.name];
-
-                let priority = settings["fleet_p_" + region.name];
-                priorityGroups[priority] = priorityGroups[priority] ?? [];
-                priorityGroups[priority].push(region);
-            }
-            region.assigned = {};
-            for (let j = 0; j < allFleets.length; j++) {
-                region.assigned[allFleets[j].name] = 0;
-            }
-        }
-        let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
-        let allFleet = allFleets.filter(ship => ship.count > 0);
-
-        // Calculate amount of ships per zone
+        // Calculate actual amount of ships per zone
+        let priorityList = regionsToProtect.sort((a, b) => a.priority - b.priority);
         for (let i = 0; i < priorityList.length && allFleets.length > 0; i++) {
-            let regions = priorityList[i];
-            while (allFleets.length > 0) {
-                let totalPriorityWeight = regions.reduce((sum, region) => sum + region.weighting, 0);
-                let shipsAssigned = 0;
-                for (let k = allFleets.length - 1; k >= 0; k--) {
-                    allFleets[k].init = allFleets[k].count;
-                }
-                for (let j = regions.length - 1; j >= 0; j--) {
-                    let region = regions[j];
-                    let missingDef = region.piracy - region.armada;
-                    for (let k = allFleets.length - 1; k >= 0 && missingDef > 0; k--) {
-                        let ship = allFleets[k];
-                        if (ship.cover <= missingDef) {
-                            let allowedShips = Math.min(ship.count, Math.floor(ship.init / totalPriorityWeight * region.weighting));
-                            let shipsToAssign = Math.max(1, Math.min(allowedShips, Math.floor(missingDef / ship.power)));
-                            if (shipsToAssign < allowedShips && shipsToAssign * ship.power + ship.cover <= missingDef) {
-                                shipsToAssign++;
-                            }
-                            region.assigned[ship.name] += shipsToAssign;
-                            region.armada += shipsToAssign * ship.power;
-                            ship.count -= shipsToAssign;
-                            missingDef -= shipsToAssign * ship.power;
-                            shipsAssigned += shipsToAssign;
-                        }
-                        if (ship.count <= 0) {
-                            allFleets.splice(k, 1);
-                        }
+            let region = priorityList[i];
+            let missingDef = region.piracy - region.armada;
+            for (let k = allFleets.length - 1; k >= 0 && missingDef > 0; k--) {
+                let ship = allFleets[k];
+                if (ship.cover <= missingDef) {
+                    let shipsToAssign = Math.min(ship.count, Math.floor(missingDef / ship.power));
+                    if (shipsToAssign < ship.count && shipsToAssign * ship.power + ship.cover <= missingDef) {
+                        shipsToAssign++;
                     }
-                    if (missingDef <= 0) {
-                        regions.splice(j, 1);
-                    }
+                    region.assigned[ship.name] += shipsToAssign;
+                    //region.armada += shipsToAssign * ship.power;
+                    ship.count -= shipsToAssign;
+                    missingDef -= shipsToAssign * ship.power;
                 }
-                if (shipsAssigned < 1) {
-                    break;
+                if (ship.count <= 0) {
+                    allFleets.splice(k, 1);
                 }
             }
         }
@@ -12165,7 +12142,7 @@
 
         // Add table
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Region</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority</th><th class="has-text-warning" style="width:5%"></th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Region</th><th class="has-text-warning" style="width:65%"></th></tr>
                 <tbody id="script_fleetTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12174,32 +12151,41 @@
         let newTableBodyText = "";
 
         for (let i = 0; i < galaxyRegions.length; i++) {
-            newTableBodyText += '<tr value="' + galaxyRegions[i] + '"><td id="script_fleet_' + galaxyRegions[i] + '" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
+            newTableBodyText += '<tr value="' + galaxyRegions[i] + '" class="script-draggable"><td id="script_fleet_' + galaxyRegions[i] + '" style="width:35%"><td style="width:65%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < galaxyRegions.length; i++) {
             let fleetElement = $('#script_fleet_' + galaxyRegions[i]);
-
             let nameRef = galaxyRegions[i] === "gxy_alien1" ? "Alien 1 System" : galaxyRegions[i] === "gxy_alien2" ? "Alien 2 System" : game.actions.galaxy[galaxyRegions[i]].info.name;
 
             fleetElement.append(buildStandartLabel(typeof nameRef === "function" ? nameRef() : nameRef));
-
-            fleetElement = fleetElement.next().next();
-            fleetElement.append(buildStandartSettingsInput(settings, "fleet_w_" + galaxyRegions[i], "fleet_w_" + galaxyRegions[i]));
-
-            fleetElement = fleetElement.next();
-            fleetElement.append(buildStandartSettingsInput(settings, "fleet_p_" + galaxyRegions[i], "fleet_p_" + galaxyRegions[i]));
         }
+
+        $('#script_fleetTableBody').sortable( {
+            items: "tr:not(.unsortable)",
+            helper: function(event, ui){
+                var $clone =  $(ui).clone();
+                $clone .css('position','absolute');
+                return $clone.get(0);
+            },
+            update: function() {
+                let regionIds = $('#script_fleetTableBody').sortable('toArray', {attribute: 'value'});
+                for (let i = 0; i < regionIds.length; i++) {
+                    settings["fleet_pr_" + regionIds[i]] = i;
+                }
+
+                updateSettingsFromState();
+            },
+        } );
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     function resetFleetSettings() {
         for (let i = 0; i < galaxyRegions.length; i++) {
-            settings["fleet_w_" + galaxyRegions[i]] = 1;
-            settings["fleet_p_" + galaxyRegions[i]] = galaxyRegions.length - i;
+            settings["fleet_pr_" + galaxyRegions[i]] = i;
         }
     }
 
@@ -12548,7 +12534,7 @@
 
         for (let i = 0; i < state.minorTraitManager.priorityList.length; i++) {
             const trait = state.minorTraitManager.priorityList[i];
-            newTableBodyText += '<tr value="' + trait.traitName + '" class="script-draggable"><td id="script_minorTrait_' + trait.traitName + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"></td></tr>';
+            newTableBodyText += '<tr value="' + trait.traitName + '" class="script-draggable"><td id="script_minorTrait_' + trait.traitName + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12565,9 +12551,6 @@
 
             minorTraitElement = minorTraitElement.next();
             minorTraitElement.append(buildStandartSettingsInput(trait, "mTrait_w_" + trait.traitName, "autoMinorTraitWeighting"));
-
-            minorTraitElement = minorTraitElement.next();
-            minorTraitElement.append($('<span class="script-lastcolumn"></span>'));
         }
 
         $('#script_minorTraitTableBody').sortable( {
@@ -12663,7 +12646,7 @@
 
         for (let i = 0; i < smelterFuels.length; i++) {
             let fuel = smelterFuels[i];
-            newTableBodyText += '<tr value="' + fuel.id + '"><td id="script_smelter_' + fuel.id + '" style="width:35%"></td><td style="width:65%"></td></tr>';
+            newTableBodyText += '<tr value="' + fuel.id + '" class="script-draggable"><td id="script_smelter_' + fuel.id + '" style="width:35%"></td><td style="width:65%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12673,9 +12656,6 @@
             let productionElement = $('#script_smelter_' + fuel.id);
 
             productionElement.append(buildStandartLabel(fuel.cost[0].resource.title));
-
-            productionElement = productionElement.next();
-            productionElement.append($('<span class="script-lastcolumn"></span>'));
         }
 
         $('#script_productionTableBodySmelter').sortable( {
