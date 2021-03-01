@@ -9631,16 +9631,13 @@
             if (settings.fleetMaxCover && missingDef > 0) {
                 // Second pass, try to fill remaining gaps, if wasteful overuse is allowed
                 let index = -1;
-                while (++index < allFleets.length) {
+                while (missingDef > 0 && ++index < allFleets.length) {
                     let ship = allFleets[index];
                     if (ship.count > 0) {
                         let shipsToAssign = Math.min(ship.count, Math.ceil(missingDef / ship.power));
                         region.assigned[ship.name] += shipsToAssign;
                         ship.count -= shipsToAssign;
                         missingDef -= shipsToAssign * ship.power;
-                    }
-                    if (missingDef <= 0) {
-                        break;
                     }
                 }
 
@@ -11035,7 +11032,7 @@
         addStandardSectionSettingsToggle(preTableNode, "triggerRequest", "Prioritize resources for triggers", "Readjust trade routes and production to resources required for active triggers");
         addStandardSectionSettingsToggle(preTableNode, "queueRequest", "Prioritize resources for queue", "Readjust trade routes and production to resources required for buildings and researches in queue");
         addStandardSectionSettingsToggle(preTableNode, "researchRequest", "Prioritize resources for Pre-MAD researches", "Readjust trade routes and production to resources required for unlocked and affordable researches");
-        addStandardSectionSettingsToggle(preTableNode, "researchRequestSpace", "Prioritize resources for Space+ for researches", "Readjust trade routes and production to resources required for unlocked and affordable researches");
+        addStandardSectionSettingsToggle(preTableNode, "researchRequestSpace", "Prioritize resources for Space+ researches", "Readjust trade routes and production to resources required for unlocked and affordable researches");
         addStandardSectionSettingsToggle(preTableNode, "missionRequest", "Prioritize resources for missions", "Readjust trade routes and production to resources required for unlocked and affordable missions");
 
         addStandardSectionSettingsToggle(preTableNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
