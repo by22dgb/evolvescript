@@ -44,6 +44,7 @@
 
     var game = null;
     var win = null;
+    var oldState = null;
 
     var showLogging = false;
     var loggingType = "autoJobs";
@@ -5242,7 +5243,7 @@
         settings.researchRequest = true;
         settings.researchRequestSpace = false;
         settings.missionRequest = true;
-        settings.genesAssembleGeneAlways = false;
+        settings.genesAssembleGeneAlways = true;
         settings.buildingAlwaysClick = false;
         settings.buildingClickPerTick = 50;
     }
@@ -6102,7 +6103,7 @@
         addSetting("prestigeWhiteholeEjectAllCount", 5);
 
         addSetting("autoAssembleGene", false);
-        addSetting("genesAssembleGeneAlways", false);
+        addSetting("genesAssembleGeneAlways", true);
 
         addSetting("minimumMoney", 0);
         addSetting("minimumMoneyPercentage", 0);
@@ -8496,7 +8497,7 @@
 
                     let calculatedRequiredFreighters = Math.min(remainingFreighters, Math.max(1, Math.floor(freightersToDistribute / totalPriorityWeight * buyResource.galaxyMarketWeighting)));
                     let actualRequiredFreighters = calculatedRequiredFreighters;
-                    if (buyResource.storageRatio > 0.99 || sellResource.storageRatio < 0.1) {
+                    if (buyResource.storageRatio > 0.99 || sellResource.storageRatio < 0.05) {
                         actualRequiredFreighters = 0;
                     }
 
@@ -10324,9 +10325,12 @@
 
     function automate() {
         // Exposed global it's a deepcopy of real game state, and it's not guaranteed to be actual
-        // So, to ensure we won't process same state of game twice - we'll mark global at the end of the script tick, and wait for new one
-        // Game ticks faster than script, so normally it's not an issue. But maybe game will be on pause, or lag badly - better be sure
-        if (!state.scriptingEdition && game.global.warseed === Number.MAX_SAFE_INTEGER) { return; }
+        // So, to ensure we won't process same state of game twice - we're storing global, and will wait for *new* one
+        // Game ticks faster than script, so normally it's not an issue. But maybe game will be on pause, or debug mode was disabled, or lag badly - better be sure
+        if (!state.scriptingEdition && game.global === oldState) {
+            return;
+        }
+        oldState = game.global;
 
         // console.log("Loop: " + state.loopCounter + ", goal: " + state.goal);
         if (state.loopCounter < Number.MAX_SAFE_INTEGER) {
@@ -10348,7 +10352,6 @@
             if (settings.autoEvolution) {
                 autoEvolution();
             }
-            if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; }
             return;
         }
 
@@ -10434,8 +10437,6 @@
         if (settings.prestigeType === "mad") {
             autoMadPrestige();
         }
-
-        if (!state.scriptingEdition) { game.global.warseed = Number.MAX_SAFE_INTEGER; }
     }
 
     function mainAutoEvolveScript() {
