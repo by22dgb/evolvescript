@@ -5215,7 +5215,7 @@
     function resetHellSettings() {
         settings.hellTurnOffLogMessages = true;
         settings.hellHandlePatrolCount = true;
-        settings.hellHomeGarrison = 20;
+        settings.hellHomeGarrison = 10;
         settings.hellMinSoldiers = 20;
         settings.hellMinSoldiersPercent = 90;
 
@@ -6137,7 +6137,7 @@
 
         addSetting("hellTurnOffLogMessages", true);
         addSetting("hellHandlePatrolCount", true);
-        addSetting("hellHomeGarrison", 20);
+        addSetting("hellHomeGarrison", 10);
         addSetting("hellMinSoldiers", 20);
         addSetting("hellMinSoldiersPercent", 90);
 
@@ -7047,7 +7047,7 @@
         // Only go into hell at all if soldiers are close to full, or we are already there
         if (m.maxSoldiers > settings.hellHomeGarrison + settings.hellMinSoldiers &&
            (m.hellSoldiers > settings.hellMinSoldiers || (m.currentSoldiers >= m.maxSoldiers * settings.hellMinSoldiersPercent / 100))) {
-            targetHellSoldiers = Math.min(m.currentSoldiers, m.maxSoldiers - settings.hellHomeGarrison); // Leftovers from an incomplete patrol go to hell garrison
+            targetHellSoldiers = Math.min(m.currentSoldiers, m.maxSoldiers) - settings.hellHomeGarrison; // Leftovers from an incomplete patrol go to hell garrison
             let availableHellSoldiers = targetHellSoldiers - m.hellReservedSoldiers;
 
             // Determine target hell garrison size
