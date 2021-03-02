@@ -6210,7 +6210,7 @@
         for (let i = 0; i < galaxyRegions.length; i++) {
             addSetting("fleet_pr_" + galaxyRegions[i], i);
         }
-        addSetting("fleetMaxCover", false);
+        addSetting("fleetMaxCover", true);
 
         for (let i = 0; i < biomeList.length; i++) {
             addSetting("biome_w_" + biomeList[i], 0);
@@ -12155,7 +12155,7 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_fleetPreTable"></div>');
-        addStandardSectionSettingsToggle(preTableNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ship distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is *not* required: all your dreadnoughts still will be used even without this option.");
+        addStandardSectionSettingsToggle(preTableNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ships distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is *not* required: all your dreadnoughts still will be used even without this option.");
 
         // Add table
         currentNode.append(
@@ -12204,7 +12204,7 @@
         for (let i = 0; i < galaxyRegions.length; i++) {
             settings["fleet_pr_" + galaxyRegions[i]] = i;
         }
-        settings.fleetMaxCover = false;
+        settings.fleetMaxCover = true;
     }
 
     function buildEjectorSettings() {
