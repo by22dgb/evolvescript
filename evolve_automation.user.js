@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.36
+// @version      3.3.1.37
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2654,6 +2654,7 @@
             this.hellPatrols = 0;
             this.hellPatrolSize = 0;
             this.hellAssigned = 0;
+            this.hellReservedSoldiers = 0;
         }
 
         initGarrison() {
@@ -2698,6 +2699,7 @@
                 this.hellPatrols = game.global.portal.fortress.patrols;
                 this.hellPatrolSize = game.global.portal.fortress.patrol_size;
                 this.hellAssigned = game.global.portal.fortress.assigned;
+                this.hellReservedSoldiers = this.getHellReservedSoldiers();
             }
         }
 
@@ -2775,7 +2777,7 @@
             return true;
         }
 
-        get hellReservedSoldiers(){
+        getHellReservedSoldiers(){
             let soldiers = 0;
             if (state.spaceBuildings.PortalSoulForge.stateOnCount > 0) {
                 // export function soulForgeSoldiers() from Evolve/src/portal.js
@@ -2788,7 +2790,11 @@
                 }
             }
 
-            return soldiers + state.spaceBuildings.PortalGuardPost.stateOnCount;
+            // Guardposts need at least one soldier free so lets just always keep one handy
+            if (state.spaceBuildings.PortalGuardPost.count > 0) {
+                soldiers += state.spaceBuildings.PortalGuardPost.stateOnCount + 1;
+            }
+            return soldiers;
         }
 
         increaseCampaignDifficulty() {
@@ -7066,11 +7072,6 @@
                 hellGarrison = 0; // If we cant defend adequately, send everyone out on patrol
             } else if (availableHellSoldiers < hellGarrison * 2) {
                 hellGarrison = Math.floor(availableHellSoldiers / 2); // Always try to send out at least half our people
-            }
-
-            // Guardposts need at least one soldier free so lets just always keep one handy
-            if (state.spaceBuildings.PortalGuardPost.count > 0) {
-                hellGarrison = hellGarrison + 1 + state.spaceBuildings.PortalGuardPost.stateOnCount;
             }
 
             // Determine the patrol attack rating
