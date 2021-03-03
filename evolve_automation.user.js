@@ -9664,6 +9664,9 @@
             }
         }
 
+        // Assign remaining ships to gorddon, to utilize Symposium
+        allFleets.forEach(ship => allRegions[2].assigned[ship.name] += ship.count);
+
         for (let i = 0; i < allRegions.length; i++) {
             let region = allRegions[i];
             for (let ship in region.assigned) {
