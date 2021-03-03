@@ -7879,10 +7879,11 @@
         for (let i = 0; i < allProducts.length; i++) {
             let production = allProducts[i];
             if (production.unlocked && production.enabled) {
-                let priority = production.resource.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : production.priority;
-                priorityGroups[priority] = priorityGroups[priority] ?? [];
-                priorityGroups[priority].push(production);
-
+                if (production.weighting > 0) {
+                    let priority = production.resource.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : production.priority;
+                    priorityGroups[priority] = priorityGroups[priority] ?? [];
+                    priorityGroups[priority].push(production);
+                }
                 factoryAdjustments[production.id] = 0;
             }
         }
@@ -7996,10 +7997,11 @@
         let factoryAdjustments = {};
         for (let i = 0; i < allProducts.length; i++) {
             let production = allProducts[i];
-            let priority = production.resource.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : production.priority;
-            priorityGroups[priority] = priorityGroups[priority] ?? [];
-            priorityGroups[priority].push(production);
-
+            if (production.weighting > 0) {
+                let priority = production.resource.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : production.priority;
+                priorityGroups[priority] = priorityGroups[priority] ?? [];
+                priorityGroups[priority].push(production);
+            }
             factoryAdjustments[production.id] = 0;
         }
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
@@ -8468,12 +8470,11 @@
         for (let i = 0; i < poly.galaxyOffers.length; i++) {
             let trade = poly.galaxyOffers[i];
             let buyResource = resources[trade.buy.res];
-
-            let priority = buyResource.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : buyResource.galaxyMarketPriority;
-
-            priorityGroups[priority] = priorityGroups[priority] ?? [];
-            priorityGroups[priority].push(trade);
-
+            if (buyResource.galaxyMarketWeighting > 0) {
+                let priority = buyResource.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : buyResource.galaxyMarketPriority;
+                priorityGroups[priority] = priorityGroups[priority] ?? [];
+                priorityGroups[priority].push(trade);
+            }
             tradeAdjustments[buyResource.id] = 0;
         }
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
