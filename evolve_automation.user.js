@@ -7750,12 +7750,19 @@
 
             let fuels = smelter.fuelPriorityList();
             let fuelAdjust = {};
-            fuels.forEach(fuel => {
-                if (remainingSmelters <= 0 || !fuel.unlocked) {
-                    return;
+            for (let i = 0; i < fuels.length; i++) {
+                let fuel = fuels[i];
+                if (!fuel.unlocked) {
+                    continue;
                 }
 
                 let maxAllowedUnits = remainingSmelters;
+
+                // Adjust Inferno to Oil ratio for better efficiency and cost
+                if (fuel === smelter.Fuels.Inferno && fuels[i+1] === smelter.Fuels.Oil && remainingSmelters > 75) {
+                    maxAllowedUnits = Math.floor(0.5*remainingSmelters+37.5);
+                }
+
                 fuel.cost.forEach(productionCost => {
                     let resource = productionCost.resource;
 
@@ -7773,19 +7780,21 @@
 
                 remainingSmelters -= maxAllowedUnits;
                 fuelAdjust[fuel.id] = maxAllowedUnits - smelter.fueledCount(fuel);
-            });
+            }
 
-            fuels.forEach(fuel => {
+            for (let i = 0; i < fuels.length; i++) {
+                let fuel = fuels[i];
                 if (fuelAdjust[fuel.id] < 0) {
-                    smelter.decreaseFuel(fuel, -fuelAdjust[fuel.id]);
+                    smelter.decreaseFuel(fuel, fuelAdjust[fuel.id] * -1);
                 }
-            });
+            }
 
-            fuels.forEach(fuel => {
+            for (let i = 0; i < fuels.length; i++) {
+                let fuel = fuels[i];
                 if (fuelAdjust[fuel.id] > 0) {
                     smelter.increaseFuel(fuel, fuelAdjust[fuel.id]);
                 }
-            });
+            }
         }
 
         let smelterIronCount = smelter.smeltingCount(smelter.Productions.Iron);
@@ -9799,8 +9808,7 @@
         // Same for projects
         state.projectManager.managedPriorityList().forEach(project => {
             project.resourceRequirements.forEach(requirement => {
-                // 0.0103 multiplier it's 3% extra above 1/100 of full cost.
-                requirement.resource.storageRequired = Math.max(requirement.quantity*0.0103, requirement.resource.storageRequired);
+                requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
             });
         });
     }
@@ -12678,7 +12686,7 @@
             let fuel = smelterFuels[i];
             let productionElement = $('#script_smelter_' + fuel.id);
 
-            productionElement.append(buildStandartLabel(fuel.cost[0].resource.title));
+            productionElement.append(buildStandartLabel(fuel.id));
         }
 
         $('#script_productionTableBodySmelter').sortable( {
