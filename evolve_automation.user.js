@@ -4819,6 +4819,7 @@
             Railway: new Project("Railway", "railway"),
             Nexus: new Project("Nexus", "nexus"),
             RoidEject: new Project("Asteroid Redirect", "roid_eject"),
+            ManaSyphon: new Project("Mana Syphon", "syphon"),
         },
     };
 
@@ -5740,6 +5741,7 @@
 
         state.projects.LaunchFacility.autoBuildEnabled = true;
         state.projects.LaunchFacility.ignoreMinimumMoneySetting = true;
+        state.projects.ManaSyphon._autoMax = 79;
     }
 
     function resetProductionSettings() {
@@ -8892,7 +8894,8 @@
             let project = projectList[i];
             let allowBuild = true;
 
-            if (project.resourceRequirements.length === 0) {
+            // Never build disabled syphons
+            if (project === state.projects.ManaSyphon || project.resourceRequirements.length === 0) {
                 continue;
             }
 
@@ -12052,7 +12055,7 @@
 
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down this advantage, reducing potential loses");
-        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMaxSiegeBattalion", "Maximum siege battalion", "Maximum battalion for siege campaign. Only try to siege if it's possible with up to given amount of soldiers. Siege is expensive, if you'll be doing it with too big battalion it might be less profitable than other combat campaigns. This option not applied for unification, it's only for regular looting.");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, 0, "foreignMaxSiegeBattalion", "Maximum siege battalion", "Maximum battalion for siege campaign. Only try to siege if it's possible with up to given amount of soldiers. Siege is expensive, if you'll be doing it with too big battalion it might be less profitable than other combat campaigns. This option does not applied for unification, it's only for regular looting.");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -12168,7 +12171,7 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_fleetPreTable"></div>');
-        addStandardSectionSettingsToggle(preTableNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ships distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is *not* required: all your dreadnoughts still will be used even without this option.");
+        addStandardSectionSettingsToggle(preTableNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ships distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is not required: all your dreadnoughts still will be used even without this option.");
 
         // Add table
         currentNode.append(
@@ -13329,7 +13332,7 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_projectPreTable"></div>');
-        addStandardSectionSettingsToggle(preTableNode, "arpaBuildIfStorageFull", "Override and build if storage is full", "Overrides the below settings to still build A.R.P.A projects if resources are full");
+        addStandardSectionSettingsToggle(preTableNode, "arpaBuildIfStorageFull", "Override and build if storage is full", "Overrides the below settings to still build A.R.P.A projects if resources are full. This option does not applies to Mana Syphons, it won't be built unless explicitly enabled.");
         addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullCraftableMin", "Minimum craftables to keep if overriding", "A.R.P.A. projects that require crafted resources won't override and build if resources are below this amount, -1 stands for maximum amount required by other buildings.");
         addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullResourceMaxPercent", "Maximim percent of resources if overriding", "A.R.P.A. project that require more than this percentage of a non-crafted resource won't override and build");
 
