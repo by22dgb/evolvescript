@@ -6168,11 +6168,11 @@
                         // We're going to check pillars for ascending, greatness achievement for bioseeding, or extinction achievement otherwise
                         let raceIsGood = false;
                         if (settings.prestigeType === "ascension") {
-                            raceIsGood = race.isPillarUnlocked(achievementLevel);
+                            raceIsGood = !race.isPillarUnlocked(achievementLevel);
                         } else if (settings.prestigeType === "bioseed") {
-                            raceIsGood = race.isGreatnessAchievementUnlocked(achievementLevel);
+                            raceIsGood = !race.isGreatnessAchievementUnlocked(achievementLevel);
                         } else {
-                            raceIsGood = race.isMadAchievementUnlocked(achievementLevel);
+                            raceIsGood = !race.isMadAchievementUnlocked(achievementLevel);
                         }
 
                         if (raceIsGood) {
@@ -9771,33 +9771,57 @@
                 let stars = game.alevel();
                 let newRace = races[game.global.race.species];
 
-                if (settings.prestigeType !== "bioseed" && newRace.isMadAchievementUnlocked(stars)) {
-                    for (let j = 0; j < planetBiomeRaces[game.global.city.biome].length; j++) {
-                        let race = planetBiomeRaces[game.global.city.biome][j];
-                        if (!race.isMadAchievementUnlocked(stars)) {
-                            state.log.logSuccess(loggingTypes.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`);
+                if (settings.prestigeType === "ascension" && newRace.isPillarUnlocked(stars)) {
+                    for (let id in races) {
+                        let race = races[id];
+                        if (race.evolutionCondition() && !race.isPillarUnlocked(stars)) {
+                            state.log.logWarning(loggingTypes.special, `${newRace.name} pillar already infused, soft resetting and trying again.`);
                             needReset = true;
                             break;
                         }
                     }
+                    if (!needReset) {
+                        state.log.logWarning(loggingTypes.special, `All currently available pillars already infused. Continuing with current race.`);
+                    }
                 }
 
                 if (settings.prestigeType === "bioseed" && newRace.isGreatnessAchievementUnlocked(stars)) {
-                    let genus = game.races[planetBiomeRaces[game.global.city.biome][0]].type;
-                    if (!race.isGreatnessAchievementUnlocked(stars)) {
-                        state.log.logSuccess(loggingTypes.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`);
-                        needReset = true;
+                    for (let id in races) {
+                        let race = races[id];
+                        if (race.evolutionCondition() && !race.isGreatnessAchievementUnlocked(stars)) {
+                            state.log.logWarning(loggingTypes.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`);
+                            needReset = true;
+                            break;
+                        }
+                    }
+                    if (!needReset) {
+                        state.log.logWarning(loggingTypes.special, `All currently available greatness achievements already earned. Continuing with current race.`);
                     }
                 }
+
+                if (settings.prestigeType !== "bioseed" && settings.prestigeType !== "ascension" && newRace.isMadAchievementUnlocked(stars)) {
+                    for (let id in races) {
+                        let race = races[id];
+                        if (race.evolutionCondition() && !race.isMadAchievementUnlocked(stars)) {
+                            state.log.logWarning(loggingTypes.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`);
+                            needReset = true;
+                            break;
+                        }
+                    }
+                    if (!needReset) {
+                        state.log.logWarning(loggingTypes.special, `All currently available extinction achievements already earned. Continuing with current race.`);
+                    }
+                }
+
             } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].evolutionCondition()) {
-                state.log.logSuccess(loggingTypes.special, `Wrong race, soft resetting and trying again.`);
+                state.log.logWarning(loggingTypes.special, `Wrong race, soft resetting and trying again.`);
                 needReset = true;
             }
 
             if (needReset) {
                 // Let's double check it's actually *soft* reset
                 let resetButton = document.querySelector(".reset .button:not(.right)");
-                if (resetButton.querySelector(".tooltip-trigger").innerText === game.loc("reset_soft")) {
+                if (resetButton.querySelector("span").innerText === game.loc("reset_soft")) {
                     if (settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
                         addEvolutionSetting();
                         settings.evolutionQueue.unshift(settings.evolutionQueue.pop());
