@@ -700,7 +700,7 @@
             }
             // We're checking this after loop, to make sure *all* provided supports are useless.
             // Starbase and habitat are exceptions here, as soldiers and population are always useful
-            if (uselessSupport > 0 && this !== state.spaceBuildings.GatewayStarbase && this !== state.spaceBuildings.AlphaHabitat) {
+            if (uselessSupport > 0 && this !== state.spaceBuildings.GatewayStarbase && this !== state.spaceBuildings.AlphaHabitat && this !== state.spaceBuildings.PortalHarbour) {
                 return this.consumption[0];
             }
             return null;
