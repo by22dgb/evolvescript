@@ -22,7 +22,7 @@
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
 //     If some storage grew too high, taking all crates, you can disable expensive building, and Auto Storage won't try to fullfil its demands anymore. If you want to expand storage to build something manually, you can limit maximum level of building to 0, thus while it technically have auto build enabled, it won't ever be autobuilded, but you'll have needed storage.
-//   Order in which buildings receive power taken from order in buildings settings, you can drag and drop it to adjust priorities.
+//   Order in which buildings receive power taken from order in buildings settings, you can drag and drop it to adjust priorities. Filtering with "autopower" and "autobuild" keywords can show buildings with altered auto power and auto build respectively.
 //     By default Ascension Trigger placed where it can be activated as soon as possible without killing soldiers or population, and reducing prestige rewards. But it still can hurt production badly. If you're planning to ascend at very first opportunity(i.e. not planning to go for pillar or such), you may enable auto powering it. Otherwise you may want to delay with it till the moment when you'll be ready. (Or you can just move it where it will be less impacting on production, but that also means it'll take longer to get enough power)
 //   Auto Craft doesn't works well past MAD, you may have issues making it craft expensive resource like mythril, consider enabling Auto Craftsmen even if you're playing with manual craft
 //   Evolution Queue can change any script settings, not only those which you have after adding new task, you can append any variables and their values manually, if you're capable to read code, and can find internal names and acceptable values of those variables. Settings applied at the moment when new evolution starts. (Or right before reset in case of Cataclysm)
@@ -5524,13 +5524,13 @@
 
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MetalRefinery);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Mine);
-        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CoalMine);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Casino);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.HellSpaceCasino);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.RockQuarry);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.Sawmill);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.GasMoonOilExtractor);
         state.buildingManager.addBuildingToPriorityList(state.cityBuildings.MassDriver);
+        state.buildingManager.addBuildingToPriorityList(state.cityBuildings.CoalMine);
 
         // AutoBuild disabled by default for buildings consuming Soul Gems
         state.spaceBuildings.RedVrCenter.autoBuildEnabled = false;
@@ -10107,17 +10107,17 @@
               () => "New building",
               () => settings.buildingWeightingNew
           ],[
-              () => resources.Power.isUnlocked() && resources.Power.currentQuantity < 1,
+              () => resources.Power.isUnlocked() && resources.Power.currentQuantity < (game.global.race['emfield'] ? 1.5 : 1),
               (building) => building.powered < 0,
               () => "Need more energy",
               () => settings.buildingWeightingNeedfulPowerPlant
           ],[
-              () => resources.Power.isUnlocked() && resources.Power.currentQuantity > 1,
+              () => resources.Power.isUnlocked() && resources.Power.currentQuantity > (game.global.race['emfield'] ? 1.5 : 1),
               (building) => building.powered < 0 && building !== state.cityBuildings.Mill,
               () => "No need for more energy",
               () => settings.buildingWeightingUselessPowerPlant
           ],[
-              () => resources.Power.isUnlocked() && resources.Power.currentQuantity < 1,
+              () => resources.Power.isUnlocked() && resources.Power.currentQuantity < (game.global.race['emfield'] ? 1.5 : 1),
               (building) => building.powered > 0 && building.powered > resources.Power.currentQuantity,
               () => "Not enough energy",
               () => settings.buildingWeightingUnderpowered
@@ -13096,7 +13096,15 @@
         for (let i = 0; i < trs.length; i++) {
             let td = trs[i].getElementsByTagName("td")[0];
             if (td) {
-                if (td.textContent.toUpperCase().indexOf(filter) > -1) {
+                if (filter === "AUTOPOWER" || filter === "AUTOBUILD") {
+                    let building = buildingIds[td.id.match(/^script_(.*)Toggle$/)[1]];
+                    if (building && ((filter === "AUTOPOWER" && building.autoStateEnabled !== settings.buildingStateAll) ||
+                                     (filter === "AUTOBUILD" && building.autoBuildEnabled !== settings.buildingEnabledAll))) {
+                        trs[i].style.display = "";
+                    } else {
+                        trs[i].style.display = "none";
+                    }
+                } else if (td.textContent.toUpperCase().indexOf(filter) > -1) {
                     trs[i].style.display = "";
                 } else {
                     trs[i].style.display = "none";
