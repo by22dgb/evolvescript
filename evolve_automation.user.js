@@ -12842,7 +12842,7 @@
 
                 for (let i = 0; i < jobIds.length; i++) {
                     // Job has been dragged... Update all job priorities
-                    state.jobManager.priorityList.find(job => job._originalId === jobIds[i]).priority = i + 1; // farmers is always 0
+                    state.jobManager.priorityList.find(job => job._originalId === jobIds[i]).priority = i + 3; // farmers, hunters, and unemployed is always on top
                 }
 
                 state.jobManager.sortByPriority();
