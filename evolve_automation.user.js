@@ -684,7 +684,7 @@
                 }
 
                 // It provides support which we don't need
-                if (consumptionRate < 0 && resourceType.resource.isSupport()) {
+                if (consumptionRate < 0 && resourceType.resource instanceof Support) {
                     let minSupport = resourceType.resource == resources.Belt_Support ? 2 : resourceType.resource == resources.Gateway_Support ? 5 : 1;
                     if (rateOfChange >= minSupport) {
                       uselessSupport += 1;
@@ -699,8 +699,8 @@
                 }
             }
             // We're checking this after loop, to make sure *all* provided supports are useless.
-            // Starbase and habitat are exceptions here, as soldiers and population are always useful
-            if (uselessSupport > 0 && this !== state.spaceBuildings.GatewayStarbase && this !== state.spaceBuildings.AlphaHabitat && this !== state.spaceBuildings.PortalHarbour) {
+            // Starbase and habitats are exceptions here, as they always useful
+            if (uselessSupport > 0 && this !== state.spaceBuildings.GatewayStarbase && this !== state.spaceBuildings.AlphaHabitat) {
                 return this.consumption[0];
             }
             return null;
@@ -987,6 +987,7 @@
             this.galaxyMarketPriority = 0;
 
             this.ejectEnabled = false;
+            this.supplyEnabled = false;
 
             this.storeOverflow = false;
             this.storagePriority = 0;
@@ -1007,6 +1008,7 @@
             this.currentCrates = 0;
             this.currentContainers = 0;
             this.currentEject = 0;
+            this.currentSupply = 0;
             this.currentDecay = 0;
 
             this.requestedQuantity = 0;
@@ -1014,6 +1016,7 @@
             this._vueBinding = "res" + id;
             this._stackVueBinding = "stack-" + id;
             this._ejectorVueBinding = "eject" + id;
+            this._supplyVueBinding = "supply" + id;
             this._marketVueBinding = "market-" + id;
         }
 
@@ -1062,6 +1065,14 @@
                 this.currentEject = 0;
             }
 
+            // Same for supply
+            if (settings.autoSupply && this.isSupply() && state.spaceBuildings.PortalTransport.count > 0) {
+                this.currentSupply = game.global.portal.transport.cargo[this._id] * this.supplyVolume;
+                this.rateOfChange += this.currentSupply;
+            } else {
+                this.currentSupply = 0;
+            }
+
             // Restore decayed rate
             if (game.global.race['decay'] && this.tradeRouteQuantity > 0 && this.currentQuantity >= 50) {
                 this.currentDecay = (this.currentQuantity - 50) * (0.001 * this.tradeRouteQuantity);
@@ -1082,10 +1093,12 @@
             if (apply.eject || apply.all) {
                 value -= this.currentEject;
             }
+            if (apply.supply || apply.all) {
+                value -= this.currentSupply;
+            }
             if (apply.decay || apply.all) {
                 value -= this.currentDecay;
             }
-
             return value;
         }
 
@@ -1111,12 +1124,21 @@
 
         /** @return {number} */
         get atomicMass() {
-            return game.atomic_mass[this.id] || 0;
+            return game.atomic_mass[this.id] ?? 0;
         }
 
-        /**
-         * @param {number} count
-         */
+        isSupply() {
+            return poly.supplyValue.hasOwnProperty(this.id);
+        }
+
+        get supplyValue() {
+            return poly.supplyValue[this.id]?.in ?? 0;
+        }
+
+        get supplyVolume() {
+            return poly.supplyValue[this.id]?.out ?? 0;
+        }
+
         increaseEjection(count) {
             let vue = getVueById(this._ejectorVueBinding);
             if (vue === undefined) { return false; }
@@ -1130,9 +1152,6 @@
             }
         }
 
-        /**
-         * @param {number} count
-         */
         decreaseEjection(count) {
             let vue = getVueById(this._ejectorVueBinding);
             if (vue === undefined) { return false; }
@@ -1146,8 +1165,30 @@
             }
         }
 
-        isSupport() {
-            return false;
+        increaseSupply(count) {
+            let vue = getVueById(this._supplyVueBinding);
+            if (vue === undefined) { return false; }
+
+            this.currentSupply += (count * this.supplyVolume);
+
+            state.multiplier.reset(count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.supplyMore(this.id);
+            }
+        }
+
+        decreaseSupply(count) {
+            let vue = getVueById(this._supplyVueBinding);
+            if (vue === undefined) { return false; }
+
+            this.currentSupply -= (count * this.supplyVolume);
+
+            state.multiplier.reset(count, game.global.interstellar.mass_ejector[this.id] <= count);
+            while (state.multiplier.remainder > 0) {
+                state.multiplier.setMultiplier();
+                vue.supplyLess(this.id);
+            }
         }
 
         isTradable() {
@@ -1320,6 +1361,26 @@
         //#endregion Craftable resource
     }
 
+    class Supply extends Resource {
+        constructor() {
+            super("Supplies", "Supply");
+        }
+
+        updateData() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+            this.currentQuantity = game.global.portal.purifier.supply;
+            this.maxQuantity = game.global.portal.purifier.sup_max;
+            this.rateOfChange = game.global.portal.purifier.diff;
+        }
+
+        isUnlocked() {
+            return game.global.portal.hasOwnProperty('purifier');
+        }
+    }
+
     class Power extends Resource {
         // This isn't really a resource but we're going to make a dummy one so that we can treat it like a resource
         constructor() {
@@ -1384,10 +1445,6 @@
             let containerNode = document.getElementById(this.id);
             return containerNode !== null && containerNode.style.display !== "none";
         }
-
-        isSupport() {
-            return true;
-        }
     }
 
     class SpecialResource extends Resource {
@@ -1396,16 +1453,27 @@
         }
 
         updateData() {
-            if (!this.isUnlocked()) {
-                return;
-            }
-
-            this.currentQuantity = this.id === "AntiPlasmid" ? game.global.race[this.id].anti : game.global.race[this.id].count;
+            this.currentQuantity = game.global.race[this.id].count;
             this.maxQuantity = Number.MAX_SAFE_INTEGER;
         }
 
         isUnlocked() {
-            return this.currentQuantity > 0;
+            return true;
+        }
+    }
+
+    class AntiPlasmid extends Resource {
+        constructor() {
+            super("Anti-Plasmid", "AntiPlasmid");
+        }
+
+        updateData() {
+            this.currentQuantity = game.global.race.Plasmid.anti;
+            this.maxQuantity = Number.MAX_SAFE_INTEGER;
+        }
+
+        isUnlocked() {
+            return true;
         }
     }
 
@@ -1439,7 +1507,6 @@
         isUnlocked() {
             return haveTech("star_forge", 2);
         }
-
     }
 
     class Pylon extends Action {
@@ -3542,7 +3609,7 @@
         }
 
         isUnlocked() {
-            return document.querySelector("#" + this.definition.id + " > a") !== null && getVueById(this._vueBinding) !== undefined;
+            return getVueById(this._vueBinding) !== undefined;
         }
 
         get definition() {
@@ -3587,14 +3654,6 @@
 
         isResearched() {
             return document.querySelector("#tech-" + this.id + " .oldTech") !== null;
-        }
-
-        /**
-         * @param {string} resourceId
-         */
-        resourceCost(resourceId) {
-            if (!this.definition.cost[resourceId]) { return 0; }
-            return this.definition.cost[resourceId]();
         }
 
         updateResourceRequirements() {
@@ -4167,12 +4226,13 @@
 
         // Prestige resources
         Plasmid: new SpecialResource("Plasmid", "Plasmid"),
-        Antiplasmid: new SpecialResource("Anti-Plasmid", "AntiPlasmid"),
+        Antiplasmid: new AntiPlasmid(),
         Phage: new SpecialResource("Phage", "Phage"),
         Dark: new SpecialResource("Dark", "Dark"),
         Harmony: new SpecialResource("Harmony", "Harmony"),
 
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
+        Supply: new Supply(),
         Power: new Power(),
         StarPower: new StarPower(),
         Moon_Support: new Support("Moon Support", "srspc_moon", "space", "spc_moon"),
@@ -4183,7 +4243,9 @@
         Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
         Gateway_Support: new Support("Gateway Support", "gxy_gateway", "galaxy", "gxy_gateway"),
         Alien_Support: new Support("Alien Support", "gxy_alien2", "galaxy", "gxy_alien2"),
-        Lake_Support: new Support("Alien Support", "prtl_lake", "portal", "prtl_lake"),
+        Lake_Support: new Support("Lake Support", "prtl_lake", "portal", "prtl_lake"),
+        Spire_Support: new Support("Spire Support", "prtl_spire", "portal", "prtl_spire"),
+
     }
 
     var state = {
@@ -4624,6 +4686,18 @@
             PortalCoolingTower: new Action("Portal Cooling Tower", "portal", "cooling_tower", "prtl_lake"),
             PortalBireme: new Action("Portal Bireme Warship", "portal", "bireme", "prtl_lake", {ship: true}),
             PortalTransport: new Action("Portal Transport", "portal", "transport", "prtl_lake", {ship: true}),
+
+            PortalSpireMission: new Action("Portal Scout Island", "portal", "spire_mission", "prtl_spire", {mission: true}),
+            PortalPurifier: new Action("Portal Purifier", "portal", "purifier", "prtl_spire"),
+            PortalPort: new Action("Portal Port", "portal", "port", "prtl_spire"),
+            PortalBaseCamp: new Action("Portal Base Camp", "portal", "base_camp", "prtl_spire"),
+            PortalBridge: new Action("Portal Bridge", "portal", "bridge", "prtl_spire"),
+            PortalSphinx: new Action("Portal Sphinx", "portal", "sphinx", "prtl_spire"),
+            PortalBribeSphinx: new Action("Portal Bribe Sphinx", "portal", "bribe_sphinx", "prtl_spire"),
+            PortalSpireSurvey: new Action("Portal Spire Survey", "portal", "spire_survey", "prtl_spire", {mission: true}),
+            PortalMechBay: new Action("Portal Mech Bay", "portal", "mechbay", "prtl_spire"),
+            PortalWaygate: new Action("Portal Waygate", "portal", "waygate", "prtl_spire"),
+
         },
 
         projects: {
@@ -4685,6 +4759,7 @@
         state.spaceBuildings.PortalEastTower.gameMax = 1;
         state.spaceBuildings.PortalWestTower.gameMax = 1;
         state.spaceBuildings.PortalVault.gameMax = 2;
+        state.spaceBuildings.PortalBridge.gameMax = 10;
         state.spaceBuildings.GorddonEmbassy.gameMax = 1;
         state.spaceBuildings.Alien1Consulate.gameMax = 1;
 
@@ -4798,6 +4873,11 @@
         state.spaceBuildings.PortalHarbour.addResourceConsumption(resources.Lake_Support, -1);
         state.spaceBuildings.PortalBireme.addResourceConsumption(resources.Lake_Support, 1);
         state.spaceBuildings.PortalTransport.addResourceConsumption(resources.Lake_Support, 1);
+
+        state.spaceBuildings.PortalPurifier.addResourceConsumption(resources.Spire_Support, () => haveTech("b_stone", 3) ? -1.25 : -1);
+        state.spaceBuildings.PortalPort.addResourceConsumption(resources.Spire_Support, 1);
+        state.spaceBuildings.PortalBaseCamp.addResourceConsumption(resources.Spire_Support, 1);
+        state.spaceBuildings.PortalMechBay.addResourceConsumption(resources.Spire_Support, 1);
 
         state.evolutionChallengeList.push(state.evolutions.Bunker);
         state.evolutionChallengeList.push(state.evolutions.Plasmid);
@@ -5124,12 +5204,13 @@
     }
 
     function resetResearchSettings() {
+        settings.researchFilter = false;
         settings.userResearchTheology_1 = "auto";
         settings.userResearchTheology_2 = "auto";
     }
 
     function resetMarketState() {
-        let defaultState = {autoBuyEnabled: false, autoBuyRatio: 0.5, autoSellEnabled: false, autoSellRatio: 0.9, autoTradeBuyEnabled: false, autoTradeBuyRoutes: 1000, autoTradeSellEnabled: true, autoTradeSellMinPerSecond: 0};
+        let defaultState = {autoBuyEnabled: false, autoBuyRatio: 0.5, autoSellEnabled: false, autoSellRatio: 0.9, autoTradeBuyEnabled: false, autoTradeBuyRoutes: 10000, autoTradeSellEnabled: true, autoTradeSellMinPerSecond: 0};
         let defaultStateBuy = {autoBuyRatio: 0.8, autoTradeBuyEnabled: true};
 
         let priorityList = Object.values(resources).filter(r => r.isTradable()).reverse();
@@ -5176,6 +5257,7 @@
     function resetStorageSettings() {
         settings.storageLimitPreMad = true;
         settings.storageSafeReassign = true;
+        settings.storageAssignExtra = true;
     }
 
     function resetMinorTraitState() {
@@ -5276,6 +5358,7 @@
     }
 
     function resetBuildingSettings() {
+        settings.buildingManageSpire = true;
         settings.buildingBuildIfStorageFull = false;
         settings.buildingShrineType = "know";
 
@@ -5513,6 +5596,17 @@
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalBireme);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalTransport);
 
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSpireMission);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalPurifier);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalMechBay);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalBaseCamp);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalPort);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalBridge);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSphinx);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalBribeSphinx);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalSpireSurvey);
+        state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.PortalWaygate);
+
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.StargateDepot);
         state.buildingManager.addBuildingToPriorityList(state.spaceBuildings.DwarfEleriumContainer);
 
@@ -5554,6 +5648,9 @@
         state.spaceBuildings.PortalAncientPillars.autoBuildEnabled = false;
         state.spaceBuildings.PortalEastTower.autoBuildEnabled = false;
         state.spaceBuildings.PortalWestTower.autoBuildEnabled = false;
+
+        // And Blood Stone
+        state.spaceBuildings.PortalWaygate.autoBuildEnabled = false;
     }
 
     function resetProjectSettings() {
@@ -5727,6 +5824,9 @@
             if (resource.isEjectable()) {
                 resource.ejectEnabled = settings['res_eject' + resource.id] ?? resource.ejectEnabled;
             }
+            if (resource.isSupply()) {
+                resource.supplyEnabled = settings['res_supply' + resource.id] ?? resource.supplyEnabled;
+            }
             if (resource.hasStorage()) {
                 resource.autoStorageEnabled = settings['res_storage' + resource.id] ?? resource.autoStorageEnabled;
                 resource.storeOverflow = settings['res_storage_o_' + resource.id] ?? resource.storeOverflow;
@@ -5825,6 +5925,9 @@
             if (resource.isEjectable()) {
                 settings['res_eject' + resource.id] = resource.ejectEnabled;
             }
+            if (resource.isSupply()) {
+                settings['res_supply' + resource.id] = resource.supplyEnabled;
+            }
             if (resource.hasStorage()) {
                 settings['res_storage' + resource.id] = resource.autoStorageEnabled;
                 settings['res_storage_o_' + resource.id] = resource.storeOverflow;
@@ -5873,6 +5976,7 @@
 
         addSetting("storageLimitPreMad", true);
         addSetting("storageSafeReassign", true);
+        addSetting("storageAssignExtra", true);
         addSetting("arpaBuildIfStorageFull", true);
         addSetting("arpaBuildIfStorageFullCraftableMin", -1);
         addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
@@ -5904,7 +6008,7 @@
         addSetting("autoMinorTrait", false);
         addSetting("autoHell", false);
         addSetting("autoFleet", false);
-
+        addSetting("autoSupply", false);
         addSetting("autoGalaxyMarket", false);
 
         addSetting("logEnabled", true);
@@ -6002,9 +6106,11 @@
             }
         }
 
+        addSetting("researchFilter", false);
         addSetting("userResearchTheology_1", "auto");
         addSetting("userResearchTheology_2", "auto");
 
+        addSetting("buildingManageSpire", true);
         addSetting("buildingBuildIfStorageFull", false);
         addSetting("buildingShrineType", "any");
         addSetting("buildingAlwaysClick", false);
@@ -6481,33 +6587,23 @@
         }
     }
 
-    function missResourceForBuilding(building, count, resource) {
-      if (building.count < count) {
-        let resourceRequirement = building.resourceRequirements.find(requirement => requirement.resource === resource);
-        if (resourceRequirement !== undefined && resource.currentQuantity < resourceRequirement.quantity) {
-          return true;
-        }
-      }
-      return false;
-    }
-
     /**
      * @param {Resource} craftable
      */
     function getCraftRatio(craftable) {
         let craftRatio = 0.9;
         // We want to get to a healthy number of buildings that require craftable materials so leaving crafting ratio low early
-        if (missResourceForBuilding(state.cityBuildings.Library, 20, craftable)) {
+        if (state.cityBuildings.Library.count < 20 && resourceCost(state.cityBuildings.Library, craftable) > craftable.currentQuantity) {
             craftRatio = state.cityBuildings.Library.count * 0.025;
         }
-        if (missResourceForBuilding(state.cityBuildings.Cottage, 20, craftable)) {
+        if (state.cityBuildings.Cottage.count < 20 && resourceCost(state.cityBuildings.Cottage, craftable) > craftable.currentQuantity) {
             craftRatio = state.cityBuildings.Cottage.count * 0.025;
         }
-        if (missResourceForBuilding(state.cityBuildings.Wardenclyffe, 20, craftable)) {
+        if (state.cityBuildings.Wardenclyffe.count < 20 && resourceCost(state.cityBuildings.Wardenclyffe, craftable) > craftable.currentQuantity) {
             craftRatio = state.cityBuildings.Wardenclyffe.count * 0.025;
         }
         // Iron tends to be in high demand, make sure we have enough wrought for at least one coal mine, to start collecting coal for researches as soon as possible
-        if (missResourceForBuilding(state.cityBuildings.CoalMine, 1, craftable)) {
+        if (state.cityBuildings.CoalMine.count < 1 && resourceCost(state.cityBuildings.CoalMine, craftable) > craftable.currentQuantity) {
             craftRatio = 0;
         }
 
@@ -7878,34 +7974,83 @@
 
     //#region Mass Ejector
 
-    /** @type { { resource: Resource, requirement: number }[] } */
-    var resourcesByAtomicMass = [];
+    function autoSupply() {
+        let transport = state.spaceBuildings.PortalTransport
+        if (transport.stateOnCount < 1) {
+            return;
+        }
+
+        let transportAdjustments = {};
+        for (let i = 0; i < resourcesBySupplyValue.length; i++) {
+            transportAdjustments[resourcesBySupplyValue[i].id] = 0;
+        }
+
+        if (resources.Supply.storageRatio < 1) {
+            let remaining = transport.stateOnCount * 5;
+            for (let i = 0; i < resourcesBySupplyValue.length; i++) {
+                if (remaining <= 0) {
+                    break;
+                }
+
+                let resource = resourcesBySupplyValue[i];
+                if (!resource.supplyEnabled || resource.requestedQuantity > 0) {
+                    continue;
+                }
+
+                let allowedSupply = 0;
+                if (resource.isCraftable()) {
+                    if (resource.currentQuantity > resource.requestedQuantity / 0.95) {
+                        allowedSupply = Math.floor(resource.currentQuantity - (resource.requestedQuantity / 0.95) / resource.supplyVolume);
+                    }
+                } else {
+                    if (resource.storageRatio > 0.95) {
+                        allowedSupply = Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume);
+                    }
+                }
+                transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
+                remaining -= transportAdjustments[resource.id];
+            }
+        }
+
+        let transportDeltas = Object.entries(transportAdjustments).map(([id, adjust]) => ({res: resources[id], delta: adjust - game.global.portal.transport.cargo[id]}));
+
+        transportDeltas.forEach((item) => item.delta < 0 && item.res.decreaseSupply(item.delta * -1));
+        transportDeltas.forEach((item) => item.delta > 0 && item.res.increaseSupply(item.delta));
+    }
 
     function autoMassEjector() {
         let ejector = state.spaceBuildings.BlackholeMassEjector
-        if (ejector.stateOnCount === 0) {
+        if (ejector.stateOnCount < 1) {
             return;
+        }
+
+        let ejectorAdjustments = {};
+        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+            ejectorAdjustments[resourcesByAtomicMass[i].id] = 0;
         }
 
         // Eject everything!
         if (ejector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
             let remaining = ejector.stateOnCount * 1000;
 
-            resourcesByAtomicMass.forEach(resourceRequirement => {
-                let resource = resourceRequirement.resource;
-                let roundedRateOfChange = Math.floor(resource.calculateRateOfChange({buy: true, eject: true}));
-
-                if (remaining <= 0 || !resource.ejectEnabled || resource.requestedQuantity > 0) {
-                    resourceRequirement.requirement = 0;
-                    return;
+            for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+                if (remaining <= 0) {
+                    break;
                 }
+
+                let resource = resourcesByAtomicMass[i];
+                if (!resource.ejectEnabled || resource.requestedQuantity > 0) {
+                    continue;
+                }
+
+                let roundedRateOfChange = Math.floor(resource.calculateRateOfChange({buy: true, eject: true, supply: true}));
 
                 // These are from the autoPower(). If we reduce below these figures then buildings start being turned off...
                 // Leave enough neutronium to stabilise the blackhole if required
                 let allowedRatio = 0.06;
                 if (resource === resources.Food) { allowedRatio = 0.11; }
                 if (resource === resources.Uranium) { allowedRatio = 0.2; } // Uranium powers buildings which add to storage cap (proxima transfer station) so this flickers if it gets too low
-                if (resource === resources.Neutronium) { Math.max(allowedRatio, (techIds["tech-stabilize_blackhole"].resourceCost(resource.id) / resource.maxQuantity) + 0.01); }
+                if (resource === resources.Neutronium) { allowedRatio = Math.max(allowedRatio, (resourceCost(techIds["tech-stabilize_blackhole"], resources.Neutronium) / resource.maxQuantity) + 0.01); }
 
                 if (resource.storageRatio > allowedRatio) {
                     let allowedQuantity = allowedRatio * resource.maxQuantity;
@@ -7913,23 +8058,20 @@
                     // If we've got greater than X% left then eject away!
                     if (allowedQuantity > remaining) {
                         // Our current quantity is greater than our remining ejection capability so just eject what we can
-                        resourceRequirement.requirement = remaining;
+                        ejectorAdjustments[resource.id] = remaining;
                     } else {
-                        resourceRequirement.requirement = allowedQuantity;
+                        ejectorAdjustments[resource.id] = allowedQuantity;
                     }
                 } else {
-                    if ((resource === resources.Food || resource === resources.Uranium || resource === resources.Neutronium)
-                            && resource.currentQuantity / resource.maxQuantity < allowedRatio - 0.01) {
-                        resourceRequirement.requirement = 0
+                    if ((resource === resources.Food || resource === resources.Uranium || resource === resources.Neutronium) && resource.storageRatio < allowedRatio - 0.01) {
+                        continue;
                     } else if (resource.storageRatio > 0.01) {
-                        resourceRequirement.requirement = Math.max(0, Math.min(remaining, resource.currentEject + roundedRateOfChange));
-                    } else {
-                        resourceRequirement.requirement = 0;
+                        ejectorAdjustments[resource.id] = Math.max(0, Math.min(remaining, resource.currentEject + roundedRateOfChange));
                     }
                 }
 
-                remaining -= resourceRequirement.requirement;
-            });
+                remaining -= ejectorAdjustments[resource.id];
+            }
         }
 
         // Limited eject
@@ -7937,29 +8079,34 @@
             let remaining = ejector.stateOnCount * 1000;
 
             // First we want to eject capped resources
-            resourcesByAtomicMass.forEach(resourceRequirement => {
-                let resource = resourceRequirement.resource;
-
-                if (remaining <= 0 || !resource.ejectEnabled || resource.storageRatio < 0.985 || resource.requestedQuantity > 0) {
-                    resourceRequirement.requirement = 0;
-                    return;
+            for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+                if (remaining <= 0) {
+                    break;
                 }
 
-                resourceRequirement.requirement = Math.min(remaining, Math.ceil(resource.calculateRateOfChange({buy: true})));
-                remaining -= resourceRequirement.requirement;
-            });
+                let resource = resourcesByAtomicMass[i];
+                if (!resource.ejectEnabled || resource.storageRatio < 0.985 || resource.requestedQuantity > 0) {
+                    continue;
+                }
+
+                ejectorAdjustments[resource.id] = Math.min(remaining, Math.ceil(resource.calculateRateOfChange({buy: true, supply: true})));
+                remaining -= ejectorAdjustments[resource.id];
+            }
 
             // And if we still have some ejectors remaining, let's try to find something else
             if (remaining > 0 && (settings.prestigeWhiteholeEjectExcess || (game.global.race['decay'] && settings.prestigeWhiteholeDecayRate > 0))) {
-                resourcesByAtomicMass.forEach(resourceRequirement => {
-                    let resource = resourceRequirement.resource;
-
-                    if (remaining <= 0 || !resource.ejectEnabled || resource.requestedQuantity > 0) {
-                        return;
+                for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+                    if (remaining <= 0) {
+                        break;
                     }
 
-                    let ejectableAmount = resourceRequirement.requirement;
-                    remaining += resourceRequirement.requirement;
+                    let resource = resourcesByAtomicMass[i];
+                    if (!resource.ejectEnabled || resource.requestedQuantity > 0) {
+                        continue;
+                    }
+
+                    let ejectableAmount = ejectorAdjustments[resource.id];
+                    remaining += ejectorAdjustments[resource.id];
 
                     // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless it's on demand.
                     if (game.global.race['decay'] && resource.requestedQuantity <= 0) {
@@ -7967,32 +8114,32 @@
                     }
 
                     if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 0 && resource.currentQuantity >= resource.storageRequired && resource.requestedQuantity <= 0) {
-                        ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true})));
+                        ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true, supply: true})));
                     }
 
-                    resourceRequirement.requirement = Math.min(remaining, ejectableAmount);
-                    remaining -= resourceRequirement.requirement;
-                });
+                    ejectorAdjustments[resource.id] = Math.min(remaining, ejectableAmount);
+                    remaining -= ejectorAdjustments[resource.id];
+                }
             }
         }
 
         // Decrement first to free up space
-        resourcesByAtomicMass.forEach(resourceRequirement => {
-            let resource = resourceRequirement.resource;
-            let adjustment = resourceRequirement.requirement - resource.currentEject;
+        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+            let resource = resourcesByAtomicMass[i];
+            let adjustment = ejectorAdjustments[resource.id] - resource.currentEject;
             if (adjustment < 0) {
                 resource.decreaseEjection(adjustment * -1);
             }
-        });
+        }
 
         // Increment any remaining items
-        resourcesByAtomicMass.forEach(resourceRequirement => {
-            let resource = resourceRequirement.resource;
-            let adjustment = resourceRequirement.requirement - resource.currentEject;
+        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+            let resource = resourcesByAtomicMass[i];
+            let adjustment = ejectorAdjustments[resource.id] - resource.currentEject;
             if (adjustment > 0) {
                 resource.increaseEjection(adjustment);
             }
-        });
+        }
     }
 
     //#endregion Mass Ejector
@@ -8537,7 +8684,7 @@
 
             // Save soul gems
             if (settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole") {
-                let gemsCost = techIds[itemId].resourceRequirements.find(requirement => requirement.resource === resources.Soul_Gem)?.quantity ?? 0;
+                let gemsCost = resourceCost(techIds[itemId], resources.Soul_Gem);
                 if (gemsCost > 0 && resources.Soul_Gem.currentQuantity - gemsCost < (game.global.race['smoldering'] ? 9 : 10)) {
                     continue;
                 }
@@ -8561,6 +8708,11 @@
 
             // Unification
             if (itemId === "tech-unification2" && !settings.foreignUnification) {
+                continue;
+            }
+
+            // Enhanced Air Filters
+            if (itemId === "tech-purify" && !settings.researchFilter) {
                 continue;
             }
 
@@ -8642,7 +8794,8 @@
                 log("autoARPA", "project " + project.id + ", resource " + requirement.resource.id + ", one percent, " + requirement.quantity);
 
                 // Don't check if money is full. We can build if we are above our minimum money setting (which is checked in tryBuild)
-                if (requirement.resource === resources.Money) {
+                // And we also don't care about knowledge, as won't have it capped with auto assemble
+                if (requirement.resource === resources.Money || requirement.resource === resources.Knowledge) {
                     log("autoARPA", "continue: resource is money");
                     continue;
                 }
@@ -8724,11 +8877,25 @@
             }
         }
 
+        let manageTransport = state.spaceBuildings.PortalTransport.isUnlocked() && state.spaceBuildings.PortalTransport.autoStateEnabled && state.spaceBuildings.PortalBireme.isUnlocked() && state.spaceBuildings.PortalBireme.autoStateEnabled;
+
         // Start assigning buildings from the top of our priority list to the bottom
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
 
+            if (settings.buildingManageSpire && (building === state.spaceBuildings.PortalPort || building === state.spaceBuildings.PortalBaseCamp || building === state.spaceBuildings.PortalMechBay)) {
+                continue;
+            }
+
+            if (manageTransport && (building === state.spaceBuildings.PortalTransport || building === state.spaceBuildings.PortalBireme)) {
+                continue;
+            }
+
             let maxStateOn = building.count;
+
+            if (building === state.spaceBuildings.PortalWaygate && haveTech("waygate", 3)) {
+                maxStateOn = 0;
+            }
 
             if (building === state.spaceBuildings.NeutronCitadel) {
                 while (maxStateOn > 0) {
@@ -8793,7 +8960,7 @@
                         if (resourceType.resource.storageRatio > 0.1 || game.global.race['ravenous'] ) {
                             continue;
                         }
-                    } else if (!resourceType.resource.isSupport() && resourceType.resource.storageRatio > 0.01) {
+                    } else if (!(resourceType.resource instanceof Support) && resourceType.resource.storageRatio > 0.01) {
                         // If we have more than xx% of our storage then its ok to lose some resources.
                         // This check is mainly so that power producing buildings don't turn off when rate of change goes negative.
                         // That can cause massive loss of life if turning off space habitats :-)
@@ -8830,6 +8997,58 @@
             building.tryAdjustState(maxStateOn - building.stateOnCount);
             availablePower -= building.powered * maxStateOn;
         }
+
+        if (manageTransport && resources.Lake_Support.rateOfChange > 0) {
+            let lakeSupport = resources.Lake_Support.rateOfChange;
+            let rating = game.global.blood['spire'] && game.global.blood.spire >= 2 ? 0.8 : 0.85;
+            let bireme = state.spaceBuildings.PortalBireme;
+            let transport = state.spaceBuildings.PortalTransport;
+            let biremeCount = bireme.count;
+            let transportCount = transport.count;
+            while (biremeCount + transportCount > lakeSupport) {
+                let nextBireme = (1 - (rating ** (biremeCount - 1))) * (transportCount * 5);
+                let nextTransport = (1 - (rating ** biremeCount)) * ((transportCount - 1) * 5);
+                if (nextBireme > nextTransport) {
+                    biremeCount--;
+                } else {
+                    transportCount--;
+                }
+            }
+            bireme.tryAdjustState(biremeCount - bireme.stateOnCount);
+            transport.tryAdjustState(transportCount - transport.stateOnCount);
+        }
+
+        if (settings.buildingManageSpire && resources.Spire_Support.rateOfChange > 0) {
+            let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
+            let purifier = state.spaceBuildings.PortalPurifier;
+            let port = state.spaceBuildings.PortalPort;
+            let base = state.spaceBuildings.PortalBaseCamp;
+            let bay = state.spaceBuildings.PortalMechBay;
+
+            let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport);
+            bestSupplies = bestSupplies * 10000 + 100;
+            if (!port.autoBuildEnabled || port.count >= port.autoMax || !base.autoBuildEnabled || base.count >= base.autoMax) {
+                bestSupplies = resources.Supply.maxQuantity;
+            }
+            purifier.extraDescription += `Supported Supplies: ${Math.floor(bestSupplies)}`;
+
+
+            if (settings.autoBuild && ((purifier.autoBuildEnabled && purifier.count < purifier.autoMax && bestSupplies >= resourceCost(purifier, resources.Supply)) ||
+                                       (bay.autoBuildEnabled && bay.count < bay.autoMax && bestSupplies >= resourceCost(bay, resources.Supply)))) {
+                let poweredPorts = Math.min(port.count, bestPort);
+                let poweredBases = Math.min(base.count, bestBase);
+                port.tryAdjustState(poweredPorts - port.stateOnCount);
+                base.tryAdjustState(poweredBases - base.stateOnCount);
+                bay.tryAdjustState(Math.max(0, Math.min(bay.count, spireSupport - poweredPorts - poweredBases - 1)) - bay.stateOnCount);
+            } else {
+                let poweredBay = Math.min(bay.count, spireSupport);
+                bay.tryAdjustState(poweredBay - bay.stateOnCount);
+                let [newSupplies, newPort, newBaseCamp] = getBestSupplyRatio(spireSupport - poweredBay);
+                port.tryAdjustState(Math.min(port.count, newPort) - port.stateOnCount);
+                base.tryAdjustState(Math.min(base.count, newBaseCamp) - base.stateOnCount);
+            }
+        }
+
         resources.Power.currentQuantity = availablePower;
         resources.Power.rateOfChange = availablePower;
 
@@ -8842,6 +9061,22 @@
                 break;
             }
         }
+    }
+
+    function getBestSupplyRatio(support) {
+        let bestSupplies = 0;
+        let bestPort = support;
+        let bestBaseCamp = 0;
+        for (let i = 0; i < support; i++) {
+            let maxSupplies = (support - i) * (1 + i * 0.4);
+            if (maxSupplies < bestSupplies) {
+                break;
+            }
+            bestSupplies = maxSupplies;
+            bestPort = support - i;
+            bestBaseCamp = i;
+        }
+        return [bestSupplies, bestPort, bestBaseCamp];
     }
 
     //#endregion Auto Power
@@ -9368,7 +9603,7 @@
             // Unassign all ships from where there're assigned currently
             Object.entries(game.global.galaxy.defense).forEach(([region, assigned]) => {
                 if (region !== "gxy_gateway") {
-                    Object.entries(assigned).forEach(([ship, count]) => { 
+                    Object.entries(assigned).forEach(([ship, count]) => {
                         state.multiplier.reset(count, true);
                         while (state.multiplier.remainder > 0) {
                             state.multiplier.setMultiplier();
@@ -9578,6 +9813,7 @@
         for (let id in resources) {
             resources[id].storageRequired = 0;
         }
+        let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
 
         // Fuel for techs and missions
         state.oilRequiredByMissions = 0;
@@ -9589,12 +9825,12 @@
             let research = techIds[this.id];
             research.updateResourceRequirements();
             research.resourceRequirements.forEach(requirement => {
-                requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
+                requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
                 if (requirement.resource === resources.Helium_3){
-                    state.heliumRequiredByMissions = Math.max(requirement.quantity*1.03, state.heliumRequiredByMissions);
+                    state.heliumRequiredByMissions = Math.max(requirement.quantity*bufferMult, state.heliumRequiredByMissions);
                 }
                 if (requirement.resource === resources.Oil){
-                    state.oilRequiredByMissions = Math.max(requirement.quantity*1.03, state.oilRequiredByMissions);
+                    state.oilRequiredByMissions = Math.max(requirement.quantity*bufferMult, state.oilRequiredByMissions);
                 }
             });
         });
@@ -9608,18 +9844,25 @@
         // Now we're checking costs of buildings
         state.buildingManager.priorityList.forEach(building => {
             if (building.isUnlocked() && building.autoBuildEnabled){
+                let needStorage = true;
                 building.resourceRequirements.forEach(requirement => {
-                    requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
-
                     if (building.is.mission){
                         if (requirement.resource === resources.Helium_3){
-                            state.heliumRequiredByMissions = Math.max(requirement.quantity*1.03, state.heliumRequiredByMissions);
+                            state.heliumRequiredByMissions = Math.max(requirement.quantity*bufferMult, state.heliumRequiredByMissions);
                         }
                         if (requirement.resource === resources.Oil){
-                            state.oilRequiredByMissions = Math.max(requirement.quantity*1.03, state.oilRequiredByMissions);
+                            state.oilRequiredByMissions = Math.max(requirement.quantity*bufferMult, state.oilRequiredByMissions);
                         }
                     }
+                    if (requirement.resource.maxQuantity < requirement.quantity && !requirement.resource.hasStorage()) {
+                        needStorage = false;
+                    }
                 });
+                if (needStorage) {
+                    building.resourceRequirements.forEach(requirement => {
+                        requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
+                    });
+                }
             }
         });
 
@@ -9627,7 +9870,7 @@
         state.projectManager.priorityList.forEach(project => {
             if (project.isUnlocked() && (project.autoBuildEnabled || settings.arpaBuildIfStorageFull)) {
                 project.resourceRequirements.forEach(requirement => {
-                    requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
+                    requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
                 });
             }
         });
@@ -9717,13 +9960,14 @@
     function updatePriorityTargets() {
         state.queuedTargets = [];
         // Buildings queue
+        let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
         if (game.global.queue.display) {
             for (let i = 0; i < game.global.queue.queue.length; i++) {
                 let id = game.global.queue.queue[i].id;
                 let obj = buildingIds[id] || apraIds[id];
                 if (obj) {
                     obj.resourceRequirements.forEach(requirement => {
-                        requirement.resource.storageRequired = Math.max(requirement.quantity*1.03, requirement.resource.storageRequired);
+                        requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
                     });
                     if (obj instanceof Project || game.checkAffordable(obj.definition, true)) {
                         state.queuedTargets.push(obj);
@@ -9854,6 +10098,7 @@
         // Some tabs doesn't init properly. Let's reload game when it happens.
         // TODO: Remove me once it's fixed in game
         if ((state.spaceBuildings.BlackholeMassEjector.count > 0 && $('#resEjector').children().length === 0) || // Ejector tab
+            (state.spaceBuildings.PortalTransport.count > 0 && $('#resCargo').children().length === 0) || // Supply tab
             (game.global.race['smoldering'] && state.cityBuildings.RockQuarry.count > 0 && $("#iQuarry").length === 0)) { // Smoldering rock quarry
             state.goal = "GameOverMan";
             setTimeout(()=> window.location.reload(), 5000);
@@ -9986,6 +10231,63 @@
               () => "Saving up Soul Gems for prestige",
               () => 0
           ],[
+              () => {
+                  let bireme = state.spaceBuildings.PortalBireme;
+                  let transport = state.spaceBuildings.PortalTransport;
+                  return (bireme.autoBuildEnabled && bireme.isUnlocked() && bireme.count < bireme.autoMax && game.checkAffordable(bireme.definition, true)) &&
+                         (transport.autoBuildEnabled && transport.isUnlocked() && transport.count < transport.autoMax && game.checkAffordable(transport.definition, true));
+              },
+              (building) => {
+                  if (building === state.spaceBuildings.PortalBireme || building === state.spaceBuildings.PortalTransport) {
+                      let biremeCount = state.spaceBuildings.PortalBireme.count;
+                      let transportCount = state.spaceBuildings.PortalTransport.count;
+                      let rating = game.global.blood['spire'] && game.global.blood.spire >= 2 ? 0.8 : 0.85;
+                      let nextBireme = (1 - (rating ** (biremeCount + 1))) * (transportCount * 5);
+                      let nextTransport = (1 - (rating ** biremeCount)) * ((transportCount + 1) * 5);
+                      if (building === state.spaceBuildings.PortalBireme && nextBireme < nextTransport) {
+                          return state.spaceBuildings.PortalTransport;
+                      }
+                      if (building === state.spaceBuildings.PortalTransport && nextTransport < nextBireme) {
+                          return state.spaceBuildings.PortalBireme;
+                      }
+                  }
+              },
+              (other) => `${other.title} gives more Supplies`,
+              () => 0 // Find what's better - Bireme or Transport
+          ],[
+              () => {
+                  let port = state.spaceBuildings.PortalPort;
+                  let base = state.spaceBuildings.PortalBaseCamp;
+                  return (port.autoBuildEnabled && port.isUnlocked() && port.count < port.autoMax && game.checkAffordable(port.definition, true)) &&
+                         (base.autoBuildEnabled && base.isUnlocked() && base.count < base.autoMax && game.checkAffordable(base.definition, true));
+              },
+              (building) => {
+                  if (building === state.spaceBuildings.PortalPort || building === state.spaceBuildings.PortalBaseCamp) {
+                      let portCount = state.spaceBuildings.PortalPort.count;
+                      let baseCount = state.spaceBuildings.PortalBaseCamp.count;
+                      let nextPort = (portCount + 1) * (1 + baseCount * 0.4);
+                      let nextBase = portCount * (1 + (baseCount + 1) * 0.4);
+                      if (building === state.spaceBuildings.PortalPort && nextPort < nextBase) {
+                          return state.spaceBuildings.PortalBaseCamp;
+                      }
+                      if (building === state.spaceBuildings.PortalBaseCamp && nextBase < nextPort) {
+                          return state.spaceBuildings.PortalPort;
+                      }
+                  }
+              },
+              (other) => `${other.title} gives more Max Supplies`,
+              () => 0 // Find what's better - Port or Base
+          ],[
+              () => state.spaceBuildings.PortalWaygate.isUnlocked() && haveTech("waygate", 2),
+              (building) => building === state.spaceBuildings.PortalWaygate,
+              () => "Not avaiable",
+              () => 0 // We can't limit waygate ising gameMax, as max here doesn't constant. It's start with 10, but after building count reduces down to 1
+          ],[
+              () => state.spaceBuildings.PortalSphinx.isUnlocked(),
+              (building) => building === state.spaceBuildings.PortalSphinx && game.global.tech.hell_spire >= 8,
+              () => "Not avaiable",
+              () => 0 // Sphinx not usable after solving
+          ],[
               () => state.spaceBuildings.PortalAncientPillars.isUnlocked(),
               (building) => building === state.spaceBuildings.PortalAncientPillars && (game.global.tech.pillars !== 1 || game.global.race.universe === 'micro'),
               () => "Not avaiable",
@@ -10061,7 +10363,7 @@
               () => 0 // Sacrificial Altar
           ],[
               () => true,
-              (building) => building.getMissingSupply(),
+              (building) => (!settings.buildingManageSpire || building !== state.spaceBuildings.PortalMechBay) && building.getMissingSupply(),
               (supply) => supply.rate > 0 ?
                           `Missing ${supply.resource.name} to operate` :
                           `Provided ${supply.resource.name} not currently needed`,
@@ -10073,7 +10375,7 @@
               () => settings.buildingWeightingNonOperatingCity
           ],[
               () => true,
-              (building) => building._tab !== "city" && building.stateOffCount > 0,
+              (building) => building._tab !== "city" && building !== state.spaceBuildings.PortalMechBay && building.stateOffCount > 0,
               () => "Still have some non operating buildings",
               () => settings.buildingWeightingNonOperating
           ],[
@@ -10159,6 +10461,9 @@
         ]];
     }
 
+    var resourcesByAtomicMass = [];
+    var resourcesBySupplyValue = [];
+
     function initialiseScript() {
         for (let [key, action] of Object.entries(game.actions.tech)) {
             techIds[action.id] = new Technology(key);
@@ -10186,18 +10491,23 @@
         }
 
         // Set up our sorted resource atomic mass array
-        Object.keys(resources).forEach(resourceKey => {
-            let resource = resources[resourceKey];
-            if (resource === resources.Elerium || resource === resources.Infernite) { return; } // We'll add these exotic resources to the front of the list after sorting as these should always come first
+        for (let id in resources) {
+            let resource = resources[id];
 
-            if (resource.isEjectable()) {
-                resourcesByAtomicMass.push({ resource: resource, requirement: 0, });
+            if (resource.isSupply()) {
+                resourcesBySupplyValue.push(resource);
             }
-        });
-        resourcesByAtomicMass.sort((a, b) => b.resource.atomicMass - a.resource.atomicMass);
+
+            // We'll add these exotic resources to the front of the list after sorting as these should always come first
+            if (resource.isEjectable() && resource !== resources.Elerium && resource !== resources.Infernite) {
+                resourcesByAtomicMass.push(resource);
+            }
+        }
+        resourcesBySupplyValue.sort((a, b) => b.supplyValue - a.supplyValue);
+        resourcesByAtomicMass.sort((a, b) => b.atomicMass - a.atomicMass);
         // Elerium and infernite are always first as they are the exotic resources which are worth the most DE
-        resourcesByAtomicMass.unshift({resource: resources.Infernite, requirement: 0});
-        resourcesByAtomicMass.unshift({resource: resources.Elerium, requirement: 0});
+        resourcesByAtomicMass.unshift(resources.Infernite);
+        resourcesByAtomicMass.unshift(resources.Elerium);
 
         // Normal popups
         new MutationObserver(addTooltip).observe(document.querySelector("#main"), {childList: true});
@@ -10322,6 +10632,9 @@
         }
         if (settings.govManage) {
             manageGovernment(); // Governments gives bonuses and penalties to many different things, invalidating them
+        }
+        if (settings.autoSupply) {
+            autoSupply();
         }
         if (settings.prestigeWhiteholeEjectEnabled) {
             autoMassEjector(); // Purge remaining rateOfChange, should be called when it won't be needed anymore
@@ -10638,6 +10951,7 @@
                     removeCraftToggles();
                     removeBuildingToggles();
                     removeEjectToggles();
+                    removeSupplyToggles();
                     $('#autoScriptContainer').remove();
                     updateUI();
                     $('#importExport').val("");
@@ -10660,14 +10974,13 @@
     function buildSettingsSection(sectionId, sectionName, resetFunction, updateSettingsContentFunction) {
         let scriptContentNode = $("#script_settings");
 
-        scriptContentNode.append(
-            '<div id="script_' + sectionId + 'Settings" style="margin-top: 10px;">' +
-                '<h3 id="' + sectionId + 'SettingsCollapsed" class="script-collapsible text-center has-text-success">' + sectionName + ' Settings</h3>' +
-                '<div class="script-content">' +
-                    '<div style="margin-top: 10px;"><button id="script_reset' + sectionId + '" class="button">Reset ' + sectionName + ' Settings</button></div>' +
-                    '<div style="margin-top: 10px; margin-bottom: 10px;" id="script_' + sectionId + 'Content"></div>' +
-                '</div>' +
-            '</div>');
+        scriptContentNode.append(`<div id="script_${sectionId}Settings" style="margin-top: 10px;">
+                                    <h3 id="${sectionId}SettingsCollapsed" class="script-collapsible text-center has-text-success">${sectionName} Settings</h3>
+                                    <div class="script-content">
+                                      <div style="margin-top: 10px;"><button id="script_reset${sectionId}" class="button">Reset ${sectionName} Settings</button></div>
+                                      <div style="margin-top: 10px; margin-bottom: 10px;" id="script_${sectionId}Content"></div>
+                                    </div>
+                                  </div>`);
 
         updateSettingsContentFunction();
 
@@ -10729,8 +11042,7 @@
      * @param {string} sectionName
      */
     function genericResetFunction(resetFunction, sectionName) {
-        let confirmation = confirm("Are you sure you wish to reset " + sectionName + " Settings?");
-        if (confirmation) {
+        if (confirm("Are you sure you wish to reset " + sectionName + " Settings?")) {
             resetFunction();
         }
     }
@@ -11846,6 +12158,7 @@
         currentNode.empty().off("*");
 
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_researchPreTable"></div>');
+        addStandardSectionSettingsToggle(preTableNode, "researchFilter", "Research Enhanced Air Filters", "Allows auto reasearch of Enhanced Air Filters");
 
         // Theology 1
         currentNode.append(`<div style="margin-top: 5px; width: 400px">
@@ -12124,16 +12437,20 @@
 
     function buildEjectorSettings() {
         let sectionId = "ejector";
-        let sectionName = "Mass Ejector";
+        let sectionName = "Ejector & Supply";
 
         let resetFunction = function() {
             resetEjectorState();
+            resetEjectorSettings();
             updateSettingsFromState();
             updateEjectorSettingsContent();
 
             // Redraw toggles on market tab
             if ( $('.ea-eject-toggle').length !== 0 ) {
                 createEjectToggles();
+            }
+            if ( $('.ea-supply-toggle').length !== 0 ) {
+                createSupplyToggles();
             }
         };
 
@@ -12146,9 +12463,13 @@
         let currentNode = $('#script_ejectorContent');
         currentNode.empty().off("*");
 
+        // Add any pre table settings
+        let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_fleetPreTable"></div>');
+        addStandardSectionSettingsToggle(preTableNode, "autoSupply", "Manage Supplies", "Send excess resources to Spire. Normal resources send when they're near storage cap, craftables - when above requirements. Takes priority over ejector.");
+
         // Add table
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:45%">Atomic Mass</th><th class="has-text-warning" style="width:20%">Allow Eject</th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:30%">Resource</th><th class="has-text-warning" style="width:20%">Atomic Mass</th><th class="has-text-warning" style="width:10%">Eject</th><th class="has-text-warning" style="width:30%">Supply Value</th><th class="has-text-warning" style="width:10%">Supply</th></tr>
                 <tbody id="script_ejectorTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -12156,26 +12477,40 @@
         let tableBodyNode = $('#script_ejectorTableBody');
         let newTableBodyText = "";
 
+        let tabResources = [];
         for (let id in resources) {
             let resource = resources[id];
-            if (resource.isEjectable()) {
-                newTableBodyText += '<tr value="' + resource.id + '"><td id="script_eject_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:45%"></td><td style="width:20%"></td></tr>';
+            if (resource.isEjectable() || resource.isSupply()) {
+                tabResources.push(resource);
+                newTableBodyText += '<tr value="' + resource.id + '"><td id="script_eject_' + resource.id + 'Toggle" style="width:30%"></td><td style="width:20%"></td><td style="width:10%"></td><td style="width:30%"></td><td style="width:10%"></td></tr>';
             }
         }
 
         tableBodyNode.append($(newTableBodyText));
 
-        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
-            let resource = resourcesByAtomicMass[i].resource;
+        for (let i = 0; i < tabResources.length; i++) {
+            let resource = tabResources[i];
             let ejectElement = $('#script_eject_' + resource.id + 'Toggle');
 
             ejectElement.append(buildEjectorLabel(resource));
 
-            ejectElement = ejectElement.next();
-            ejectElement.append(`<span class="mass">Mass per unit: <span class="has-text-warning">${resource.atomicMass}</span> kt</span>`);
+            if (resource.isEjectable()) {
+                ejectElement = ejectElement.next();
+                ejectElement.append(`<span class="mass"><span class="has-text-warning">${resource.atomicMass}</span> kt</span>`);
 
-            ejectElement = ejectElement.next();
-            ejectElement.append(buildStandartSettingsToggle(resource, "ejectEnabled", "script_eject2_" + resource.id, "script_eject1_" + resource.id));
+                ejectElement = ejectElement.next();
+                ejectElement.append(buildStandartSettingsToggle(resource, "ejectEnabled", "script_eject2_" + resource.id, "script_eject1_" + resource.id));
+            } else {
+                ejectElement = ejectElement.next().next();
+            }
+
+            if (resource.isSupply()) {
+                ejectElement = ejectElement.next();
+                ejectElement.append(`<span class="mass">Export <span class="has-text-caution">${resource.supplyVolume}</span>, Gain <span class="has-text-success">${resource.supplyValue}</span></span>`);
+
+                ejectElement = ejectElement.next();
+                ejectElement.append(buildStandartSettingsToggle(resource, "supplyEnabled", "script_supply2_" + resource.id, "script_supply1_" + resource.id));
+            }
         }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -12196,11 +12531,20 @@
 
     function resetEjectorState() {
         for (let i = 0; i < resourcesByAtomicMass.length; i++) {
-            let resource = resourcesByAtomicMass[i].resource;
+            let resource = resourcesByAtomicMass[i];
             resource.ejectEnabled = resource.isTradable();
         }
         resources.Elerium.ejectEnabled = true;
         resources.Infernite.ejectEnabled = true;
+
+        for (let i = 0; i < resourcesBySupplyValue.length; i++) {
+            let resource = resourcesBySupplyValue[i];
+            resource.supplyEnabled = resource.isTradable();
+        }
+    }
+
+    function resetEjectorSettings() {
+        settings.autoSupply = false;
     }
 
     function buildMarketSettings() {
@@ -12370,6 +12714,7 @@
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_storagePreTable"></div>');
         addStandardSectionSettingsToggle(preTableNode, "storageLimitPreMad", "Limit Pre-MAD Storage", "Saves resources and shortens run time by limiting storage pre-MAD");
         addStandardSectionSettingsToggle(preTableNode, "storageSafeReassign", "Reassign only empty storages", "Wait until storage is empty before reassigning containers to another resource, to prevent overflowing and wasting resources");
+        addStandardSectionSettingsToggle(preTableNode, "storageAssignExtra", "Assign buffer storage", "With this option enable script assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\eject\switch production, etc.");
 
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:15%">Enabled</th><th class="has-text-warning" style="width:15%">Store Overflow</th><th class="has-text-warning" style="width:15%">Max Crates</th><th class="has-text-warning" style="width:15%">Max Containers</th><th style="width:5%"></th></tr>
@@ -12985,6 +13330,7 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_buildingPreTable"></div>');
+        addStandardSectionSettingsToggle(preTableNode, "buildingManageSpire", "Manage Spire", "Enables special logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays.");
         addStandardSectionSettingsToggle(preTableNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
 
         currentNode.append(`<div style="margin-top: 5px; width: 400px;">
@@ -13572,11 +13918,14 @@
         if (settings.autoBuild && (currentBuildingToggles === 0 || currentBuildingToggles !== state.buildingToggles)) {
             createBuildingToggles();
         }
-        if (settings.autoMarket && $('.ea-market-toggle').length === 0 && isMarketUnlocked()) {
+        if (settings.autoMarket && $('.ea-market-toggle').length === 0 && game.global.settings.showMarket) {
             createMarketToggles();
         }
-        if (settings.prestigeWhiteholeEjectEnabled && $('.ea-eject-toggle').length === 0 && state.spaceBuildings.BlackholeMassEjector.count > 0) {
+        if (settings.prestigeWhiteholeEjectEnabled && $('.ea-eject-toggle').length === 0 && game.global.settings.showEjector) {
             createEjectToggles();
+        }
+        if (settings.autoSupply && $('.ea-supply-toggle').length === 0 && game.global.settings.showCargo) {
+            createSupplyToggles();
         }
         if (settings.autoARPA && $('.ea-arpa-toggle').length === 0) {
             createArpaToggles();
@@ -13689,9 +14038,9 @@
     function createEjectToggles() {
         removeEjectToggles();
 
-        $('#eject').append('<span id="script_eject_top_row" style="margin-left: auto; margin-right: 0.2rem;" class="has-text-danger">Auto Eject</span>');
+        $('#eject').append('<span id="script_eject_top_row" style="margin-left: auto; margin-right: 0.2rem; float: right;" class="has-text-danger">Auto Eject</span>');
         for (let i = 0; i < resourcesByAtomicMass.length; i++) {
-            let resource = resourcesByAtomicMass[i].resource;
+            let resource = resourcesByAtomicMass[i];
             if (resource.isUnlocked()) {
                 let ejectRow = $('#eject' + resource.id);
                 let ejectChecked = resource.ejectEnabled ? " checked" : "";
@@ -13714,6 +14063,36 @@
     function removeEjectToggles() {
         $('.ea-eject-toggle').remove();
         $("#script_eject_top_row").remove();
+    }
+
+    function createSupplyToggles() {
+        removeSupplyToggles();
+
+        $('#spireSupply').append('<span id="script_supply_top_row" style="margin-left: auto; margin-right: 0.2rem; float: right;" class="has-text-danger">Auto Supply</span>');
+        for (let i = 0; i < resourcesBySupplyValue.length; i++) {
+            let resource = resourcesBySupplyValue[i];
+            if (resource.isUnlocked()) {
+                let supplyRow = $('#supply' + resource.id);
+                let supplyChecked = resource.supplyEnabled ? " checked" : "";
+                let toggleSupply = $('<label id="script_supply1_' +  resource.id + '" tabindex="0" title="Enable supply of this resource. "  class="switch ea-supply-toggle" style="margin-left: auto; margin-right: 0.2rem;"><input type="checkbox"' + supplyChecked + '> <span class="check" style="height:5px;"></span><span class="state"></span></label>');
+                supplyRow.append(toggleSupply);
+
+                toggleSupply.on('change', function(e) {
+                    let input = e.currentTarget.children[0];
+                    resource.supplyEnabled = input.checked;
+                    let otherCheckbox = document.querySelector('#script_supply2_' + resource.id + ' input');
+                    if (otherCheckbox !== null) {
+                        otherCheckbox.checked = input.checked;
+                    }
+                    updateSettingsFromState();
+                });
+            }
+        }
+    }
+
+    function removeSupplyToggles() {
+        $('.ea-supply-toggle').remove();
+        $("#script_supply_top_row").remove();
     }
 
     /**
@@ -13859,13 +14238,6 @@
         return Math.ceil(amountValue);
     }
 
-    /**
-     * @return {boolean}
-     */
-    function isMarketUnlocked() {
-        return $('#tech-market > .oldTech').length > 0;
-    }
-
     function haveTech(research, level = 1) {
         return game.global.tech[research] && game.global.tech[research] >= level;
     }
@@ -13882,9 +14254,10 @@
         return !game.global.race['kindling_kindred'] && !game.global.race['smoldering'];
     }
 
-    /**
-     * @param {number} govIndex
-     */
+    function resourceCost(obj, resource) {
+        return obj.resourceRequirements.find(requirement => requirement.resource === resource)?.quantity ?? 0;
+    }
+
     function getGovName(govIndex) {
         let govProp = "gov" + govIndex;
         if (typeof game.global.civic.foreign[govProp]['name'] == "undefined") {
@@ -14003,6 +14376,8 @@
         // export const galaxyOffers from resources.js
         // This one does *not* work exactly like in game: game's function is bugged, and doesn't track mutationg out of kindling kindred, here it's fixed, and change of trait will take immediate effect, without reloading page. Reimplementing this bug would require additional efforts, as polyfils initialized before we have access to game state, and we don't know traits at this time. Players doesn't mutate out of kindled kindered daily, and even if someone will - he will also need to fix game bug by reloading, and that will also sync return values of this poly with game implementation again, so no big deal...
         galaxyOffers: normalizeProperties([{buy:{res:"Deuterium",vol:5},sell:{res:"Helium_3",vol:25}},{buy:{res:"Neutronium",vol:2.5},sell:{res:"Copper",vol:200}},{buy:{res:"Adamantite",vol:3},sell:{res:"Iron",vol:300}},{buy:{res:"Elerium",vol:1},sell:{res:"Oil",vol:125}},{buy:{res:"Nano_Tube",vol:10},sell:{res:"Titanium",vol:20}},{buy:{res:"Graphene",vol:25},sell:{res:()=>game.global.race.kindling_kindred||game.global.race.smoldering?game.global.race.smoldering?"Chrysotile":"Stone":"Lumber",vol:1e3}},{buy:{res:"Stanene",vol:40},sell:{res:"Aluminium",vol:800}},{buy:{res:"Bolognium",vol:.75},sell:{res:"Uranium",vol:4}},{buy:{res:"Vitreloy",vol:1},sell:{res:"Infernite",vol:1}}]),
+        // export const supplyValue from resources.js
+        supplyValue: {Lumber:{in:.5,out:25e3},Chrysotile:{in:.5,out:25e3},Stone:{in:.5,out:25e3},Crystal:{in:3,out:25e3},Furs:{in:3,out:25e3},Copper:{in:1.5,out:25e3},Iron:{in:1.5,out:25e3},Aluminium:{in:2.5,out:25e3},Cement:{in:3,out:25e3},Coal:{in:1.5,out:25e3},Oil:{in:2.5,out:12e3},Uranium:{in:5,out:300},Steel:{in:3,out:25e3},Titanium:{in:3,out:25e3},Alloy:{in:6,out:25e3},Polymer:{in:6,out:25e3},Iridium:{in:8,out:25e3},Helium_3:{in:4.5,out:12e3},Deuterium:{in:4,out:1e3},Neutronium:{in:15,out:1e3},Adamantite:{in:12.5,out:1e3},Infernite:{in:25,out:250},Elerium:{in:30,out:250},Nano_Tube:{in:6.5,out:1e3},Graphene:{in:5,out:1e3},Stanene:{in:4.5,out:1e3},Bolognium:{in:18,out:1e3},Vitreloy:{in:14,out:1e3},Orichalcum:{in:10,out:1e3},Plywood:{in:10,out:250},Brick:{in:10,out:250},Wrought_Iron:{in:10,out:250},Sheet_Metal:{in:10,out:250},Mythril:{in:12.5,out:250},Aerogel:{in:16.5,out:250},Nanoweave:{in:18,out:250},Scarletite:{in:35,out:250}},
 
     // Reimplemented:
         // export function crateValue() from Evolve/src/resources.js
