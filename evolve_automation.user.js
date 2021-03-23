@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.38
+// @version      3.3.1.39
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -656,55 +656,82 @@
             this.consumption.push(normalizeProperties({ resource: resource, rate: rate }));
         }
 
-        getMissingSupply() {
-            let uselessSupport = 0;
-
+        getMissingConsumption() {
             for (let j = 0; j < this.consumption.length; j++) {
-                let resourceType = this.consumption[j];
-
-                // Food fluctuate a lot, ignore it, assuming we always can get more
-                if (resourceType.resource === resources.Food && settings.autoJobs && (state.jobs.Farmer.isManaged() || state.jobs.Hunter.isManaged())) {
+                let resource = this.consumption[j].resource;
+                if (resource instanceof Support) {
                     continue;
                 }
 
-                let consumptionRate = resourceType.rate;
+                // Food fluctuate a lot, ignore it, assuming we always can get more
+                if (resource === resources.Food && settings.autoJobs && (state.jobs.Farmer.isManaged() || state.jobs.Hunter.isManaged())) {
+                    continue;
+                }
+
                 // Adjust fuel
-                if (this._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
+                let consumptionRate = this.consumption[j].rate;
+                if (this._tab === "space" && (resource === resources.Oil || resource === resources.Helium_3)) {
                     consumptionRate = game.fuel_adjust(consumptionRate);
                 }
-                if (this._tab === "interstellar" && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && this !== state.spaceBuildings.AlphaFusion) {
+                if (this._tab === "interstellar" && (resource === resources.Deuterium || resource === resources.Helium_3) && this !== state.spaceBuildings.AlphaFusion) {
                     consumptionRate = game.int_fuel_adjust(consumptionRate);
                 }
 
-                let rateOfChange = resourceType.resource.rateOfChange;
-
-                // It need something that we're lacking
-                if (resourceType.resource.storageRatio < 0.99 && consumptionRate > 0 && rateOfChange < consumptionRate) {
-                    return resourceType;
+                // Now let's actually check it
+                if (resource.storageRatio < 0.95 && consumptionRate > 0 && resource.rateOfChange < consumptionRate) {
+                    return resource;
                 }
-
-                // It provides support which we don't need
-                if (consumptionRate < 0 && resourceType.resource instanceof Support) {
-                    let minSupport = resourceType.resource == resources.Belt_Support ? 2 : resourceType.resource == resources.Gateway_Support ? 5 : 1;
-                    if (rateOfChange >= minSupport) {
-                      uselessSupport += 1;
-                    } else {
-                      uselessSupport -= 1000;
-                    }
-                }
-
-                // BeltSpaceStation is special case, as it provide jobs, which provides support, thus we can have 0 support even with powered buildings, if jobs not filled
-                if (this === state.spaceBuildings.BeltSpaceStation && resourceType.resource === resources.Belt_Support && state.jobs.SpaceMiner.count < state.jobs.SpaceMiner.max){
-                    return {resource: resources.Population, rate: 1};
-                }
-            }
-            // We're checking this after loop, to make sure *all* provided supports are useless.
-            // Starbase and habitats are exceptions here, as they always useful
-            if (uselessSupport > 0 && this !== state.spaceBuildings.GatewayStarbase && this !== state.spaceBuildings.AlphaHabitat) {
-                return this.consumption[0];
             }
             return null;
         }
+
+        getMissingSupport() {
+            // We're going to build Mech Bays with no support, to enable them later
+            if (this === state.spaceBuildings.PortalMechBay && settings.buildingManageSpire) {
+                return null;
+            }
+
+            for (let j = 0; j < this.consumption.length; j++) {
+                let resource = this.consumption[j].resource;
+                let rate = this.consumption[j].rate;
+                if (!(resource instanceof Support) || rate <= 0) {
+                    continue;
+                }
+
+                // We don't have spare support for this
+                if (resource.rateOfChange < rate) {
+                    return resource;
+                }
+            }
+            return null;
+        }
+
+        getUselessSupport() {
+            // Starbase and Habitats are exceptions, they're always useful
+            if (this === state.spaceBuildings.GatewayStarbase || this === state.spaceBuildings.AlphaHabitat) {
+                return null;
+            }
+
+            let uselessSupports = [];
+            for (let j = 0; j < this.consumption.length; j++) {
+                let resource = this.consumption[j].resource;
+                let rate = this.consumption[j].rate;
+                if (!(resource instanceof Support) || rate >= 0) {
+                    continue;
+                }
+                let minSupport = resource == resources.Belt_Support ? 2 : resource == resources.Gateway_Support ? 5 : 1;
+
+                // BeltSpaceStation is special case, as it provide jobs, which provides support, thus we can miss support even having enough buildings, if jobs not filled
+                if (resource.rateOfChange >= minSupport || (this === state.spaceBuildings.BeltSpaceStation && state.jobs.SpaceMiner.count < state.jobs.SpaceMiner.max)) {
+                    uselessSupports.push(resource);
+                } else {
+                    // If we have something useful - stop here, we care only about buildings with all suppors useless
+                    return null;
+                }
+            }
+            return uselessSupports[0] ?? null;
+        }
+
         //#endregion Standard actions
 
         //#region Buildings
@@ -5355,6 +5382,8 @@
         settings.buildingWeightingNonOperatingCity = 0.2;
         settings.buildingWeightingNonOperating = 0;
         settings.buildingWeightingMissingSupply = 0;
+        settings.buildingWeightingMissingSupport = 0;
+        settings.buildingWeightingUselessSupport = 0.01;
     }
 
     function resetBuildingSettings() {
@@ -6128,6 +6157,8 @@
         addSetting("buildingWeightingNonOperatingCity", 0.2);
         addSetting("buildingWeightingNonOperating", 0);
         addSetting("buildingWeightingMissingSupply", 0);
+        addSetting("buildingWeightingMissingSupport", 0);
+        addSetting("buildingWeightingUselessSupport", 0.01);
 
         addSetting("buildingEnabledAll", true);
         addSetting("buildingStateAll", true);
@@ -8173,7 +8204,7 @@
                 }
                 return;
             case 'ascension':
-                // TODO: It'll need more options befory allowing script to press reset. Infusing pillars before reset, and something for custom race.
+                // TODO: It'll need more options before allowing script to press reset. Infusing pillars before reset, and something for custom race.
                 return;
         }
     }
@@ -10343,11 +10374,19 @@
               () => 0 // Sacrificial Altar
           ],[
               () => true,
-              (building) => (!settings.buildingManageSpire || building !== state.spaceBuildings.PortalMechBay) && building.getMissingSupply(),
-              (supply) => supply.rate > 0 ?
-                          `Missing ${supply.resource.name} to operate` :
-                          `Provided ${supply.resource.name} not currently needed`,
+              (building) => building.getMissingConsumption(),
+              (resource) => `Missing ${resource.name} to operate`,
               () => settings.buildingWeightingMissingSupply
+          ],[
+              () => true,
+              (building) => building.getMissingSupport(),
+              (support) => `Missing ${support.name} to operate`,
+              () => settings.buildingWeightingMissingSupport
+          ],[
+              () => true,
+              (building) => building.getUselessSupport(),
+              (support) => `Provided ${support.name} not currently needed`,
+              () => settings.buildingWeightingUselessSupport
           ],[
               () => true,
               (building) => building._tab === "city" && building !== state.cityBuildings.Mill && building.stateOffCount > 0,
@@ -10430,7 +10469,7 @@
               () => settings.buildingWeightingCrateUseless
           ],[
               () => resources.Oil.maxQuantity < state.oilRequiredByMissions && state.cityBuildings.OilWell.count <= 0 && state.spaceBuildings.GasMoonOilExtractor.count <= 0,
-              (building) => building === state.cityBuildings.OilWell,
+              (building) => building === state.cityBuildings.OilWell || building === state.spaceBuildings.GasMoonOilExtractor.count,
               () => "Need more fuel",
               () => settings.buildingWeightingMissingFuel
           ],[
@@ -13263,7 +13302,9 @@
         addWeighingRule(tableBodyNode, "All fuel depots", "Missing Oil or Helium for techs and missions", "buildingWeightingMissingFuel");
         addWeighingRule(tableBodyNode, "Building with state (city)", "Some instances of this building are not working", "buildingWeightingNonOperatingCity");
         addWeighingRule(tableBodyNode, "Building with state (space)", "Some instances of this building are not working", "buildingWeightingNonOperating");
-        addWeighingRule(tableBodyNode, "Any", "Missing consumables or support to operate", "buildingWeightingMissingSupply");
+        addWeighingRule(tableBodyNode, "Building with consumption", "Missing consumables to operate", "buildingWeightingMissingSupply");
+        addWeighingRule(tableBodyNode, "Support consumer", "Missing support to operate", "buildingWeightingMissingSupport");
+        addWeighingRule(tableBodyNode, "Support provider", "Provided support not currently needed", "buildingWeightingUselessSupport");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
