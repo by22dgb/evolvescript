@@ -7536,22 +7536,15 @@
             return;
         }
 
-        let chrysotileRatio = resources.Chrysotile.requestedQuantity > 0 ? Number.MIN_VALUE : resources.Chrysotile.storageRatio;
-        let stoneRatio = resources.Stone.requestedQuantity > 0 ? Number.MIN_VALUE : resources.Stone.storageRatio;
+        let chrysotileWeigth = resources.Chrysotile.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : (100 - resources.Chrysotile.storageRatio * 100);
+        let stoneWeigth = resources.Stone.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : (100 - resources.Stone.storageRatio * 100);
         if (state.cityBuildings.MetalRefinery.count > 0) {
-            stoneRatio = Math.min(stoneRatio, resources.Aluminium.requestedQuantity > 0 ? Number.MIN_VALUE : resources.Aluminium.storageRatio);
+            stoneWeigth = Math.max(stoneWeigth, resources.Aluminium.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : (100 - resources.Aluminium.storageRatio * 100));
         }
+        let newAsbestos = Math.round(chrysotileWeigth / (chrysotileWeigth + stoneWeigth) * 100);
 
-        let newAsbestos = 50;
-        if (chrysotileRatio < stoneRatio) {
-            newAsbestos = 100 - Math.round(chrysotileRatio / stoneRatio * 50);
-        }
-        if (stoneRatio < chrysotileRatio) {
-            newAsbestos = Math.round(stoneRatio / chrysotileRatio * 50);
-        }
         if (newAsbestos !== quarry.currentAsbestos) {
-            let deltaAsbestos = newAsbestos - quarry.currentAsbestos;
-            quarry.increaseAsbestos(deltaAsbestos);
+            quarry.increaseAsbestos(newAsbestos - quarry.currentAsbestos);
         }
     }
 
@@ -8014,8 +8007,8 @@
 
         let transportDeltas = Object.entries(transportAdjustments).map(([id, adjust]) => ({res: resources[id], delta: adjust - game.global.portal.transport.cargo[id]}));
 
-        transportDeltas.forEach((item) => item.delta < 0 && item.res.decreaseSupply(item.delta * -1));
-        transportDeltas.forEach((item) => item.delta > 0 && item.res.increaseSupply(item.delta));
+        transportDeltas.forEach(item => item.delta < 0 && item.res.decreaseSupply(item.delta * -1));
+        transportDeltas.forEach(item => item.delta > 0 && item.res.increaseSupply(item.delta));
     }
 
     function autoMassEjector() {
@@ -8123,23 +8116,10 @@
             }
         }
 
-        // Decrement first to free up space
-        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
-            let resource = resourcesByAtomicMass[i];
-            let adjustment = ejectorAdjustments[resource.id] - resource.currentEject;
-            if (adjustment < 0) {
-                resource.decreaseEjection(adjustment * -1);
-            }
-        }
+        let ejectorDeltas = Object.entries(ejectorAdjustments).map(([id, adjust]) => ({res: resources[id], delta: adjust - game.global.interstellar.mass_ejector[id]}));
 
-        // Increment any remaining items
-        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
-            let resource = resourcesByAtomicMass[i];
-            let adjustment = ejectorAdjustments[resource.id] - resource.currentEject;
-            if (adjustment > 0) {
-                resource.increaseEjection(adjustment);
-            }
-        }
+        ejectorDeltas.forEach(item => item.delta < 0 && item.res.decreaseEjection(item.delta * -1));
+        ejectorDeltas.forEach(item => item.delta > 0 && item.res.increaseEjection(item.delta));
     }
 
     //#endregion Mass Ejector
@@ -9969,7 +9949,7 @@
                     obj.resourceRequirements.forEach(requirement => {
                         requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
                     });
-                    if (obj instanceof Project || game.checkAffordable(obj.definition, true)) {
+                    if (checkAffordable(obj, true)) {
                         state.queuedTargets.push(obj);
                     }
                 }
@@ -10689,7 +10669,7 @@
             return;
         }
 
-        // poly.adjustCosts it's wrapper for firefox, with code to bypass script sandbox. If we're not on firefox - ignore it, and call real function instead
+        // poly.adjustCosts and poly.checkAffordable it's wrappers for firefox, with code to bypass script sandbox. If we're not on firefox - ignore it, and call real function instead
         if (typeof unsafeWindow === 'undefined') {
             poly.adjustCosts = game.adjustCosts;
         }
@@ -14367,6 +14347,25 @@
 
     //#endregion Utility Functions
 
+    function checkAffordable(obj, max) {
+        if (obj instanceof Project) {
+            // We need to construct new costs object if we want to check arpa, game doesn't expose function to check arpa cost, and don't have a function to check such cost against max storages at all, which we also need.
+            let cost = obj.definition.cost;
+            let newCost = {};
+            Object.keys(cost).forEach(res => {
+                // 1% * creative multiplier, other adjustments will be applied by game.adjustCosts inside of game.checkAffordable
+                let newValue = cost[res]() / 100 * (game.global.race['creative'] ? 0.8 : 1);
+                newCost[res] = () => newValue;
+            });
+            obj = {definition: {cost: newCost}};
+            // Firefox compatibility hack; we need it only when trying to check cost of object constructed in script, in this particular function, among all places where checkAffordable used, so no need to apply this hack to all calls of checkAffordable
+            if (typeof unsafeWindow !== 'undefined') {
+                return game.checkAffordable(cloneInto(obj, unsafeWindow, {cloneFunctions: true}), max)
+            }
+        }
+        return game.checkAffordable(obj.definition, max);
+    }
+
     var poly = {
     // Taken directly from game code(v1.0.26) with no functional changes, and minimified:
         // export function arpaAdjustCosts(costs) from arpa.js
@@ -14374,7 +14373,7 @@
         // function govPrice(gov) from civics.js
         govPrice: function(e){let i=game.global.civic.foreign[e],o=15384*i.eco;return o*=1+1.6*i.hstl/100,+(o*=1-.25*i.unrest/100).toFixed(0)},
         // export const galaxyOffers from resources.js
-        // This one does *not* work exactly like in game: game's function is bugged, and doesn't track mutationg out of kindling kindred, here it's fixed, and change of trait will take immediate effect, without reloading page. Reimplementing this bug would require additional efforts, as polyfils initialized before we have access to game state, and we don't know traits at this time. Players doesn't mutate out of kindled kindered daily, and even if someone will - he will also need to fix game bug by reloading, and that will also sync return values of this poly with game implementation again, so no big deal...
+        // This one does *not* work exactly like in game: game's function is bugged, and doesn't track mutationg out of kindling kindred, here it's fixed, and change of trait will take immediate effect, without reloading page. Reimplementing this bug would require additional efforts, as polyfills initialized before we have access to game state, and we don't know traits at this time. Players doesn't mutate out of kindled kindered daily, and even if someone will - he will also need to fix game bug by reloading, and that will also sync return values of this poly with game implementation again, so no big deal...
         galaxyOffers: normalizeProperties([{buy:{res:"Deuterium",vol:5},sell:{res:"Helium_3",vol:25}},{buy:{res:"Neutronium",vol:2.5},sell:{res:"Copper",vol:200}},{buy:{res:"Adamantite",vol:3},sell:{res:"Iron",vol:300}},{buy:{res:"Elerium",vol:1},sell:{res:"Oil",vol:125}},{buy:{res:"Nano_Tube",vol:10},sell:{res:"Titanium",vol:20}},{buy:{res:"Graphene",vol:25},sell:{res:()=>game.global.race.kindling_kindred||game.global.race.smoldering?game.global.race.smoldering?"Chrysotile":"Stone":"Lumber",vol:1e3}},{buy:{res:"Stanene",vol:40},sell:{res:"Aluminium",vol:800}},{buy:{res:"Bolognium",vol:.75},sell:{res:"Uranium",vol:4}},{buy:{res:"Vitreloy",vol:1},sell:{res:"Infernite",vol:1}}]),
         // export const supplyValue from resources.js
         supplyValue: {Lumber:{in:.5,out:25e3},Chrysotile:{in:.5,out:25e3},Stone:{in:.5,out:25e3},Crystal:{in:3,out:25e3},Furs:{in:3,out:25e3},Copper:{in:1.5,out:25e3},Iron:{in:1.5,out:25e3},Aluminium:{in:2.5,out:25e3},Cement:{in:3,out:25e3},Coal:{in:1.5,out:25e3},Oil:{in:2.5,out:12e3},Uranium:{in:5,out:300},Steel:{in:3,out:25e3},Titanium:{in:3,out:25e3},Alloy:{in:6,out:25e3},Polymer:{in:6,out:25e3},Iridium:{in:8,out:25e3},Helium_3:{in:4.5,out:12e3},Deuterium:{in:4,out:1e3},Neutronium:{in:15,out:1e3},Adamantite:{in:12.5,out:1e3},Infernite:{in:25,out:250},Elerium:{in:30,out:250},Nano_Tube:{in:6.5,out:1e3},Graphene:{in:5,out:1e3},Stanene:{in:4.5,out:1e3},Bolognium:{in:18,out:1e3},Vitreloy:{in:14,out:1e3},Orichalcum:{in:10,out:1e3},Plywood:{in:10,out:250},Brick:{in:10,out:250},Wrought_Iron:{in:10,out:250},Sheet_Metal:{in:10,out:250},Mythril:{in:12.5,out:250},Aerogel:{in:16.5,out:250},Nanoweave:{in:18,out:250},Scarletite:{in:35,out:250}},
