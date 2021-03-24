@@ -533,22 +533,12 @@
         }
 
         get autoMax() {
-            // We can build unlimited. If there is an auto max set then return that, otherwise return unlimited
-            if (this.gameMax === Number.MAX_SAFE_INTEGER) {
-                return this._autoMax < 0 ? this.gameMax : this._autoMax;
-            }
-
             // There is a game max. eg. world collider can only be built 1859 times
             return this._autoMax >= 0 && this._autoMax <= this.gameMax ? this._autoMax : this.gameMax;
         }
 
-        set autoMax(value) {
-            if (value < 0) value = -1;
-            this._autoMax = value;
-        }
-
         isUnlocked() {
-            return this.vue !== undefined;
+            return document.getElementById(this._vueBinding) !== null;
         }
 
         isSwitchable() {
@@ -1281,25 +1271,11 @@
         //#region Basic resource
 
         get autoCratesMax() {
-            return this._autoCratesMax < 0 ? 1000000 : this._autoCratesMax;
-        }
-
-        /**
-         * @param {number} value
-         */
-        set autoCratesMax(value) {
-            this._autoCratesMax = value;
+            return this._autoCratesMax < 0 ? Number.MAX_SAFE_INTEGER : this._autoCratesMax;
         }
 
         get autoContainersMax() {
-            return this._autoContainersMax < 0 ? 1000000 : this._autoContainersMax;
-        }
-
-        /**
-         * @param {number} count
-         */
-        set autoContainersMax(count) {
-            this._autoContainersMax = count;
+            return this._autoContainersMax < 0 ? Number.MAX_SAFE_INTEGER : this._autoContainersMax;
         }
 
         /**
@@ -3245,11 +3221,6 @@
 
         get autoMax() {
             return this._autoMax < 0 ? Number.MAX_SAFE_INTEGER : this._autoMax;
-        }
-
-        set autoMax(value) {
-            if (value < 0) value = -1;
-            this._autoMax = value;
         }
 
         get level() {
@@ -5267,7 +5238,7 @@
     }
 
     function resetStorageState() {
-        let defaultState = {autoStorageEnabled: true, storeOverflow: false, _autoCratesMax: -1, autoContainersMax: -1};
+        let defaultState = {autoStorageEnabled: true, storeOverflow: false, _autoCratesMax: -1, _autoContainersMax: -1};
 
         let priorityList = Object.values(resources).filter(r => r.hasStorage()).reverse();
         for (let [index, resource] of priorityList.entries()) {
@@ -5805,7 +5776,7 @@
             building.autoBuildEnabled = settings['bat' + building.settingId] ?? building.autoBuildEnabled;
             building.priority = parseInt(settings['bld_p_' + building.settingId] ?? building.priority);
             building.autoStateEnabled = settings['bld_s_' + building.settingId] ?? building.autoStateEnabled;
-            building.autoMax = parseInt(settings['bld_m_' + building.settingId] ?? building._autoMax);
+            building._autoMax = parseInt(settings['bld_m_' + building.settingId] ?? building._autoMax);
             building._weighting = parseFloat(settings['bld_w_' + building.settingId] ?? building._weighting);
         }
         state.buildingManager.sortByPriority();
@@ -5825,7 +5796,7 @@
             let project = state.projectManager.priorityList[i];
             project.autoBuildEnabled = settings.arpa[project.id] ?? project.autoBuildEnabled;
             project.priority = parseInt(settings['arpa_p_' + project.id] ?? project.priority);
-            project.autoMax = parseInt(settings['arpa_m_' + project.id] ?? project._autoMax);
+            project._autoMax = parseInt(settings['arpa_m_' + project.id] ?? project._autoMax);
             project.ignoreMinimumMoneySetting = settings['arpa_ignore_money_' + project.id] ?? project.ignoreMinimumMoneySetting;
         }
         state.projectManager.sortByPriority();
@@ -12465,10 +12436,10 @@
             updateEjectorSettingsContent();
 
             // Redraw toggles on market tab
-            if ( $('.ea-eject-toggle').length !== 0 ) {
+            if ($('#resEjector .ea-eject-toggle').length > 0) {
                 createEjectToggles();
             }
-            if ( $('.ea-supply-toggle').length !== 0 ) {
+            if ($('#resCargo .ea-supply-toggle').length > 0) {
                 createSupplyToggles();
             }
         };
@@ -12577,7 +12548,7 @@
             updateMarketSettingsContent();
 
             // Redraw toggles on market tab
-            if ( $('.ea-market-toggle').length !== 0 ) {
+            if ($('#market .ea-market-toggle').length > 0) {
                 createMarketToggles();
             }
         };
@@ -12882,7 +12853,7 @@
             updateProductionSettingsContent();
 
             // Redraw toggles in resources tab
-            if ( $('.ea-craft-toggle').length !== 0 ) {
+            if ($('#resources .ea-craft-toggle').length > 0) {
               removeCraftToggles();
               createCraftToggles();
             }
@@ -13418,7 +13389,7 @@
             buildingElement.append(buildStandartSettingsToggle(building, "autoBuildEnabled", "script_bat2_" + building.settingId, "script_bat1_" + building.settingId));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildStandartSettingsInput(building, "bld_m_" + building.settingId, "autoMax"));
+            buildingElement.append(buildStandartSettingsInput(building, "bld_m_" + building.settingId, "_autoMax"));
 
             buildingElement = buildingElement.next();
             buildingElement.append(buildStandartSettingsInput(building, "bld_w_" + building.settingId, "_weighting"));
@@ -13635,7 +13606,7 @@
             projectElement.append(buildStandartSettingsToggle(project, "autoBuildEnabled", "script_arpa2_" + project.id, "script_arpa1_" + project.id));
 
             projectElement = projectElement.next();
-            projectElement.append(buildStandartSettingsInput(project, "arpa_m_" + project.id, "autoMax"));
+            projectElement.append(buildStandartSettingsInput(project, "arpa_m_" + project.id, "_autoMax"));
 
             projectElement = projectElement.next();
             projectElement.append(buildStandartSettingsToggle(project, "ignoreMinimumMoneySetting", "script_arpa_ignore_money_" + project.id));
@@ -13931,24 +13902,24 @@
         if (settings.showSettings && $("#script_settings").length === 0) {
             buildScriptSettings();
         }
-        if (settings.autoCraft && $('.ea-craft-toggle').length === 0) {
+        if (settings.autoCraft && $('#resources .ea-craft-toggle').length === 0) {
             createCraftToggles();
         }
         // Building toggles added to different tabs, game can redraw just one tab, destroying toggles there, and we still have total number of toggles above zero; we'll remember amount of toggle, and redraw it when number differ from what we have in game
-        let currentBuildingToggles = $('.ea-building-toggle').length;
+        let currentBuildingToggles = $('#mTabCivil .ea-building-toggle').length;
         if (settings.autoBuild && (currentBuildingToggles === 0 || currentBuildingToggles !== state.buildingToggles)) {
             createBuildingToggles();
         }
-        if (settings.autoMarket && game.global.settings.showMarket && $('.ea-market-toggle').length === 0) {
+        if (settings.autoMarket && game.global.settings.showMarket && $('#market .ea-market-toggle').length === 0) {
             createMarketToggles();
         }
-        if (settings.prestigeWhiteholeEjectEnabled && game.global.settings.showEjector && $('.ea-eject-toggle').length === 0) {
+        if (settings.prestigeWhiteholeEjectEnabled && game.global.settings.showEjector && $('#resEjector .ea-eject-toggle').length === 0) {
             createEjectToggles();
         }
-        if (settings.autoSupply && game.global.settings.showCargo && $('.ea-supply-toggle').length === 0) {
+        if (settings.autoSupply && game.global.settings.showCargo && $('#resCargo .ea-supply-toggle').length === 0) {
             createSupplyToggles();
         }
-        if (settings.autoARPA && $('.ea-arpa-toggle').length === 0) {
+        if (settings.autoARPA && $('#arpaPhysics .ea-arpa-toggle').length === 0) {
             createArpaToggles();
         }
 
@@ -13989,7 +13960,7 @@
     }
 
     function removeArpaToggles() {
-        $('.ea-arpa-toggle').remove();
+        $('#arpaPhysics .ea-arpa-toggle').remove();
     }
 
     /**
@@ -14021,7 +13992,7 @@
     }
 
     function removeCraftToggles() {
-        $('.ea-craft-toggle').remove();
+        $('#resources .ea-craft-toggle').remove();
     }
 
     function createBuildingToggles() {
@@ -14052,7 +14023,7 @@
     }
 
     function removeBuildingToggles() {
-        $('.ea-building-toggle').remove();
+        $('#mTabCivil .ea-building-toggle').remove();
         state.buildingToggles = 0;
     }
 
@@ -14082,7 +14053,7 @@
     }
 
     function removeEjectToggles() {
-        $('.ea-eject-toggle').remove();
+        $('#resEjector .ea-eject-toggle').remove();
         $("#script_eject_top_row").remove();
     }
 
@@ -14112,7 +14083,7 @@
     }
 
     function removeSupplyToggles() {
-        $('.ea-supply-toggle').remove();
+        $('#resCargo .ea-supply-toggle').remove();
         $("#script_supply_top_row").remove();
     }
 
@@ -14205,7 +14176,7 @@
     }
 
     function removeMarketToggles() {
-        $('.ea-market-toggle').remove();
+        $('#market .ea-market-toggle').remove();
         $("#script_market_top_row").remove();
 
         if (!game.global.race['no_trade']) {
