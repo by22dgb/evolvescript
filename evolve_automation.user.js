@@ -10729,9 +10729,9 @@
     function addScriptStyle() {
         let styles = `
             .script-lastcolumn:after { float: right; content: "\\21c5"; }
-            .ui-sortable-helper { display: table; }
             .script-draggable { cursor: move; cursor: grab; }
-            tr:active, tr.ui-sortable-helper { cursor: grabbing !important; }
+            .script-draggable:active { cursor: grabbing !important; }
+            .ui-sortable-helper { display: table; cursor: grabbing !important; }
 
             .script-collapsible {
                 background-color: #444;
@@ -11576,9 +11576,9 @@
         $('#script_evolutionQueueTable').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let evolutionIds = $('#script_evolutionQueueTable').sortable('toArray', {attribute: 'value'});
@@ -11831,9 +11831,9 @@
         $('#script_triggerTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let triggerIds = $('#script_triggerTableBody').sortable('toArray', {attribute: 'value'});
@@ -12426,9 +12426,9 @@
         $('#script_fleetTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let regionIds = $('#script_fleetTableBody').sortable('toArray', {attribute: 'value'});
@@ -12650,9 +12650,9 @@
         $('#script_marketTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let marketIds = $('#script_marketTableBody').sortable('toArray', {attribute: 'value'});
@@ -12773,9 +12773,9 @@
         $('#script_storageTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let storageIds = $('#script_storageTableBody').sortable('toArray', {attribute: 'value'});
@@ -12853,9 +12853,9 @@
         $('#script_minorTraitTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let minorTraitNames = $('#script_minorTraitTableBody').sortable('toArray', {attribute: 'value'});
@@ -12958,9 +12958,9 @@
         $('#script_productionTableBodySmelter').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let fuelIds = $('#script_productionTableBodySmelter').sortable('toArray', {attribute: 'value'});
@@ -13197,9 +13197,9 @@
         $('#script_jobTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let jobIds = $('#script_jobTableBody').sortable('toArray', {attribute: 'value'});
@@ -13430,9 +13430,9 @@
         $('#script_buildingTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let buildingElements = $('#script_buildingTableBody').sortable('toArray', {attribute: 'value'});
@@ -13644,9 +13644,9 @@
         $('#script_projectTableBody').sortable( {
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
-                var $clone =  $(ui).clone();
-                $clone .css('position','absolute');
-                return $clone.get(0);
+                let clone = $(ui).clone();
+                clone.css('position','absolute');
+                return clone.get(0);
             },
             update: function() {
                 let projectIds = $('#script_projectTableBody').sortable('toArray', {attribute: 'value'});
@@ -13939,13 +13939,13 @@
         if (settings.autoBuild && (currentBuildingToggles === 0 || currentBuildingToggles !== state.buildingToggles)) {
             createBuildingToggles();
         }
-        if (settings.autoMarket && $('.ea-market-toggle').length === 0 && game.global.settings.showMarket) {
+        if (settings.autoMarket && game.global.settings.showMarket && $('.ea-market-toggle').length === 0) {
             createMarketToggles();
         }
-        if (settings.prestigeWhiteholeEjectEnabled && $('.ea-eject-toggle').length === 0 && game.global.settings.showEjector) {
+        if (settings.prestigeWhiteholeEjectEnabled && game.global.settings.showEjector && $('.ea-eject-toggle').length === 0) {
             createEjectToggles();
         }
-        if (settings.autoSupply && $('.ea-supply-toggle').length === 0 && game.global.settings.showCargo) {
+        if (settings.autoSupply && game.global.settings.showCargo && $('.ea-supply-toggle').length === 0) {
             createSupplyToggles();
         }
         if (settings.autoARPA && $('.ea-arpa-toggle').length === 0) {
