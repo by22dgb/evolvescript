@@ -5656,11 +5656,11 @@
         addSetting("autoGalaxyMarket", false);
 
         addSetting("logEnabled", true);
+        addSetting(loggingTypes.arpa.settingKey, false);
         for (let loggingTypeKey in loggingTypes) {
             let loggingType = loggingTypes[loggingTypeKey];
             addSetting(loggingType.settingKey, true);
         }
-        addSetting(loggingTypes.arpa.settingKey, false);
 
         addSetting("autoPylon", false);
         addSetting("autoQuarry", false);
