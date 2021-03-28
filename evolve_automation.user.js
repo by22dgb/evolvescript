@@ -9126,7 +9126,8 @@
                 assault = {shipPower: 1, region: "gxy_alien2", mission: state.spaceBuildings.Alien2Mission};
             }
         }
-        if (assault) {
+        // TODO: Banana assault
+        if (assault && (!game.global.race['banana'] || assault.region !== "gxy_chthonian" || settings.fleetChthonianPower === 1250)) {
             // Unassign all ships from where there're assigned currently
             Object.entries(game.global.galaxy.defense).forEach(([region, assigned]) => {
                 if (region !== "gxy_gateway") {
@@ -11846,8 +11847,8 @@
                                <select id="script_fleetChthonianPower" style="width: 150px; float: right;">
                                  <option value = "-1" title = "Won't ever launch assault mission on Chthonian">Manual assault</option>
                                  <option value = "1250" title = "Launch Chthonian Assault Mission when it can be won with any loses (1250+ total fleet power, many ships will be lost)">Ignore casualties</option>
-                                 <option value = "2500" title = "Launch Chthonian Assault Mission when it can be won with average loses (2500+ total fleet power, two Frigates will be lost)">Lose 2 Frigates</option>
-                                 <option value = "4500" title = "Launch Chthonian Assault Mission when it can be won with minimal loses (4500+ total fleet power, one Frigate will be lost)">Lose 1 Frigate</option>
+                                 <option value = "2500" title = "Not avaialable in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with average loses (2500+ total fleet power, two Frigates will be lost)">Lose 2 Frigates</option>
+                                 <option value = "4500" title = "Not avaialable in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with minimal loses (4500+ total fleet power, one Frigate will be lost)">Lose 1 Frigate</option>
                                </select>
                              </div>`);
 
