@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.39
+// @version      3.3.1.40
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -22,7 +22,7 @@
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
 //     If some storage grew too high, taking all crates, you can disable expensive building, and Auto Storage won't try to fullfil its demands anymore. If you want to expand storage to build something manually, you can limit maximum level of building to 0, thus while it technically have auto build enabled, it won't ever be autobuilded, but you'll have needed storage.
-//   Order in which buildings receive power taken from order in buildings settings, you can drag and drop it to adjust priorities. Filtering with "autopower" and "autobuild" keywords can show buildings with altered auto power and auto build respectively.
+//   Order in which buildings receive power depends on order in buildings settings, you can drag and drop them to adjust priorities. Filtering with "autopower" and "autobuild" keywords can show buildings with altered auto power and auto build respectively.
 //     By default Ascension Trigger placed where it can be activated as soon as possible without killing soldiers or population, and reducing prestige rewards. But it still can hurt production badly. If you're planning to ascend at very first opportunity(i.e. not planning to go for pillar or such), you may enable auto powering it. Otherwise you may want to delay with it till the moment when you'll be ready. (Or you can just move it where it will be less impacting on production, but that also means it'll take longer to get enough power)
 //   Auto Craft doesn't works well past MAD, you may have issues making it craft expensive resource like mythril, consider enabling Auto Craftsmen even if you're playing with manual craft
 //   Evolution Queue can change any script settings, not only those which you have after adding new task, you can append any variables and their values manually, if you're capable to read code, and can find internal names and acceptable values of those variables. Settings applied at the moment when new evolution starts. (Or right before reset in case of Cataclysm)
@@ -55,6 +55,7 @@
         special: { id: "special", name: "Specials", settingKey: "log_special", },
         construction: { id: "construction", name: "Construction", settingKey: "log_construction", },
         multi_construction: { id: "multi_construction", name: "Multi-part Construction", settingKey: "log_multi_construction", },
+        arpa: { id: "arpa", name: "A.R.P.A Progress", settingKey: "log_arpa", },
         research: { id: "research", name: "Research", settingKey: "log_research", },
         spying: { id: "spying", name: "Spying", settingKey: "log_spying", },
         attack: { id: "attack", name: "Attack", settingKey: "log_attack", },
@@ -317,7 +318,7 @@
             }
 
             // return the actual workers required for this breakpoint (either our breakpoint or our max, whichever is lower)
-            return Math.min(breakpointActual, this.max)
+            return Math.min(breakpointActual, this.max);
         }
 
         /**
@@ -474,10 +475,9 @@
             this._tab = tab;
             this._id = id;
             this._location = location;
-            this.settingId = this._tab + "-" + this.id;
             this.gameMax = Number.MAX_SAFE_INTEGER;
 
-            this._vueBinding = this.settingId;
+            this._vueBinding = this._tab + "-" + this.id;
 
             this.autoBuildEnabled = true;
             this.autoStateEnabled = true;
@@ -587,19 +587,7 @@
 
         // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
         isClickable() {
-            if (!this.isUnlocked()) {
-                return false;
-            }
-
-            if (!game.checkAffordable(this.definition, false)) {
-                return false;
-            }
-
-            if (this.count >= this.gameMax) {
-                return false;
-            }
-
-            return true;
+            return this.isUnlocked() && game.checkAffordable(this.definition, false) && this.count < this.gameMax;
         }
 
         /**
@@ -615,26 +603,17 @@
             this.resourceRequirements.forEach(requirement =>
                 requirement.resource.currentQuantity -= requirement.quantity
             );
-            let newCount = this.count + 1;
+
+            // Don't log evolution actions and gathering actions
+            if (game.global.race.species !== "protoplasm" && !logIgnore.includes(this.id)) {
+                if (this.gameMax < Number.MAX_SAFE_INTEGER && this.count + 1 < this.gameMax) {
+                    state.log.logSuccess(loggingTypes.multi_construction, `${this.title} (${this.count + 1}) has been constructed.`);
+                } else {
+                    state.log.logSuccess(loggingTypes.construction, `${this.title} has been constructed.`);
+                }
+            }
+
             this.vue.action();
-
-            if (game.global.race.species === "protoplasm" // Don't log evolution actions
-                    || this === state.cityBuildings.Food // Don't log gathering actions
-                    || this === state.cityBuildings.Lumber
-                    || this === state.cityBuildings.Stone
-                    || this === state.cityBuildings.Chrysotile
-                    || this === state.cityBuildings.Slaughter
-                    || this === state.cityBuildings.SlaveMarket) { // Don't log buying slaves
-                return true;
-            }
-
-            if (this.gameMax > 1 && this.gameMax < Number.MAX_SAFE_INTEGER) {
-                // This build has segments that will be built
-                state.log.logSuccess(loggingTypes.multi_construction, `${this.title} (${newCount}) has been constructed.`);
-            } else {
-                state.log.logSuccess(loggingTypes.construction, `${this.title} has been constructed.`);
-            }
-
             return true;
         }
 
@@ -2050,6 +2029,10 @@
             return game.global.galaxy.trade["f" + production];
         }
 
+        zeroProduction(production) {
+            this._industryVue.zero(production);
+        }
+
         increaseProduction(production, count) {
             if (count === 0) {
                 return false;
@@ -2226,7 +2209,7 @@
                 let button = document.querySelector(`#govModal [data-gov="${state.governmentManager._governmentToSet}"]`);
                 if (button) {
                     button.dispatchEvent(new MouseEvent("mouseover"));
-                    state.log.logSuccess(loggingTypes.special, `Revolution! Government changed to ${game.loc("govern_" + state.governmentManager._governmentToSet)}.`)
+                    state.log.logSuccess(loggingTypes.special, `Revolution! Government changed to ${game.loc("govern_" + state.governmentManager._governmentToSet)}.`);
                     logClick(button, "set government");
                 }
                 state.governmentManager._governmentToSet = null;
@@ -2310,7 +2293,7 @@
                 if (this._espionageToPerform === espionageTypes.Purchase.id) {
                     resources.Money.currentQuantity -= poly.govPrice("gov" + govIndex);
                 }
-                state.log.logSuccess(loggingTypes.spying, `Performing "${this._espionageToPerform}" covert operation against ${getGovName(govIndex)}.`)
+                state.log.logSuccess(loggingTypes.spying, `Performing "${this._espionageToPerform}" covert operation against ${getGovName(govIndex)}.`);
                 let title = game.loc('civics_espionage_actions');
                 state.windowManager.openModalWindowWithCallback(title, this.performEspionageCallback, optionsNode);
             }
@@ -2399,19 +2382,6 @@
                 }
                 state.spyManager._espionageToPerform = null;
             }
-        }
-    }
-
-    class ChallengeEvolutionAction extends Action {
-        /**
-         * @param {string} name
-         * @param {string} id
-         * @param {string} effectId
-         */
-        constructor(name, id, effectId) {
-            super(name, "evolution", id, "");
-
-            this.effectId = effectId;
         }
     }
 
@@ -3063,7 +3033,7 @@
                     continue;
                 }
                 if (state.triggerTargets.includes(building)) {
-                    building.extraDescription = "Active trigger, processng...<br>";
+                    building.extraDescription = "Active trigger, processing...<br>";
                     continue;
                 }
 
@@ -3086,7 +3056,7 @@
                       }
                     }
                 }
-                building.extraDescription = "AutoBuild weighting: " + building.weighting + "<br>" + building.extraDescription;
+                building.extraDescription = "AutoBuild weighting: " + getNiceNumber(building.weighting) + "<br>" + building.extraDescription;
             }
         }
 
@@ -3158,46 +3128,14 @@
         }
     }
 
-    class Project {
+    class Project extends Action {
         /**
          * @param {string} name
          * @param {string} id
          */
         constructor(name, id) {
-            this.name = name;
-            this.id = id;
-            this.priority = 0;
-
-            this.autoBuildEnabled = false;
-            this._autoMax = -1;
-            this.ignoreMinimumMoneySetting = false;
-
-            /** @type {ResourceRequirement[]} */
-            this.resourceRequirements = [];
-
+            super(name, "arpa", id, "");
             this._vueBinding = "arpa" + this.id;
-
-            this._x1ButtonSelector = `#arpa${this.id} > div.buy > button.button.x1`;
-        }
-
-        isUnlocked() {
-            return document.querySelector(this._x1ButtonSelector) !== null;
-        }
-
-        get instance() {
-            return game.global.arpa[this.id];
-        }
-
-        get definition() {
-            return game.actions.arpa[this.id];
-        }
-
-        get title() {
-            if (this.definition !== undefined) {
-                return typeof this.definition.title === 'string' ? this.definition.title : this.definition.title();
-            }
-
-            return this.name;
         }
 
         // This is the resource requirements for 1% of the project
@@ -3219,11 +3157,7 @@
             }
         }
 
-        get autoMax() {
-            return this._autoMax < 0 ? Number.MAX_SAFE_INTEGER : this._autoMax;
-        }
-
-        get level() {
+        get count() {
             return this.instance?.rank ?? 0;
         }
 
@@ -3231,23 +3165,25 @@
             return this.instance?.complete ?? 0;
         }
 
-        tryBuild() {
-            //this.updateResourceRequirements();
-            for (let i = 0; i < this.resourceRequirements.length; i++) {
-                let res = this.resourceRequirements[i];
+        isClickable() {
+            return this.isUnlocked() && checkAffordable(this, false);
+        }
 
-                if (!this.ignoreMinimumMoneySetting && res.resource === resources.Money && res.quantity > 0 && resources.Money.currentQuantity - res.quantity < state.minimumMoneyAllowed) {
-                    return false;
-                }
-
-                if (res.resource.currentQuantity < res.quantity) {
-                    return false;
-                }
+        click() {
+            if (!this.isClickable()) {
+                return false
             }
 
+            //this.updateResourceRequirements();
             this.resourceRequirements.forEach(requirement =>
                 requirement.resource.currentQuantity -= requirement.quantity
             );
+
+            if (this.progress < 99) {
+                state.log.logSuccess(loggingTypes.arpa, `${this.title} (${this.progress + 1}%) has been constructed.`);
+            } else {
+                state.log.logSuccess(loggingTypes.construction, `${this.title} has been constructed.`);
+            }
 
             getVueById(this._vueBinding).build(this.id, 1);
             return true;
@@ -3265,6 +3201,49 @@
 
         updateResourceRequirements() {
             this.priorityList.forEach(project => project.updateResourceRequirements());
+        }
+
+        updateWeighting() {
+            // Iterate over projects
+            for (let i = 0; i < this.priorityList.length; i++){
+                let project = this.priorityList[i];
+
+                if (state.queuedTargets.includes(project)) {
+                    project.extraDescription = "Queued project, processing...<br>";
+                    continue;
+                }
+                if (state.triggerTargets.includes(project)) {
+                    project.extraDescription = "Active trigger, processing...<br>";
+                    continue;
+                }
+
+                if (!project.isUnlocked()) {
+                    continue;
+                }
+
+                project.weighting = project._weighting;
+                project.extraDescription = "";
+
+                if (!project.autoBuildEnabled) {
+                    project.weighting = 0;
+                    project.extraDescription += "AutoBuild disabled<br>";
+                }
+
+                if (project.count >= project.autoMax) {
+                    project.weighting = 0;
+                    project.extraDescription += "Maximum amount reached<br>";
+                }
+
+                if (settings.prestigeMADIgnoreArpa && !haveTech("mad") && !game.global.race['cataclysm']) {
+                    project.weighting = 0;
+                    project.extraDescription += "Projects ignored PreMAD<br>";
+                }
+
+                if (settings.arpaScaleWeighting) {
+                    project.weighting /= 1 - (0.01 * project.progress);
+                }
+                project.extraDescription = "AutoARPA weighting: " + getNiceNumber(project.weighting) + " (1%)<br>" + project.extraDescription;
+            }
         }
 
         clearPriorityList() {
@@ -3294,9 +3273,9 @@
                 this._lastLoopCounter = state.loopCounter;
 
                 for (let i = 0; i < this.priorityList.length; i++) {
-                    const project = this.priorityList[i];
+                    let project = this.priorityList[i];
 
-                    if (project.isUnlocked() && project.autoBuildEnabled && project.level < project.autoMax) {
+                    if (project.weighting > 0) {
                         this._managedPriorityList.push(project);
                     }
                 }
@@ -3558,33 +3537,79 @@
     }
 
     class Race {
-        /**
-         * @param {String} id
-         * @param {String} name
-         * @param {Function} evolutionCondition
-         * @param {string} evolutionConditionText
-         * @param {string} achievementText
-         */
-        constructor(id, name, evolutionCondition, evolutionConditionText, achievementText) {
+        constructor(id) {
             this.id = id;
-            this.name = name;
-            this.evolutionCondition = evolutionCondition;
-            this.evolutionConditionText = evolutionConditionText;
-            this.achievementText = achievementText;
-
-            /** @type {Action[]} */
             this.evolutionTree = [];
         }
 
-        /**
-         * @param {number} [level]
-         */
+        get name() {
+            return game.races[this.id].name ?? "Custom";
+        }
+
+        get genus() {
+            return game.races[this.id].type;
+        }
+
+        isConditionMet() {
+            if (this.id === "junker") {
+                return game.global.genes.challenge;
+            }
+
+            switch (this.genus) {
+                case "aquatic":
+                    return game.global.city.biome === 'oceanic' || game.global.blood['unbound'];
+                case "fey":
+                    return game.global.city.biome === 'forest' || game.global.blood['unbound'];
+                case "sand":
+                    return game.global.city.biome === 'desert' || game.global.blood['unbound'];
+                case "heat":
+                    return game.global.city.biome === 'volcanic' || game.global.blood['unbound'];
+                case "polar":
+                    return game.global.city.biome === 'tundra' || game.global.blood['unbound'];
+                case "demonic":
+                    return game.global.city.biome === 'hellscape' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
+                case "angelic":
+                    return game.global.city.biome === 'eden' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
+                case undefined: // Nonexistent custom
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        getCondition() {
+            if (this.id === "junker") {
+                return "Challenge genes unlocked";
+            }
+
+            switch (this.genus) {
+                case "aquatic":
+                    return "Oceanic planet";
+                case "fey":
+                    return "Forest planet";
+                case "sand":
+                    return "Desert planet";
+                case "heat":
+                    return "Volcanic planet";
+                case "polar":
+                    return "Tundra planet";
+                case "demonic":
+                    return "Hellscape planet";
+                case "angelic":
+                    return "Eden planet";
+                case undefined: // Nonexistent custom
+                    return "Custom designed race";
+                default:
+                    return "";
+            }
+        }
+
         isMadAchievementUnlocked(level) {
             return isAchievementUnlocked("extinct_" + this.id, level);
         }
 
         isGreatnessAchievementUnlocked(level) {
-            return isAchievementUnlocked("genus_" + game.races[this.id].type, level);
+            return isAchievementUnlocked("genus_" + this.genus, level);
         }
 
         isPillarUnlocked(level) {
@@ -3618,17 +3643,13 @@
             return typeof this.definition.title === 'string' ? this.definition.title : this.definition.title();
         }
 
+        get name() {
+            return this.title;
+        }
+
         // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
         isClickable() {
-            if (!this.isUnlocked()) {
-                return false;
-            }
-
-            if (!game.checkAffordable(this.definition, false)) {
-                return false;
-            }
-
-            return true;
+            return this.isUnlocked() && game.checkAffordable(this.definition, false);
         }
 
         /**
@@ -3699,37 +3720,15 @@
             this.complete = false;
         }
 
-        get desc() {
-            let label = "";
-            // Actions
-            if (this.actionType === "research") {
-                label += `Research ${techIds[this.actionId].title}`;
-            }
-            if (this.actionType === "build") {
-                label += `Build ${this.actionCount} ${buildingIds[this.actionId].name}`;
-            }
-
-            label += ` when `;
-
-            // Requirements
-            if (this.requirementType === "unlocked") {
-                label += `${techIds[this.requirementId].title} available`;
-            }
-            if (this.requirementType === "researched") {
-                label += `${techIds[this.requirementId].title} researched`;
-            }
-            if (this.requirementType === "built") {
-                label += `${this.requirementCount} ${buildingIds[this.requirementId].name} built`;
-            }
-            return label;
-        }
-
         get cost() {
             if (this.actionType === "research") {
                 return techIds[this.actionId].definition.cost;
             }
             if (this.actionType === "build") {
                 return buildingIds[this.actionId].definition.cost;
+            }
+            if (this.actionType === "arpa") {
+                return arpaIds[this.actionId].definition.cost;
             }
             return {};
         }
@@ -3742,6 +3741,9 @@
             if (this.actionType === "build") {
                 return buildingIds[this.actionId].isUnlocked() && game.checkAffordable(buildingIds[this.actionId].definition, true);
             }
+            if (this.actionType === "arpa") {
+                return arpaIds[this.actionId].isUnlocked() && checkAffordable(arpaIds[this.actionId], true);
+            }
         }
 
         /** @return {boolean} */
@@ -3750,36 +3752,30 @@
                 return false;
             }
 
-            if (this.actionType === "research") {
-                if (techIds[this.actionId].isResearched()) {
-                    this.complete = true;
-                    return true;
-                }
+            if (this.actionType === "research" && techIds[this.actionId].isResearched()) {
+                this.complete = true;
+                return true;
             }
-            if (this.actionType === "build") {
-                if (buildingIds[this.actionId].count >= this.actionCount) {
-                    this.complete = true;
-                    return true;
-                }
+            if (this.actionType === "build" && buildingIds[this.actionId].count >= this.actionCount) {
+                this.complete = true;
+                return true;
+            }
+            if (this.actionType === "arpa" && arpaIds[this.actionId].count >= this.actionCount) {
+                this.complete = true;
+                return true;
             }
             return false;
         }
 
         areRequirementsMet() {
-            if (this.requirementType === "unlocked") {
-                if (techIds[this.requirementId].isUnlocked()) {
-                    return true;
-                }
+            if (this.requirementType === "unlocked" && techIds[this.requirementId].isUnlocked()) {
+                return true;
             }
-            if (this.requirementType === "researched") {
-                if (techIds[this.requirementId].isResearched()) {
-                    return true;
-                }
+            if (this.requirementType === "researched" && techIds[this.requirementId].isResearched()) {
+                return true;
             }
-            if (this.requirementType === "built") {
-                if (buildingIds[this.requirementId].count >= this.requirementCount) {
-                    return true;
-                }
+            if (this.requirementType === "built" && buildingIds[this.requirementId].count >= this.requirementCount) {
+                return true;
             }
             return false;
         }
@@ -3846,9 +3842,13 @@
                 this.actionCount = 0;
                 return;
             }
-
             if (this.actionType === "build") {
                 this.actionId = "city-basic_housing";
+                this.actionCount = 1;
+                return;
+            }
+            if (this.actionType === "arpa") {
+                this.actionId = "arpalhc";
                 this.actionCount = 1;
                 return;
             }
@@ -3903,7 +3903,10 @@
         for (let i = 0; i < state.triggerTargets.length; i++) {
             let otherObject = state.triggerTargets[i];
             // Unlike queue triggers won't be processed without respective script option enabled, no need to reserve resources for something that won't ever happen
-            if (!settings.autoBuild && otherObject instanceof Action) {
+            if (!settings.autoARPA && otherObject instanceof Project) {
+                continue;
+            }
+            if (!settings.autoBuild && otherObject instanceof Action && !(otherObject instanceof Project)) {
                 continue;
             }
             if (!settings.autoResearch && otherObject instanceof Technology) {
@@ -4022,116 +4025,10 @@
     // Lookup tables
     var techIds = {};
     var buildingIds = {};
-    var apraIds = {};
+    var arpaIds = {};
 
     var weightingRules = null;
 
-    function alwaysAllowed() {
-        return true;
-    }
-
-    function demonicAllowed() {
-        return game.global.city.biome === 'hellscape' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
-    }
-
-    function celestialAllowed() {
-        return game.global.city.biome === 'eden' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
-    }
-
-    function aquaticAllowed() {
-        return game.global.city.biome === 'oceanic' || game.global.blood['unbound'];
-    }
-
-    function feyAllowed() {
-        return game.global.city.biome === 'forest' || game.global.blood['unbound'];
-    }
-
-    function sandAllowed() {
-        return game.global.city.biome === 'desert' || game.global.blood['unbound'];
-    }
-
-    function heatAllowed() {
-        return game.global.city.biome === 'volcanic' || game.global.blood['unbound'];
-    }
-
-    function polarAllowed() {
-        return game.global.city.biome === 'tundra' || game.global.blood['unbound'];
-    }
-
-    function customAllowed() {
-        if (!game.races.custom.hasOwnProperty('type')) {
-            return false;
-        }
-
-        switch (game.races.custom.type) {
-            case 'aquatic':
-                return aquaticAllowed();
-            case 'fey':
-                return feyAllowed();
-            case 'sand':
-                return sandAllowed();
-            case 'heat':
-                return heatAllowed();
-            case 'polar':
-                return polarAllowed();
-            case 'demonic':
-                return demonicAllowed();
-            case 'angelic':
-                return celestialAllowed();
-            default:
-                return true;
-        }
-    }
-
-    function valdiAllowed() {
-        return game.global.genes.challenge;
-    }
-
-    var races = {
-        antid: new Race("antid", "Antid", alwaysAllowed, "", "Ophiocordyceps Unilateralis"),
-        mantis: new Race("mantis", "Mantis", alwaysAllowed, "", "Praying Unanswered"),
-        scorpid: new Race("scorpid", "Scorpid", alwaysAllowed, "", "Pulmonoscorpius"),
-        human: new Race("human", "Human", alwaysAllowed, "", "Homo Adeadus"),
-        orc: new Race("orc", "Orc", alwaysAllowed, "", "Outlander"),
-        elven: new Race("elven", "Elf", alwaysAllowed, "", "The few, the proud, the dead"),
-        troll: new Race("troll", "Troll", alwaysAllowed, "", "Bad Juju"),
-        ogre: new Race("ogre", "Ogre", alwaysAllowed, "", "Too stupid to live"),
-        cyclops: new Race("cyclops", "Cyclops", alwaysAllowed, "", "Blind Ambition"),
-        kobold: new Race("kobold", "Kobold", alwaysAllowed, "", "Took their candle"),
-        goblin: new Race("goblin", "Goblin", alwaysAllowed, "", "Greed before Need"),
-        gnome: new Race("gnome", "Gnome", alwaysAllowed, "", "Unathletic"),
-        cath: new Race("cath", "Cath", alwaysAllowed, "", "Saber Tooth Tiger"),
-        wolven: new Race("wolven", "Wolven", alwaysAllowed, "", "Dire Wolf"),
-        centaur: new Race("centaur", "Centaur", alwaysAllowed, "", "Ferghana"),
-        balorg: new Race("balorg", "Balorg", demonicAllowed, "Hellscape planet", "Self immolation"),
-        imp: new Race("imp", "Imp", demonicAllowed, "Hellscape planet", "Deal with the devil"),
-        seraph: new Race("seraph", "Seraph", celestialAllowed, "Eden planet", "Fallen Angel"),
-        unicorn: new Race("unicorn", "Unicorn", celestialAllowed, "Eden planet", "Unicorn Burgers"),
-        arraak: new Race("arraak", "Arraak", alwaysAllowed, "", "Way of the Dodo"),
-        pterodacti: new Race("pterodacti", "Pterodacti", alwaysAllowed, "", "Chicxulub"),
-        dracnid: new Race("dracnid", "Dracnid", alwaysAllowed, "", "Desolate Smaug"),
-        tortoisan: new Race("tortoisan", "Tortoisan", alwaysAllowed, "", "Circle of Life"),
-        gecko: new Race("gecko", "Gecko", alwaysAllowed, "", "No Savings"),
-        slitheryn: new Race("slitheryn", "Slitheryn", alwaysAllowed, "", "Final Shedding"),
-        sharkin: new Race("sharkin", "Sharkin", aquaticAllowed, "Oceanic planet", "Megalodon"),
-        octigoran: new Race("octigoran", "Octigoran", aquaticAllowed, "Oceanic planet", "Calamari"),
-        entish: new Race("entish", "Ent", alwaysAllowed, "", "Saruman's Revenge"),
-        cacti: new Race("cacti", "Cacti", alwaysAllowed, "", "Desert Deserted"),
-        pinguicula: new Race("pinguicula", "Pinguicula", alwaysAllowed, "", "Weed Whacker"),
-        sporgar: new Race("sporgar", "Sporgar", alwaysAllowed, "", "Fungicide"),
-        shroomi: new Race("shroomi", "Shroomi", alwaysAllowed, "", "Bad Trip"),
-        moldling: new Race("moldling", "Moldling", alwaysAllowed, "", "Digested"),
-        junker: new Race("junker", "Valdi", valdiAllowed, "Challenge genes unlocked", "Euthanasia"),
-        dryad: new Race("dryad", "Dryad", feyAllowed, "Forest planet", "Ashes to Ashes"),
-        satyr: new Race("satyr", "Satyr", feyAllowed, "Forest planet", "Stopped the music"),
-        phoenix: new Race("phoenix", "Phoenix", heatAllowed, "Volcanic planet", "Snuffed"),
-        salamander: new Race("salamander", "Salamander", heatAllowed, "Volcanic planet", "Cooled Off"),
-        yeti: new Race("yeti", "Yeti", polarAllowed, "Tundra planet", "Captured"),
-        wendigo: new Race("wendigo", "Wendigo", polarAllowed, "Tundra planet", "Soulless Abomination"),
-        tuskin: new Race("tuskin", "Tuskin", sandAllowed, "Desert planet", "Startled"),
-        kamel: new Race("kamel", "Kamel", sandAllowed, "Desert planet", "No Oasis"),
-        custom: new Race("custom", "Custom", customAllowed, "Custom designed race", "Lab Failure"),
-    }
 
     // All minor traits and the currently two special traits
     var minorTraits = ["tactical", "analytical", "promiscuous", "resilient", "cunning", "hardy", "ambidextrous", "industrious", "content", "fibroblast", "metallurgist", "gambler", "persuasive", "fortify", "mastery"];
@@ -4150,9 +4047,25 @@
         tundra: ["yeti", "wendigo"]
     }
 
-    var evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", "challenge_plasmid", "challenge_mastery", "challenge_trade",
-                                    "challenge_craft", "challenge_crispr", "challenge_joyless", "challenge_decay", "challenge_steelen",
-                                    "challenge_emfield", "challenge_cataclysm", "challenge_junker"];
+    var challenges = {
+        plasmid: "no_plasmid",
+        mastery: "weak_mastery",
+        trade: "no_trade",
+        craft: "no_craft",
+        crispr: "no_crispr",
+        joyless: "joyless",
+        steelen: "steelen",
+        decay: "decay",
+        emfield: "emfield",
+        junker: "junker",
+        cataclysm: "cataclysm",
+        banana: "banana",
+    };
+
+    var evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...Object.keys(challenges).map(id => "challenge_" + id)];
+
+    var logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market"];
+
 
     var resources = { // Resources order follow game order, and used to initialize priorities
         // Evolution resources
@@ -4273,6 +4186,9 @@
         moneyIncomes: new Array(11).fill(0),
         moneyMedian: 0,
 
+        soulGemIncomes: [],
+        soulGemLast: Number.MAX_SAFE_INTEGER,
+
         knowledgeRequiredByTechs: 0,
         oilRequiredByMissions: 0,
         heliumRequiredByMissions: 0,
@@ -4314,116 +4230,6 @@
             Nanoweave: new CraftingJob("Nanoweave", "Nanoweave Crafter", resources.Nanoweave),
             Scarletite: new CraftingJob("Scarletite", "Scarletite Crafter", resources.Scarletite),
         },
-
-        evolutions: {
-            Rna: new Action("RNA", "evolution", "rna", ""),
-            Dna: new Action("DNA", "evolution", "dna", ""),
-            Membrane: new Action("Membrane", "evolution", "membrane", ""),
-            Organelles: new Action("Organelles", "evolution", "organelles", ""),
-            Nucleus: new Action("Nucleus", "evolution", "nucleus", ""),
-            EukaryoticCell: new Action("Eukaryotic Cell", "evolution", "eukaryotic_cell", ""),
-            Mitochondria: new Action("Mitochondria", "evolution", "mitochondria", ""),
-
-            SexualReproduction: new Action("", "evolution", "sexual_reproduction", ""),
-                Phagocytosis: new Action("", "evolution", "phagocytosis", ""),
-                    Multicellular: new Action("", "evolution", "multicellular", ""),
-                        BilateralSymmetry: new Action("", "evolution", "bilateral_symmetry", ""),
-                            Arthropods: new Action("", "evolution", "athropods", ""),
-                                Sentience: new Action("", "evolution", "sentience", ""),
-                                Mantis: new Action("", "evolution", "mantis", ""),
-                                Scorpid: new Action("", "evolution", "scorpid", ""),
-                                Antid: new Action("Antid", "evolution", "antid", ""),
-
-                            Mammals: new Action("", "evolution", "mammals", ""),
-                                Humanoid: new Action("", "evolution", "humanoid", ""),
-                                    Human: new Action("", "evolution", "human", ""),
-                                    Orc: new Action("", "evolution", "orc", ""),
-                                    Elven: new Action("", "evolution", "elven", ""),
-                                Gigantism: new Action("", "evolution", "gigantism", ""),
-                                    Troll: new Action("", "evolution", "troll", ""),
-                                    Ogre: new Action("", "evolution", "ogre", ""),
-                                    Cyclops: new Action("", "evolution", "cyclops", ""),
-                                Dwarfism: new Action("", "evolution", "dwarfism", ""),
-                                    Kobold: new Action("", "evolution", "kobold", ""),
-                                    Goblin: new Action("", "evolution", "goblin", ""),
-                                    Gnome: new Action("", "evolution", "gnome", ""),
-                                Animalism: new Action("", "evolution", "animalism", ""),
-                                    Cath: new Action("", "evolution", "cath", ""),
-                                    Wolven: new Action("", "evolution", "wolven", ""),
-                                    Centaur: new Action("", "evolution", "centaur", ""),
-                                Demonic: new Action("", "evolution", "demonic", ""), // hellscape only
-                                    Balorg: new Action("", "evolution", "balorg", ""),
-                                    Imp: new Action("", "evolution", "imp", ""),
-                                Celestial: new Action("", "evolution", "celestial", ""), // eden only
-                                    Seraph: new Action("", "evolution", "seraph", ""),
-                                    Unicorn: new Action("", "evolution", "unicorn", ""),
-                                Fey: new Action("", "evolution", "fey", ""), // forest only
-                                    Dryad: new Action("", "evolution", "dryad", ""),
-                                    Satyr: new Action("", "evolution", "satyr", ""),
-                                Heat: new Action("", "evolution", "heat", ""), // volcanic only
-                                    Phoenix: new Action("", "evolution", "phoenix", ""),
-                                    Salamander: new Action("", "evolution", "salamander", ""),
-                                Polar: new Action("", "evolution", "polar", ""), // tundra only
-                                    Yeti: new Action("", "evolution", "yeti", ""),
-                                    Wendigo: new Action("", "evolution", "wendigo", ""),
-                                Sand: new Action("", "evolution", "sand", ""), // desert only
-                                    Tuskin: new Action("", "evolution", "tuskin", ""),
-                                    Kamel: new Action("", "evolution", "kamel", ""),
-
-                            Eggshell: new Action("", "evolution", "eggshell", ""),
-                                Endothermic: new Action("", "evolution", "endothermic", ""),
-                                    Arraak: new Action("", "evolution", "arraak", ""),
-                                    Pterodacti: new Action("", "evolution", "pterodacti", ""),
-                                    Dracnid: new Action("", "evolution", "dracnid", ""),
-
-                                Ectothermic: new Action("", "evolution", "ectothermic", ""),
-                                    Tortoisan: new Action("", "evolution", "tortoisan", ""),
-                                    Gecko: new Action("", "evolution", "gecko", ""),
-                                    Slitheryn: new Action("", "evolution", "slitheryn", ""),
-
-                            Aquatic: new Action("", "evolution", "aquatic", ""), // ocean only
-                                Sharkin: new Action("", "evolution", "sharkin", ""),
-                                Octigoran: new Action("", "evolution", "octigoran", ""),
-
-                Custom: new Action("", "evolution", "custom", ""),
-
-                Chloroplasts: new Action("", "evolution", "chloroplasts", ""),
-                    //Multicellular: new Action("", "evolution", "multicellular", ""),
-                        Poikilohydric: new Action("", "evolution", "poikilohydric", ""),
-                            Bryophyte: new Action("", "evolution", "bryophyte", ""),
-                                Entish: new Action("", "evolution", "entish", ""),
-                                Cacti: new Action("", "evolution", "cacti", ""),
-                                Pinguicula: new Action("", "evolution", "pinguicula", ""),
-
-
-                Chitin: new Action("", "evolution", "chitin", ""),
-                    //Multicellular: new Action("", "evolution", "multicellular", ""),
-                        Spores: new Action("", "evolution", "spores", ""),
-                            //Bryophyte: new Action("", "evolution", "bryophyte", ""),
-                                Sporgar: new Action("", "evolution", "sporgar", ""),
-                                Shroomi: new Action("", "evolution", "shroomi", ""),
-                                Moldling: new Action("", "evolution", "moldling", ""),
-
-
-            Bunker: new ChallengeEvolutionAction("", "bunker", ""),
-            Plasmid: new ChallengeEvolutionAction("Plasmid", "plasmid", "no_plasmid"),
-            Trade: new ChallengeEvolutionAction("Trade", "trade", "no_trade"),
-            Craft: new ChallengeEvolutionAction("Craft", "craft", "no_craft"),
-            Crispr: new ChallengeEvolutionAction("Crispr", "crispr", "no_crispr"),
-            Mastery: new ChallengeEvolutionAction("Mastery", "mastery", "weak_mastery"),
-            Joyless: new ChallengeEvolutionAction("Joyless", "joyless", "joyless"),
-            Decay: new ChallengeEvolutionAction("Decay", "decay", "decay"),
-            Junker: new ChallengeEvolutionAction("Junker", "junker", "junker"),
-            Steelen: new ChallengeEvolutionAction("Steelen", "steelen", "steelen"),
-            EmField: new ChallengeEvolutionAction("EM Field", "emfield", "emfield"),
-            Cataclysm: new ChallengeEvolutionAction("Cataclysm", "cataclysm", "cataclysm"),
-
-        },
-
-        /** @type {Race[][]} */
-        raceGroupAchievementList: [],
-        /** @type {ChallengeEvolutionAction[]} */
-        evolutionChallengeList: [],
 
         /** @type {Race} */
         evolutionTarget: null,
@@ -4877,19 +4683,6 @@
         state.spaceBuildings.PortalBaseCamp.addResourceConsumption(resources.Spire_Support, 1);
         state.spaceBuildings.PortalMechBay.addResourceConsumption(resources.Spire_Support, 1);
 
-        state.evolutionChallengeList.push(state.evolutions.Bunker);
-        state.evolutionChallengeList.push(state.evolutions.Plasmid);
-        state.evolutionChallengeList.push(state.evolutions.Trade);
-        state.evolutionChallengeList.push(state.evolutions.Craft);
-        state.evolutionChallengeList.push(state.evolutions.Crispr);
-        state.evolutionChallengeList.push(state.evolutions.Mastery);
-        state.evolutionChallengeList.push(state.evolutions.Joyless);
-        state.evolutionChallengeList.push(state.evolutions.Decay);
-        state.evolutionChallengeList.push(state.evolutions.Junker);
-        state.evolutionChallengeList.push(state.evolutions.Steelen);
-        state.evolutionChallengeList.push(state.evolutions.EmField);
-        state.evolutionChallengeList.push(state.evolutions.Cataclysm);
-
         resetMarketState();
         resetEjectorState();
         resetStorageState();
@@ -4916,184 +4709,45 @@
         // And it doesn't includes Stellar Engine at all. It can generate some power... But only when fully built, and you don't want to build 100 levels of engine just to generate 20MW.
     }
 
+    var evolutions = {};
+    var races = {};
     function initialiseRaces() {
-        let e = state.evolutions;
-
-        let bilateralSymmetry = [e.BilateralSymmetry, e.Multicellular, e.Phagocytosis, e.SexualReproduction];
-
-        let aquatic = [e.Sentience, e.Aquatic].concat(bilateralSymmetry);
-        races.sharkin.evolutionTree = [e.Sharkin].concat(aquatic);
-        races.octigoran.evolutionTree = [e.Octigoran].concat(aquatic);
-        let raceGroup = [ races.sharkin, races.octigoran ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'aquatic') {
-            races.custom.evolutionTree = [e.Custom].concat(aquatic)
-            raceGroup.push(races.custom);
+        for (let id in game.actions.evolution) {
+            evolutions[id] = new Action("", "evolution", id, "");
         }
-        state.raceGroupAchievementList.push(raceGroup);
+        let e = evolutions;
 
-        let arthropods = [e.Sentience, e.Arthropods].concat(bilateralSymmetry);
-        races.antid.evolutionTree = [e.Antid].concat(arthropods);
-        races.scorpid.evolutionTree = [e.Scorpid].concat(arthropods);
-        races.mantis.evolutionTree = [e.Mantis].concat(arthropods);
-        raceGroup = [ races.antid, races.scorpid, races.mantis ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'insectoid') {
-            races.custom.evolutionTree = [e.Custom].concat(arthropods)
-            raceGroup.push(races.custom);
+        let bilateralSymmetry = [e.bilateral_symmetry, e.multicellular, e.phagocytosis, e.sexual_reproduction];
+        let mammals = [e.mammals, ...bilateralSymmetry];
+
+        let genusEvolution = {
+            aquatic: [e.sentience, e.aquatic, ...bilateralSymmetry],
+            insectoid: [e.sentience, e.arthropods, ...bilateralSymmetry],
+            humanoid: [e.sentience, e.humanoid, ...mammals],
+            giant: [e.sentience, e.gigantism, ...mammals],
+            small: [e.sentience, e.dwarfism, ...mammals],
+            animal: [e.sentience, e.animalism, ...mammals],
+            demonic: [e.sentience, e.demonic, ...mammals],
+            angelic: [e.sentience, e.celestial, ...mammals],
+            fey: [e.sentience, e.fey, ...mammals],
+            heat: [e.sentience, e.heat, ...mammals],
+            polar: [e.sentience, e.polar, ...mammals],
+            sand: [e.sentience, e.sand, ...mammals],
+            avian: [e.sentience, e.endothermic, e.eggshell, ...bilateralSymmetry],
+            reptilian: [e.sentience, e.ectothermic, e.eggshell, ...bilateralSymmetry],
+            plant: [e.sentience, e.bryophyte, e.poikilohydric, e.multicellular, e.chloroplasts, e.sexual_reproduction],
+            fungi: [e.sentience, e.bryophyte, e.spores, e.multicellular, e.chitin, e.sexual_reproduction]
         }
-        state.raceGroupAchievementList.push(raceGroup);
 
-        let humanoid = [e.Sentience, e.Humanoid, e.Mammals].concat(bilateralSymmetry);
-        races.human.evolutionTree = [e.Human].concat(humanoid);
-        races.orc.evolutionTree = [e.Orc].concat(humanoid);
-        races.elven.evolutionTree = [e.Elven].concat(humanoid);
-        raceGroup = [ races.human, races.orc, races.elven ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'humanoid') {
-            races.custom.evolutionTree = [e.Custom].concat(humanoid)
-            raceGroup.push(races.custom);
+        for (let id in game.races) {
+            // We don't care about protoplasm
+            if (id === "protoplasm") {
+                continue;
+            }
+
+            races[id] = new Race(id);
+            races[id].evolutionTree = [e.bunker, e[id], ...(genusEvolution[races[id].genus] ?? [])];
         }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let gigantism = [e.Sentience, e.Gigantism, e.Mammals].concat(bilateralSymmetry);
-        races.troll.evolutionTree = [e.Troll].concat(gigantism);
-        races.ogre.evolutionTree = [e.Ogre].concat(gigantism);
-        races.cyclops.evolutionTree = [e.Cyclops].concat(gigantism);
-        raceGroup = [ races.troll, races.ogre, races.cyclops ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'giant') {
-            races.custom.evolutionTree = [e.Custom].concat(gigantism)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let dwarfism = [e.Sentience, e.Dwarfism, e.Mammals].concat(bilateralSymmetry);
-        races.kobold.evolutionTree = [e.Kobold].concat(dwarfism);
-        races.goblin.evolutionTree = [e.Goblin].concat(dwarfism);
-        races.gnome.evolutionTree = [e.Gnome].concat(dwarfism);
-        raceGroup = [ races.kobold, races.goblin, races.gnome ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'small') {
-            races.custom.evolutionTree = [e.Custom].concat(dwarfism)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let animalism = [e.Sentience, e.Animalism, e.Mammals].concat(bilateralSymmetry);
-        races.cath.evolutionTree = [e.Cath].concat(animalism);
-        races.wolven.evolutionTree = [e.Wolven].concat(animalism);
-        races.centaur.evolutionTree = [e.Centaur].concat(animalism);
-        raceGroup = [ races.cath, races.wolven, races.centaur ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'animal') {
-            races.custom.evolutionTree = [e.Custom].concat(animalism)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let demonic = [e.Sentience, e.Demonic, e.Mammals].concat(bilateralSymmetry);
-        races.balorg.evolutionTree = [e.Balorg].concat(demonic);
-        races.imp.evolutionTree = [e.Imp].concat(demonic);
-        raceGroup = [ races.balorg, races.imp ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'demonic') {
-            races.custom.evolutionTree = [e.Custom].concat(demonic)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let celestial = [e.Sentience, e.Celestial, e.Mammals].concat(bilateralSymmetry);
-        races.seraph.evolutionTree = [e.Seraph].concat(celestial);
-        races.unicorn.evolutionTree = [e.Unicorn].concat(celestial);
-        raceGroup = [ races.seraph, races.unicorn ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'angelic') {
-            races.custom.evolutionTree = [e.Custom].concat(celestial)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let fey = [e.Sentience, e.Fey, e.Mammals].concat(bilateralSymmetry);
-        races.dryad.evolutionTree = [e.Dryad].concat(fey);
-        races.satyr.evolutionTree = [e.Satyr].concat(fey);
-        raceGroup = [ races.dryad, races.satyr ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'fey') {
-            races.custom.evolutionTree = [e.Custom].concat(fey)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let heat = [e.Sentience, e.Heat, e.Mammals].concat(bilateralSymmetry);
-        races.phoenix.evolutionTree = [e.Phoenix].concat(heat);
-        races.salamander.evolutionTree = [e.Salamander].concat(heat);
-        raceGroup = [ races.phoenix, races.salamander ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'heat') {
-            races.custom.evolutionTree = [e.Custom].concat(heat)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let polar = [e.Sentience, e.Polar, e.Mammals].concat(bilateralSymmetry);
-        races.yeti.evolutionTree = [e.Yeti].concat(polar);
-        races.wendigo.evolutionTree = [e.Wendigo].concat(polar);
-        raceGroup = [ races.yeti, races.wendigo ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'polar') {
-            races.custom.evolutionTree = [e.Custom].concat(polar)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let sand = [e.Sentience, e.Sand, e.Mammals].concat(bilateralSymmetry);
-        races.tuskin.evolutionTree = [e.Tuskin].concat(sand);
-        races.kamel.evolutionTree = [e.Kamel].concat(sand);
-        raceGroup = [ races.tuskin, races.kamel ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'sand') {
-            races.custom.evolutionTree = [e.Custom].concat(sand)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let endothermic = [e.Sentience, e.Endothermic, e.Eggshell].concat(bilateralSymmetry);
-        races.arraak.evolutionTree = [e.Arraak].concat(endothermic);
-        races.pterodacti.evolutionTree = [e.Pterodacti].concat(endothermic);
-        races.dracnid.evolutionTree = [e.Dracnid].concat(endothermic);
-        raceGroup = [ races.arraak, races.pterodacti, races.dracnid ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'avian') {
-            races.custom.evolutionTree = [e.Custom].concat(endothermic)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let ectothermic = [e.Sentience, e.Ectothermic, e.Eggshell].concat(bilateralSymmetry);
-        races.tortoisan.evolutionTree = [e.Tortoisan].concat(ectothermic);
-        races.gecko.evolutionTree = [e.Gecko].concat(ectothermic);
-        races.slitheryn.evolutionTree = [e.Slitheryn].concat(ectothermic);
-        raceGroup = [ races.tortoisan, races.gecko, races.slitheryn ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'reptilian') {
-            races.custom.evolutionTree = [e.Custom].concat(ectothermic)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let chloroplasts = [e.Sentience, e.Bryophyte, e.Poikilohydric, e.Multicellular, e.Chloroplasts, e.SexualReproduction];
-        races.entish.evolutionTree = [e.Entish].concat(chloroplasts);
-        races.cacti.evolutionTree = [e.Cacti].concat(chloroplasts);
-        races.pinguicula.evolutionTree = [e.Pinguicula].concat(chloroplasts);
-        raceGroup = [ races.entish, races.cacti, races.pinguicula ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'plant') {
-            races.custom.evolutionTree = [e.Custom].concat(chloroplasts)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        let chitin = [e.Sentience, e.Bryophyte, e.Spores, e.Multicellular, e.Chitin, e.SexualReproduction];
-        races.sporgar.evolutionTree = [e.Sporgar].concat(chitin);
-        races.shroomi.evolutionTree = [e.Shroomi].concat(chitin);
-        races.moldling.evolutionTree = [e.Moldling].concat(chitin);
-        raceGroup = [ races.sporgar, races.shroomi, races.moldling ];
-        if (game.races['custom'] && game.races.custom.hasOwnProperty('type') && game.races.custom.type === 'fungi') {
-            races.custom.evolutionTree = [e.Custom].concat(chitin)
-            raceGroup.push(races.custom);
-        }
-        state.raceGroupAchievementList.push(raceGroup);
-
-        races.junker.evolutionTree = [e.Bunker, e.Junker, e.Sentience].concat(humanoid); // Actions order is reversed, to make sure it won't Sentience before setting challenge
-        raceGroup = [ races.junker ];
-        state.raceGroupAchievementList.push(raceGroup);
-
     }
 
     function resetWarSettings() {
@@ -5117,6 +4771,7 @@
     }
 
     function resetHellSettings() {
+        settings.hellCountGems = true;
         settings.hellTurnOffLogMessages = true;
         settings.hellHandlePatrolCount = true;
         settings.hellHomeGarrison = 10;
@@ -5127,13 +4782,13 @@
         settings.hellLowWallsMulti = 3;
 
         settings.hellHandlePatrolSize = true;
-        settings.hellPatrolMinRating = 80;
+        settings.hellPatrolMinRating = 30;
         settings.hellPatrolThreatPercent = 8;
         settings.hellPatrolDroneMod = 5;
         settings.hellPatrolDroidMod = 5;
         settings.hellPatrolBootcampMod = 0;
-        settings.hellBolsterPatrolPercentTop = 80;
-        settings.hellBolsterPatrolPercentBottom = 40;
+        settings.hellBolsterPatrolPercentTop = 50;
+        settings.hellBolsterPatrolPercentBottom = 20;
         settings.hellBolsterPatrolRating = 300;
 
         settings.hellHandleAttractors = true;
@@ -5167,7 +4822,7 @@
         settings.prestigeWhiteholeEjectEnabled = true;
         settings.prestigeWhiteholeEjectExcess = false;
         settings.prestigeWhiteholeDecayRate = 0.2;
-        settings.prestigeWhiteholeEjectAllCount = 5;
+        settings.prestigeWhiteholeEjectAllCount = 100;
     }
 
     function resetGovernmentSettings() {
@@ -5188,17 +4843,9 @@
         settings.evolutionQueueEnabled = false;
         settings.evolutionQueueRepeat = false;
         settings.evolutionBackup = false;
-        settings.challenge_plasmid = false;
-        settings.challenge_trade = false;
-        settings.challenge_craft = false;
-        settings.challenge_crispr = false;
-        settings.challenge_mastery = false;
-        settings.challenge_joyless = false;
-        settings.challenge_decay = false;
-        settings.challenge_junker = false;
-        settings.challenge_steelen = false;
-        settings.challenge_emfield = false;
-        settings.challenge_cataclysm = false;
+        for (let id in challenges) {
+            settings["challenge_" + id] = false;
+        }
     }
 
     function resetResearchSettings() {
@@ -5654,9 +5301,7 @@
     }
 
     function resetProjectSettings() {
-        settings.arpaBuildIfStorageFull = true;
-        settings.arpaBuildIfStorageFullCraftableMin = -1;
-        settings.arpaBuildIfStorageFullResourceMaxPercent = 5;
+        settings.arpaScaleWeighting = true;
     }
 
     function resetProjectState() {
@@ -5665,14 +5310,14 @@
         for (let key in state.projects) {
             let project = state.projects[key];
             project._autoMax = -1;
-            project.autoBuildEnabled = false;
-            project.ignoreMinimumMoneySetting = false;
+            project._weighting = 1;
+            project.autoBuildEnabled = true;
             state.projectManager.addProjectToPriorityList(project);
         }
 
-        state.projects.LaunchFacility.autoBuildEnabled = true;
-        state.projects.LaunchFacility.ignoreMinimumMoneySetting = true;
+        state.projects.LaunchFacility._weighting = 100;
         state.projects.ManaSyphon._autoMax = 79;
+        state.projects.ManaSyphon.autoBuildEnabled = false;
     }
 
     function resetProductionSettings() {
@@ -5730,10 +5375,11 @@
     function resetLoggingSettings() {
         settings["logEnabled"] = true;
 
-        Object.keys(loggingTypes).forEach(loggingTypeKey => {
+        for (let loggingTypeKey in loggingTypes) {
             let loggingType = loggingTypes[loggingTypeKey];
             settings[loggingType.settingKey] = true;
-        });
+        }
+        settings[loggingTypes.arpa.settingKey] = false;
     }
 
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
@@ -5773,11 +5419,11 @@
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             let building = state.buildingManager.priorityList[i];
-            building.autoBuildEnabled = settings['bat' + building.settingId] ?? building.autoBuildEnabled;
-            building.priority = parseInt(settings['bld_p_' + building.settingId] ?? building.priority);
-            building.autoStateEnabled = settings['bld_s_' + building.settingId] ?? building.autoStateEnabled;
-            building._autoMax = parseInt(settings['bld_m_' + building.settingId] ?? building._autoMax);
-            building._weighting = parseFloat(settings['bld_w_' + building.settingId] ?? building._weighting);
+            building.autoBuildEnabled = settings['bat' + building._vueBinding] ?? building.autoBuildEnabled;
+            building.priority = parseInt(settings['bld_p_' + building._vueBinding] ?? building.priority);
+            building.autoStateEnabled = settings['bld_s_' + building._vueBinding] ?? building.autoStateEnabled;
+            building._autoMax = parseInt(settings['bld_m_' + building._vueBinding] ?? building._autoMax);
+            building._weighting = parseFloat(settings['bld_w_' + building._vueBinding] ?? building._weighting);
         }
         state.buildingManager.sortByPriority();
 
@@ -5797,7 +5443,7 @@
             project.autoBuildEnabled = settings.arpa[project.id] ?? project.autoBuildEnabled;
             project.priority = parseInt(settings['arpa_p_' + project.id] ?? project.priority);
             project._autoMax = parseInt(settings['arpa_m_' + project.id] ?? project._autoMax);
-            project.ignoreMinimumMoneySetting = settings['arpa_ignore_money_' + project.id] ?? project.ignoreMinimumMoneySetting;
+            project._weighting = parseInt(settings['arpa_w_' + project.id] ?? project._weighting);
         }
         state.projectManager.sortByPriority();
 
@@ -5863,11 +5509,11 @@
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             const building = state.buildingManager.priorityList[i];
-            settings['bat' + building.settingId] = building.autoBuildEnabled;
-            settings['bld_p_' + building.settingId] = building.priority;
-            settings['bld_s_' + building.settingId] = building.autoStateEnabled;
-            settings['bld_m_' + building.settingId] = building._autoMax;
-            settings['bld_w_' + building.settingId] = building._weighting;
+            settings['bat' + building._vueBinding] = building.autoBuildEnabled;
+            settings['bld_p_' + building._vueBinding] = building.priority;
+            settings['bld_s_' + building._vueBinding] = building.autoStateEnabled;
+            settings['bld_m_' + building._vueBinding] = building._autoMax;
+            settings['bld_w_' + building._vueBinding] = building._weighting;
         }
 
         for (let i = 0; i < state.craftableResourceList.length; i++) {
@@ -5899,7 +5545,7 @@
             settings.arpa[project.id] = project.autoBuildEnabled;
             settings['arpa_p_' + project.id] = project.priority;
             settings['arpa_m_' + project.id] = project._autoMax;
-            settings['arpa_ignore_money_' + project.id] = project.ignoreMinimumMoneySetting;
+            settings['arpa_w_' + project.id] = project._weighting;
         }
 
         for (let spell of Object.values(state.cityBuildings.Pylon.Productions)) {
@@ -5977,9 +5623,7 @@
         addSetting("storageLimitPreMad", true);
         addSetting("storageSafeReassign", true);
         addSetting("storageAssignExtra", true);
-        addSetting("arpaBuildIfStorageFull", true);
-        addSetting("arpaBuildIfStorageFullCraftableMin", -1);
-        addSetting("arpaBuildIfStorageFullResourceMaxPercent", 5);
+        addSetting("arpaScaleWeighting", true);
 
         addSetting("productionPrioritizeDemanded", true);
         addSetting("productionWaitMana", true);
@@ -6012,10 +5656,11 @@
         addSetting("autoGalaxyMarket", false);
 
         addSetting("logEnabled", true);
-        Object.keys(loggingTypes).forEach(loggingTypeKey => {
+        for (let loggingTypeKey in loggingTypes) {
             let loggingType = loggingTypes[loggingTypeKey];
-            addSetting(loggingType.settingKey, true)
-        });
+            addSetting(loggingType.settingKey, true);
+        }
+        addSetting(loggingTypes.arpa.settingKey, false);
 
         addSetting("autoPylon", false);
         addSetting("autoQuarry", false);
@@ -6036,7 +5681,7 @@
         addSetting("prestigeWhiteholeEjectEnabled", true);
         addSetting("prestigeWhiteholeEjectExcess", false);
         addSetting("prestigeWhiteholeDecayRate", 0.2);
-        addSetting("prestigeWhiteholeEjectAllCount", 5);
+        addSetting("prestigeWhiteholeEjectAllCount", 100);
 
         addSetting("autoAssembleGene", false);
         addSetting("genesAssembleGeneAlways", true);
@@ -6046,7 +5691,7 @@
         addSetting("tradeRouteMinimumMoneyPerSecond", 300);
         addSetting("tradeRouteMinimumMoneyPercentage", 50);
         addSetting("generalMinimumTaxRate", 0);
-        addSetting("generalMinimumMorale", 105)
+        addSetting("generalMinimumMorale", 105);
         addSetting("generalMaximumMorale", 500);
         addSetting("govManage", false);
         addSetting("govInterim", governmentTypes.democracy.id);
@@ -6071,6 +5716,7 @@
         addSetting("foreignPolicyInferior", "Annex");
         addSetting("foreignPolicySuperior", "Sabotage");
 
+        addSetting("hellCountGems", true);
         addSetting("hellTurnOffLogMessages", true);
         addSetting("hellHandlePatrolCount", true);
         addSetting("hellHomeGarrison", 10);
@@ -6081,13 +5727,13 @@
         addSetting("hellLowWallsMulti", 3);
 
         addSetting("hellHandlePatrolSize", true);
-        addSetting("hellPatrolMinRating", 80);
+        addSetting("hellPatrolMinRating", 30);
         addSetting("hellPatrolThreatPercent", 8);
         addSetting("hellPatrolDroneMod", 5);
         addSetting("hellPatrolDroidMod", 5);
         addSetting("hellPatrolBootcampMod", 0);
-        addSetting("hellBolsterPatrolPercentTop", 80);
-        addSetting("hellBolsterPatrolPercentBottom", 40);
+        addSetting("hellBolsterPatrolPercentTop", 50);
+        addSetting("hellBolsterPatrolPercentBottom", 20);
         addSetting("hellBolsterPatrolRating", 300);
 
         addSetting("hellHandleAttractors", true);
@@ -6098,12 +5744,8 @@
         addSetting("userPlanetTargetName", "none");
         addSetting("userEvolutionTarget", "auto");
 
-        for (let i = 0; i < state.evolutionChallengeList.length; i++) {
-            const challenge = state.evolutionChallengeList[i];
-
-            if (challenge.id !== state.evolutions.Bunker.id) {
-                addSetting("challenge_" + challenge.id, false);
-            }
+        for (let id in challenges) {
+            addSetting("challenge_" + id, false);
         }
 
         addSetting("researchFilter", false);
@@ -6149,9 +5791,9 @@
             addSetting("fleet_pr_" + galaxyRegions[i], i);
         }
         addSetting("fleetMaxCover", true);
-        addSetting("fleetEmbassyKnowledge", 7000000);
-        addSetting("fleetAlienGiftKnowledge", 7000000);
-        addSetting("fleetAlien2Knowledge", 10000000);
+        addSetting("fleetEmbassyKnowledge", 6000000);
+        addSetting("fleetAlienGiftKnowledge", 6500000);
+        addSetting("fleetAlien2Knowledge", 9000000);
         addSetting("fleetChthonianPower", 4500);
 
         for (let i = 0; i < biomeList.length; i++) {
@@ -6164,9 +5806,24 @@
             addSetting("extra_w_" + extraList[i], 0);
         }
 
-        // TODO: Remove me after few more versions. Clean up old fork-only settings, not used neither here, nor in original script.
-        delete settings.buildingWeightingTriggerConflict;
-        delete settings.researchAlienGift;
+        // TODO: Clean up old settings.
+        let unusedStandalone = ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber"];
+        let unused012 = ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"];
+        for (let i = 0; i < unused012.length; i++) {
+            for (let j = 0; j <= 2; j++) {
+                delete settings[unused012[i] + j];
+            }
+        }
+        for (let i = 0; i < unusedStandalone.length; i++) {
+            delete settings[unusedStandalone[i]];
+        }
+        for (let resource of Object.values(resources)) {
+            delete settings['res_storage_w_' + resource.id];
+        }
+        for (let i = 0; i < state.projectManager.priorityList.length; i++) {
+            let project = state.projectManager.priorityList[i];
+            delete settings['arpa_ignore_money_' + project.id];
+        }
     }
 
     // #endregion State and Initialisation
@@ -6258,18 +5915,26 @@
             if (settings.userEvolutionTarget === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
                 let achievementLevel = getConfiguredAchievementLevel();
-                let targetedGroup = { group: null, race: null, remainingPercent: 0 };
+                let targetedGroup = {race: null, remainingPercent: 0};
 
-                for (let i = 0; i < state.raceGroupAchievementList.length; i++) {
-                    let raceGroup = state.raceGroupAchievementList[i];
+                let genusGroups = {};
+                for (let id in races) {
+                    let race = races[id];
+                    if (race.isConditionMet()) {
+                        genusGroups[race.genus] = genusGroups[race.genus] ?? [];
+                        genusGroups[race.genus].push(race);
+                    }
+                }
+
+                for (let raceGroup of Object.values(genusGroups)) {
                     let remainingAchievements = 0;
                     let remainingRace = null;
 
                     for (let j = 0; j < raceGroup.length; j++) {
                         let race = raceGroup[j];
 
-                        // Ignore Valdi if we're not going for 4star, and locked conditional races
-                        if ((race === races.junker && achievementLevel < 5) || !race.evolutionCondition()) {
+                        // Ignore Valdi if we're not going for 4star
+                        if (race === races.junker && achievementLevel < 5) {
                             continue;
                         }
 
@@ -6286,39 +5951,30 @@
                         if (raceIsGood) {
                             remainingRace = race;
                             remainingAchievements++;
-
-                            // We're forcing Valdi to be the very last chosen race, when there's no other options, by overriding remainingPercent
-                            if (race === races.junker) {
-                                remainingAchievements = 0.01;
-                            }
                         }
                     }
+                    // We'll target the group with the highest percentage chance of getting an achievement
+                    let remainingPercent = remainingAchievements / raceGroup.length;
 
                     // If we have Mass Extinction perk, and not affected by randomness - prioritize conditional races
-                    if (remainingRace !== races.junker && game.global.stats.achieve['mass_extinction'] && remainingAchievements > 0 && remainingRace.evolutionConditionText !== '') {
-                        targetedGroup.group = raceGroup;
+                    if (remainingRace !== races.junker && game.global.stats.achieve['mass_extinction'] && remainingAchievements > 0 && remainingRace.getCondition() !== '') {
                         targetedGroup.race = remainingRace;
                         targetedGroup.remainingPercent = 100;
                     }
 
-                    // We'll target the group with the highest percentage chance of getting an achievement
-                    let remainingPercent = remainingAchievements / raceGroup.length;
-
                     // If this group has the most races left with remaining achievements then target an uncompleted race in this group
                     if (remainingPercent > targetedGroup.remainingPercent) {
-                        targetedGroup.group = raceGroup;
                         targetedGroup.race = remainingRace;
                         targetedGroup.remainingPercent = remainingPercent;
                     }
                 }
-
-                if (targetedGroup.group != null) { state.evolutionTarget = targetedGroup.race; }
+                state.evolutionTarget = targetedGroup.race;
             }
 
             // Auto Achievements disabled, checking user specified race
             if (settings.userEvolutionTarget !== "auto") {
                 let userRace = races[settings.userEvolutionTarget];
-                if (userRace && userRace.evolutionCondition()){
+                if (userRace && userRace.isConditionMet()){
                     // Race specified, and condition is met
                     state.evolutionTarget = userRace
                 }
@@ -6337,13 +5993,9 @@
         }
 
         // Apply challenges
-        for (let i = 0; i < state.evolutionChallengeList.length; i++) {
-            let challenge = state.evolutionChallengeList[i];
-
-            if (challenge === state.evolutions.Bunker || settings["challenge_" + challenge.id]) {
-                if (!game.global.race[challenge.effectId] || game.global.race[challenge.effectId] !== 1) {
-                    challenge.click()
-                }
+        for (let [id, trait] of Object.entries(challenges)) {
+            if (settings["challenge_" + id] && (!game.global.race[trait] || game.global.race[trait] !== 1)) {
+                evolutions[id].click();
             }
         }
 
@@ -6386,7 +6038,7 @@
             let action = state.evolutionTarget.evolutionTree[i];
             if (action.isUnlocked()) {
                 // Don't click challenges which already active
-                if (action instanceof ChallengeEvolutionAction && action !== state.evolutions.Bunker && game.global.race[action.effectId]) {
+                if (action !== evolutions.bunker && challenges[action.id] && game.global.race[challenges[action.id]]) {
                     continue;
                 }
                 if (action.click()) {
@@ -6399,20 +6051,20 @@
             }
         }
 
-        if (state.evolutions.Mitochondria.count < 1 || resources.RNA.maxQuantity < maxRNA || resources.DNA.maxQuantity < maxDNA) {
-            state.evolutions.Mitochondria.click();
+        if (evolutions.mitochondria.count < 1 || resources.RNA.maxQuantity < maxRNA || resources.DNA.maxQuantity < maxDNA) {
+            evolutions.mitochondria.click();
         }
-        if (state.evolutions.EukaryoticCell.count < 1 || resources.DNA.maxQuantity < maxDNA) {
-            state.evolutions.EukaryoticCell.click();
+        if (evolutions.eukaryotic_cell.count < 1 || resources.DNA.maxQuantity < maxDNA) {
+            evolutions.eukaryotic_cell.click();
         }
         if (resources.RNA.maxQuantity < maxRNA) {
-            state.evolutions.Membrane.click();
+            evolutions.membrane.click();
         }
-        if (state.evolutions.Nucleus.count < 10) {
-            state.evolutions.Nucleus.click();
+        if (evolutions.nucleus.count < 10) {
+            evolutions.nucleus.click();
         }
-        if (state.evolutions.Organelles.count < 10) {
-            state.evolutions.Organelles.click()
+        if (evolutions.organelles.count < 10) {
+            evolutions.organelles.click();
         }
     }
 
@@ -7087,26 +6739,17 @@
             return;
         }
 
-        let farmerIndex = -1;
-        if (isDemonRace() || isHunterRace()) {
-            farmerIndex = jobList.indexOf(state.jobs.Hunter);
-        } else {
-            farmerIndex = jobList.indexOf(state.jobs.Farmer);
-        }
-
-        let lumberjackIndex = -1;
-        if (isDemonRace() && isLumberRace()) {
-            lumberjackIndex = farmerIndex;
-        } else {
-            lumberjackIndex = jobList.indexOf(state.jobs.Lumberjack);
-        }
-
+        let farmerIndex = isDemonRace() || isHunterRace() ? jobList.indexOf(state.jobs.Hunter) : jobList.indexOf(state.jobs.Farmer);
+        let lumberjackIndex = isDemonRace() && isLumberRace() ? farmerIndex : jobList.indexOf(state.jobs.Lumberjack);
         let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
         let crystalMinerIndex = jobList.indexOf(state.jobs.CrystalMiner);
         let scavengerIndex = jobList.indexOf(state.jobs.Scavenger);
 
         let availableEmployees = state.jobManager.totalEmployees;
         let availableCraftsmen = state.jobManager.craftingMax;
+
+        let crewMissing = game.global.civic.crew.max - game.global.civic.crew.workers;
+        let minDefault = crewMissing > 0 ? crewMissing + 1 : 0;
 
         let requiredJobs = [];
         let jobAdjustments = [];
@@ -7117,40 +6760,33 @@
         let minFarmers = 0;
         if (farmerIndex !== -1) {
             let foodRateOfChange = resources.Food.calculateRateOfChange({buy: true});
-            let minFoodStorage = 0.2;
-            let maxFoodStorage = 0.6;
+            let minFoodStorage = resources.Food.maxQuantity * 0.2;
+            let maxFoodStorage = resources.Food.maxQuantity * 0.6;
             if (game.global.race['ravenous']) {
-                minFoodStorage = 0.01;
-                maxFoodStorage = 0.02;
-                foodRateOfChange++; // We don't care about something like -0.01 income...
+                minFoodStorage = resources.Population.currentQuantity;
+                maxFoodStorage = resources.Population.currentQuantity * 2;
+                foodRateOfChange += Math.max(resources.Food.currentQuantity / 3, 0);
             }
             if (jobList.length === 1) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs[farmerIndex] = availableEmployees;
-                log("autoJobs", "Pushing all farmers")
-            } else if (resources.Food.storageRatio < minFoodStorage && foodRateOfChange < 0) {
+                log("autoJobs", "Pushing all farmers");
+            } else if (resources.Food.currentQuantity < minFoodStorage && foodRateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
-                requiredJobs[farmerIndex] = Math.min(jobList[farmerIndex].count + 1, availableEmployees);
-                log("autoJobs", "Adding one farmer")
-            } else if (resources.Food.storageRatio > maxFoodStorage && foodRateOfChange > 0) {
+                requiredJobs[farmerIndex] = jobList[farmerIndex].count + 1, availableEmployees;
+                log("autoJobs", "Adding one farmer");
+            } else if (resources.Food.currentQuantity > maxFoodStorage && foodRateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
-                requiredJobs[farmerIndex] = Math.max(jobList[farmerIndex].count - 1, 0);
-                log("autoJobs", "Removing one farmer")
-            } else if (resources.Food.storageRatio > 0.3 && foodRateOfChange > 100) {
-                // If we have over 30% storage and have > 100 food per second then remove a farmer
-                requiredJobs[farmerIndex] = Math.max(jobList[farmerIndex].count - 1, 0);
-                log("autoJobs", "Removing one farmer - 100 food per second")
-            } else if (isHunterRace() && resources.Food.storageRatio > 0.3 && foodRateOfChange > resources.Population.currentQuantity / 10) {
-                // Carnivore race. We've got some food so put them to work!
-                requiredJobs[farmerIndex] = Math.max(jobList[farmerIndex].count - 1, 0);
-                log("autoJobs", "Removing one farmer - Carnivore")
+                requiredJobs[farmerIndex] = jobList[farmerIndex].count - 1;
+                log("autoJobs", "Removing one farmer");
             } else {
                 // We're good; leave farmers as they are
                 requiredJobs[farmerIndex] = jobList[farmerIndex].count;
-                log("autoJobs", "Leaving current farmers")
+                log("autoJobs", "Leaving current farmers");
             }
 
-            if (requiredJobs[farmerIndex] < 0) { requiredJobs[farmerIndex] = 0; }
+            requiredJobs[farmerIndex] = Math.min(requiredJobs[farmerIndex], availableEmployees);
+            requiredJobs[farmerIndex] = Math.max(requiredJobs[farmerIndex], 0);
 
             jobAdjustments[farmerIndex] = requiredJobs[farmerIndex] - jobList[farmerIndex].count;
             availableEmployees -= requiredJobs[farmerIndex];
@@ -7260,16 +6896,18 @@
                     continue;
                 }
 
-                // We've already done the farmer and crafters
-                if ((j === farmerIndex && j !== lumberjackIndex) || job.isCraftsman()) {
+                // We've already done with crafters
+                if (job.isCraftsman()) {
                     continue;
                 }
 
                 let currentEmployees = requiredJobs[j] ?? 0;
                 availableEmployees += currentEmployees;
 
+                let minEmployees = job.isDefault() ? minDefault : 0;
                 let currentBreakpoint = (job === state.jobs.Hunter && isDemonRace() && isLumberRace()) ? state.jobs.Lumberjack.breakpointEmployees(i) : job.breakpointEmployees(i);
-                let jobsToAssign = Math.min(availableEmployees, Math.max(currentEmployees, currentBreakpoint));
+                let jobsToAssign = Math.min(availableEmployees, Math.max(minEmployees, currentEmployees, currentBreakpoint));
+
                 log("autoJobs", "job " + job._originalId + " currentBreakpoint " + currentBreakpoint + " availableEmployees " + availableEmployees);
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
@@ -7339,7 +6977,13 @@
 
             // Reduce jobs required down to minimum and add them to the available employee pool so that we can split them according to weightings
             splitJobs.forEach(jobDetails => {
-                let minEmployees = (jobDetails.jobIndex === farmerIndex) ? minFarmers : 0;
+                let minEmployees = 0;
+                if (jobDetails.jobIndex === farmerIndex) {
+                    minEmployees = Math.max(minEmployees, minFarmers);
+                }
+                if (jobList[jobDetails.jobIndex].isDefault()) {
+                    minEmployees = Math.max(minEmployees, minDefault);
+                }
                 availableEmployees += requiredJobs[jobDetails.jobIndex] - minEmployees;
                 requiredJobs[jobDetails.jobIndex] = minEmployees;
                 jobAdjustments[jobDetails.jobIndex] = minEmployees - jobList[jobDetails.jobIndex].count;
@@ -7387,20 +7031,21 @@
         }
 
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
-        if (settings.jobSetDefault) {
-            if (state.jobs.QuarryWorker.isUnlocked() && state.jobs.QuarryWorker.count > 0) {
+        // Unless we're already assigning to default, and don't want it to be changed now
+        if (settings.jobSetDefault && minDefault === 0) {
+            if (state.jobs.QuarryWorker.isManaged() && requiredJobs[quarryWorkerIndex] > 0) {
                 state.jobs.QuarryWorker.setAsDefault();
-            } else if (state.jobs.Lumberjack.isUnlocked() && state.jobs.Lumberjack.count > 0) {
+            } else if (state.jobs.Lumberjack.isManaged() && requiredJobs[lumberjackIndex] > 0) {
                 state.jobs.Lumberjack.setAsDefault();
-            } else if (state.jobs.CrystalMiner.isUnlocked() && state.jobs.CrystalMiner.count > 0) {
+            } else if (state.jobs.CrystalMiner.isManaged() && requiredJobs[crystalMinerIndex] > 0) {
                 state.jobs.CrystalMiner.setAsDefault();
-            } else if (state.jobs.Scavenger.isUnlocked() && state.jobs.Scavenger.count > 0) {
+            } else if (state.jobs.Scavenger.isManaged() && requiredJobs[scavengerIndex] > 0) {
                 state.jobs.Scavenger.setAsDefault();
-            } else if (state.jobs.Hunter.isUnlocked() && state.jobs.Hunter.count > 0) {
-                state.jobs.Hunter.setAsDefault();
-            } else if (state.jobs.Farmer.isUnlocked() && state.jobs.Farmer.count > 0) {
+            } else if (state.jobs.Farmer.isManaged()) {
                 state.jobs.Farmer.setAsDefault();
-            } else if (state.jobs.Unemployed.isUnlocked() && state.jobs.Unemployed.count > 0) {
+            } else if (state.jobs.Hunter.isManaged()) {
+                state.jobs.Hunter.setAsDefault();
+            } else if (state.jobs.Unemployed.isManaged()) {
                 state.jobs.Unemployed.setAsDefault();
             }
         }
@@ -7455,7 +7100,9 @@
             maxTaxRate += 20;
         }
 
-        maxMorale += 10 - Math.floor(minTaxRate / 2);
+        if (!game.global.race['banana']) {
+            maxMorale += 10 - Math.floor(minTaxRate / 2);
+        }
 
         if (resources.Money.storageRatio < 0.98) {
             minTaxRate = Math.max(minTaxRate, settings.generalMinimumTaxRate);
@@ -8193,7 +7840,7 @@
     }
 
     function getBlackholeMass() {
-        if (!game.global?.interstellar?.stellar_engine?.exotic) {
+        if (!game.global.interstellar?.stellar_engine?.exotic) {
             return 0;
         }
         return +(game.global.interstellar.stellar_engine.mass + game.global.interstellar.stellar_engine.exotic).toFixed(10);
@@ -8274,7 +7921,7 @@
                 if (maxAllowedUnits <= maxMultiplier) {
                     // Our current max multiplier covers the full amount that we want to sell
                     m.setMultiplier(maxAllowedUnits);
-                    m.sell(resource)
+                    m.sell(resource);
                 } else {
                     // Our current max multiplier doesn't cover the full amount that we want to sell. Sell up to 5 batches.
                     let counter = Math.min(5, Math.floor(maxAllowedUnits / maxMultiplier)); // Allow up to 5 sales per script loop
@@ -8380,28 +8027,7 @@
 
         let tradeDeltas = poly.galaxyOffers.map((trade, index) => tradeAdjustments[trade.buy.res] - freighter.currentProduction(index));
 
-        // Workaround for reassign bug - vue doesn't update cur trades, so make sure we have at least one free trade before bulk reassign, and then we'll use that one free route to assign as many routes as we need, same bug will allow us to do that
-        // TODO: Remove me once it's fixed in game
-        if (game.global.galaxy.trade.cur === game.global.galaxy.trade.max) {
-            let needDecrease = false;
-            let needIncrease = false;
-            tradeDeltas.forEach(value => {
-                if (value < 0) { needDecrease = true; }
-                if (value > 0) { needIncrease = true; }
-            });
-            if (needDecrease && needIncrease) {
-                let routeRemoved = false;
-                tradeDeltas.forEach((value, index) => {
-                    if (!routeRemoved && value < 0) {
-                      routeRemoved = true;
-                      tradeDeltas[index] = -1;
-                    } else {
-                      tradeDeltas[index] = 0;
-                    }
-                });
-            }
-        }
-
+        // TODO: Add freighter.zeroProduction() to save some clicks.
         tradeDeltas.forEach((value, index) => value < 0 && freighter.decreaseProduction(index, value * -1));
         tradeDeltas.forEach((value, index) => value > 0 && freighter.increaseProduction(index, value));
     }
@@ -8522,7 +8148,13 @@
         }
 
         let targetsList = [...state.queuedTargets, ...state.triggerTargets];
-        let buildingList = state.buildingManager.managedPriorityList();
+        let buildingList = [];
+        if (settings.autoBuild) {
+            buildingList = buildingList.concat(state.buildingManager.managedPriorityList());
+        }
+        if (settings.autoARPA) {
+            buildingList = buildingList.concat(state.projectManager.managedPriorityList());
+        }
 
         // Sort array so we'll have prioritized buildings on top. We'll need that below to avoid deathlocks, when building 1 waits for building 2, and building 2 waits for building 3. That's something we don't want to happen when building 1 and building 3 doesn't conflicts with each other.
         buildingList.sort((a, b) => b.weighting - a.weighting);
@@ -8534,14 +8166,14 @@
             let building = buildingList[i];
 
             // Only go further if it's affordable building, and not current target
-            if (!game.checkAffordable(building.definition, false) || targetsList.includes(building)) {
+            if (!checkAffordable(building, false) || targetsList.includes(building)) {
                 continue;
             }
 
             // Check queue and trigger conflicts
             let conflict = getCostConflict(building);
             if (conflict) {
-                building.extraDescription += `Conflicts with ${conflict.target.title} for ${conflict.res.name} (${conflict.cause})`;
+                building.extraDescription += `Conflicts with ${conflict.target.title} for ${conflict.res.name} (${conflict.cause})<br>`;
                 continue;
             }
 
@@ -8550,13 +8182,13 @@
               for (let j = 0; j < buildingList.length; j++) {
                 let other = buildingList[j];
 
-                // Buildings sorted by weighhting, so once we reached something with lower weighting - all remaining also lower, and we don't care about them
+                // Buildings sorted by weighting, so once we reached something with lower weighting - all remaining also lower, and we don't care about them
                 if (building.weighting >= other.weighting) {
                     break;
                 }
                 // And we don't want to process clickable buildings - all buildings with highter weighting should already been proccessed.
                 // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                if (game.checkAffordable(other.definition, false)){
+                if (checkAffordable(other, false)){
                     continue;
                 }
                 let weightDiffRatio = other.weighting / building.weighting;
@@ -8630,7 +8262,6 @@
                 if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
                     removePoppers();
                 }
-                break;
             }
         }
     }
@@ -8699,7 +8330,7 @@
             }
 
             // If user wants to stabilise blackhole when under minimum solar mass then do it
-            if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || getBlackholeMass() >= settings.prestigeWhiteholeMinMass)) {
+            if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || (settings.prestigeType === "whitehole" && getBlackholeMass() < settings.prestigeWhiteholeMinMass))) {
                 continue;
             }
 
@@ -8735,91 +8366,11 @@
 
     //#endregion Auto Research
 
-    //#region Auto ARPA
-
-    function autoArpa() {
-        let projectList = state.projectManager.managedPriorityList();
-
-        if (settings.prestigeMADIgnoreArpa && !game.global.race['cataclysm'] && !haveTech("mad")) {
-            return;
-        }
-
-        // Loop through our managed projects
-        for (let i = 0; i < projectList.length; i++) {
-            let project = projectList[i];
-            if (!getCostConflict(project)) {
-                log("autoARPA", "standard build " + project.id)
-                project.tryBuild();
-            }
-        }
-
-        // ONLY IF settings allow then...
-        // Loop through our unmanaged projects and build if storage if full for all resources except money
-        if (!settings.arpaBuildIfStorageFull) {
-            return;
-        }
-
-        projectList = state.projectManager.priorityList;
-
-        projectsLoop:
-        for (let i = 0; i < projectList.length; i++) {
-            let project = projectList[i];
-
-            // Don't build disabled syphons unless we're going for Vacuum Collapse
-            if (!project.isUnlocked() || getCostConflict(project) || (project === state.projects.ManaSyphon && settings.prestigeType !== "vacuum")) {
-                continue projectsLoop;
-            }
-
-            for (let j = 0; j < project.resourceRequirements.length; j++) {
-                let requirement = project.resourceRequirements[j];
-
-                log("autoARPA", "project " + project.id + ", resource " + requirement.resource.id + ", one percent, " + requirement.quantity);
-
-                // Don't check if money is full. We can build if we are above our minimum money setting (which is checked in tryBuild)
-                // And we also don't care about knowledge, as won't have it capped with auto assemble
-                if (requirement.resource === resources.Money || requirement.resource === resources.Knowledge) {
-                    log("autoARPA", "continue: resource is money");
-                    continue;
-                }
-
-                if (requirement.resource.currentQuantity < requirement.quantity) {
-                    log("autoARPA", "break: current < requirement");
-                    continue projectsLoop;
-                }
-
-                // Don't use all Deuterium on redirect, we need it for upkeep
-                if (requirement.resource === resources.Deuterium && requirement.resource.currentQuantity - requirement.quantity < 1000) {
-                    log("autoARPA", "break: Deuterium current - requirement < 1000");
-                    continue projectsLoop;
-                }
-
-                if (!requirement.resource.isCraftable() && requirement.resource.storageRatio <= 0.98) {
-                    log("autoARPA", "break: storage < 98%");
-                    continue projectsLoop;
-                }
-
-                if (requirement.quantity / requirement.resource.currentQuantity > (settings.arpaBuildIfStorageFullResourceMaxPercent / 100)) {
-                    log("autoARPA", "break: storage ratio < setting");
-                    continue projectsLoop;
-                }
-
-                if (requirement.resource.isCraftable()) {
-                    let amountToKeep = (settings.arpaBuildIfStorageFullCraftableMin === -1 ? requirement.resource.storageRequired : settings.arpaBuildIfStorageFullCraftableMin);
-                    if (requirement.resource.currentQuantity - requirement.quantity < amountToKeep){
-                        log("autoARPA", "break: craftables < setting");
-                        continue projectsLoop;
-                    }
-                }
-            }
-
-            log("autoARPA", "full resources build " + project.id)
-            project.tryBuild();
-        }
-    }
-
-    //#endregion Auto ARPA
-
     //#region Auto Power
+
+    function getCitadelConsumption(amount) {
+        return (30 + (amount - 1) * 2.5) * amount * (game.global.race['emfield'] ? 1.5 : 1)
+    }
 
     function autoPower() {
         // Only start doing this once power becomes available. Isn't useful before then
@@ -8881,14 +8432,14 @@
 
             if (building === state.spaceBuildings.NeutronCitadel) {
                 while (maxStateOn > 0) {
-                    if (availablePower >= (30 + (maxStateOn - 1) * 2.5) * maxStateOn * (game.global.race['emfield'] ? 1.5 : 1)) {
+                    if (availablePower >= getCitadelConsumption(maxStateOn)) {
                         break;
                     } else {
                         maxStateOn--;
                     }
                 }
             } else if (building.powered > 0) {
-                maxStateOn = Math.min(maxStateOn, availablePower / building.powered)
+                maxStateOn = Math.min(maxStateOn, availablePower / building.powered);
             }
 
             // Once we unlocked Embassy - we don't need scouts and corvettes until we'll have piracy. Let's freeup support for more Bolognium ships
@@ -8903,7 +8454,7 @@
 
             // Ascension Trigger info
             if (building === state.spaceBuildings.SiriusAscensionTrigger && availablePower < building.powered) {
-                building.extraDescription += `Missing ${Math.ceil(building.powered - availablePower)} MW to power on`;
+                building.extraDescription = `Missing ${Math.ceil(building.powered - availablePower)} MW to power on<br>${building.extraDescription}`;
             }
 
             // Max attractors configured by autoHell
@@ -8977,7 +8528,13 @@
             }
 
             building.tryAdjustState(maxStateOn - building.stateOnCount);
-            availablePower -= building.powered * maxStateOn;
+
+            if (building === state.spaceBuildings.NeutronCitadel) {
+                building.extraDescription = `Next level will increase total consumption by ${getCitadelConsumption(maxStateOn+1) - getCitadelConsumption(maxStateOn)} MW<br>${building.extraDescription}`;
+                availablePower -= getCitadelConsumption(maxStateOn);
+            } else {
+                availablePower -= building.powered * maxStateOn;
+            }
         }
 
         if (manageTransport && resources.Lake_Support.rateOfChange > 0) {
@@ -9012,7 +8569,7 @@
             if (!port.autoBuildEnabled || port.count >= port.autoMax || !base.autoBuildEnabled || base.count >= base.autoMax) {
                 bestSupplies = resources.Supply.maxQuantity;
             }
-            purifier.extraDescription += `Supported Supplies: ${Math.floor(bestSupplies)}`;
+            purifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${purifier.extraDescription}`;
 
 
             if (settings.autoBuild && ((purifier.autoBuildEnabled && purifier.count < purifier.autoMax && bestSupplies >= resourceCost(purifier, resources.Supply)) ||
@@ -9353,24 +8910,28 @@
         let maxTradeRoutes = m.getMaxTradeRoutes();
         let tradeRoutesUsed = 0;
         let currentMoneyPerSecond = resources.Money.rateOfChange;
-        let requiredTradeRoutes = [];
+        let requiredTradeRoutes = new Array(tradableResources.length).fill(0);
         let adjustmentTradeRoutes = [];
         let resourcesToTrade = [];
-
+        let importRouteCap = game.global.tech.currency >= 6 ? 1000000 : (game.global.tech.currency >= 4 ? 100 : 25);
+        let exportRouteCap = game.global.race['banana'] ? (game.global.tech.currency >= 6 ? 1000000 : (game.global.tech.currency >= 4 ? 25 : 10)) : importRouteCap;
         let minimumAllowedMoneyPerSecond = Math.min(resources.Money.maxQuantity - resources.Money.currentQuantity, Math.max(settings.tradeRouteMinimumMoneyPerSecond, settings.tradeRouteMinimumMoneyPercentage / 100 * resources.Money.rateOfChange));
 
         // Fill trade routes with selling
         for (let i = 0; i < tradableResources.length; i++) {
             let resource = tradableResources[i];
-            requiredTradeRoutes[i] = 0;
             if (tradeRoutesUsed < maxTradeRoutes && resource.autoTradeSellEnabled && resource.storageRatio > 0.99){
                 let freeRoutes = maxTradeRoutes - tradeRoutesUsed;
                 let routesToLimit = Math.floor((resource.rateOfChange - resource.autoTradeSellMinPerSecond) / resource.tradeRouteQuantity);
-                let routesToAssign = Math.min(freeRoutes, routesToLimit);
+                let routesToAssign = Math.min(freeRoutes, routesToLimit, exportRouteCap);
                 if (routesToAssign > 0){
                     tradeRoutesUsed += routesToAssign;
                     requiredTradeRoutes[i] -= routesToAssign;
                     currentMoneyPerSecond += resource.currentTradeRouteSellPrice * routesToAssign;
+                    // We can export only single resource in banana
+                    if (game.global.race['banana']) {
+                        break;
+                    }
                 }
             }
         }
@@ -9386,7 +8947,6 @@
                 resourcesToTrade.push({
                     resource: resource,
                     requiredTradeRoutes: routes,
-                    completed: false,
                     index: tradableResources.findIndex(tradeable => tradeable.id === resource.id),
                 });
             }
@@ -9404,91 +8964,73 @@
             for (let i = 0; i < tradableResources.length; i++) {
                 let resource = tradableResources[i];
                 if (resource.autoTradeBuyEnabled && resource.autoTradeBuyRoutes > 0) {
-                    resourcesToTrade.push( {
+                    resourcesToTrade.push({
                         resource: resource,
                         requiredTradeRoutes: resource.autoTradeBuyRoutes,
-                        completed: false,
                         index: tradableResources.findIndex(tradeable => tradeable.id === resource.id),
-                    } );
+                    });
                 }
             }
         }
 
-        while (resourcesToTrade.some(resource => !resource.completed)) {
-            for (let i = 0; i < resourcesToTrade.length; i++) {
-                const resourceToTrade = resourcesToTrade[i];
-                //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " testing...")
+        while (resourcesToTrade.length > 0) {
+            for (let i = resourcesToTrade.length - 1; i >= 0; i--) {
+                let deal = resourcesToTrade[i];
 
-                // The resources is not currenlty unlocked or we've done all we can or we already have max storage so don't trade for more of it
-                if (resourceToTrade.index === -1 || resourceToTrade.completed || resourceToTrade.resource.storageRatio > 0.99) {
-                    //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 1 - " + resourceToTrade.index)
-                    resourceToTrade.completed = true;
+                // We're buying enough resources now or we don't have enough money to buy more anyway
+                if (deal.index === -1
+                        || deal.resource.storageRatio > 0.99
+                        || requiredTradeRoutes[deal.index] >= importRouteCap
+                        || deal.requiredTradeRoutes === requiredTradeRoutes[deal.index]
+                        || currentMoneyPerSecond - deal.resource.currentTradeRouteBuyPrice < minimumAllowedMoneyPerSecond) {
+                    resourcesToTrade.splice(i, 1);
                     continue;
                 }
 
                 // If we have free trade routes and we want to trade for more resources and we can afford it then just do it
-                if (!resourceToTrade.completed
-                            && tradeRoutesUsed < maxTradeRoutes
-                            && resourceToTrade.requiredTradeRoutes > requiredTradeRoutes[resourceToTrade.index]
-                            && currentMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > minimumAllowedMoneyPerSecond) {
-                    currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
+                if (tradeRoutesUsed < maxTradeRoutes
+                        && deal.requiredTradeRoutes > requiredTradeRoutes[deal.index]
+                        && currentMoneyPerSecond - deal.resource.currentTradeRouteBuyPrice > minimumAllowedMoneyPerSecond) {
+                    currentMoneyPerSecond -= deal.resource.currentTradeRouteBuyPrice;
                     tradeRoutesUsed++;
-                    requiredTradeRoutes[resourceToTrade.index]++;
-                    //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " adding trade route - " + resourceToTrade.index)
-                    continue;
-                }
-
-                // We're buying enough resources now or we don't have enough money to buy more anyway
-                if (resourceToTrade.requiredTradeRoutes === requiredTradeRoutes[resourceToTrade.index]
-                            || currentMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice < minimumAllowedMoneyPerSecond) {
-                    //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 2")
-                    resourceToTrade.completed = true;
+                    requiredTradeRoutes[deal.index]++;
                     continue;
                 }
 
                 // We're out of trade routes because we're selling so much. Remove them one by one until we can afford to buy again
-                if (resourceToTrade.requiredTradeRoutes > requiredTradeRoutes[resourceToTrade.index]) {
+                if (deal.requiredTradeRoutes > requiredTradeRoutes[deal.index]) {
                     let addedTradeRoute = false;
 
-                    for (let i = tradableResources.length - 1; i >= 0; i--) {
-                        if (addedTradeRoute) {
-                            break;
-                        }
-
-                        const resource = tradableResources[i];
-                        let currentRequired = requiredTradeRoutes[i];
+                    removeLoop:
+                    for (let j = tradableResources.length - 1; j >= 0; j--) {
+                        let resource = tradableResources[j];
+                        let currentRequired = requiredTradeRoutes[j];
                         let reducedMoneyPerSecond = 0;
 
                         // We can't remove it if we're not selling it or if we are looking at the same resource
-                        if (currentRequired >= 0 || resourceToTrade.resource === resource) {
+                        if (currentRequired >= 0 || deal.resource === resource) {
                             continue;
                         }
 
-                        while (currentRequired < 0 && resourceToTrade.requiredTradeRoutes > requiredTradeRoutes[resourceToTrade.index]) {
+                        while (currentRequired < 0 && deal.requiredTradeRoutes > requiredTradeRoutes[deal.index]) {
                             currentRequired++;
                             reducedMoneyPerSecond += resource.currentTradeRouteSellPrice;
 
-                            if (currentMoneyPerSecond - reducedMoneyPerSecond - resourceToTrade.resource.currentTradeRouteBuyPrice > minimumAllowedMoneyPerSecond) {
+                            if (currentMoneyPerSecond - reducedMoneyPerSecond - deal.resource.currentTradeRouteBuyPrice > minimumAllowedMoneyPerSecond) {
                                 currentMoneyPerSecond -= reducedMoneyPerSecond;
-                                currentMoneyPerSecond -= resourceToTrade.resource.currentTradeRouteBuyPrice;
-                                //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " current money per second: " + currentMoneyPerSecond);
-                                requiredTradeRoutes[resourceToTrade.index]++;
-                                requiredTradeRoutes[i] = currentRequired;
+                                currentMoneyPerSecond -= deal.resource.currentTradeRouteBuyPrice;
+                                tradeRoutesUsed -= currentRequired - requiredTradeRoutes[j] - 1;
+                                requiredTradeRoutes[deal.index]++;
+                                requiredTradeRoutes[j] = currentRequired;
                                 addedTradeRoute = true;
-
-                                if (requiredTradeRoutes[resourceToTrade.index] === resourceToTrade.requiredTradeRoutes) {
-                                    //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 3")
-                                    resourceToTrade.completed = true;
-                                }
-                                break;
+                                break removeLoop;
                             }
                         }
                     }
 
                     // We couldn't adjust enough trades to allow us to afford this resource
                     if (!addedTradeRoute) {
-                        //console.log(state.loopCounter + " " + resourceToTrade.resource.id + " completed 4")
-                        resourceToTrade.completed = true;
+                        resourcesToTrade.splice(i, 1);
                     }
                 }
             }
@@ -9502,9 +9044,12 @@
 
         // Adjust our trade routes - always adjust towards zero first to free up trade routes
         for (let i = 0; i < tradableResources.length; i++) {
-            const resource = tradableResources[i];
+            let resource = tradableResources[i];
 
-            if (adjustmentTradeRoutes[i] > 0 && resource.currentTradeRoutes < 0) {
+            if (requiredTradeRoutes[i] === 0 && resource.currentTradeRoutes !== 0) {
+                m.zeroTradeRoutes(resource);
+                adjustmentTradeRoutes[i] = 0;
+            } else if (adjustmentTradeRoutes[i] > 0 && resource.currentTradeRoutes < 0) {
                 m.addTradeRoutes(resource, adjustmentTradeRoutes[i]);
                 adjustmentTradeRoutes[i] = 0;
             } else if (adjustmentTradeRoutes[i] < 0 && resource.currentTradeRoutes > 0) {
@@ -9515,7 +9060,7 @@
 
         // Adjust our trade routes - we've adjusted towards zero, now adjust the rest
         for (let i = 0; i < tradableResources.length; i++) {
-            const resource = tradableResources[i];
+            let resource = tradableResources[i];
 
             if (adjustmentTradeRoutes[i] > 0) {
                 m.addTradeRoutes(resource, adjustmentTradeRoutes[i]);
@@ -9850,7 +9395,7 @@
 
         // Same for projects
         state.projectManager.priorityList.forEach(project => {
-            if (project.isUnlocked() && (project.autoBuildEnabled || settings.arpaBuildIfStorageFull)) {
+            if (project.isUnlocked() && project.autoBuildEnabled) {
                 project.resourceRequirements.forEach(requirement => {
                     requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
                 });
@@ -9882,7 +9427,7 @@
 
         // Active triggers
         if (settings.triggerRequest) {
-            prioritizedTasks = prioritizedTasks.concat(state.triggerTargets)
+            prioritizedTasks = prioritizedTasks.concat(state.triggerTargets);
         }
 
         // Unlocked and affordable techs, and but only if we don't have anything more important
@@ -9946,7 +9491,7 @@
         if (game.global.queue.display) {
             for (let i = 0; i < game.global.queue.queue.length; i++) {
                 let id = game.global.queue.queue[i].id;
-                let obj = buildingIds[id] || apraIds[id];
+                let obj = buildingIds[id] || arpaIds[id];
                 if (obj) {
                     obj.resourceRequirements.forEach(requirement => {
                         requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
@@ -9986,6 +9531,9 @@
             if (trigger.actionType === "build" && buildingIds[trigger.actionId]) {
                 state.triggerTargets.push(buildingIds[trigger.actionId]);
             }
+            if (trigger.actionType === "arpa" && arpaIds[trigger.actionId]) {
+                state.triggerTargets.push(arpaIds[trigger.actionId]);
+            }
         }
     }
 
@@ -10000,7 +9548,7 @@
                 if (settings.prestigeType === "ascension" && newRace.isPillarUnlocked(stars)) {
                     for (let id in races) {
                         let race = races[id];
-                        if (race.evolutionCondition() && !race.isPillarUnlocked(stars)) {
+                        if (race.isConditionMet() && !race.isPillarUnlocked(stars)) {
                             state.log.logWarning(loggingTypes.special, `${newRace.name} pillar already infused, soft resetting and trying again.`);
                             needReset = true;
                             break;
@@ -10014,7 +9562,7 @@
                 if (settings.prestigeType === "bioseed" && newRace.isGreatnessAchievementUnlocked(stars)) {
                     for (let id in races) {
                         let race = races[id];
-                        if (race.evolutionCondition() && !race.isGreatnessAchievementUnlocked(stars)) {
+                        if (race.isConditionMet() && !race.isGreatnessAchievementUnlocked(stars)) {
                             state.log.logWarning(loggingTypes.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`);
                             needReset = true;
                             break;
@@ -10028,7 +9576,7 @@
                 if (settings.prestigeType !== "bioseed" && settings.prestigeType !== "ascension" && newRace.isMadAchievementUnlocked(stars)) {
                     for (let id in races) {
                         let race = races[id];
-                        if (race.evolutionCondition() && !race.isMadAchievementUnlocked(stars)) {
+                        if (race.isConditionMet() && !race.isMadAchievementUnlocked(stars)) {
                             state.log.logWarning(loggingTypes.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`);
                             needReset = true;
                             break;
@@ -10039,7 +9587,7 @@
                     }
                 }
 
-            } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].evolutionCondition()) {
+            } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].isConditionMet()) {
                 state.log.logWarning(loggingTypes.special, `Wrong race, soft resetting and trying again.`);
                 needReset = true;
             }
@@ -10047,7 +9595,7 @@
             if (needReset) {
                 // Let's double check it's actually *soft* reset
                 let resetButton = document.querySelector(".reset .button:not(.right)");
-                if (resetButton.querySelector("span").innerText === game.loc("reset_soft")) {
+                if (resetButton.querySelector(".tooltip-trigger").innerText === game.loc("reset_soft")) {
                     if (settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
                         addEvolutionSetting();
                         settings.evolutionQueue.unshift(settings.evolutionQueue.pop());
@@ -10088,9 +9636,10 @@
 
         updateScriptData();
 
-        state.projectManager.updateResourceRequirements();
         state.buildingManager.updateResourceRequirements();
+        state.projectManager.updateResourceRequirements();
         state.buildingManager.updateWeighting();
+        state.projectManager.updateWeighting();
 
         calculateRequiredStorages();
         updatePriorityTargets();
@@ -10115,11 +9664,11 @@
         // This comes from the "const towerSize = (function(){" in portal.js in the game code
         let towerSize = 1000;
         if (game.global.hasOwnProperty('pillars')){
-            Object.keys(game.global.pillars).forEach(pillar => {
+            for (let pillar in game.global.pillars) {
                 if (game.global.pillars[pillar]){
                     towerSize -= 12;
                 }
-            });
+            }
         }
 
         state.spaceBuildings.PortalEastTower.gameMax = towerSize;
@@ -10128,7 +9677,6 @@
 
     function verifyGameActions() {
             // Check that actions that exist in game also exist in our script
-            verifyGameActionsExist(game.actions.evolution, state.evolutions, false);
             verifyGameActionsExist(game.actions.city, state.cityBuildings, false);
             verifyGameActionsExist(game.actions.space, state.spaceBuildings, true);
             verifyGameActionsExist(game.actions.interstellar, state.spaceBuildings, true);
@@ -10138,17 +9686,17 @@
 
     function verifyGameActionsExist(gameObject, scriptObject, hasSubLevels) {
         let scriptKeys = Object.keys(scriptObject);
-        Object.keys(gameObject).forEach(gameActionKey => {
+        for (let gameActionKey in gameObject) {
             if (!hasSubLevels) {
                 verifyGameActionExists(scriptKeys, scriptObject, gameActionKey, gameObject);
             } else {
                 // This object has sub levels - iterate through them
                 let gameSubObject = gameObject[gameActionKey];
-                Object.keys(gameSubObject).forEach(gameSubActionKey => {
+                for (let gameSubActionKey in gameSubObject) {
                     verifyGameActionExists(scriptKeys, scriptObject, gameSubActionKey, gameSubObject);
-                });
+                }
             }
-        });
+        }
     }
 
     function verifyGameActionExists(scriptKeys, scriptObject, gameActionKey, gameObject) {
@@ -10455,17 +10003,19 @@
     var resourcesBySupplyValue = [];
 
     function initialiseScript() {
+        // Init researches
         for (let [key, action] of Object.entries(game.actions.tech)) {
             techIds[action.id] = new Technology(key);
         }
 
-        // And for buildings popups
+        // Init lookup table for buildings
         for (let building of [...Object.values(state.cityBuildings), ...Object.values(state.spaceBuildings)]){
-            buildingIds[building.settingId] = building;
+            buildingIds[building._vueBinding] = building;
         }
 
+        // ...and projects
         for (let project of Object.values(state.projects)){
-            apraIds[project._vueBinding] = project;
+            arpaIds[project._vueBinding] = project;
         }
 
         updateStateFromSettings();
@@ -10507,17 +10057,23 @@
     }
 
     function addTooltip(mutations) {
-        if (!settings.autoBuild) {
+        if (!settings.masterScriptToggle) {
             return;
         }
         mutations.forEach(mutation => {
             mutation.addedNodes.forEach(node => {
-                // "pop[id]" for normal buildings, "popq[id][order]" for queue
-                node.style.pointerEvents = "none";
-                let id = node.id.match(/\d$/) ? node.id.substr(4, node.id.length-5) : node.id.substr(3);
-                let building = buildingIds[id];
-                if (building && (building.autoBuildEnabled || building.weighting > 0)) {
-                    node.innerHTML += `<div>${building.extraDescription}</div>`;
+                let obj = null;
+                if (node.id.match(/^poppopArpa/)) { // "poppopArpa[id-with-no-tab]" for projects
+                    obj = arpaIds["arpa" + node.id.substr(10)];
+                } else if (node.id.match(/\d$/)) { // "popq[id][order]" for buildings in queue
+                    let id = node.id.substr(4, node.id.length-5);
+                    obj = buildingIds[id] || arpaIds[id];
+                } else { // "pop[id]" for normal buildings
+                    obj = buildingIds[node.id.substr(3)];
+                }
+                if (obj && obj.extraDescription !== "") {
+                    node.style.pointerEvents = "none";
+                    node.innerHTML += `<div>${obj.extraDescription}</div>`;
                 }
             });
         });
@@ -10598,10 +10154,7 @@
         if (settings.autoPower) {
             autoPower(); // Underpowering can invalidate count of powered buildings, and whatrever they're doing will be gone
         }
-        if (settings.autoARPA) {
-            autoArpa(); // Invalidates progress of constructed projects
-        }
-        if (settings.autoBuild) {
+        if (settings.autoBuild || settings.autoARPA) {
             autoBuild(); // Invalidates count of constructed buildings
         }
         if (settings.autoAssembleGene) {
@@ -10925,7 +10478,7 @@
                 if (saveState && typeof saveState === "object" && (saveState.scriptName === "TMVictor" || $.isEmptyObject(saveState))) {
                     console.log("Importing script settings");
                     settings = saveState;
-                    resetTriggerState()
+                    resetTriggerState();
                     resetJobState();
                     resetMarketState();
                     resetStorageState();
@@ -10953,7 +10506,7 @@
 
         $('#script_settingsExport').on("click", function() {
             //$('#importExport').val(LZString.compressToBase64(JSON.stringify(global)));
-            console.log("Exporting script settings")
+            console.log("Exporting script settings");
             $('#importExport').val(JSON.stringify(settings));
             $('#importExport').select();
             document.execCommand('copy');
@@ -11042,7 +10595,7 @@
      * @param {string} heading
      */
     function addStandardHeading(node, heading) {
-        node.append('<div style="margin-top: 5px; width: 600px;"><span class="has-text-danger" style="margin-left: 10px;">' + heading + '</span></div>')
+        node.append('<div style="margin-top: 5px; width: 600px;"><span class="has-text-danger" style="margin-left: 10px;">' + heading + '</span></div>');
     }
 
     /**
@@ -11052,7 +10605,7 @@
      * @param {string} hintText
      */
     function addStandardSectionSettingsToggle(node, settingName, labelText, hintText) {
-        node.append('<div style="margin-top: 5px; width: 500px; display: inline-block;"><label title="' + hintText + '" tabindex="0" class="switch" id="script_' + settingName + '"><input type="checkbox" value=false> <span class="check"></span><span style="margin-left: 10px;">' + labelText + '</span></label></div>')
+        node.append('<div style="margin-top: 5px; width: 500px; display: inline-block;"><label title="' + hintText + '" tabindex="0" class="switch" id="script_' + settingName + '"><input type="checkbox" value=false> <span class="check"></span><span style="margin-left: 10px;">' + labelText + '</span></label></div>');
 
         let toggleNode = $('#script_' + settingName + ' > input');
         if (settings[settingName]) {
@@ -11091,7 +10644,7 @@
      * @param {string} headerText
      */
     function addStandardSectionHeader1(node, headerText) {
-        node.append(`<div style="margin: 4px; width: 100%; display: inline-block; text-align: left;"><span class="has-text-success" style="font-weight: bold;">${headerText}</span></div>`)
+        node.append(`<div style="margin: 4px; width: 100%; display: inline-block; text-align: left;"><span class="has-text-success" style="font-weight: bold;">${headerText}</span></div>`);
     }
 
     /**
@@ -11099,7 +10652,7 @@
      * @param {string} headerText
      */
     function addStandardSectionHeader2(node, headerText) {
-        node.append(`<div style="margin: 2px; width: 90%; display: inline-block; text-align: left;"><span class="has-text-caution">${headerText}</span></div>`)
+        node.append(`<div style="margin: 2px; width: 90%; display: inline-block; text-align: left;"><span class="has-text-caution">${headerText}</span></div>`);
     }
 
     /**
@@ -11114,7 +10667,7 @@
         let mainSettingName = "script_" + settingName;
         let computedSettingName = "script_" + secondaryPrefix + settingName;
         let marginLeft = indent === 0 ? "" : `margin-left: ${indent * 30}px; `;
-        node.append(`<div style="${marginLeft}margin-top: 5px; width: 80%; display: inline-block; text-align: left;"><label title="${hintText}" tabindex="0" class="switch" id="${computedSettingName}"><input type="checkbox"> <span class="check"></span><span style="margin-left: 10px;">${labelText}</span></label></div>`)
+        node.append(`<div style="${marginLeft}margin-top: 5px; width: 80%; display: inline-block; text-align: left;"><label title="${hintText}" tabindex="0" class="switch" id="${computedSettingName}"><input type="checkbox"> <span class="check"></span><span style="margin-left: 10px;">${labelText}</span></label></div>`);
 
         let toggleNode = $(`#${computedSettingName} > input`);
         if (settings[settingName]) {
@@ -11327,8 +10880,8 @@
         // Whitehole
         addStandardSectionHeader1(prestigeHeaderNode, "Whitehole");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeSaveGems", "Save up Soul Gems for reset", "Save up enough Soul Gems for reset, only excess gems will be used. This option does not affect triggers.");
-        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeMinMass", "Required minimum solar mass", "Required minimum solar mass of blackhole before prestiging");
-        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole until minimum solar mass reached", "Stabilises the blackhole with exotic materials until minimum solar mass is reached");
+        addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeMinMass", "Minimum solar mass for reset", "Required minimum solar mass of blackhole before prestiging");
+        addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole", "Stabilises the blackhole with exotic materials, during whitehole run won't go beyond minimum mass set above");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectEnabled", "Enable mass ejector", "If not enabled the mass ejector will not be managed by the script");
         addStandardSectionSettingsToggle2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until 'Eject everything' option is activated.");
         addStandardSectionSettingsNumber2(secondaryPrefix, prestigeHeaderNode, 0, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate, only useful during Decay Challenge");
@@ -11381,10 +10934,10 @@
 
         let selectNode = $('#' + computedSelectId);
 
-        Object.keys(governmentTypes).forEach(governmentKey => {
+        for (let governmentKey in governmentTypes) {
             // Anarchy is a starting government but not one that a player can choose
             if (governmentKey === governmentTypes.anarchy.id) {
-                return;
+                continue;
             }
 
             let governmentType = governmentTypes[governmentKey];
@@ -11392,7 +10945,7 @@
             let selected = settings[settingName] === governmentType.id ? 'selected="selected"' : "";
             let optionNode = $(`<option value="${governmentType.id}" ${selected}>${game.loc("govern_" + governmentType.id)}</option>`);
             selectNode.append(optionNode);
-        });
+        }
 
         selectNode.on('change', function() {
             settings[settingName] = this.value;
@@ -11479,8 +11032,8 @@
         selectNode.val(settings.userEvolutionTarget);
 
         let race = races[settings.userEvolutionTarget];
-        if (race && race.evolutionConditionText !== '') {
-            $("#script_race_warning").html(`<span class="${race.evolutionCondition() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.evolutionConditionText}. This condition is currently ${race.evolutionCondition() ? "met" : "not met"}.</span>`);
+        if (race && race.getCondition() !== '') {
+            $("#script_race_warning").html(`<span class="${race.isConditionMet() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.getCondition()}. This condition is currently ${race.isConditionMet() ? "met" : "not met"}.</span>`);
         }
 
         selectNode.on('change', function() {
@@ -11489,8 +11042,8 @@
             updateSettingsFromState();
 
             let race = races[settings.userEvolutionTarget];
-            if (race && race.evolutionConditionText !== '') {
-                $("#script_race_warning").html(`<span class="${race.evolutionCondition() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.evolutionConditionText}. This condition is currently ${race.evolutionCondition() ? "met" : "not met"}.</span>`);
+            if (race && race.getCondition() !== '') {
+                $("#script_race_warning").html(`<span class="${race.isConditionMet() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.getCondition()}. This condition is currently ${race.isConditionMet() ? "met" : "not met"}.</span>`);
             } else {
                 $("#script_race_warning").empty();
             }
@@ -11500,18 +11053,11 @@
         });
 
         addStandardSectionSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Useless after getting mass exintion perk.");
+
         // Challenges
-        addStandardSectionSettingsToggle(currentNode, "challenge_plasmid", "No Plasmids", "Challenge mode - no plasmids");
-        addStandardSectionSettingsToggle(currentNode, "challenge_mastery", "Weak Mastery", "Challenge mode - weak mastery");
-        addStandardSectionSettingsToggle(currentNode, "challenge_trade", "No Trade", "Challenge mode - no trade");
-        addStandardSectionSettingsToggle(currentNode, "challenge_craft", "No Manual Crafting", "Challenge mode - no manual crafting");
-        addStandardSectionSettingsToggle(currentNode, "challenge_crispr", "Reduced CRISPER", "Challenge mode - reduced CRISPER effects");
-        addStandardSectionSettingsToggle(currentNode, "challenge_joyless", "Joyless", "Challenge mode - joyless");
-        addStandardSectionSettingsToggle(currentNode, "challenge_decay", "Decay", "Challenge mode - decay");
-        addStandardSectionSettingsToggle(currentNode, "challenge_steelen", "Steelen", "Challenge mode - steelen");
-        addStandardSectionSettingsToggle(currentNode, "challenge_emfield", "EM Field", "Challenge mode - electromagnetic field disruption");
-        addStandardSectionSettingsToggle(currentNode, "challenge_cataclysm", "Cataclysm", "Challenge mode - shattered world (no homeworld)");
-        addStandardSectionSettingsToggle(currentNode, "challenge_junker", "Genetic Dead End", "Challenge mode - genetic dead end (Valdi)");
+        for (let id in challenges) {
+            addStandardSectionSettingsToggle(currentNode, `challenge_${id}`, game.loc(`evo_challenge_${id}`), game.loc(`evo_challenge_${id}_effect`));
+        }
 
         addStandardHeading(currentNode, "Evolution Queue");
         addStandardSectionSettingsToggle(currentNode, "evolutionQueueEnabled", "Queue Enabled", "When enabled script with evolve with queued settings, from top to bottom. During that script settings will be overriden with settings stored in queue. Queued target will be removed from list after evolution.");
@@ -11580,7 +11126,7 @@
             nameClass = "has-text-info";
 
             // Check if we can evolve intro it
-            if (!race.evolutionCondition()) {
+            if (!race.isConditionMet()) {
                 nameClass = "has-text-danger";
             }
         } else if (queuedEvolution.userEvolutionTarget === "auto") {
@@ -11706,7 +11252,7 @@
                 tableElement = tableElement.next();
                 tableElement.append(buildStandartSettingsInput(settings, "biome_w_" + biomeList[i], "biome_w_" + biomeList[i]));
             } else {
-                tableElement = tableElement.next()
+                tableElement = tableElement.next();
             }
             tableElement = tableElement.next();
 
@@ -11891,10 +11437,10 @@
         triggerElement.empty().off("*");
 
         if (trigger.requirementType === "researched" || trigger.requirementType === "unlocked") {
-            triggerElement.append(buildTriggerTechInput(trigger, "requirementId"));
+            triggerElement.append(buildTriggerListInput(techIds, trigger, "requirementId"));
         }
         if (trigger.requirementType === "built") {
-            triggerElement.append(buildTriggerBuildingInput(trigger, "requirementId"));
+            triggerElement.append(buildTriggerListInput(buildingIds, trigger, "requirementId"));
         }
     }
 
@@ -11921,6 +11467,7 @@
         let typeSelectNode = $(`<select>
                                   <option value = "research" title = "Research technology">Research</option>
                                   <option value = "build" title = "Build buildings up to 'count' amount">Build</option>
+                                  <option value = "arpa" title = "Build projects up to 'count' amount">A.R.P.A.</option>
                                 </select>`);
         typeSelectNode.val(trigger.actionType);
 
@@ -11946,11 +11493,13 @@
         triggerElement.empty().off("*");
 
         if (trigger.actionType === "research") {
-            let inputElement = buildTriggerTechInput(trigger, "actionId");
-            triggerElement.append(inputElement);
+            triggerElement.append(buildTriggerListInput(techIds, trigger, "actionId"));
         }
         if (trigger.actionType === "build") {
-            triggerElement.append(buildTriggerBuildingInput(trigger, "actionId"));
+            triggerElement.append(buildTriggerListInput(buildingIds, trigger, "actionId"));
+        }
+        if (trigger.actionType === "arpa") {
+            triggerElement.append(buildTriggerListInput(arpaIds, trigger, "actionId"));
         }
     }
 
@@ -11961,7 +11510,7 @@
         let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(5);
         triggerElement.empty().off("*");
 
-        if (trigger.actionType === "build") {
+        if (trigger.actionType === "build" || trigger.actionType === "arpa") {
             triggerElement.append(buildTriggerCountInput(trigger, "actionCount"));
         }
     }
@@ -11986,7 +11535,7 @@
         });
     }
 
-    function buildTriggerTechInput(trigger, property){
+    function buildTriggerListInput(list, trigger, property){
         let typeSelectNode = $('<input style ="width:100%"></input>');
 
         // Event handler
@@ -11995,76 +11544,14 @@
 
             // If it wasn't selected from list
             if(ui.item === null){
-                let typedTech = Object.values(techIds).find(technology => technology.title === this.value);
-                if (typedTech !== undefined){
-                    ui.item = {label: this.value, value: typedTech._vueBinding};
+                let typedName = Object.values(list).find(obj => obj.name === this.value);
+                if (typedName !== undefined){
+                    ui.item = {label: this.value, value: typedName._vueBinding};
                 }
             }
 
-            // We have a tech to switch
-            if (ui.item !== null && techIds.hasOwnProperty(ui.item.value)) {
-                if (trigger[property] === ui.item.value) {
-                    return;
-                }
-
-                trigger[property] = ui.item.value;
-                trigger.complete = false;
-
-                updateSettingsFromState();
-
-                this.value = ui.item.label;
-                return;
-            }
-
-            // No tech selected, don't change trigger, just restore old title in text field
-            if (techIds.hasOwnProperty(trigger[property])) {
-                this.value = techIds[trigger[property]].title;
-                return;
-            }
-        };
-
-        typeSelectNode.autocomplete({
-            delay: 0,
-            source: function(request, response) {
-                let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
-                let techList = [];
-                Object.values(techIds).forEach(technology => {
-                    let title = technology.title;
-                    if(matcher.test(title)){
-                        techList.push({label: title, value: technology._vueBinding});
-                    }
-                });
-                response(techList);
-            },
-            select: onChange, // Dropdown list click
-            focus: onChange, // Arrow keys press
-            change: onChange // Keyboard type
-        });
-
-        if (techIds.hasOwnProperty(trigger[property])) {
-            typeSelectNode.val(techIds[trigger[property]].title);
-        }
-
-        return typeSelectNode;
-    }
-
-    function buildTriggerBuildingInput(trigger, property){
-        let typeSelectNode = $('<input style ="width:100%"></input>');
-
-        // Event handler
-        let onChange = function(event, ui) {
-            event.preventDefault();
-
-            // If it wasn't selected from list
-            if(ui.item === null){
-                let typedBuilding = Object.values(buildingIds).find(building => building.name === this.value);
-                if (typedBuilding !== undefined){
-                    ui.item = {label: this.value, value: typedBuilding.settingId};
-                }
-            }
-
-            // We have a building to switch
-            if (ui.item !== null && buildingIds.hasOwnProperty(ui.item.value)) {
+            // We have an item to switch
+            if (ui.item !== null && list.hasOwnProperty(ui.item.value)) {
                 if (trigger[property] === ui.item.value) {
                     return;
                 }
@@ -12079,8 +11566,8 @@
             }
 
             // No building selected, don't change trigger, just restore old name in text field
-            if (buildingIds.hasOwnProperty(trigger[property])) {
-                this.value = buildingIds[trigger[property]].name;
+            if (list.hasOwnProperty(trigger[property])) {
+                this.value = list[trigger[property]].name;
                 return;
             }
         };
@@ -12088,23 +11575,23 @@
         typeSelectNode.autocomplete({
             delay: 0,
             source: function(request, response) {
-                let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i" );
-                let buildingList = [];
-                Object.values(buildingIds).forEach(building => {
-                    let name = building.name;
+                let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i");
+                let itemsList = [];
+                Object.values(list).forEach(item => {
+                    let name = item.name;
                     if(matcher.test(name)){
-                        buildingList.push({label: name, value: building.settingId});
+                        itemsList.push({label: name, value: item._vueBinding});
                     }
                 });
-                response(buildingList);
+                response(itemsList);
             },
             select: onChange, // Dropdown list click
             focus: onChange, // Arrow keys press
             change: onChange // Keyboard type
         });
 
-        if (buildingIds.hasOwnProperty(trigger[property])) {
-            typeSelectNode.val(buildingIds[trigger[property]].name);
+        if (list.hasOwnProperty(trigger[property])) {
+            typeSelectNode.val(list[trigger[property]].name);
         }
 
         return typeSelectNode;
@@ -12292,6 +11779,7 @@
         let hellHeaderNode = $(`<div id="script_${secondaryPrefix}hell"></div>`);
         currentNode.append(hellHeaderNode);
 
+        addStandardSectionSettingsToggle2(secondaryPrefix, hellHeaderNode, 0, "hellCountGems", "Show Souls Gems income rate", "Track gained soul gems, and show rate per hour. Shown number based only on past gains, thus it won't react on hell adjustments immediately - it'll need some time to accumulate new data. Also, for first hour\\few gems after enabling this option\\reloading page shown number will be aproximated.");
         // Entering Hell
         addStandardSectionHeader1(hellHeaderNode, "Entering Hell");
         addStandardSectionSettingsToggle2(secondaryPrefix, hellHeaderNode, 0, "hellTurnOffLogMessages", "Turn off patrol and surveyor log messages", "Automatically turns off the hell patrol and surveyor log messages");
@@ -12381,8 +11869,9 @@
         let tableBodyNode = $('#script_fleetTableBody');
         let newTableBodyText = "";
 
-        for (let i = 0; i < galaxyRegions.length; i++) {
-            newTableBodyText += '<tr value="' + galaxyRegions[i] + '" class="script-draggable"><td id="script_fleet_' + galaxyRegions[i] + '" style="width:35%"><td style="width:65%"><span class="script-lastcolumn"></span></td></tr>';
+        let priorityRegions = galaxyRegions.slice().sort((a, b) => settings["fleet_pr_" + a] - settings["fleet_pr_" + b]);
+        for (let i = 0; i < priorityRegions.length; i++) {
+            newTableBodyText += '<tr value="' + priorityRegions[i] + '" class="script-draggable"><td id="script_fleet_' + priorityRegions[i] + '" style="width:35%"><td style="width:65%"><span class="script-lastcolumn"></span></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12419,9 +11908,9 @@
             settings["fleet_pr_" + galaxyRegions[i]] = i;
         }
         settings.fleetMaxCover = true;
-        settings.fleetEmbassyKnowledge = 7000000;
-        settings.fleetAlienGiftKnowledge = 7000000;
-        settings.fleetAlien2Knowledge = 10000000;
+        settings.fleetEmbassyKnowledge = 6000000;
+        settings.fleetAlienGiftKnowledge = 6500000;
+        settings.fleetAlien2Knowledge = 9000000;
         settings.fleetChthonianPower = 4500;
     }
 
@@ -13297,7 +12786,7 @@
             }
         });
 
-        table.append(ruleNode)
+        table.append(ruleNode);
     }
 
     function buildBuildingSettings() {
@@ -13362,7 +12851,7 @@
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             let building = state.buildingManager.priorityList[i];
-            newTableBodyText += '<tr value="' + building.settingId + '" class="script-draggable"><td id="script_' + building.settingId + 'Toggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>';
+            newTableBodyText += '<tr value="' + building._vueBinding + '" class="script-draggable"><td id="script_' + building._vueBinding + 'Toggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>';
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -13381,18 +12870,18 @@
         // Build all other buildings settings rows
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             let building = state.buildingManager.priorityList[i];
-            let buildingElement = $('#script_' + building.settingId + 'Toggle');
+            let buildingElement = $('#script_' + building._vueBinding + 'Toggle');
 
             buildingElement.append(buildBuildingLabel(building));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildStandartSettingsToggle(building, "autoBuildEnabled", "script_bat2_" + building.settingId, "script_bat1_" + building.settingId));
+            buildingElement.append(buildStandartSettingsToggle(building, "autoBuildEnabled", "script_bat2_" + building._vueBinding, "script_bat1_" + building._vueBinding));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildStandartSettingsInput(building, "bld_m_" + building.settingId, "_autoMax"));
+            buildingElement.append(buildStandartSettingsInput(building, "bld_m_" + building._vueBinding, "_autoMax"));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildStandartSettingsInput(building, "bld_w_" + building.settingId, "_weighting"));
+            buildingElement.append(buildStandartSettingsInput(building, "bld_w_" + building._vueBinding, "_weighting"));
 
             buildingElement = buildingElement.next();
             buildingElement.append(buildBuildingStateSettingsToggle(building));
@@ -13411,7 +12900,7 @@
                 for (let i = 0; i < buildingElements.length; i++) {
                     // Building has been dragged... Update all building priorities
                     if (buildingElements[i] !== "All") {
-                        state.buildingManager.priorityList.find(building => building.settingId === buildingElements[i]).priority = i - 1;
+                        state.buildingManager.priorityList.find(building => building._vueBinding === buildingElements[i]).priority = i - 1;
                     }
                 }
 
@@ -13508,7 +12997,7 @@
         let checked = building.autoStateEnabled ? " checked" : "";
 
         if (building.isSwitchable()) {
-            toggle = $('<label id=script_bld_s_' + building.settingId + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="script-lastcolumn"></span>');
+            toggle = $('<label id=script_bld_s_' + building._vueBinding + ' tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label><span class="script-lastcolumn"></span>');
         } else {
             toggle = $('<span class="script-lastcolumn"></span>');
         }
@@ -13575,13 +13064,11 @@
 
         // Add any pre table settings
         let preTableNode = currentNode.append('<div style="margin-top: 10px; margin-bottom: 10px;" id="script_projectPreTable"></div>');
-        addStandardSectionSettingsToggle(preTableNode, "arpaBuildIfStorageFull", "Override and build if storage is full", "Overrides the below settings to still build A.R.P.A projects if resources are full. This option does not applies to Mana Syphon, unless Vacuum Collapse prestige is enabled.");
-        addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullCraftableMin", "Minimum craftables to keep if overriding", "A.R.P.A. projects that require crafted resources won't override and build if resources are below this amount, -1 stands for maximum amount required by other buildings.");
-        addStandardSectionSettingsNumber(preTableNode, "arpaBuildIfStorageFullResourceMaxPercent", "Maximim percent of resources if overriding", "A.R.P.A. project that require more than this percentage of a non-crafted resource won't override and build");
+        addStandardSectionSettingsToggle(preTableNode, "arpaScaleWeighting", "Scale weighting with progress", "Projects weighing scales  with current progress, making script more eager to spend resources on finishing nearly constructed projects.");
 
         // Add table section
         currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Enabled</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:25%">Ignore Min Money</th></tr>
+            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Auto Build</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:25%">Weighting</th></tr>
                 <tbody id="script_projectTableBody" class="script-contenttbody"></tbody>
             </table>`
         );
@@ -13609,7 +13096,8 @@
             projectElement.append(buildStandartSettingsInput(project, "arpa_m_" + project.id, "_autoMax"));
 
             projectElement = projectElement.next();
-            projectElement.append(buildStandartSettingsToggle(project, "ignoreMinimumMoneySetting", "script_arpa_ignore_money_" + project.id));
+            projectElement.append(buildStandartSettingsInput(project, "arpa_w_" + project.id, "_weighting"));
+
         }
 
         $('#script_projectTableBody').sortable( {
@@ -13659,10 +13147,10 @@
         let preTableNode = currentNode.append(`<div id="script_${secondaryPrefix}loggingPreTable"></div>`);
         addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, 0, "logEnabled", "Enable logging", "Master switch to enable logging of script actions in the game message queue");
 
-        Object.keys(loggingTypes).forEach(loggingTypeKey => {
+        for (let loggingTypeKey in loggingTypes) {
             let loggingType = loggingTypes[loggingTypeKey];
             addStandardSectionSettingsToggle2(secondaryPrefix, preTableNode, 1, loggingType.settingKey, loggingType.name, `If logging is enabled then logs ${loggingType.name} actions`);
-        });
+        }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -13696,7 +13184,7 @@
             if (state && enabledCallBack !== undefined) {
                 enabledCallBack();
             } else if (disabledCallBack !== undefined) {
-                disabledCallBack()
+                disabledCallBack();
             }
         });
     }
@@ -13841,7 +13329,7 @@
                 createSettingToggle(scriptNode, 'autoLogging', 'autoLogging');
 
                 let settingsDiv = $('<div id="ea-logging"></div>');
-                let logTypeTxt = $('<div>Logging Type:</div>')
+                let logTypeTxt = $('<div>Logging Type:</div>');
                 let logTypeInput = $('<input type="text" class="input is-small" style="width:100%"/>');
                 logTypeInput.val(loggingType);
                 let setBtn = $('<a class="button is-dark is-small" id="set-loggingType"><span>set</span></a>');
@@ -13862,7 +13350,7 @@
             });
 
             let settingsDiv = $('<div id="ea-settings"></div>');
-            let minMoneyTxt = $('<div>Minimum money to keep :</div>')
+            let minMoneyTxt = $('<div>Minimum money to keep :</div>');
             let minMoneyInput = $('<input type="text" class="input is-small" style="width:100%"/>');
             let minimumMoneyValue = settings.minimumMoney > 0 ? settings.minimumMoney : settings.minimumMoneyPercentage;
             minMoneyInput.val(minimumMoneyValue);
@@ -13921,6 +13409,41 @@
         }
         if (settings.autoARPA && $('#arpaPhysics .ea-arpa-toggle').length === 0) {
             createArpaToggles();
+        }
+
+        if (resources.Soul_Gem.isUnlocked()) {
+            if (settings.hellCountGems) {
+                // First tick of counting, init array
+                if (state.soulGemLast === Number.MAX_SAFE_INTEGER) {
+                    state.soulGemIncomes = [{tick: state.loopCounter-1, gems: 0}];
+                }
+                if (resources.Soul_Gem.currentQuantity > state.soulGemLast) {
+                    state.soulGemIncomes.push({tick: state.loopCounter, gems: resources.Soul_Gem.currentQuantity - state.soulGemLast})
+                }
+                // Always override amount of gems, this way we're ignoring expenses, and only tracking incomes
+                state.soulGemLast = resources.Soul_Gem.currentQuantity;
+                let gems = 0;
+                let i = state.soulGemIncomes.length;
+                while (--i >= 0) {
+                    let income = state.soulGemIncomes[i];
+                    // Get all gems gained in last hour, or at least 10 last gems in any time frame, if rate is low
+                    if (state.loopCounter - income.tick > 3600 && gems > 10) {
+                        break;
+                    } else {
+                        gems += income.gems;
+                    }
+                }
+                if (i >= 0) {
+                    state.soulGemIncomes = state.soulGemIncomes.splice(i+1);
+                }
+                let timePassed = state.loopCounter - state.soulGemIncomes[0].tick;
+                let rate = gems / timePassed * 3600;
+                $("#resSoul_Gem span:eq(2)").text(`${getNiceNumber(rate)} /h`);
+            } else if (state.soulGemLast !== Number.MAX_SAFE_INTEGER) {
+                // Gems tracking was just disabled. Let's reset state, and remove number from gui
+                state.soulGemLast = Number.MAX_SAFE_INTEGER;
+                $("#resSoul_Gem span:eq(2)").text("");
+            }
         }
 
         if (resetScrollPositionRequired) {
@@ -14000,19 +13523,19 @@
 
         for (let i = 0; i < state.buildingManager.priorityList.length; i++) {
             let building = state.buildingManager.priorityList[i];
-            let buildingElement = $('#' + building.settingId);
+            let buildingElement = $('#' + building._vueBinding);
             if (buildingElement.length === 0) {
                 continue;
             }
             let checked = building.autoBuildEnabled ? " checked" : "";
-            let toggle = $('<label id=script_bat1_' + building.settingId + ' tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox"' + checked + '/> <span class="check" style="height:5px; max-width:15px"></span></label>');
+            let toggle = $('<label id=script_bat1_' + building._vueBinding + ' tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox"' + checked + '/> <span class="check" style="height:5px; max-width:15px"></span></label>');
             buildingElement.append(toggle);
 
             toggle.on('change', function(e) {
                 let input = e.currentTarget.children[0];
                 let state = input.checked;
                 building.autoBuildEnabled = state;
-                let otherCheckbox = document.querySelector('#script_bat2_' + building.settingId + ' input');
+                let otherCheckbox = document.querySelector('#script_bat2_' + building._vueBinding + ' input');
                 if (otherCheckbox !== null) {
                     otherCheckbox.checked = state;
                 }
@@ -14158,7 +13681,7 @@
             $("#market .market-item[id] .buy span").text("B");
             $("#market .market-item[id] .sell span").text("S");
             $("#market .market-item[id] .trade > :first-child").text("R");
-            $("#market .trade .zero").text("x");
+            $("#market > .market-item .trade .zero").text("×");
         }
 
         $("#market-qty").after(`<div class="market-item vb" id="script_market_top_row" style="overflow:hidden">
@@ -14173,6 +13696,10 @@
         for (let i = 0; i < state.marketManager.priorityList.length; i++) {
             createMarketToggle(state.marketManager.priorityList[i]);
         }
+
+        if (game.global.galaxy['trade']) {
+            $("#galaxyTrade .trade .zero").text("×");
+        }
     }
 
     function removeMarketToggles() {
@@ -14184,7 +13711,11 @@
             $("#market .market-item[id] .buy span").text("BUY");
             $("#market .market-item[id] .sell span").text("SELL");
             $("#market .market-item[id] .trade > :first-child").text("Routes:");
-            $("#market .trade .zero").text("Cancel Routes");
+            $("#market > .market-item .trade .zero").text("Cancel Routes");
+        }
+
+        if (game.global.galaxy['trade']) {
+            $("#galaxyTrade .trade .zero").text("Cancel Routes");
         }
     }
 
@@ -14228,6 +13759,11 @@
             }
         }
         return Math.ceil(amountValue);
+    }
+
+    function getNiceNumber(amoutValue) {
+        let precision = (Math.log10((amoutValue ^ (amoutValue >> 31)) - (amoutValue >> 31)) | 0) + 3;
+        return parseFloat(amoutValue.toPrecision(precision));
     }
 
     function haveTech(research, level = 1) {
@@ -14293,7 +13829,11 @@
 
     const armyPower = [5, 27.5, 62.5, 125, 300];
     function getGovArmy(tactic, govIndex) { // function battleAssessment(gov)
-        return armyPower[tactic] * getGovPower(govIndex) / 100;
+        let enemy = armyPower[tactic];
+        if (game.global.race['banana']) {
+            enemy *= 2;
+        }
+        return enemy * getGovPower(govIndex) / 100;
     }
 
     function getAdvantage(army, tactic, govIndex) {
@@ -14361,25 +13901,22 @@
 
     function checkAffordable(obj, max) {
         if (obj instanceof Project) {
-            // We need to construct new costs object if we want to check arpa, game doesn't expose function to check arpa cost, and don't have a function to check such cost against max storages at all, which we also need.
-            let cost = obj.definition.cost;
-            let newCost = {};
-            Object.keys(cost).forEach(res => {
-                // 1% * creative multiplier, other adjustments will be applied by game.adjustCosts inside of game.checkAffordable
-                let newValue = cost[res]() / 100 * (game.global.race['creative'] ? 0.8 : 1);
-                newCost[res] = () => newValue;
-            });
-            obj = {definition: {cost: newCost}};
-            // Firefox compatibility hack; we need it only when trying to check cost of object constructed in script, in this particular function, among all places where checkAffordable used, so no need to apply this hack to all calls of checkAffordable
-            if (typeof unsafeWindow !== 'undefined') {
-                return game.checkAffordable(cloneInto(obj, unsafeWindow, {cloneFunctions: true}), max)
+            // We can't use exposed checkAffordable with projects, so let's write it. Luckily project need only basic resoruces
+            let check = max ? "maxQuantity" : "currentQuantity";
+            for (let i = 0; i < obj.resourceRequirements.length; i++) {
+                let req = obj.resourceRequirements[i];
+                if (req.resource[check] < req.quantity) {
+                    return false;
+                }
             }
+            return true;
         }
+        // But other things can have some exotic checks like army, or structs, let's ask game
         return game.checkAffordable(obj.definition, max);
     }
 
     var poly = {
-    // Taken directly from game code(v1.0.26) with no functional changes, and minimified:
+    // Taken directly from game code with no functional changes, and minified. Actual for v1.0.33 of game.
         // export function arpaAdjustCosts(costs) from arpa.js
         arpaAdjustCosts: function(t){return t=function(r){if(game.global.race.creative){var n={};return Object.keys(r).forEach(function(t){n[t]=function(){return.8*r[t]()}}),n}return r}(t),poly.adjustCosts(t)},
         // function govPrice(gov) from civics.js
@@ -14397,7 +13934,7 @@
         containerValue: () => Number(getVueById("createHead").buildContainerDesc().match(/(\d+)/g)[1]),
 
     // Firefox compatibility:
-        adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}), wiki)
+        adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}), wiki),
     };
 
     $().ready(mainAutoEvolveScript);
