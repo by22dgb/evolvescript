@@ -5443,18 +5443,18 @@
             project.autoBuildEnabled = settings.arpa[project.id] ?? project.autoBuildEnabled;
             project.priority = parseInt(settings['arpa_p_' + project.id] ?? project.priority);
             project._autoMax = parseInt(settings['arpa_m_' + project.id] ?? project._autoMax);
-            project._weighting = parseInt(settings['arpa_w_' + project.id] ?? project._weighting);
+            project._weighting = parseFloat(settings['arpa_w_' + project.id] ?? project._weighting);
         }
         state.projectManager.sortByPriority();
 
         for (let spell of Object.values(state.cityBuildings.Pylon.Productions)) {
-            spell.weighting = parseInt(settings['spell_w_' + spell.id] ?? spell.weighting);
+            spell.weighting = parseFloat(settings['spell_w_' + spell.id] ?? spell.weighting);
         }
 
         for (let production of Object.values(state.cityBuildings.Factory.Productions)) {
             production.enabled = settings['production_' + production.resource.id] ?? production.enabled;
-            production.weighting = parseInt(settings['production_w_' + production.resource.id] ?? production.weighting);
-            production.priority = parseInt(settings['production_p_' + production.resource.id] ?? production.priority);
+            production.weighting = parseFloat(settings['production_w_' + production.resource.id] ?? production.weighting);
+            production.priority = parseFloat(settings['production_p_' + production.resource.id] ?? production.priority);
         }
 
         for (let fuel of Object.values(state.cityBuildings.Smelter.Fuels)) {
@@ -5462,8 +5462,8 @@
         }
 
         for (let production of Object.values(state.spaceBuildings.AlphaMiningDroid.Productions)) {
-            production.weighting = parseInt(settings['droid_w_' + production.resource.id] ?? production.weighting);
-            production.priority = parseInt(settings['droid_pr_' + production.resource.id] ?? production.priority);
+            production.weighting = parseFloat(settings['droid_w_' + production.resource.id] ?? production.weighting);
+            production.priority = parseFloat(settings['droid_pr_' + production.resource.id] ?? production.priority);
         }
 
         for (let resource of Object.values(resources)) {
@@ -5497,8 +5497,8 @@
 
         for (let i = 0; i < poly.galaxyOffers.length; i++) {
             let resource = resources[poly.galaxyOffers[i].buy.res];
-            resource.galaxyMarketWeighting = parseInt(settings['res_galaxy_w_' + resource.id] ?? resource.galaxyMarketWeighting);
-            resource.galaxyMarketPriority = parseInt(settings['res_galaxy_p_' + resource.id] ?? resource.galaxyMarketPriority);
+            resource.galaxyMarketWeighting = parseFloat(settings['res_galaxy_w_' + resource.id] ?? resource.galaxyMarketWeighting);
+            resource.galaxyMarketPriority = parseFloat(settings['res_galaxy_p_' + resource.id] ?? resource.galaxyMarketPriority);
         }
     }
 
@@ -7075,7 +7075,7 @@
         // main.js -> let mBaseCap = xxxx
         let maxMorale = 100 + state.cityBuildings.Amphitheatre.count + state.cityBuildings.Casino.stateOnCount + state.spaceBuildings.HellSpaceCasino.stateOnCount
             + (state.spaceBuildings.RedVrCenter.stateOnCount * 2) + (state.spaceBuildings.AlphaExoticZoo.stateOnCount * 2) + (state.spaceBuildings.Alien1Resort.stateOnCount * 2)
-            + (state.projects.Monument.level * 2);
+            + (state.projects.Monument.count * 2);
 
         if (haveTech("superstar")) {
             maxMorale += state.jobs.Entertainer.count;
@@ -9088,8 +9088,8 @@
             {name: "gxy_gateway", piracy: 0.1 * game.global.tech.piracy, armada: state.spaceBuildings.GatewayStarbase.stateOnCount * 25, useful: state.spaceBuildings.BologniumShip.stateOnCount > 0 && (resources.Bolognium.storeOverflow || resources.Bolognium.storageRatio < 0.99)},
             {name: "gxy_gorddon", piracy: 800, armada: 0, useful: state.spaceBuildings.GorddonFreighter.stateOnCount > 0 || state.spaceBuildings.Alien1SuperFreighter.stateOnCount > 0 || state.spaceBuildings.GorddonSymposium.stateOnCount > 0},
             {name: "gxy_alien1", piracy: 1000, armada: 0, useful: state.spaceBuildings.Alien1VitreloyPlant.stateOnCount > 0 && (resources.Vitreloy.storeOverflow || resources.Vitreloy.storageRatio < 0.99)},
-            {name: "gxy_alien2", piracy: 2500, armada: state.spaceBuildings.Alien2Foothold.stateOnCount * 50 + state.spaceBuildings.Alien2ArmedMiner.stateOnCount * 5, useful: state.spaceBuildings.Alien2Scavenger.stateOnCount > 0 || (state.spaceBuildings.Alien2ArmedMiner.stateOnCount > 0 && (resources.Bolognium.storeOverflow || resources.Adamantite.storeOverflow || resources.Iridium.storeOverflow || resources.Bolognium.storageRatio < 0.99 || resources.Adamantite.storageRatio < 0.99 || resources.Iridium.storageRatio < 0.99))},
-            {name: "gxy_chthonian", piracy: 7500, armada: state.spaceBuildings.ChthonianMineLayer.stateOnCount * 50 + state.spaceBuildings.ChthonianRaider.stateOnCount * 12, useful: (state.spaceBuildings.ChthonianExcavator.stateOnCount > 0 && (resources.Orichalcum.storeOverflow || resources.Orichalcum.storageRatio < 0.99)) || (state.spaceBuildings.ChthonianRaider.stateOnCount > 0 && (resources.Vitreloy.storeOverflow || resources.Polymer.storeOverflow || resources.Neutronium.storeOverflow || resources.Deuterium.storeOverflow || resources.Vitreloy.storageRatio < 0.99 || resources.Polymer.storageRatio < 0.99 || resources.Neutronium.storageRatio < 0.99 || resources.Deuterium.storageRatio < 0.99))},
+            {name: "gxy_alien2", piracy: 2500, armada: state.spaceBuildings.Alien2Foothold.stateOnCount * 50 + state.spaceBuildings.Alien2ArmedMiner.stateOnCount * game.actions.galaxy.gxy_alien2.armed_miner.ship.rating(), useful: state.spaceBuildings.Alien2Scavenger.stateOnCount > 0 || (state.spaceBuildings.Alien2ArmedMiner.stateOnCount > 0 && (resources.Bolognium.storeOverflow || resources.Adamantite.storeOverflow || resources.Iridium.storeOverflow || resources.Bolognium.storageRatio < 0.99 || resources.Adamantite.storageRatio < 0.99 || resources.Iridium.storageRatio < 0.99))},
+            {name: "gxy_chthonian", piracy: 7500, armada: state.spaceBuildings.ChthonianMineLayer.stateOnCount * game.actions.galaxy.gxy_chthonian.minelayer.ship.rating() + state.spaceBuildings.ChthonianRaider.stateOnCount * game.actions.galaxy.gxy_chthonian.raider.ship.rating(), useful: (state.spaceBuildings.ChthonianExcavator.stateOnCount > 0 && (resources.Orichalcum.storeOverflow || resources.Orichalcum.storageRatio < 0.99)) || (state.spaceBuildings.ChthonianRaider.stateOnCount > 0 && (resources.Vitreloy.storeOverflow || resources.Polymer.storeOverflow || resources.Neutronium.storeOverflow || resources.Deuterium.storeOverflow || resources.Vitreloy.storageRatio < 0.99 || resources.Polymer.storageRatio < 0.99 || resources.Neutronium.storageRatio < 0.99 || resources.Deuterium.storageRatio < 0.99))},
         ];
         let allFleets = [
             {name: "scout_ship", count: 0, power: game.actions.galaxy.gxy_gateway.scout_ship.ship.rating},
@@ -10064,7 +10064,9 @@
         mutations.forEach(mutation => {
             mutation.addedNodes.forEach(node => {
                 let obj = null;
-                if (node.id.match(/^poppopArpa/)) { // "poppopArpa[id-with-no-tab]" for projects
+                if (node.childElementCount === 0) { // Descriptions tooltip
+                    return;
+                } else if (node.id.match(/^poppopArpa/)) { // "poppopArpa[id-with-no-tab]" for projects
                     obj = arpaIds["arpa" + node.id.substr(10)];
                 } else if (node.id.match(/\d$/)) { // "popq[id][order]" for buildings in queue
                     let id = node.id.substr(4, node.id.length-5);
