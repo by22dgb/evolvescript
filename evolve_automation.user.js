@@ -11849,8 +11849,8 @@
                                <select id="script_fleetChthonianPower" style="width: 150px; float: right;">
                                  <option value = "-1" title = "Won't ever launch assault mission on Chthonian">Manual assault</option>
                                  <option value = "1250" title = "Launch Chthonian Assault Mission when it can be won with any loses (1250+ total fleet power, many ships will be lost)">Ignore casualties</option>
-                                 <option value = "2500" title = "Not avaialable in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with average loses (2500+ total fleet power, two Frigates will be lost)">Lose 2 Frigates</option>
-                                 <option value = "4500" title = "Not avaialable in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with minimal loses (4500+ total fleet power, one Frigate will be lost)">Lose 1 Frigate</option>
+                                 <option value = "2500" title = "Not available in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with average loses (2500+ total fleet power, two Frigates will be lost)">Lose 2 Frigates</option>
+                                 <option value = "4500" title = "Not available in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with minimal loses (4500+ total fleet power, one Frigate will be lost)">Lose 1 Frigate</option>
                                </select>
                              </div>`);
 
@@ -13764,9 +13764,8 @@
         return Math.ceil(amountValue);
     }
 
-    function getNiceNumber(amoutValue) {
-        let precision = (Math.log10((amoutValue ^ (amoutValue >> 31)) - (amoutValue >> 31)) | 0) + 3;
-        return parseFloat(amoutValue.toPrecision(precision));
+    function getNiceNumber(amountValue) {
+        return parseFloat(amountValue < 1 ? amountValue.toPrecision(2) : amountValue.toFixed(2));
     }
 
     function haveTech(research, level = 1) {
