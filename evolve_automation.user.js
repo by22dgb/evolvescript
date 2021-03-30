@@ -4383,7 +4383,7 @@
             ProximaMission: new Action("Proxima Mission", "interstellar", "proxima_mission", "int_proxima", {mission: true}),
             ProximaTransferStation: new Action("Proxima Transfer Station", "interstellar", "xfer_station", "int_proxima"),
             ProximaCargoYard: new Action("Proxima Cargo Yard", "interstellar", "cargo_yard", "int_proxima"),
-            ProximaCruiser: new Action("Proxima Cruiser", "interstellar", "cruiser", "int_proxima", {garrison: true}),
+            ProximaCruiser: new Action("Proxima Patrol Cruiser", "interstellar", "cruiser", "int_proxima", {garrison: true}),
             ProximaDyson: new Action("Proxima Dyson", "interstellar", "dyson", "int_proxima"),
             ProximaDysonSphere: new Action("Proxima Dyson Sphere", "interstellar", "dyson_sphere", "int_proxima"),
             ProximaOrichalcumSphere: new Action("Proxima Orichalcum Sphere", "interstellar", "orichalcum_sphere", "int_proxima"),
@@ -5316,6 +5316,7 @@
         }
 
         state.projects.LaunchFacility._weighting = 100;
+        state.projects.StockExchange._weighting = 0.1;
         state.projects.ManaSyphon._autoMax = 79;
         state.projects.ManaSyphon.autoBuildEnabled = false;
     }
