@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.41
+// @version      3.3.1.42
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -6774,7 +6774,7 @@
                 log("autoJobs", "Pushing all farmers");
             } else if (resources.Food.currentQuantity < minFoodStorage && foodRateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
-                requiredJobs[farmerIndex] = jobList[farmerIndex].count + 1, availableEmployees;
+                requiredJobs[farmerIndex] = jobList[farmerIndex].count + 1;
                 log("autoJobs", "Adding one farmer");
             } else if (resources.Food.currentQuantity > maxFoodStorage && foodRateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
