@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.42
+// @version      3.3.1.43
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4722,7 +4722,7 @@
 
         let genusEvolution = {
             aquatic: [e.sentience, e.aquatic, ...bilateralSymmetry],
-            insectoid: [e.sentience, e.arthropods, ...bilateralSymmetry],
+            insectoid: [e.sentience, e.athropods, ...bilateralSymmetry],
             humanoid: [e.sentience, e.humanoid, ...mammals],
             giant: [e.sentience, e.gigantism, ...mammals],
             small: [e.sentience, e.dwarfism, ...mammals],
@@ -5385,7 +5385,7 @@
 
     var settingsSections = ["generalSettingsCollapsed", "prestigeSettingsCollapsed", "evolutionSettingsCollapsed", "researchSettingsCollapsed", "marketSettingsCollapsed", "storageSettingsCollapsed",
                             "productionSettingsCollapsed", "warSettingsCollapsed", "hellSettingsCollapsed", "fleetSettingsCollapsed", "jobSettingsCollapsed", "buildingSettingsCollapsed", "projectSettingsCollapsed",
-                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed", "weightingSettingsCollapsed", "ejectorSettingsCollapsed", "planetSettingsCollapser"];
+                            "governmentSettingsCollapsed", "loggingSettingsCollapsed", "minorTraitSettingsCollapsed", "weightingSettingsCollapsed", "ejectorSettingsCollapsed", "planetSettingsCollapsed"];
 
     function updateStateFromSettings() {
         updateStandAloneSettings();
@@ -5808,7 +5808,7 @@
         }
 
         // TODO: Clean up old settings.
-        let unusedStandalone = ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber"];
+        let unusedStandalone = ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser"];
         let unused012 = ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"];
         for (let i = 0; i < unused012.length; i++) {
             for (let j = 0; j <= 2; j++) {
@@ -6150,7 +6150,7 @@
             if (!isAchievementUnlocked("biome_" + planet.biome, alevel)) {
                 planet.achieve++;
             }
-            if (planet.trait && !isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
+            if (planet.trait !== "none" && !isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
                 planet.achieve++;
             }
             if (planetBiomeRaces[planet.biome]) {
@@ -6740,6 +6740,7 @@
             return;
         }
 
+        let unemployedIndex = jobList.indexOf(state.jobs.Unemployed);
         let farmerIndex = isDemonRace() || isHunterRace() ? jobList.indexOf(state.jobs.Hunter) : jobList.indexOf(state.jobs.Farmer);
         let lumberjackIndex = isDemonRace() && isLumberRace() ? farmerIndex : jobList.indexOf(state.jobs.Lumberjack);
         let quarryWorkerIndex = jobList.indexOf(state.jobs.QuarryWorker);
@@ -6768,7 +6769,8 @@
                 maxFoodStorage = resources.Population.currentQuantity * 2;
                 foodRateOfChange += Math.max(resources.Food.currentQuantity / 3, 0);
             }
-            if (jobList.length === 1) {
+
+            if (jobList.length === (unemployedIndex === -1 ? 1 : 2)) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs[farmerIndex] = availableEmployees;
                 log("autoJobs", "Pushing all farmers");
