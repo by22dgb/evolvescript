@@ -3517,6 +3517,9 @@
          * @param {number} count
          */
         tryConstructCrate(count) {
+            if (count === 0) {
+                return false;
+            }
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
@@ -3528,6 +3531,9 @@
          * @param {number} count
          */
         tryConstructContainer(count) {
+            if (count === 0) {
+                return false;
+            }
             state.multiplier.reset(count);
             while (state.multiplier.remainder > 0) {
                 state.multiplier.setMultiplier();
