@@ -18,6 +18,8 @@
 // Most of script options have tooltips, explaining what they do, read them if you have a questions.
 //
 // Here's some tips about non-intuitive features:
+//   Added numbers in Mech Labs represents: design efficiency, real mech power affected by mech size, and power per used space, respectively. For all three - bigger numbers are better.
+//   Amount of gems gathered by Auto Hell often highter than number estimated by HellSim, due to bought of mercs. You can try to work it around by increasing amount of Boot Camps in simulator, to roughtly match rate reinforcements with what you're actually having with script
 //   Buildings\researches queue, triggers, and available researches prioritize missing resources, overiding other script settings. If you have issues with factories producing not what you want, market buying not what you want, and such - you can disable this feature under general settings.
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
@@ -377,7 +379,7 @@
         }
 
         isUseful() {
-            return this.storageRatio < 0.99 || this.storeOverflow || this.currentEject > 0 || this.currentSupply > 0 || this.currentTradeDiff < 0;
+            return this.storageRatio < 0.99 || this.requestedQuantity > 0 || this.storeOverflow || this.currentEject > 0 || this.currentSupply > 0 || this.currentTradeDiff < 0 ;
         }
 
         increaseEjection(count) {
@@ -1506,7 +1508,7 @@
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...Object.keys(challenges).map(id => "challenge_" + id)];
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
-    const settingsSections = ["general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet"];
+    const settingsSections = ["general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech"];
 
     // Lookup tables, will be filled on init
     var techIds = {};
@@ -1899,7 +1901,7 @@
         PortalWarDroid: new Action("Portal War Droid", "portal", "war_droid", "prtl_fortress"),
         PortalRepairDroid: new Action("Portal Repair Droid", "portal", "repair_droid", "prtl_fortress"),
 
-        PortalWarDrone: new Action("Portal Predator Drone", "portal", "war_drone", "prtl_badlands"),
+        PortalPredatorDrone: new Action("Portal Predator Drone", "portal", "war_drone", "prtl_badlands"),
         PortalSensorDrone: new Action("Portal Sensor Drone", "portal", "sensor_drone", "prtl_badlands"),
         PortalAttractor: new Action("Portal Attractor Beacon", "portal", "attractor", "prtl_badlands"),
 
@@ -3497,8 +3499,7 @@
 
         lastLevel: -1,
         lastPrepared: -1,
-
-        bestRating: 0,
+        bestSize: "",
         bestBody: [],
         bestWeapon: [],
 
@@ -3532,7 +3533,7 @@
             humid: (mech) => !mech.equip.includes('seals') ? 0.75 : 1,
             windy: (mech) => mech.chassis === 'hover' ? 0.5 : 1,
             hilly: (mech) => mech.chassis !== 'spider' ? 0.75 : 1,
-            mountain: (mech) => mech.chassis !== 'spider' && !mech.equip.includes('grapple') ? 0.75 : 1,
+            mountain: (mech) => mech.chassis !== 'spider' && !mech.equip.includes('grapple') ? mech.equip.includes('flare') ? 0.75 : 0.5 : 1,
             radioactive: (mech) => !mech.equip.includes('shields') ? 0.5 : 1,
             quake: (mech) => !mech.equip.includes('stabilizer') ? 0.25 : 1,
             dust: (mech) => !mech.equip.includes('seals') ? 0.5 : 1,
@@ -3547,6 +3548,11 @@
             dark: (mech) => !mech.equip.includes('infrared') ? mech.equip.includes('flare') ? 0.25 : 0.1 : 1,
             gravity: (mech) => mech.size === 'titan' ? 0.25 : mech.size === 'large' ? 0.5 : mech.size === 'medium' ? 0.75 : 1,
         },
+
+        mechObserver: new MutationObserver(() => {
+            game.updateDebugData(); // Observer can be can be called at any time, make sure we have actual list of mechs
+            createMechInfo();
+        }),
 
         initLab() {
             if (buildings.PortalMechBay.count < 1) {
@@ -3588,19 +3594,36 @@
             return rating;
         },
 
-        getMechRating(mech) {
-            return this.getWeaponMod(mech) * this.getBodyMod(mech);
+        getSizeMod(mech) {
+            switch (mech.size){
+                case 'small':
+                    return 0.002;
+                case 'medium':
+                    return 0.005;
+                case 'large':
+                    return 0.01;
+                case 'titan':
+                    return 0.0225;
+            }
+            return 0;
         },
 
-        updateBestParts(size) {
+        getMechStats(mech) {
+            let rating = this.getWeaponMod(mech) * this.getBodyMod(mech);
+            let power = rating * this.getSizeMod(mech);
+            let efficiency = power / this.getMechSpace(mech);
+            return {rating: rating, power: power, efficiency: efficiency};
+        },
+
+        updateBestParts() {
             let currentBestBodyMod = 0;
             let currentBestBodyList = [];
 
-            let equipmentSlots = this.SizeSlots[size] + (game.global.blood.prepared ? 1 : 0);
+            let equipmentSlots = this.SizeSlots[this.bestSize] + (game.global.blood.prepared ? 1 : 0);
 
             k_combinations(this.Equip, equipmentSlots).forEach((equip) => {
                 this.Chassis.forEach(chassis => {
-                    let mech = {size: size, chassis: chassis, equip: equip};
+                    let mech = {size: this.bestSize, chassis: chassis, equip: equip};
                     let mechMod = this.getBodyMod(mech);
                     if (mechMod > currentBestBodyMod) {
                         currentBestBodyMod = mechMod;
@@ -3616,7 +3639,7 @@
             let currentBestWeaponList = [];
 
             Object.keys(poly.monsters[game.global.portal.spire.boss].weapon).forEach(weapon => {
-                let mech = {hardpoint: new Array(this.SizeWeapons[size]).fill(weapon)};
+                let mech = {hardpoint: new Array(this.SizeWeapons[this.bestSize]).fill(weapon)};
                 let mechMod = this.getWeaponMod(mech);
                 if (mechMod > currentBestWeaponMod) {
                     currentBestWeaponMod = mechMod;
@@ -3627,18 +3650,39 @@
             });
             this.bestWeapon = currentBestWeaponList;
 
-            this.bestRating = currentBestWeaponMod * currentBestBodyMod;
+            return true;
+        },
+
+        updateLevel() {
+            if (game.global.portal.spire.count === this.lastLevel) {
+                return false;
+            }
+            this.lastLevel = game.global.portal.spire.count;
+            removeMechInfo();
+            createMechInfo();
+            return true;
+        },
+
+        updateMechDesign() {
+            let preferedSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
+            if (this.bestSize === preferedSize && this.lastPrepared === game.global.blood.prepared) {
+                return false;
+            }
+            this.lastPrepared = game.global.blood.prepared;
+            this.bestSize = preferedSize;
+            return true;
         },
 
         getRandomMech() {
             let randomBody = this.bestBody[Math.floor(Math.random() * this.bestBody.length)];
             let randomWeapon = this.bestWeapon[Math.floor(Math.random() * this.bestWeapon.length)];
-            let weaponsAmount = this.SizeWeapons["large"];
-            return {hardpoint: new Array(weaponsAmount).fill(randomWeapon), ...randomBody};
+            let weaponsAmount = this.SizeWeapons[this.bestSize];
+            let mech = {hardpoint: new Array(weaponsAmount).fill(randomWeapon), ...randomBody};
+            return {...mech, ...this.getMechStats(mech)};
         },
 
-        getMechSize(size) {
-            switch (size){
+        getMechSpace(mech) {
+            switch (mech.size){
                 case 'small':
                     return 2;
                 case 'medium':
@@ -3651,9 +3695,9 @@
             return Number.MAX_SAFE_INTEGER;
         },
 
-        getMechCost(size) {
+        getMechCost(mech) {
             // return [supply, size, soul gems]
-            switch (size){
+            switch (mech.size){
                 case 'small':
                     return [game.global.blood.prepared >= 2 ? 50000 : 75000, 2, 1];
                 case 'medium':
@@ -3666,8 +3710,8 @@
             return [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER];
         },
 
-        getMechRefund(size) {
-            switch (size){
+        getMechRefund(mech) {
+            switch (mech.size){
                 case 'small':
                     return 25000;
                 case 'medium':
@@ -4540,6 +4584,7 @@
     function resetBuildingSettings() {
         settings.buildingManageSpire = true;
         settings.buildingBuildIfStorageFull = false;
+        settings.buildingsIgnoreZeroRate = false;
         settings.buildingShrineType = "know";
 
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
@@ -4749,7 +4794,7 @@
         BuildingManager.addBuildingToPriorityList(buildings.PortalTurret);
         BuildingManager.addBuildingToPriorityList(buildings.PortalSensorDrone);
         BuildingManager.addBuildingToPriorityList(buildings.PortalWarDroid);
-        BuildingManager.addBuildingToPriorityList(buildings.PortalWarDrone);
+        BuildingManager.addBuildingToPriorityList(buildings.PortalPredatorDrone);
         BuildingManager.addBuildingToPriorityList(buildings.PortalAttractor);
         BuildingManager.addBuildingToPriorityList(buildings.PortalCarport);
         BuildingManager.addBuildingToPriorityList(buildings.PortalSoulForge);
@@ -4811,7 +4856,7 @@
         buildings.RedVrCenter.autoBuildEnabled = false;
         buildings.NeutronCitadel.autoBuildEnabled = false;
         buildings.PortalWarDroid.autoBuildEnabled = false;
-        buildings.PortalWarDrone.autoBuildEnabled = false;
+        buildings.PortalPredatorDrone.autoBuildEnabled = false;
         buildings.PortalRepairDroid.autoBuildEnabled = false;
         buildings.Dreadnought.autoBuildEnabled = false;
         buildings.CruiserShip.autoBuildEnabled = false;
@@ -5280,6 +5325,7 @@
 
         addSetting("buildingManageSpire", true);
         addSetting("buildingBuildIfStorageFull", false);
+        addSetting("buildingsIgnoreZeroRate", false);
         addSetting("buildingShrineType", "any");
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
@@ -5322,6 +5368,11 @@
         addSetting("fleetAlien2Knowledge", 9000000);
         addSetting("fleetChthonianPower", 4500);
 
+        addSetting("mechSize", "large");
+        addSetting("mechSizeGravity", "large");
+        addSetting("mechScrap", "single");
+        addSetting("mechBuild", "random");
+
         for (let i = 0; i < biomeList.length; i++) {
             addSetting("biome_w_" + biomeList[i], 0);
         }
@@ -5332,7 +5383,7 @@
             addSetting("extra_w_" + extraList[i], 0);
         }
 
-        // TODO: Clean up old settings.
+        // TODO: Remove me some day. Cleaning up old settings.
         let unusedStandalone = ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser"];
         let unused012 = ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"];
         for (let i = 0; i < unused012.length; i++) {
@@ -6429,25 +6480,13 @@
                     }
                 }
 
-                // Stone income fluctuate a lot when we're managing smoldering quarry, ignore it
-                if (job === jobs.CementWorker && (!game.global.race['smoldering'] || !settings.autoQuarry)) {
-                    let currentCementWorkers = job.count;
-                    log("autoJobs", "jobsToAssign: " + jobsToAssign + ", currentCementWorkers" + currentCementWorkers + ", resources.stone.rateOfChange " + resources.Stone.rateOfChange);
-
-                    let stoneRateOfChange = resources.Stone.calculateRateOfChange({buy: true});
-
-                    if (jobsToAssign < currentCementWorkers) {
-                        // great, remove workers as we want less than we have
-                    } else if (jobsToAssign >= currentCementWorkers && stoneRateOfChange < 5) {
-                        // If we're making less than 5 stone then lets remove a cement worker even if we want more
-                        jobsToAssign = job.count - 1;
-                    } else if (jobsToAssign > job.count && stoneRateOfChange > 8) {
-                        // If we want more cement workers and we're making more than 8 stone then add a cement worker
-                        jobsToAssign = job.count + 1;
-                    } else {
-                        // We're not making enough stone to add a new cement worker so leave it
-                        jobsToAssign = job.count;
+                if (job === jobs.CementWorker) {
+                    let stoneRateOfChange = resources.Stone.calculateRateOfChange({buy: true}) + (job.count * 3) - 5;
+                    if (game.global.race['smoldering'] && settings.autoQuarry) {
+                        stoneRateOfChange += resources.Chrysotile.calculateRateOfChange({buy: true});
                     }
+
+                    jobsToAssign = Math.min(jobsToAssign, Math.floor(stoneRateOfChange / 3));
                 }
 
                 jobsToAssign = Math.max(0, jobsToAssign);
@@ -6864,7 +6903,8 @@
 
                     let calculatedRequiredFactories = Math.min(remainingFactories, Math.max(1, Math.floor(factoriesToDistribute / totalPriorityWeight * production.weighting)));
                     let actualRequiredFactories = calculatedRequiredFactories;
-                    if (production.resource.storageRatio > 0.99 && production.resource.requestedQuantity <= 0) {
+
+                    if (!production.resource.isUseful()) {
                         actualRequiredFactories = 0;
                     }
 
@@ -6978,7 +7018,7 @@
 
                     let calculatedRequiredFactories = Math.min(remainingFactories, Math.max(1, Math.floor(factoriesToDistribute / totalPriorityWeight * production.weighting)));
                     let actualRequiredFactories = calculatedRequiredFactories;
-                    if (production.resource.storageRatio > 0.99) {
+                    if (!production.resource.isUseful()) {
                         actualRequiredFactories = 0;
                     }
 
@@ -7445,7 +7485,7 @@
 
                     let calculatedRequiredFreighters = Math.min(remainingFreighters, Math.max(1, Math.floor(freightersToDistribute / totalPriorityWeight * buyResource.galaxyMarketWeighting)));
                     let actualRequiredFreighters = calculatedRequiredFreighters;
-                    if (buyResource.storageRatio > 0.99 || sellResource.storageRatio < 0.05) {
+                    if (!buyResource.isUseful() || sellResource.storageRatio < 0.05) {
                         actualRequiredFreighters = 0;
                     }
 
@@ -7635,11 +7675,13 @@
                         }
 
                         let totalRateOfCharge = resource.calculateRateOfChange({buy: true});
-                        if (totalRateOfCharge <= 0) {
+                        if (totalRateOfCharge > 0) {
+                            estimatedTime[other.id][resource.id] = (quantity - resource.currentQuantity) / totalRateOfCharge;
+                        } else if (settings.buildingsIgnoreZeroRate) {
+                            estimatedTime[other.id][resource.id] = Number.MAX_SAFE_INTEGER;
+                        } else {
                             // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
                             estimatedTime[other.id][resource.id] = 0;
-                        } else {
-                            estimatedTime[other.id][resource.id] = (quantity - resource.currentQuantity) / totalRateOfCharge;
                         }
                     }
                     estimatedTime[other.id].total = Math.max(0, ...Object.values(estimatedTime[other.id]));
@@ -7898,6 +7940,9 @@
                 maxStateOn = 0;
             }
             // Disable useless expensive buildings
+            if (building === buildings.BologniumShip && !resources.Bolognium.isUseful()) {
+                maxStateOn = 0;
+            }
             if (building === buildings.ChthonianRaider && !resources.Vitreloy.isUseful() && !resources.Polymer.isUseful() && !resources.Neutronium.isUseful() && !resources.Deuterium.isUseful()) {
                 maxStateOn = 0;
             }
@@ -7989,11 +8034,13 @@
             let port = buildings.PortalPort;
             let camp = buildings.PortalBaseCamp;
             let mech = buildings.PortalMechBay;
-            let nextPuriCost = puri.autoBuildEnabled && puri.count < puri.autoMax ? resourceCost(puri, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let nextMechCost = mech.autoBuildEnabled && mech.count < mech.autoMax ? resourceCost(mech, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextPuriCost = settings.autoBuild && puri.autoBuildEnabled && puri.count < puri.autoMax ? resourceCost(puri, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextMechCost = settings.autoBuild && mech.autoBuildEnabled && mech.count < mech.autoMax ? resourceCost(mech, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let portBuildable = settings.autoBuild && port.autoBuildEnabled && port.count < port.autoMax && resources.Money.maxQuantity >= resourceCost(port, resources.Money);
+            let campBuildable = settings.autoBuild && camp.autoBuildEnabled && camp.count < camp.autoMax && resources.Money.maxQuantity >= resourceCost(camp, resources.Money);
 
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport);
-            if (!port.autoBuildEnabled || port.count >= port.autoMax || !camp.autoBuildEnabled || camp.count >= camp.autoMax) {
+            if (!portBuildable || !campBuildable) {
                 bestSupplies = resources.Supply.maxQuantity;
             }
             puri.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${puri.extraDescription}`;
@@ -8004,7 +8051,7 @@
             for (let targetMech = bestMech; targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech);
                 if (targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost || targetPort > port.count || targetCamp > camp.count || targetMech === minMech) {
-                    if ((targetPort > port.count && resourceCost(puri, resources.Money) > resources.Money.maxQuantity) || (targetCamp > camp.count && resourceCost(camp, resources.Money) > resources.Money.maxQuantity)) {
+                    if ((targetPort > port.count && !portBuildable) || (targetCamp > camp.count && !campBuildable)) {
                         [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - bestMech);
                         targetMech = bestMech;
                     }
@@ -8711,55 +8758,52 @@
         if (!m.initLab()) {
             return;
         }
-
-        // Level changed, let's find new best parts
-        // We also need to update mechs after puchasing next level of prepared
-        if (game.global.portal.spire.count !== m.lastLevel ||
-            game.global.blood.prepared !== m.lastPrepared) {
-            m.lastLevel = game.global.portal.spire.count;
-            m.lastPrepared = game.global.blood.prepared;
-
-            // We're building only large mechs
-            m.updateBestParts("large");
-            removeMechInfo();
-            createMechInfo();
-        }
-
-        let disabledBays = buildings.PortalMechBay.stateOffCount;
+        let levelChanged = m.updateLevel();
         let mechBay = game.global.portal.mechbay;
-        let baySpace = mechBay.max - mechBay.bay;
-        let [largeSupply, largeSize, largeSouls] = m.getMechCost("large");
 
-        // Not enough gems, can't do anything;
-        if (resources.Soul_Gem.currentQuantity < largeSouls) {
+        let newMech = {};
+        if (settings.mechBuild === "random") {
+            if (m.updateMechDesign() || levelChanged) {
+                m.updateBestParts();
+            }
+            newMech = m.getRandomMech();
+        } else if (settings.mechBuild === "user") {
+            newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
+        }
+        let [newSupply, targetSpace, newGems] = m.getMechCost(newMech);
+
+        // Not enough gems or max supply, can't do anything;
+        if (resources.Soul_Gem.currentQuantity < newGems || resources.Supply.maxQuantity < newSupply) {
             return;
         }
 
+        let baySpace = mechBay.max - mechBay.bay;
+        let disabledBays = buildings.PortalMechBay.stateOffCount;
+
         // Check if we need to scrap anything
-        if (baySpace < largeSize && disabledBays === 0) {
-            let ratingLost = 0;
+        if (settings.mechBuild !== "none" && settings.mechScrap !== "none" && disabledBays === 0 && (baySpace < targetSpace || (settings.mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
             let spaceGained = 0;
             let supplyGained = 0;
 
             // Get current list of mech
             let mechList = mechBay.mechs
-              .map((mech, id) => ({mech: mech, id: id, rating: m.getMechRating(mech)}))
-              .filter(mechObj => mechObj.rating < m.bestRating)
-              .sort((a, b) => a.rating - b.rating || b.id - a.id);
+              .map((mech, id) => ({id: id, ...mech, ...m.getMechStats(mech)}))
+              .filter(mech => mech.efficiency < newMech.efficiency)
+              .sort((a, b) => a.efficiency - b.efficiency);
 
             // Remove worst mechs untill we have enough room for new mech
             let trashMechs = [];
-            for (let i = 0; i < mechList.length && baySpace + spaceGained < largeSize; i++) {
-                spaceGained += m.getMechSize(mechList[i].mech.size);
-                supplyGained += m.getMechRefund(mechList[i].mech.size)
-                ratingLost += mechList[i].rating;
+            for (let i = 0; i < mechList.length && (baySpace + spaceGained < targetSpace || (settings.mechScrap === "all" && resources.Supply.currentQuantity + supplyGained < newSupply && m.getMechRefund(mechList[i]) / newSupply > mechList[i].power / newMech.power)); i++) {
+                spaceGained += m.getMechSpace(mechList[i]);
+                supplyGained += m.getMechRefund(mechList[i]);
                 trashMechs.push(mechList[i]);
             }
 
             // Now go scrapping, if possible and benefical
-            if (trashMechs.length > 0 && baySpace + spaceGained >= largeSize && ratingLost < m.bestRating && resources.Supply.currentQuantity + supplyGained >= largeSupply) {
-                trashMechs.forEach(mechObj => {
-                    m.scrapMech(mechObj.id);
+            if (trashMechs.length > 0 && baySpace + spaceGained >= targetSpace && resources.Supply.currentQuantity + supplyGained >= newSupply) {
+                trashMechs.sort((a, b) => b.id - a.id);
+                trashMechs.forEach(mech => {
+                    m.scrapMech(mech.id);
                 });
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
             }
@@ -8767,10 +8811,10 @@
         }
 
         // We have everything to get new mech
-        if (resources.Supply.currentQuantity >= largeSupply && baySpace >= largeSize) {
-            m.buildMech(m.getRandomMech());
-            resources.Supply.currentQuantity -= largeSupply;
-            resources.Soul_Gem.currentQuantity -= largeSouls;
+        if (settings.mechBuild !== "none" && resources.Supply.currentQuantity >= newSupply && baySpace >= targetSpace) {
+            m.buildMech(newMech);
+            resources.Supply.currentQuantity -= newSupply;
+            resources.Soul_Gem.currentQuantity -= newGems;
             return;
         }
 
@@ -8781,20 +8825,20 @@
             let spaceUsed = 0;
 
             for (let i = 0; i < mechBay.mechs.length; i++) {
-                let mechObj = {mech: mechBay.mechs[i], id: i, rating: m.getMechRating(mechBay.mechs[i])};
-                spaceUsed += m.getMechSize(mechBay.mechs[i].size);
+                let mech = {id: i, ...mechBay.mechs[i], ...m.getMechStats(mechBay.mechs[i])};
+                spaceUsed += m.getMechSpace(mech);
                 if (spaceUsed <= mechBay.max) {
-                    activeMechs.push(mechObj);
+                    activeMechs.push(mech);
                 } else {
-                    inactiveMechs.push(mechObj);
+                    inactiveMechs.push(mech);
                 }
             }
 
             // Each drag redraw mechs list, do it just once per tick to reduce stress
             if (activeMechs.length > 0 && inactiveMechs.length > 0) {
-                activeMechs.sort((a, b) => a.rating - b.rating);
-                inactiveMechs.sort((a, b) => b.rating - a.rating);
-                if (activeMechs[0].rating < inactiveMechs[0].rating) {
+                activeMechs.sort((a, b) => a.efficiency - b.efficiency);
+                inactiveMechs.sort((a, b) => b.efficiency - a.efficiency);
+                if (activeMechs[0].efficiency < inactiveMechs[0].efficiency) {
                     if (activeMechs.length > inactiveMechs.length) {
                         m.dragMech(activeMechs[0].id, mechBay.mechs.length - 1);
                     } else {
@@ -9646,6 +9690,7 @@
         buildResearchSettings();
         buildWarSettings(scriptContentNode, "");
         buildHellSettings(scriptContentNode, "");
+        buildMechSettings();
         buildFleetSettings();
         buildEjectorSettings();
         buildMarketSettings();
@@ -9715,6 +9760,7 @@
                     updateStateFromSettings();
                     updateSettingsFromState();
                     removeScriptSettings();
+                    stopMechObserver();
                     removeMarketToggles();
                     removeArpaToggles();
                     removeCraftToggles();
@@ -10929,6 +10975,47 @@
         settings.fleetChthonianPower = 4500;
     }
 
+    function buildMechSettings() {
+        let sectionId = "mech";
+        let sectionName = "Mech";
+
+        let resetFunction = function() {
+            resetMechSettings();
+            updateSettingsFromState();
+            updateMechSettingsContent();
+        };
+
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateMechSettingsContent);
+    }
+
+    function updateMechSettingsContent() {
+        let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+
+        let currentNode = $('#script_mechContent');
+        currentNode.empty().off("*");
+
+        let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
+                            {val: "single", label: "Single worst", hint: "Scrap mechs with worst efficiency one by one, when they can be replaced with better ones"},
+                            {val: "all", label: "All inefficient", hint: "Scrap all mechs with bad efficiency, replacing them with good ones, E.g. it will be able to scrap 30 mechs of 10% efficiency, and replace them with 10 mechs of 200% efficiency at once. Which will have a better immediate performance than slow replacement of them one by one. But if you're climbing spire too fast you may finish current floor before bay will be repopulated back to full, and risking to enter next floor with half-empty bay of suboptimal mechs."}];
+        buildStandartSettingsSelector(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped", scrapOptions);
+        let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
+                            {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
+                            {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
+        buildStandartSettingsSelector(currentNode, "mechBuild", "Build mechs", "Configures what will be build", buildOptions);
+        let sizeOptions = MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}));
+        buildStandartSettingsSelector(currentNode, "mechSize", "Prefered mech size", "Size of mech for autobuild", sizeOptions);
+        buildStandartSettingsSelector(currentNode, "mechSizeGravity", "Gravity mech size", "Override prefered size with this on floors with high gravity", sizeOptions);
+
+        document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function resetMechSettings() {
+        settings.mechSize = "large";
+        settings.mechSizeGravity = "large";
+        settings.mechScrap = "single";
+        settings.mechBuild = "random";
+    }
+
     function buildEjectorSettings() {
         let sectionId = "ejector";
         let sectionName = "Ejector & Supply";
@@ -11766,6 +11853,7 @@
 
         addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire", "Enables special logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays.");
         addStandardSectionSettingsToggle(currentNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
+        addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Ignore resources without income during weighting", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings with this option enabled");
 
         let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
                              {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
@@ -12206,7 +12294,7 @@
             createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\\greatness achievements for yet.');
             createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
             createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
-            createSettingToggle(scriptNode, 'autoMech', 'Builds most effective large mechs for current spire floor. Least effective will be scrapped to make room for new ones.', createMechInfo, removeMechInfo);
+            createSettingToggle(scriptNode, 'autoMech', 'Builds most effective large mechs for current spire floor. Least effective will be scrapped to make room for new ones.', startMechObserver, stopMechObserver);
             createSettingToggle(scriptNode, 'autoFleet', 'Manages Andromeda fleet to supress piracy');
             createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
             createSettingToggle(scriptNode, 'autoCraft', 'Craft when a specified crafting ratio is met. This changes throughout the game - lower in the beginning and rising as the game progresses.', createCraftToggles, removeCraftToggles);
@@ -12309,7 +12397,7 @@
         }
 
         if (settings.autoMech && game.global.settings.showMechLab && $('#mechList .ea-mech-info').length === 0) {
-            createMechInfo();
+            startMechObserver();
         }
 
         if (resources.Soul_Gem.isUnlocked()) {
@@ -12357,14 +12445,26 @@
 
     function createMechInfo() {
         $('#mechList div').each(function(index) {
-            let mech = game.global.portal.mechbay.mechs[index];
-            let rating = Math.round(MechManager.getMechRating(mech) * 100);
-            $(this).prepend(`<span class="ea-mech-info">${rating}% | </span>`);
+            let stats = MechManager.getMechStats(game.global.portal.mechbay.mechs[index]);
+            let rating = Math.round(stats.rating * 100);
+            let power = getNiceNumber(stats.power * 100);
+            let efficiency = getNiceNumber(stats.efficiency * 100);
+            $(this).prepend(`<span class="ea-mech-info">${rating}%, ${power}, ${efficiency} | </span>`);
         });
     }
 
     function removeMechInfo() {
         $('#mechList .ea-mech-info').remove();
+    }
+
+    function startMechObserver() {
+        MechManager.mechObserver.observe(document.getElementById("mechLab"), {childList: true});
+        createMechInfo();
+    }
+
+    function stopMechObserver() {
+        MechManager.mechObserver.disconnect();
+        removeMechInfo();
     }
 
     function createArpaToggles() {
