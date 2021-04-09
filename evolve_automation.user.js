@@ -4480,6 +4480,7 @@
         settings.storageLimitPreMad = true;
         settings.storageSafeReassign = true;
         settings.storageAssignExtra = true;
+        settings.storagePrioritizedOnly = false;
     }
 
     function resetMinorTraitState() {
@@ -5193,6 +5194,7 @@
         addSetting("storageLimitPreMad", true);
         addSetting("storageSafeReassign", true);
         addSetting("storageAssignExtra", true);
+        addSetting("storagePrioritizedOnly", false);
         addSetting("arpaScaleWeighting", true);
 
         addSetting("productionPrioritizeDemanded", true);
@@ -6486,7 +6488,7 @@
                         stoneRateOfChange += resources.Chrysotile.calculateRateOfChange({buy: true});
                     }
 
-                    jobsToAssign = Math.min(jobsToAssign, Math.floor(stoneRateOfChange / 3));
+                    jobsToAssign = resources.Cement.isUseful() ? Math.min(jobsToAssign, Math.floor(stoneRateOfChange / 3)) : 0;
                 }
 
                 jobsToAssign = Math.max(0, jobsToAssign);
@@ -7135,7 +7137,7 @@
                 let allowedSupply = 0;
                 if (resource.isCraftable()) {
                     if (resource.currentQuantity > resource.storageRequired / 0.95) {
-                        allowedSupply = Math.floor(resource.currentQuantity - (resource.storageRequired / 0.95) / resource.supplyVolume);
+                        allowedSupply = Math.floor((resource.currentQuantity - (resource.storageRequired / 0.95)) / resource.supplyVolume);
                     }
                 } else {
                     if (resource.storageRatio > 0.95) {
@@ -7248,7 +7250,7 @@
                         ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentDecay * settings.prestigeWhiteholeDecayRate));
                     }
 
-                    if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 0 && resource.currentQuantity >= resource.storageRequired && resource.requestedQuantity <= 0) {
+                    if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 1 && resource.currentQuantity >= resource.storageRequired && resource.requestedQuantity <= 0) {
                         ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true, supply: true})));
                     }
 
@@ -8897,7 +8899,10 @@
     function calculateRequiredStorages() {
         // Reset required storage
         for (let id in resources) {
-            resources[id].storageRequired = 0;
+            resources[id].storageRequired = 1;
+        }
+        if (settings.storagePrioritizedOnly) {
+            return;
         }
         let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
 
@@ -9000,7 +9005,6 @@
                 });
             }
         }
-
 
         if (prioritizedTasks.length > 0) {
             for (let i = 0; i < prioritizedTasks.length; i++){
@@ -9199,9 +9203,10 @@
         ProjectManager.updateResourceRequirements();
         ProjectManager.updateWeighting();
 
-        calculateRequiredStorages();
-        updatePriorityTargets();
-        prioritizeDemandedResources();
+        // This three function depends on exact call order; probably can use some refactoring
+        calculateRequiredStorages(); // Reset and populate res.storageRequired
+        updatePriorityTargets();  // Reset and populate queuedTargets and triggerTargets, increases res.storageRequired
+        prioritizeDemandedResources(); // Reset and populate res.requestedQuantity, uses queuedTargets and triggerTargets
 
         state.moneyIncomes.push(resources.Money.rateOfChange);
         state.moneyIncomes.shift();
@@ -11278,7 +11283,8 @@
 
         addStandardSectionSettingsToggle(currentNode, "storageLimitPreMad", "Limit Pre-MAD Storage", "Saves resources and shortens run time by limiting storage pre-MAD");
         addStandardSectionSettingsToggle(currentNode, "storageSafeReassign", "Reassign only empty storages", "Wait until storage is empty before reassigning containers to another resource, to prevent overflowing and wasting resources");
-        addStandardSectionSettingsToggle(currentNode, "storageAssignExtra", "Assign buffer storage", "With this option enable script assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\\eject\\switch production, etc.");
+        addStandardSectionSettingsToggle(currentNode, "storageAssignExtra", "Assign buffer storage", "With this option enabled storage assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\\eject\\switch production, etc.");
+        addStandardSectionSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign only for prioritized resources", "With this option enabled script assign storages only for prioritized resources, up to amount required by whatever demanded it. Such as queue or trigger costs. You don't normally need it, this can be useful when you need all your storage space to afford single building, and want to fully focus on it. Warning! Enabling this option without `Reassign only empty storages` will instantly unassign all your crates and containers, and may lead to loss of resources.");
 
         currentNode.append(
             `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:15%">Enabled</th><th class="has-text-warning" style="width:15%">Store Overflow</th><th class="has-text-warning" style="width:15%">Max Crates</th><th class="has-text-warning" style="width:15%">Max Containers</th><th style="width:5%"></th></tr>
