@@ -7136,15 +7136,17 @@
 
                 let allowedSupply = 0;
                 if (resource.isCraftable()) {
-                    if (resource.currentQuantity > resource.storageRequired / 0.95) {
-                        allowedSupply = Math.floor((resource.currentQuantity - (resource.storageRequired / 0.95)) / resource.supplyVolume);
+                    if (resource.currentQuantity > resource.storageRequired / 0.97) {
+                        allowedSupply = Math.floor((resource.currentQuantity - (resource.storageRequired / 0.97)) / resource.supplyVolume);
                     }
                 } else {
-                    if (resource.storageRatio > 0.95) {
-                        allowedSupply = Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume);
+                    if (resource.storageRatio > 0.98) {
+                        allowedSupply = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
+                    } else if (resource.storageRatio > 0.97) {
+                        allowedSupply = Math.max(1, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
                     }
                 }
-                transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
+                transportAdjustments[resource.id] = Math.min(remaining, Math.max(0, allowedSupply));
                 remaining -= transportAdjustments[resource.id];
             }
         }
@@ -7180,7 +7182,7 @@
                     continue;
                 }
 
-                let roundedRateOfChange = Math.floor(resource.calculateRateOfChange({buy: true, eject: true, supply: true}));
+                let roundedRateOfChange = Math.floor(resource.calculateRateOfChange({buy: true, supply: true}));
 
                 // These are from the autoPower(). If we reduce below these figures then buildings start being turned off...
                 // Leave enough neutronium to stabilise the blackhole if required
@@ -7203,7 +7205,7 @@
                     if ((resource === resources.Food || resource === resources.Uranium || resource === resources.Neutronium) && resource.storageRatio < allowedRatio - 0.01) {
                         continue;
                     } else if (resource.storageRatio > 0.01) {
-                        ejectorAdjustments[resource.id] = Math.max(0, Math.min(remaining, resource.currentEject + roundedRateOfChange));
+                        ejectorAdjustments[resource.id] = Math.max(0, Math.min(remaining, roundedRateOfChange));
                     }
                 }
 
@@ -7636,7 +7638,7 @@
             let building = buildingList[i];
 
             // Only go further if it's affordable building, and not current target
-            if (!(affordableCache[building.id] ?? (affordableCache[building.id] = checkAffordable(building, false))) || targetsList.includes(building)) {
+            if (targetsList.includes(building) || !(affordableCache[building.id] ?? (affordableCache[building.id] = checkAffordable(building, false)))) {
                 continue;
             }
 
@@ -7649,84 +7651,84 @@
 
             // Checks weights, if this building doesn't demands any overflowing resources(unless we ignoring overflowing)
             if (!settings.buildingBuildIfStorageFull || !building.resourceRequirements.some(requirement => requirement.resource.storageRatio > 0.98)) {
-              for (let j = 0; j < buildingList.length; j++) {
-                let other = buildingList[j];
+                for (let j = 0; j < buildingList.length; j++) {
+                    let other = buildingList[j];
+                    let weightDiffRatio = other.weighting / building.weighting;
 
-                // Buildings sorted by weighting, so once we reached something with lower weighting - all remaining also lower, and we don't care about them
-                if (building.weighting >= other.weighting) {
-                    break;
-                }
-                // And we don't want to process clickable buildings - all buildings with highter weighting should already been proccessed.
-                // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                if (affordableCache[other.id] ?? (affordableCache[other.id] = checkAffordable(other, false))){
-                    continue;
-                }
-                let weightDiffRatio = other.weighting / building.weighting;
+                    // Buildings sorted by weighting, so once we reached something with lower weighting - all remaining also lower, and we don't care about them
+                    if (weightDiffRatio <= 1) {
+                        break;
+                    }
+                    // And we don't want to process clickable buildings - all buildings with highter weighting should already been proccessed.
+                    // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
+                    if (weightDiffRatio < 10 && (affordableCache[other.id] ?? (affordableCache[other.id] = checkAffordable(other, false)))){
+                        continue;
+                    }
 
-                // Calculate time to build for competing building, if it's not cached
-                if (!estimatedTime[other.id]){
-                    estimatedTime[other.id] = [];
+                    // Calculate time to build for competing building, if it's not cached
+                    if (!estimatedTime[other.id]){
+                        estimatedTime[other.id] = [];
 
-                    for (let k = 0; k < other.resourceRequirements.length; k++) {
-                        let resource = other.resourceRequirements[k].resource;
-                        let quantity = other.resourceRequirements[k].quantity;
+                        for (let k = 0; k < other.resourceRequirements.length; k++) {
+                            let resource = other.resourceRequirements[k].resource;
+                            let quantity = other.resourceRequirements[k].quantity;
 
-                        // Ignore locked
-                        if (!resource.isUnlocked()) {
+                            // Ignore locked
+                            if (!resource.isUnlocked()) {
+                                continue;
+                            }
+
+                            let totalRateOfCharge = resource.calculateRateOfChange({buy: true});
+                            if (totalRateOfCharge > 0) {
+                                estimatedTime[other.id][resource.id] = (quantity - resource.currentQuantity) / totalRateOfCharge;
+                            } else if (settings.buildingsIgnoreZeroRate && resource.storageRatio < 0.97) {
+                                estimatedTime[other.id][resource.id] = Number.MAX_SAFE_INTEGER;
+                            } else {
+                                // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
+                                estimatedTime[other.id][resource.id] = 0;
+                            }
+                        }
+                        estimatedTime[other.id].total = Math.max(0, ...Object.values(estimatedTime[other.id]));
+                    }
+
+                    // Compare resource costs
+                    for (let k = 0; k < building.resourceRequirements.length; k++) {
+                        let thisRequirement = building.resourceRequirements[k];
+                        let resource = thisRequirement.resource;
+
+                        // Ignore locked and capped resources
+                        if (!resource.isUnlocked() || resource.storageRatio > 0.98){
                             continue;
                         }
 
-                        let totalRateOfCharge = resource.calculateRateOfChange({buy: true});
-                        if (totalRateOfCharge > 0) {
-                            estimatedTime[other.id][resource.id] = (quantity - resource.currentQuantity) / totalRateOfCharge;
-                        } else if (settings.buildingsIgnoreZeroRate) {
-                            estimatedTime[other.id][resource.id] = Number.MAX_SAFE_INTEGER;
-                        } else {
-                            // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
-                            estimatedTime[other.id][resource.id] = 0;
+                        // Check if we're actually conflicting on this resource
+                        let otherRequirement = other.resourceRequirements.find(resourceRequirement => resourceRequirement.resource === resource);
+                        if (otherRequirement === undefined){
+                            continue;
                         }
+
+                        // We have enought resources for both buildings, no need to preserve it
+                        if (resource.currentQuantity > (otherRequirement.quantity + thisRequirement.quantity)) {
+                            continue;
+                        }
+
+                        // We can use up to this amount of resources without delaying competing building
+                        // Not very accurate, as income can fluctuate wildly for foundry, factory, and such, but should work as bottom line
+                        if (thisRequirement.quantity <= (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * resource.calculateRateOfChange({buy: true})) {
+                            continue;
+                        }
+
+                        // Check if cost difference is below weighting threshold, so we won't wait hours for 10x amount of resources when weight is just twice higher
+                        let costDiffRatio = otherRequirement.quantity / thisRequirement.quantity;
+                        if (costDiffRatio >= weightDiffRatio) {
+                            continue;
+                        }
+
+                        // If we reached here - then we want to delay with our current building. Return all way back to main loop, and try to build something else
+                        building.extraDescription += `Conflicts with ${other.title} for ${resource.name}<br>`;
+                        continue buildingsLoop;
                     }
-                    estimatedTime[other.id].total = Math.max(0, ...Object.values(estimatedTime[other.id]));
                 }
-
-                // Compare resource costs
-                for (let k = 0; k < building.resourceRequirements.length; k++) {
-                  let thisRequirement = building.resourceRequirements[k];
-                  let resource = thisRequirement.resource;
-
-                  // Ignore locked and capped resources
-                  if (!resource.isUnlocked() || resource.storageRatio > 0.98){
-                      continue;
-                  }
-
-                  // Check if we're actually conflicting on this resource
-                  let otherRequirement = other.resourceRequirements.find(resourceRequirement => resourceRequirement.resource === resource);
-                  if (otherRequirement === undefined){
-                      continue;
-                  }
-
-                  // We have enought resources for both buildings, no need to preserve it
-                  if (resource.currentQuantity > (otherRequirement.quantity + thisRequirement.quantity)) {
-                      continue;
-                  }
-
-                  // We can use up to this amount of resources without delaying competing building
-                  // Not very accurate, as income can fluctuate wildly for foundry, factory, and such, but should work as bottom line
-                  if (thisRequirement.quantity <= (estimatedTime[other.id].total - estimatedTime[other.id][resource.id]) * resource.calculateRateOfChange({buy: true})) {
-                      continue;
-                  }
-
-                  // Check if cost difference is below weighting threshold, so we won't wait hours for 10x amount of resources when weight is just twice higher
-                  let costDiffRatio = otherRequirement.quantity / thisRequirement.quantity;
-                  if (costDiffRatio >= weightDiffRatio) {
-                      continue;
-                  }
-
-                  // If we reached here - then we want to delay with our current building. Return all way back to main loop, and try to build something else
-                  building.extraDescription += `Conflicts with ${other.title} for ${resource.name}<br>`;
-                  continue buildingsLoop;
-                }
-              }
             }
 
             // Build building
@@ -8041,22 +8043,14 @@
             let portBuildable = settings.autoBuild && port.autoBuildEnabled && port.count < port.autoMax && resources.Money.maxQuantity >= resourceCost(port, resources.Money);
             let campBuildable = settings.autoBuild && camp.autoBuildEnabled && camp.count < camp.autoMax && resources.Money.maxQuantity >= resourceCost(camp, resources.Money);
 
-            let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport);
-            if (!portBuildable || !campBuildable) {
-                bestSupplies = resources.Supply.maxQuantity;
-            }
+            let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, port.count, portBuildable, camp.count, campBuildable);
             puri.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${puri.extraDescription}`;
 
-            let bestMech = Math.min(mech.count, spireSupport);
-            let minMech = (nextPuriCost > bestSupplies && nextMechCost > bestSupplies) ? bestMech : 0;
+            let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
 
-            for (let targetMech = bestMech; targetMech >= 0; targetMech--) {
-                let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech);
-                if (targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost || targetPort > port.count || targetCamp > camp.count || targetMech === minMech) {
-                    if ((targetPort > port.count && !portBuildable) || (targetCamp > camp.count && !campBuildable)) {
-                        [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - bestMech);
-                        targetMech = bestMech;
-                    }
+            for (let targetMech = Math.min(mech.count, spireSupport); targetMech >= 0; targetMech--) {
+                let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, port.count, portBuildable, camp.count, campBuildable);
+                if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost || targetPort > port.count || targetCamp > camp.count) {
                     mech.tryAdjustState(targetMech - mech.stateOnCount);
                     port.tryAdjustState(targetPort - port.stateOnCount);
                     camp.tryAdjustState(targetCamp - camp.stateOnCount);
@@ -8079,20 +8073,21 @@
         }
     }
 
-    function getBestSupplyRatio(support) {
-        let bestSupplies = support;
+    function getBestSupplyRatio(support, currentPorts, portBuildable, currentCamps, campBuildable) {
+        let bestSupplies = 0;
         let bestPort = support;
         let bestBaseCamp = 0;
-        if (buildings.PortalPort.count >= 5) {
-            for (let i = 0; i < support; i++) {
-                let maxSupplies = (support - i) * (1 + i * 0.4);
-                if (maxSupplies < bestSupplies) {
-                    break;
-                }
-                bestSupplies = maxSupplies;
-                bestPort = support - i;
-                bestBaseCamp = i;
+        for (let i = 0; i < support; i++) {
+            let checkPort = portBuildable ? support - i : Math.min(support - i, currentPorts);
+            let checkCamp = campBuildable ? i : Math.min(i, currentCamps);
+
+            let maxSupplies = checkPort * (1 + checkCamp * 0.4);
+            if (maxSupplies <= bestSupplies) {
+                break;
             }
+            bestSupplies = maxSupplies;
+            bestPort = checkPort;
+            bestBaseCamp = checkCamp;
         }
         return [bestSupplies * 10000 + 100, bestPort, bestBaseCamp];
     }
@@ -9337,6 +9332,7 @@
         }))).observe(document.querySelector("body"), {childList: true});
     }
 
+    // TODO: Spire floor remaining time
     function addTooltip(mutations) {
         if (!settings.masterScriptToggle || (!settings.autoBuild && !settings.autoARPA && !settings.autoPower)) {
             return;
@@ -11859,7 +11855,7 @@
 
         addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire", "Enables special logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays.");
         addStandardSectionSettingsToggle(currentNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
-        addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Ignore resources without income during weighting", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings with this option enabled");
+        addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income during weighting", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings with this option enabled");
 
         let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
                              {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
