@@ -5446,12 +5446,12 @@
         }
     }
 
-    function getConfiguredAchievementLevel() {
+    function getConfiguredAchievementLevel(scope) {
         let a_level = 1;
-        if (settings.challenge_plasmid || settings.challenge_mastery) { a_level++; }
-        if (settings.challenge_trade) { a_level++; }
-        if (settings.challenge_craft) { a_level++; }
-        if (settings.challenge_crispr) { a_level++; }
+        if (scope.challenge_plasmid || scope.challenge_mastery) { a_level++; }
+        if (scope.challenge_trade) { a_level++; }
+        if (scope.challenge_craft) { a_level++; }
+        if (scope.challenge_crispr) { a_level++; }
         return a_level;
     }
 
@@ -5528,7 +5528,7 @@
             // Try to pick race for achievement first
             if (settings.userEvolutionTarget === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
-                let achievementLevel = getConfiguredAchievementLevel();
+                let achievementLevel = getConfiguredAchievementLevel(settings);
                 let targetedGroup = {race: null, remainingPercent: 0};
 
                 let genusGroups = {};
@@ -5755,7 +5755,7 @@
         let planets = generatePlanets();
 
         // Let's try to calculate how many achievements we can get here
-        let alevel = getConfiguredAchievementLevel();
+        let alevel = getConfiguredAchievementLevel(settings);
         for (let i = 0; i < planets.length; i++){
             let planet = planets[i];
             planet.achieve = 0;
@@ -8848,6 +8848,7 @@
             return;
         }
 
+        // TODO: Calculate time & income, and don't build near end of floor
         // We have everything to get new mech
         if (settings.mechBuild !== "none" && resources.Supply.currentQuantity >= newSupply && baySpace >= targetSpace) {
             m.buildMech(newMech);
@@ -9373,7 +9374,6 @@
         }))).observe(document.querySelector("body"), {childList: true});
     }
 
-    // TODO: Spire floor remaining time
     function addTooltip(mutations) {
         if (!settings.masterScriptToggle || (!settings.autoBuild && !settings.autoARPA && !settings.autoPower)) {
             return;
@@ -10242,14 +10242,15 @@
           </div>`);
 
         $("#script_evlution_add").on("click", addEvolutionSetting);
-        currentNode.append(
-            `<table style="width:100%"><tr>
-                    <th class="has-text-warning" style="width:15%">Race</th>
-                    <th class="has-text-warning" style="width:80%">Settings</th>
-                    <th style="width:5%"></th>
-                </tr><tbody id="script_evolutionQueueTable" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:25%">Race</th>
+              <th class="has-text-warning" style="width:70%">Settings</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_evolutionQueueTable"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_evolutionQueueTable');
         for (let i = 0; i < settings.evolutionQueue.length; i++) {
@@ -10308,12 +10309,15 @@
             raceName = "Unrecognized race!";
             nameClass = "has-text-danger";
         }
-        // TODO: More descriptive names
+        let star = $("#topBar .flair svg").clone();
+        star.removeClass();
+        star.addClass("star" + getConfiguredAchievementLevel(queuedEvolution));
+        star.css("margin-left", "0.2em");
 
         let queueNode = $(`
           <tr id="script_evolution_${id}" value="${id}" class="script-draggable">
-            <td style="width:15%"><span class="${nameClass}">${raceName}</span></td>
-            <td style="width:80%"><textarea class="textarea">${JSON.stringify(queuedEvolution, null, 4)}</textarea></td>
+            <td style="width:25%"><span class="${nameClass}">${raceName}</span>${star.prop('outerHTML')}</td>
+            <td style="width:70%"><textarea class="textarea">${JSON.stringify(queuedEvolution, null, 4)}</textarea></td>
             <td style="width:5%"><a class="button is-dark is-small"><span>X</span></a></td>
           </tr>`);
 
@@ -10394,8 +10398,16 @@
 
         currentNode.append(`
           <span>Planet Weighting = Biome Weighting + Trait Weighting + (Extras Intensity * Extras Weightings)</span>
-          <table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Biome</th><th class="has-text-warning" style="width:calc(40% / 3)">Weighting</th><th class="has-text-warning" style="width:20%">Trait</th><th class="has-text-warning" style="width:calc(40% / 3)">Weighting</th><th class="has-text-warning" style="width:20%">Extra</th><th class="has-text-warning" style="width:calc(100% / 3)">Weighting</th></tr>
-              <tbody id="script_planetTableBody" class="script-contenttbody"></tbody>
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:20%">Biome</th>
+              <th class="has-text-warning" style="width:calc(40% / 3)">Weighting</th>
+              <th class="has-text-warning" style="width:20%">Trait</th>
+              <th class="has-text-warning" style="width:calc(40% / 3)">Weighting</th>
+              <th class="has-text-warning" style="width:20%">Extra</th>
+              <th class="has-text-warning" style="width:calc(40% / 3)">Weighting</th>
+            </tr>
+            <tbody id="script_planetTableBody"></tbody>
           </table>`);
 
         let tableBodyNode = $('#script_planetTableBody');
@@ -10403,7 +10415,7 @@
 
         let tableSize = Math.max(biomeList.length, traitList.length, extraList.length);
         for (let i = 0; i < tableSize; i++) {
-            newTableBodyText += '<tr><td id="script_planet_' + i + '" style="width:20%"></td><td style="width:calc(40% / 3);border-right-width:1px"></td><td style="width:20%"></td><td style="width:calc(40% / 3);border-right-width:1px"></td><td style="width:20%"></td><td style="width:calc(40% / 3)"></td>/tr>';
+            newTableBodyText += `<tr><td id="script_planet_${i}" style="width:20%"></td><td style="width:calc(40% / 3);border-right-width:1px"></td><td style="width:20%"></td><td style="width:calc(40% / 3);border-right-width:1px"></td><td style="width:20%"></td><td style="width:calc(40% / 3)"></td>/tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -10473,20 +10485,31 @@
         currentNode.append('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
         $("#script_trigger_add").on("click", addTriggerSetting);
 
-        currentNode.append(
-            `<table style="width:100%">
-                    <tr><th class="has-text-warning" colspan="3">Requirement</th><th class="has-text-warning" colspan="5">Action</th></tr>
-                    <tr><th class="has-text-warning" style="width:16%">Type</th><th class="has-text-warning" style="width:18%">Id</th><th class="has-text-warning" style="width:11%">Count</th><th class="has-text-warning" style="width:16%">Type</th><th class="has-text-warning" style="width:18%">Id</th><th class="has-text-warning" style="width:11%">Count</th><th style="width:5%"></th><th style="width:5%"></th></tr>
-                <tbody id="script_triggerTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" colspan="3">Requirement</th>
+              <th class="has-text-warning" colspan="5">Action</th>
+            </tr>
+            <tr>
+              <th class="has-text-warning" style="width:16%">Type</th>
+              <th class="has-text-warning" style="width:18%">Id</th>
+              <th class="has-text-warning" style="width:11%">Count</th>
+              <th class="has-text-warning" style="width:16%">Type</th>
+              <th class="has-text-warning" style="width:18%">Id</th>
+              <th class="has-text-warning" style="width:11%">Count</th>
+              <th style="width:5%"></th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_triggerTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_triggerTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < TriggerManager.priorityList.length; i++) {
             const trigger = TriggerManager.priorityList[i];
-            newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '" class="script-draggable"><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += `<tr id="script_trigger_${trigger.seq}" value="${trigger.seq}" class="script-draggable"><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -10504,7 +10527,7 @@
             buildTriggerSettingsColumn(trigger);
         }
 
-        $('#script_triggerTableBody').sortable( {
+        $('#script_triggerTableBody').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -10523,7 +10546,7 @@
                 TriggerManager.sortByPriority();
                 updateSettingsFromState();
             },
-        } );
+        });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -10535,7 +10558,7 @@
         let tableBodyNode = $('#script_triggerTableBody');
         let newTableBodyText = "";
 
-        newTableBodyText += '<tr id="script_trigger_' + trigger.seq + '" value="' + trigger.seq + '" class="script-draggable"><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+        newTableBodyText += `<tr id="script_trigger_${trigger.seq}" value="${trigger.seq}" class="script-draggable"><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:16%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
 
         tableBodyNode.append($(newTableBodyText));
 
@@ -10973,18 +10996,21 @@
         // fleetChthonianPower need to be number, not string.
         $("#script_fleetChthonianPower").on('change', () => settings.fleetChthonianPower = parseInt(settings.fleetChthonianPower));
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Region</th><th class="has-text-warning" style="width:65%"></th></tr>
-                <tbody id="script_fleetTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:95%">Region</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_fleetTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_fleetTableBody');
         let newTableBodyText = "";
 
         let priorityRegions = galaxyRegions.slice().sort((a, b) => settings["fleet_pr_" + a] - settings["fleet_pr_" + b]);
         for (let i = 0; i < priorityRegions.length; i++) {
-            newTableBodyText += '<tr value="' + priorityRegions[i] + '" class="script-draggable"><td id="script_fleet_' + priorityRegions[i] + '" style="width:35%"><td style="width:65%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += `<tr value="${priorityRegions[i]}" class="script-draggable"><td id="script_fleet_${priorityRegions[i]}" style="width:95%"><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -10996,7 +11022,7 @@
             fleetElement.append(buildStandartLabel(typeof nameRef === "function" ? nameRef() : nameRef));
         }
 
-        $('#script_fleetTableBody').sortable( {
+        $('#script_fleetTableBody').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -11011,7 +11037,7 @@
 
                 updateSettingsFromState();
             },
-        } );
+        });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11098,11 +11124,17 @@
 
         addStandardSectionSettingsToggle(currentNode, "autoSupply", "Manage Supplies", "Send excess resources to Spire. Normal resources send when they're near storage cap, craftables - when above requirements. Takes priority over ejector.");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:30%">Resource</th><th class="has-text-warning" style="width:20%">Atomic Mass</th><th class="has-text-warning" style="width:10%">Eject</th><th class="has-text-warning" style="width:30%">Supply Value</th><th class="has-text-warning" style="width:10%">Supply</th></tr>
-                <tbody id="script_ejectorTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:30%">Resource</th>
+              <th class="has-text-warning" style="width:20%">Atomic Mass</th>
+              <th class="has-text-warning" style="width:10%">Eject</th>
+              <th class="has-text-warning" style="width:30%">Supply Value</th>
+              <th class="has-text-warning" style="width:10%">Supply</th>
+            </tr>
+            <tbody id="script_ejectorTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_ejectorTableBody');
         let newTableBodyText = "";
@@ -11112,7 +11144,7 @@
             let resource = resources[id];
             if (resource.isEjectable() || resource.isSupply()) {
                 tabResources.push(resource);
-                newTableBodyText += '<tr value="' + resource.id + '"><td id="script_eject_' + resource.id + 'Toggle" style="width:30%"></td><td style="width:20%"></td><td style="width:10%"></td><td style="width:30%"></td><td style="width:10%"></td></tr>';
+                newTableBodyText += `<tr><td id="script_eject_${resource.id}" style="width:30%"></td><td style="width:20%"></td><td style="width:10%"></td><td style="width:30%"></td><td style="width:10%"></td></tr>`;
             }
         }
 
@@ -11120,7 +11152,7 @@
 
         for (let i = 0; i < tabResources.length; i++) {
             let resource = tabResources[i];
-            let ejectElement = $('#script_eject_' + resource.id + 'Toggle');
+            let ejectElement = $('#script_eject_' + resource.id);
 
             ejectElement.append(buildEjectorLabel(resource));
 
@@ -11199,25 +11231,36 @@
         addStandardSectionSettingsNumber(currentNode, "tradeRouteMinimumMoneyPerSecond", "Trade minimum money /s", "Uses the highest per second amount of these two values. Will trade for resources until this minimum money per second amount is hit");
         addStandardSectionSettingsNumber(currentNode, "tradeRouteMinimumMoneyPercentage", "Trade minimum money percentage /s", "Uses the highest per second amount of these two values. Will trade for resources until this percentage of your money per second amount is hit");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:15%">Resource</th><th class="has-text-warning" style="width:10%">Buy</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Sell</th><th class="has-text-warning" style="width:10%">Ratio</th><th class="has-text-warning" style="width:10%">Trade For</th><th class="has-text-warning" style="width:10%">Routes</th><th class="has-text-warning" style="width:10%">Trade Away</th><th class="has-text-warning" style="width:10%">Min p/s</th><th style="width:5%"></th></tr>
-                <tbody id="script_marketTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:15%">Resource</th>
+              <th class="has-text-warning" style="width:10%">Buy</th>
+              <th class="has-text-warning" style="width:10%">Ratio</th>
+              <th class="has-text-warning" style="width:10%">Sell</th>
+              <th class="has-text-warning" style="width:10%">Ratio</th>
+              <th class="has-text-warning" style="width:10%">Trade For</th>
+              <th class="has-text-warning" style="width:10%">Routes</th>
+              <th class="has-text-warning" style="width:10%">Trade Away</th>
+              <th class="has-text-warning" style="width:10%">Min p/s</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_marketTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_marketTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < MarketManager.priorityList.length; i++) {
             const resource = MarketManager.priorityList[i];
-            newTableBodyText += '<tr value="' + resource.id + '" class="script-draggable"><td id="script_market_' + resource.id + 'Toggle" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"></td></tr>';
+            newTableBodyText += `<tr value="${resource.id}" class="script-draggable"><td id="script_market_${resource.id}" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other markets settings rows
         for (let i = 0; i < MarketManager.priorityList.length; i++) {
             const resource = MarketManager.priorityList[i];
-            let marketElement = $('#script_market_' + resource.id + 'Toggle');
+            let marketElement = $('#script_market_' + resource.id);
 
             marketElement.append(buildStandartLabel(resource.name));
 
@@ -11249,7 +11292,7 @@
             marketElement.append($('<span class="script-lastcolumn"></span>'));
         }
 
-        $('#script_marketTableBody').sortable( {
+        $('#script_marketTableBody').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -11267,22 +11310,27 @@
                 MarketManager.sortByPriority();
                 updateSettingsFromState();
             },
-        } );
+        });
 
         addStandardHeading(currentNode, "Galaxy Trades");
         addStandardSectionSettingsToggle(currentNode, "autoGalaxyMarket", "Manage Galaxy Trades", "Automatically adjust galaxy trade routes");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:30%">Buy</th><th class="has-text-warning" style="width:30%">Sell</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority</th></tr>
-                <tbody id="script_marketGalaxyTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:30%">Buy</th>
+              <th class="has-text-warning" style="width:30%">Sell</th>
+              <th class="has-text-warning" style="width:20%">Weighting</th>
+              <th class="has-text-warning" style="width:20%">Priority</th>
+            </tr>
+            <tbody id="script_marketGalaxyTableBody"></tbody>
+          </table>`);
 
         tableBodyNode = $('#script_marketGalaxyTableBody');
         newTableBodyText = "";
 
         for (let i = 0; i < poly.galaxyOffers.length; i++) {
-            newTableBodyText += '<tr value="' + i + '"><td id="script_market_galaxy_' + i + '" style="width:30%"><td style="width:30%"></td></td><td style="width:20%"></td><td style="width:20%"></td></tr>';
+            newTableBodyText += `<tr><td id="script_market_galaxy_${i}" style="width:30%"><td style="width:30%"></td></td><td style="width:20%"></td><td style="width:20%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -11333,25 +11381,32 @@
         addStandardSectionSettingsToggle(currentNode, "storageAssignExtra", "Assign buffer storage", "With this option enabled storage assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\\eject\\switch production, etc.");
         addStandardSectionSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign only for prioritized resources", "With this option enabled script assign storages only for prioritized resources, up to amount required by whatever demanded it. Such as queue or trigger costs. You don't normally need it, this can be useful when you need all your storage space to afford single building, and want to fully focus on it. Warning! Enabling this option without `Reassign only empty storages` will instantly unassign all your crates and containers, and may lead to loss of resources.");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:15%">Enabled</th><th class="has-text-warning" style="width:15%">Store Overflow</th><th class="has-text-warning" style="width:15%">Max Crates</th><th class="has-text-warning" style="width:15%">Max Containers</th><th style="width:5%"></th></tr>
-                <tbody id="script_storageTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:35%">Resource</th>
+              <th class="has-text-warning" style="width:15%">Enabled</th>
+              <th class="has-text-warning" style="width:15%">Store Overflow</th>
+              <th class="has-text-warning" style="width:15%">Max Crates</th>
+              <th class="has-text-warning" style="width:15%">Max Containers</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_storageTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_storageTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < StorageManager.priorityList.length; i++) {
             const resource = StorageManager.priorityList[i];
-            newTableBodyText += '<tr value="' + resource.id + '" class="script-draggable"><td id="script_storage_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += `<tr value="${resource.id}" class="script-draggable"><td id="script_storage_${resource.id}" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other storages settings rows
         for (let i = 0; i < StorageManager.priorityList.length; i++) {
             const resource = StorageManager.priorityList[i];
-            let storageElement = $('#script_storage_' + resource.id + 'Toggle');
+            let storageElement = $('#script_storage_' + resource.id);
 
             storageElement.append(buildStandartLabel(resource.name));
 
@@ -11368,7 +11423,7 @@
             storageElement.append(buildStandartSettingsInput(resource, "res_containers_m_" + resource.id, "_autoContainersMax"));
         }
 
-        $('#script_storageTableBody').sortable( {
+        $('#script_storageTableBody').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -11386,7 +11441,7 @@
                 StorageManager.sortByPriority();
                 updateSettingsFromState();
             },
-        } );
+        });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11411,25 +11466,30 @@
         let currentNode = $('#script_minorTraitContent');
         currentNode.empty().off("*");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:20%">Minor Trait</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:40%"></th></tr>
-                <tbody id="script_minorTraitTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:20%">Minor Trait</th>
+              <th class="has-text-warning" style="width:20%">Enabled</th>
+              <th class="has-text-warning" style="width:20%">Weighting</th>
+              <th class="has-text-warning" style="width:40%"></th>
+            </tr>
+            <tbody id="script_minorTraitTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_minorTraitTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < MinorTraitManager.priorityList.length; i++) {
             const trait = MinorTraitManager.priorityList[i];
-            newTableBodyText += '<tr value="' + trait.traitName + '" class="script-draggable"><td id="script_minorTrait_' + trait.traitName + 'Toggle" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += `<tr value="${trait.traitName}" class="script-draggable"><td id="script_minorTrait_${trait.traitName}" style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:40%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other minorTraits settings rows
         for (let i = 0; i < MinorTraitManager.priorityList.length; i++) {
             const trait = MinorTraitManager.priorityList[i];
-            let minorTraitElement = $('#script_minorTrait_' + trait.traitName + 'Toggle');
+            let minorTraitElement = $('#script_minorTrait_' + trait.traitName);
 
             let toggle = $(`<span title="${game.loc("trait_"+trait.traitName)}" class="has-text-info" style="margin-left: 20px;">${game.loc("trait_"+trait.traitName+"_name")}</span>`);
             minorTraitElement.append(toggle);
@@ -11441,7 +11501,7 @@
             minorTraitElement.append(buildStandartSettingsInput(trait, "mTrait_w_" + trait.traitName, "weighting"));
         }
 
-        $('#script_minorTraitTableBody').sortable( {
+        $('#script_minorTraitTableBody').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -11459,7 +11519,7 @@
                 MinorTraitManager.sortByPriority();
                 updateSettingsFromState();
             },
-        } );
+        });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11508,11 +11568,14 @@
                               {val: "required", label: "Up to required amounts", hint: "Produce both Iron and Steel at ratio which will produce maximum amount of resources required for buildings at same time for both"}];
         buildStandartSettingsSelector(currentNode, "productionSmelting", "Smelters production", "Distribution of smelters between iron and steel", smelterOptions);
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Fuel</th><th class="has-text-warning" style="width:65%"></th></tr>
-                <tbody id="script_productionTableBodySmelter" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:95%">Fuel</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_productionTableBodySmelter"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_productionTableBodySmelter');
         let newTableBodyText = "";
@@ -11521,7 +11584,7 @@
 
         for (let i = 0; i < smelterFuels.length; i++) {
             let fuel = smelterFuels[i];
-            newTableBodyText += '<tr value="' + fuel.id + '" class="script-draggable"><td id="script_smelter_' + fuel.id + '" style="width:35%"></td><td style="width:65%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += `<tr value="${fuel.id}" class="script-draggable"><td id="script_smelter_${fuel.id}" style="width:95%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -11533,7 +11596,7 @@
             productionElement.append(buildStandartLabel(fuel.id));
         }
 
-        $('#script_productionTableBodySmelter').sortable( {
+        $('#script_productionTableBodySmelter').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -11550,17 +11613,23 @@
 
                 updateSettingsFromState();
             },
-        } );
+        });
     }
 
     function updateProductionTableFactory(currentNode) {
         addStandardHeading(currentNode, "Factory");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority</th><th class="has-text-warning" style="width:5%"></th></tr>
-                <tbody id="script_productionTableBodyFactory" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:35%">Resource</th>
+              <th class="has-text-warning" style="width:20%">Enabled</th>
+              <th class="has-text-warning" style="width:20%">Weighting</th>
+              <th class="has-text-warning" style="width:20%">Priority</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_productionTableBodyFactory"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_productionTableBodyFactory');
         let newTableBodyText = "";
@@ -11569,14 +11638,14 @@
 
         for (let i = 0; i < productionSettings.length; i++) {
             let production = productionSettings[i];
-            newTableBodyText += '<tr value="' + production.resource.id + '"><td id="script_factory_' + production.resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
+            newTableBodyText += `<tr><td id="script_factory_${production.resource.id}" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < productionSettings.length; i++) {
             let production = productionSettings[i];
-            let productionElement = $('#script_factory_' + production.resource.id + 'Toggle');
+            let productionElement = $('#script_factory_' + production.resource.id);
 
             productionElement.append(buildStandartLabel(production.resource.name));
 
@@ -11595,25 +11664,31 @@
         addStandardHeading(currentNode, "Foundry");
         addStandardSectionSettingsToggle(currentNode, "productionPrioritizeDemanded", "Prioritize demanded craftables", "Resources already produced above maximum amount required for constructing buildings won't be crafted, if there's better options enabled and available, ignoring weighted ratio");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%">Enabled</th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Min Ingredients</th><th class="has-text-warning" style="width:5%"></th></tr>
-                <tbody id="script_productionTableBodyFoundry" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:35%">Resource</th>
+              <th class="has-text-warning" style="width:20%">Enabled</th>
+              <th class="has-text-warning" style="width:20%">Weighting</th>
+              <th class="has-text-warning" style="width:20%">Min Ingredients</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_productionTableBodyFoundry"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_productionTableBodyFoundry');
         let newTableBodyText = "";
 
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let resource = state.craftableResourceList[i];
-            newTableBodyText += '<tr value="' + resource.id + '"><td id="script_foundry_' + resource.id + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
+            newTableBodyText += `<tr><td id="script_foundry_${resource.id}" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let resource = state.craftableResourceList[i];
-            let productionElement = $('#script_foundry_' + resource.id + 'Toggle');
+            let productionElement = $('#script_foundry_' + resource.id);
 
             productionElement.append(buildStandartLabel(resource.name));
 
@@ -11635,11 +11710,17 @@
     function updateProductionTableMiningDrone(currentNode) {
         addStandardHeading(currentNode, "Mining Drone");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Resource</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:20%">Priority</th><th class="has-text-warning" style="width:5%"></th></tr>
-                <tbody id="script_productionTableBodyMiningDrone" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:35%">Resource</th>
+              <th class="has-text-warning" style="width:20%"></th>
+              <th class="has-text-warning" style="width:20%">Weighting</th>
+              <th class="has-text-warning" style="width:20%">Priority</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_productionTableBodyMiningDrone"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_productionTableBodyMiningDrone');
         let newTableBodyText = "";
@@ -11648,7 +11729,7 @@
 
         for (let i = 0; i < droidProducts.length; i++) {
             let production = droidProducts[i];
-            newTableBodyText += '<tr value="' + production.resource.id + '"><td id="script_droid_' + production.resource.id + '" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:20%"></td><td style="width:5%"></td></tr>';
+            newTableBodyText += `<tr><td id="script_droid_${production.resource.id}" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:20%"></td><td style="width:5%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -11671,11 +11752,14 @@
         addStandardHeading(currentNode, "Pylon");
         addStandardSectionSettingsToggle(currentNode, "productionWaitMana", "Wait for full mana", "Cast rituals only with full mana");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Ritual</th><th class="has-text-warning" style="width:20%"></th><th class="has-text-warning" style="width:20%">Weighting</th><th class="has-text-warning" style="width:25%"></th></tr>
-                <tbody id="script_productionTableBodyPylon" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:55%">Ritual</th>
+              <th class="has-text-warning" style="width:45%">Weighting</th>
+            </tr>
+            <tbody id="script_productionTableBodyPylon"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_productionTableBodyPylon');
         let newTableBodyText = "";
@@ -11684,7 +11768,7 @@
 
         for (let i = 0; i < pylonProducts.length; i++) {
             let production = pylonProducts[i];
-            newTableBodyText += '<tr value="' + production.id + '"><td id="script_pylon_' + production.id + '" style="width:35%"><td style="width:20%"></td><td style="width:20%"></td></td><td style="width:25%"></td></tr>';
+            newTableBodyText += `<tr><td id="script_pylon_${production.id}" style="width:55%"></td><td style="width:45%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -11695,7 +11779,7 @@
 
             productionElement.append(buildStandartLabel(game.loc(`modal_pylon_spell_${production.id}`)));
 
-            productionElement = productionElement.next().next();
+            productionElement = productionElement.next();
             productionElement.append(buildStandartSettingsInput(production, "spell_w_" + production.id, "weighting"));
         }
     }
@@ -11726,11 +11810,17 @@
         addStandardSectionSettingsNumber(currentNode, "jobCrystalWeighting", "Final Crystal Miner Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
         addStandardSectionSettingsNumber(currentNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Job</th><th class="has-text-warning" style="width:20%">1st Pass Max</th><th class="has-text-warning" style="width:20%">2nd Pass Max</th><th class="has-text-warning" style="width:20%">Final Max</th><th style="width:5%"></th></tr>
-                <tbody id="script_jobTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:35%">Job</th>
+              <th class="has-text-warning" style="width:20%">1st Pass Max</th>
+              <th class="has-text-warning" style="width:20%">2nd Pass Max</th>
+              <th class="has-text-warning" style="width:20%">Final Max</th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_jobTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_jobTableBody');
         let newTableBodyText = "";
@@ -11738,13 +11828,13 @@
         for (let i = 0; i < JobManager.priorityList.length; i++) {
             const job = JobManager.priorityList[i];
             let classAttribute = (job === jobs.Farmer || job === jobs.Hunter || job === jobs.Unemployed) ? ' class="unsortable"' : ' class="script-draggable"';
-            newTableBodyText += '<tr value="' + job._originalId + '"' + classAttribute + '><td id="script_' + job._originalId + 'Toggle" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>';
+            newTableBodyText += `<tr value="${job._originalId}"${classAttribute}><td id="script_${job._originalId}" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         for (let i = 0; i < JobManager.priorityList.length; i++) {
             const job = JobManager.priorityList[i];
-            let jobElement = $('#script_' + job._originalId + 'Toggle');
+            let jobElement = $('#script_' + job._originalId);
 
             var toggle = buildJobSettingsToggle(job);
             jobElement.append(toggle);
@@ -11757,7 +11847,7 @@
             jobElement.append(buildJobSettingsInput(job, 3));
         }
 
-        $('#script_jobTableBody').sortable( {
+        $('#script_jobTableBody').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -11775,7 +11865,7 @@
                 JobManager.sortByPriority();
                 updateSettingsFromState();
             },
-        } );
+        });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11835,11 +11925,15 @@
         let currentNode = $('#script_weightingContent');
         currentNode.empty().off("*");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:30%">Target</th><th class="has-text-warning" style="width:60%">Condition</th><th class="has-text-warning" style="width:10%">Multiplier</th></tr>
-                <tbody id="script_weightingTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:30%">Target</th>
+              <th class="has-text-warning" style="width:60%">Condition</th>
+              <th class="has-text-warning" style="width:10%">Multiplier</th>
+            </tr>
+            <tbody id="script_weightingTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_weightingTableBody');
 
@@ -11916,12 +12010,18 @@
                              {val: "tax", label: "Tax", hint: "Build only Tax Shrines"}];
         buildStandartSettingsSelector(currentNode, "buildingShrineType", "Prefered Shrine", "Auto Build shrines only at moons of chosen shrine", shrineOptions);
 
-        currentNode.append(
-            `<div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings.."></div>
-            <table style="width:100%"><tr><th class="has-text-warning" style="width:35%">Building</th><th class="has-text-warning" style="width:15%">Auto Build</th><th class="has-text-warning" style="width:15%">Max Build</th><th class="has-text-warning" style="width:15%">Weighting</th><th class="has-text-warning" style="width:20%">Auto Power</th></tr>
-                <tbody id="script_buildingTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings..."></div>
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:35%">Building</th>
+              <th class="has-text-warning" style="width:15%">Auto Build</th>
+              <th class="has-text-warning" style="width:15%">Max Build</th>
+              <th class="has-text-warning" style="width:15%">Weighting</th>
+              <th class="has-text-warning" style="width:20%">Auto Power</th>
+            </tr>
+            <tbody id="script_buildingTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_buildingTableBody');
 
@@ -11932,7 +12032,7 @@
 
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
             let building = BuildingManager.priorityList[i];
-            newTableBodyText += '<tr value="' + building._vueBinding + '" class="script-draggable"><td id="script_' + building._vueBinding + 'Toggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>';
+            newTableBodyText += `<tr value="${building._vueBinding}" class="script-draggable"><td id="script_${building._vueBinding}" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -11951,7 +12051,7 @@
         // Build all other buildings settings rows
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
             let building = BuildingManager.priorityList[i];
-            let buildingElement = $('#script_' + building._vueBinding + 'Toggle');
+            let buildingElement = $('#script_' + building._vueBinding);
 
             buildingElement.append(buildBuildingLabel(building));
 
@@ -11968,7 +12068,7 @@
             buildingElement.append(buildBuildingStateSettingsToggle(building));
         }
 
-        $('#script_buildingTableBody').sortable( {
+        $('#script_buildingTableBody').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -11988,7 +12088,7 @@
                 BuildingManager.sortByPriority();
                 updateSettingsFromState();
             },
-        } );
+        });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -12133,25 +12233,30 @@
 
         addStandardSectionSettingsToggle(currentNode, "arpaScaleWeighting", "Scale weighting with progress", "Projects weighing scales  with current progress, making script more eager to spend resources on finishing nearly constructed projects.");
 
-        currentNode.append(
-            `<table style="width:100%"><tr><th class="has-text-warning" style="width:25%">Project</th><th class="has-text-warning" style="width:25%">Auto Build</th><th class="has-text-warning" style="width:25%">Max Build</th><th class="has-text-warning" style="width:25%">Weighting</th></tr>
-                <tbody id="script_projectTableBody" class="script-contenttbody"></tbody>
-            </table>`
-        );
+        currentNode.append(`
+          <table style="width:100%">
+            <tr>
+              <th class="has-text-warning" style="width:25%">Project</th>
+              <th class="has-text-warning" style="width:25%">Auto Build</th>
+              <th class="has-text-warning" style="width:25%">Max Build</th>
+              <th class="has-text-warning" style="width:25%">Weighting</th>
+            </tr>
+            <tbody id="script_projectTableBody"></tbody>
+          </table>`);
 
         let tableBodyNode = $('#script_projectTableBody');
         let newTableBodyText = "";
 
         for (let i = 0; i < ProjectManager.priorityList.length; i++) {
             const project = ProjectManager.priorityList[i];
-            newTableBodyText += '<tr value="' + project.id + '" class="script-draggable"><td id="script_' + project.id + 'Toggle" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>';
+            newTableBodyText += `<tr value="${project.id}" class="script-draggable"><td id="script_${project.id}" style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td><td style="width:25%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other projects settings rows
         for (let i = 0; i < ProjectManager.priorityList.length; i++) {
             const project = ProjectManager.priorityList[i];
-            let projectElement = $('#script_' + project.id + 'Toggle');
+            let projectElement = $('#script_' + project.id);
 
             projectElement.append(buildStandartLabel(project.name));
 
@@ -12166,7 +12271,7 @@
 
         }
 
-        $('#script_projectTableBody').sortable( {
+        $('#script_projectTableBody').sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -12184,7 +12289,7 @@
                 ProjectManager.sortByPriority();
                 updateSettingsFromState();
             },
-        } );
+        });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -12296,17 +12401,17 @@
 
         // Append the script modal to the document
         $(document.body).append(`
-            <div id="scriptModal" class="script-modal">
-              <span id="scriptModalClose" class="script-modal-close">&times;</span>
-              <div class="script-modal-content">
-                <div id="scriptModalHeader" class="script-modal-header has-text-warning">
-                  You should never see this modal header...
-                </div>
-                <div id="scriptModalBody" class="script-modal-body">
-                  <p>You should never see this modal body...</p>
-                </div>
+          <div id="scriptModal" class="script-modal">
+            <span id="scriptModalClose" class="script-modal-close">&times;</span>
+            <div class="script-modal-content">
+              <div id="scriptModalHeader" class="script-modal-header has-text-warning">
+                <p>You should never see this modal header...</p>
               </div>
-            </div>`);
+              <div id="scriptModalBody" class="script-modal-body">
+                <p>You should never see this modal body...</p>
+              </div>
+            </div>
+          </div>`);
 
         // Add the script modal close button action
         $('#scriptModalClose').on("click", function() {
