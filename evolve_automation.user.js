@@ -3368,8 +3368,20 @@
             this.tactic = Math.max(this.tactic - 1, 0);
         },
 
+        // buildGarrison > vBind > filters > tactics from civics.js
         getCampaignTitle(tactic) {
-            return this._garrisonVue.$options.filters.tactics(tactic);
+            switch(tactic){
+                case 0:
+                    return game.loc('civics_garrison_tactic_ambush');
+                case 1:
+                    return game.loc('civics_garrison_tactic_raid');
+                case 2:
+                    return game.loc('civics_garrison_tactic_pillage');
+                case 3:
+                    return game.loc('civics_garrison_tactic_assault');
+                case 4:
+                    return game.loc('civics_garrison_tactic_siege');
+            }
         },
 
         addBattalion(count) {
@@ -3550,7 +3562,7 @@
         },
 
         mechObserver: new MutationObserver(() => {
-            game.updateDebugData(); // Observer can be can be called at any time, make sure we have actual list of mechs
+            game.updateDebugData(); // Observer can be can be called at any time, make sure we have actual data
             createMechInfo();
         }),
 
@@ -3608,11 +3620,40 @@
             return 0;
         },
 
+        getProgressMod() {
+            let mod = 1;
+            if (game.global.stats.achieve.gladiator?.l > 0) {
+                mod *= 1 + game.global.stats.achieve.gladiator.l * 0.2;
+            }
+            if (game.global.blood['wrath']){
+                mod *= 1 + (game.global.blood.wrath / 20);
+            }
+            mod /= game.global.portal.spire.count;
+
+            return mod;
+        },
+
         getMechStats(mech) {
             let rating = this.getWeaponMod(mech) * this.getBodyMod(mech);
             let power = rating * this.getSizeMod(mech);
             let efficiency = power / this.getMechSpace(mech);
             return {rating: rating, power: power, efficiency: efficiency};
+        },
+
+        getProgressSpeed() {
+            let mechBay = game.global.portal.mechbay;
+            let progressMod = this.getProgressMod();
+            let spaceUsed = 0;
+            let totalDamage = 0;
+            for (let i = 0; i < mechBay.mechs.length; i++) {
+                let mech = {id: i, ...mechBay.mechs[i], ...this.getMechStats(mechBay.mechs[i])};
+                spaceUsed += this.getMechSpace(mech);
+                if (spaceUsed > mechBay.max) {
+                    break;
+                }
+                totalDamage += mech.power * progressMod;
+            }
+            return totalDamage;
         },
 
         updateBestParts() {
@@ -7351,7 +7392,7 @@
             return;
         }
 
-        let nextTickKnowledge = resources.Knowledge.currentQuantity + resources.Knowledge.rateOfChange * (game.global.settings.at > 0 ? 2 : 1) * (game.global.race['hyper'] ? 1.05 : 1) * (game.global.race['slow'] ? 0.9 : 1);
+        let nextTickKnowledge = resources.Knowledge.currentQuantity + resources.Knowledge.rateOfChange * gameTicksPerSecond("mid");
         let overflowKnowledge = nextTickKnowledge - resources.Knowledge.maxQuantity;
         if (overflowKnowledge < 0) {
             return;
@@ -7929,7 +7970,7 @@
                 maxStateOn = Math.min(maxStateOn, building.stateOnCount - ((resources.Power.currentQuantity - 5) / (-building.powered)));
             }
             // Disable Belt Space Stations with no workers
-            if (building === buildings.BeltSpaceStation) {
+            if (building === buildings.BeltSpaceStation && (building.count - building.stateOnCount) * building.powered > resources.Power.currentQuantity) {
                 maxStateOn = Math.min(maxStateOn, Math.floor(resources.Belt_Support.maxQuantity / 3) + 1);
                 if (settings.autoJobs && jobs.SpaceMiner.autoJobEnabled && jobs.SpaceMiner.breakpoints[2] !== -1) {
                     maxStateOn = Math.min(maxStateOn, Math.ceil(jobs.SpaceMiner.breakpoints[2] / 3));
@@ -8863,7 +8904,7 @@
 
         // Add clicking to rate of change, so we can sell or eject it.
         if (settings.buildingAlwaysClick || (settings.autoBuild && (resources.Population.currentQuantity <= 15 || (buildings.RockQuarry.count < 1 && !game.global.race['sappy'])))) {
-            let resPerClick = getResourcesPerClick() / (game.global.settings.at > 0 ? 2 : 1) / (game.global.race['hyper'] ? 1.05 : 1) / (game.global.race['slow'] ? 0.9 : 1);
+            let resPerClick = getResourcesPerClick() / gameTicksPerSecond("mid");
             if (buildings.Food.isClickable()) {
                 resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick * (haveTech("conjuring", 1) ? 10 : 1);
             }
@@ -9338,10 +9379,19 @@
             return;
         }
         mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
-            let obj = null;
             if (node.childElementCount === 0) { // Descriptions tooltip
                 return;
-            } else if (node.id.match(/^poppopArpa/)) { // "poppopArpa[id-with-no-tab]" for projects
+            }
+            if (node.id === "popportal-spire") { // Spire tooltip
+                game.updateDebugData(); // Observer can be can be called at any time, make sure we have actual data
+                let time = (100 - game.global.portal.spire.progress) / MechManager.getProgressSpeed() * gameTicksPerSecond("mid");
+                node.style.pointerEvents = "none";
+                node.innerHTML += `<div id="popTimer" class="flair has-text-advanced vb">Cleared in [${poly.timeFormat(time)}]</div>`;
+                return;
+            }
+
+            let obj = null;
+            if (node.id.match(/^poppopArpa/)) { // "poppopArpa[id-with-no-tab]" for projects
                 obj = arpaIds["arpa" + node.id.substr(10)];
             } else if (node.id.match(/\d$/)) { // "popq[id][order]" for buildings in queue
                 let id = node.id.substr(4, node.id.length-5);
@@ -10258,6 +10308,7 @@
             raceName = "Unrecognized race!";
             nameClass = "has-text-danger";
         }
+        // TODO: More descriptive names
 
         let queueNode = $(`
           <tr id="script_evolution_${id}" value="${id}" class="script-draggable">
@@ -12656,6 +12707,21 @@
         return combs;
     }
 
+    var baseDuration = {main: 250, mid: 1000, long: 500};
+    function gameTicksPerSecond(type) {
+        let ms = baseDuration[type];
+        if (game.global.race['slow']) {
+            ms *= 1.1;
+        }
+        if (game.global.race['hyper']) {
+            ms *= 0.95;
+        }
+        if (game.global.settings.at > 0) {
+            ms *= 0.5;
+        }
+        return 1000 / ms;
+    }
+
     function getResourcesPerClick() {
         let amount = 1;
         let traitsStrong0 = 5;
@@ -12912,6 +12978,9 @@
         supplyValue: {Lumber:{in:.5,out:25e3},Chrysotile:{in:.5,out:25e3},Stone:{in:.5,out:25e3},Crystal:{in:3,out:25e3},Furs:{in:3,out:25e3},Copper:{in:1.5,out:25e3},Iron:{in:1.5,out:25e3},Aluminium:{in:2.5,out:25e3},Cement:{in:3,out:25e3},Coal:{in:1.5,out:25e3},Oil:{in:2.5,out:12e3},Uranium:{in:5,out:300},Steel:{in:3,out:25e3},Titanium:{in:3,out:25e3},Alloy:{in:6,out:25e3},Polymer:{in:6,out:25e3},Iridium:{in:8,out:25e3},Helium_3:{in:4.5,out:12e3},Deuterium:{in:4,out:1e3},Neutronium:{in:15,out:1e3},Adamantite:{in:12.5,out:1e3},Infernite:{in:25,out:250},Elerium:{in:30,out:250},Nano_Tube:{in:6.5,out:1e3},Graphene:{in:5,out:1e3},Stanene:{in:4.5,out:1e3},Bolognium:{in:18,out:1e3},Vitreloy:{in:14,out:1e3},Orichalcum:{in:10,out:1e3},Plywood:{in:10,out:250},Brick:{in:10,out:250},Wrought_Iron:{in:10,out:250},Sheet_Metal:{in:10,out:250},Mythril:{in:12.5,out:250},Aerogel:{in:16.5,out:250},Nanoweave:{in:18,out:250},Scarletite:{in:35,out:250}},
         // export const monsters from portal.js
         monsters: {fire_elm:{weapon:{laser:1.05,flame:0,plasma:.25,kinetic:.5,missile:.5,sonic:1,shotgun:.75,tesla:.65},nozone:{freeze:!0,flooded:!0},amp:{hot:1.75,humid:.8,steam:.9}},water_elm:{weapon:{laser:.65,flame:.5,plasma:1,kinetic:.2,missile:.5,sonic:.5,shotgun:.25,tesla:.75},nozone:{hot:!0,freeze:!0},amp:{steam:1.5,river:1.1,flooded:2,rain:1.75,humid:1.25}},rock_golem:{weapon:{laser:1,flame:.5,plasma:1,kinetic:.65,missile:.95,sonic:.75,shotgun:.35,tesla:0},nozone:{},amp:{}},bone_golem:{weapon:{laser:.45,flame:.35,plasma:.55,kinetic:1,missile:1,sonic:.75,shotgun:.75,tesla:.15},nozone:{},amp:{}},mech_dino:{weapon:{laser:.85,flame:.05,plasma:.55,kinetic:.45,missile:.5,sonic:.35,shotgun:.5,tesla:1},nozone:{},amp:{}},plant:{weapon:{laser:.42,flame:1,plasma:.65,kinetic:.2,missile:.25,sonic:.75,shotgun:.35,tesla:.38},nozone:{},amp:{}},crazed:{weapon:{laser:.5,flame:.85,plasma:.65,kinetic:1,missile:.35,sonic:.15,shotgun:.95,tesla:.6},nozone:{},amp:{}},minotaur:{weapon:{laser:.32,flame:.5,plasma:.82,kinetic:.44,missile:1,sonic:.15,shotgun:.2,tesla:.35},nozone:{},amp:{}},ooze:{weapon:{laser:.2,flame:.65,plasma:1,kinetic:0,missile:0,sonic:.85,shotgun:0,tesla:.15},nozone:{},amp:{}},zombie:{weapon:{laser:.35,flame:1,plasma:.45,kinetic:.08,missile:.8,sonic:.18,shotgun:.95,tesla:.05},nozone:{},amp:{}},raptor:{weapon:{laser:.68,flame:.55,plasma:.85,kinetic:1,missile:.44,sonic:.22,shotgun:.33,tesla:.66},nozone:{},amp:{}},frost_giant:{weapon:{laser:.9,flame:.82,plasma:1,kinetic:.25,missile:.08,sonic:.45,shotgun:.28,tesla:.5},nozone:{hot:!0},amp:{freeze:2.5,hail:1.65}},swarm:{weapon:{laser:.02,flame:1,plasma:.04,kinetic:.01,missile:.08,sonic:.66,shotgun:.38,tesla:.45},nozone:{},amp:{}},dragon:{weapon:{laser:.18,flame:0,plasma:.12,kinetic:.35,missile:1,sonic:.22,shotgun:.65,tesla:.15},nozone:{},amp:{}},mech_dragon:{weapon:{laser:.84,flame:.1,plasma:.68,kinetic:.18,missile:.75,sonic:.22,shotgun:.28,tesla:1},nozone:{},amp:{}},construct:{weapon:{laser:.5,flame:.2,plasma:.6,kinetic:.34,missile:.9,sonic:.08,shotgun:.28,tesla:1},nozone:{},amp:{}},beholder:{weapon:{laser:.75,flame:.15,plasma:1,kinetic:.45,missile:.05,sonic:.01,shotgun:.12,tesla:.3},nozone:{},amp:{}},worm:{weapon:{laser:.55,flame:.38,plasma:.45,kinetic:.2,missile:.05,sonic:1,shotgun:.02,tesla:.01},nozone:{},amp:{}},hydra:{weapon:{laser:.85,flame:.75,plasma:.85,kinetic:.25,missile:.45,sonic:.5,shotgun:.6,tesla:.65},nozone:{},amp:{}},colossus:{weapon:{laser:1,flame:.05,plasma:.75,kinetic:.45,missile:1,sonic:.35,shotgun:.35,tesla:.5},nozone:{},amp:{}},lich:{weapon:{laser:.1,flame:.1,plasma:.1,kinetic:.45,missile:.75,sonic:.35,shotgun:.75,tesla:.5},nozone:{},amp:{}},ape:{weapon:{laser:1,flame:.95,plasma:.85,kinetic:.5,missile:.5,sonic:.05,shotgun:.35,tesla:.68},nozone:{},amp:{}},bandit:{weapon:{laser:.65,flame:.5,plasma:.85,kinetic:1,missile:.5,sonic:.25,shotgun:.75,tesla:.25},nozone:{},amp:{}},croc:{weapon:{laser:.65,flame:.05,plasma:.6,kinetic:.5,missile:.5,sonic:1,shotgun:.2,tesla:.75},nozone:{},amp:{}},djinni:{weapon:{laser:0,flame:.35,plasma:1,kinetic:.15,missile:0,sonic:.65,shotgun:.22,tesla:.4},nozone:{},amp:{}},snake:{weapon:{laser:.5,flame:.5,plasma:.5,kinetic:.5,missile:.5,sonic:.5,shotgun:.5,tesla:.5},nozone:{},amp:{}},centipede:{weapon:{laser:.5,flame:.85,plasma:.95,kinetic:.65,missile:.6,sonic:0,shotgun:.5,tesla:.01},nozone:{},amp:{}},spider:{weapon:{laser:.65,flame:1,plasma:.22,kinetic:.75,missile:.15,sonic:.38,shotgun:.9,tesla:.18},nozone:{},amp:{}},manticore:{weapon:{laser:.05,flame:.25,plasma:.95,kinetic:.5,missile:.15,sonic:.48,shotgun:.4,tesla:.6},nozone:{},amp:{}},fiend:{weapon:{laser:.75,flame:.25,plasma:.5,kinetic:.25,missile:.75,sonic:.25,shotgun:.5,tesla:.5},nozone:{},amp:{}},bat:{weapon:{laser:.16,flame:.18,plasma:.12,kinetic:.25,missile:.02,sonic:1,shotgun:.9,tesla:.58},nozone:{},amp:{}},medusa:{weapon:{laser:.35,flame:.1,plasma:.3,kinetic:.95,missile:1,sonic:.15,shotgun:.88,tesla:.26},nozone:{},amp:{}},ettin:{weapon:{laser:.5,flame:.35,plasma:.8,kinetic:.5,missile:.25,sonic:.3,shotgun:.6,tesla:.09},nozone:{},amp:{}},faceless:{weapon:{laser:.6,flame:.28,plasma:.6,kinetic:0,missile:.05,sonic:.8,shotgun:.15,tesla:1},nozone:{},amp:{}},enchanted:{weapon:{laser:1,flame:.02,plasma:.95,kinetic:.2,missile:.7,sonic:.05,shotgun:.65,tesla:.01},nozone:{},amp:{}},gargoyle:{weapon:{laser:.15,flame:.4,plasma:.3,kinetic:.5,missile:.5,sonic:.85,shotgun:1,tesla:.2},nozone:{},amp:{}},chimera:{weapon:{laser:.38,flame:.6,plasma:.42,kinetic:.85,missile:.35,sonic:.5,shotgun:.65,tesla:.8},nozone:{},amp:{}},gorgon:{weapon:{laser:.65,flame:.65,plasma:.65,kinetic:.65,missile:.65,sonic:.65,shotgun:.65,tesla:.65},nozone:{},amp:{}},kraken:{weapon:{laser:.75,flame:.35,plasma:.75,kinetic:.35,missile:.5,sonic:.18,shotgun:.05,tesla:.85},nozone:{},amp:{}},homunculus:{weapon:{laser:.05,flame:1,plasma:.1,kinetic:.85,missile:.65,sonic:.5,shotgun:.75,tesla:.2},nozone:{},amp:{}}},
+        // export function timeFormat(time) from functions.js
+        timeFormat: function(e){let i;if(e<0)i=game.loc("time_never");else if((e=+e.toFixed(0))>60){let l=e%60,s=(e-l)/60;if(s>=60){let e=s%60,l=(s-e)/60;if(l>24){i=`${(l-(e=l%24))/24}d ${e}h`}else i=`${l}h ${e=("0"+e).slice(-2)}m`}else i=`${s=("0"+s).slice(-2)}m ${l=("0"+l).slice(-2)}s`}else i=`${e=("0"+e).slice(-2)}s`;return i},
+
 
     // Reimplemented:
         // export function crateValue() from Evolve/src/resources.js
