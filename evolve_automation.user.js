@@ -24,7 +24,7 @@
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
 //     If some storage grew too high, taking all crates, you can disable expensive building, and Auto Storage won't try to fullfil its demands anymore. If you want to expand storage to build something manually, you can limit maximum level of building to 0, thus while it technically have auto build enabled, it won't ever be autobuilded, but you'll have needed storage.
-//   Order in which buildings receive power depends on order in buildings settings, you can drag and drop them to adjust priorities. Filtering with "autopower" and "autobuild" keywords can show buildings with altered auto power and auto build respectively.
+//   Order in which buildings receive power depends on order in buildings settings, you can drag and drop them to adjust priorities. Filtering works both for names, and for settings, e.g. you can filter for "build=on", "power=off", "weight>200" and such.
 //     By default Ascension Trigger placed where it can be activated as soon as possible without killing soldiers or population, and reducing prestige rewards. But it still can hurt production badly. If you're planning to ascend at very first opportunity(i.e. not planning to go for pillar or such), you may enable auto powering it. Otherwise you may want to delay with it till the moment when you'll be ready. (Or you can just move it where it will be less impacting on production, but that also means it'll take longer to get enough power)
 //   Auto Craft doesn't works well past MAD, you may have issues making it craft expensive resource like mythril, consider enabling Auto Craftsmen even if you're playing with manual craft
 //   Evolution Queue can change any script settings, not only those which you have after adding new task, you can append any variables and their values manually, if you're capable to read code, and can find internal names and acceptable values of those variables. Settings applied at the moment when new evolution starts. (Or right before reset in case of Cataclysm)
@@ -9384,9 +9384,12 @@
             }
             if (node.id === "popportal-spire") { // Spire tooltip
                 game.updateDebugData(); // Observer can be can be called at any time, make sure we have actual data
-                let time = (100 - game.global.portal.spire.progress) / MechManager.getProgressSpeed() * gameTicksPerSecond("mid");
-                node.style.pointerEvents = "none";
-                node.innerHTML += `<div id="popTimer" class="flair has-text-advanced vb">Cleared in [${poly.timeFormat(time)}]</div>`;
+                let speed = MechManager.getProgressSpeed();
+                if (speed > 0) {
+                    let time = (100 - game.global.portal.spire.progress) / speed * gameTicksPerSecond("mid");
+                    node.style.pointerEvents = "none";
+                    node.innerHTML += `<div id="popTimer" class="flair has-text-advanced vb">Cleared in [${poly.timeFormat(time)}]</div>`;
+                }
                 return;
             }
 
@@ -11756,7 +11759,8 @@
           <table style="width:100%">
             <tr>
               <th class="has-text-warning" style="width:55%">Ritual</th>
-              <th class="has-text-warning" style="width:45%">Weighting</th>
+              <th class="has-text-warning" style="width:20%">Weighting</th>
+              <th style="width:25%"></th>
             </tr>
             <tbody id="script_productionTableBodyPylon"></tbody>
           </table>`);
@@ -11768,7 +11772,7 @@
 
         for (let i = 0; i < pylonProducts.length; i++) {
             let production = pylonProducts[i];
-            newTableBodyText += `<tr><td id="script_pylon_${production.id}" style="width:55%"></td><td style="width:45%"></td></tr>`;
+            newTableBodyText += `<tr><td id="script_pylon_${production.id}" style="width:55%"></td><td style="width:20%"></td><td style="width:25%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12000,7 +12004,7 @@
 
         addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire", "Enables special logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays.");
         addStandardSectionSettingsToggle(currentNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
-        addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income during weighting", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings with this option enabled");
+        addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings with this option enabled");
 
         let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
                              {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
@@ -12098,14 +12102,62 @@
         let filter = document.getElementById("script_buildingSearch").value.toUpperCase();
         let trs = document.getElementById("script_buildingTableBody").getElementsByTagName("tr");
 
+        let filterChecker = null;
+        let reg = filter.match(/^(.+)([<=>])(.+)$/);
+        if (reg) {
+            let testVar = null;
+            switch (reg[1]) {
+                case "BUILD":
+                case "AUTOBUILD":
+                    testVar = "autoBuildEnabled";
+                    break;
+                case "POWER":
+                case "AUTOPOWER":
+                    testVar = "autoStateEnabled";
+                    break;
+                case "WEIGHT":
+                case "WEIGHTING":
+                    testVar = "_weighting";
+                    break;
+            }
+            let testCmp = null;
+            switch (reg[2]) {
+                case ">":
+                    testCmp = (a, b) => a > b;
+                    break;
+                case "=":
+                    testCmp = (a, b) => a === b;
+                    break;
+                case "<":
+                    testCmp = (a, b) => a < b;
+                    break;
+            }
+            let testVal = null;
+            switch (reg[3]) {
+                case "ON":
+                case "TRUE":
+                    testVal = true;
+                    break;
+                case "OFF":
+                case "FALSE":
+                    testVal = false;
+                    break;
+                default:
+                    testVal = parseFloat(reg[3]);
+                    break;
+            }
+            if (testVar !== null && testCmp !== null && testVal !== null) {
+                filterChecker = (building) => testCmp(building[testVar], testVal);
+            }
+        }
+
         // Loop through all table rows, and hide those who don't match the search query
         for (let i = 0; i < trs.length; i++) {
             let td = trs[i].getElementsByTagName("td")[0];
             if (td) {
-                if (filter === "AUTOPOWER" || filter === "AUTOBUILD") {
-                    let building = buildingIds[td.id.match(/^script_(.*)Toggle$/)[1]];
-                    if (building && ((filter === "AUTOPOWER" && building.autoStateEnabled !== settings.buildingStateAll) ||
-                                     (filter === "AUTOBUILD" && building.autoBuildEnabled !== settings.buildingEnabledAll))) {
+                if (filterChecker) {
+                    let building = buildingIds[td.id.match(/^script_(.*)$/)[1]];
+                    if (building && filterChecker(building)) {
                         trs[i].style.display = "";
                     } else {
                         trs[i].style.display = "none";
