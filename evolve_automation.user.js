@@ -1941,8 +1941,8 @@
         PortalBribeSphinx: new Action("Portal Bribe Sphinx", "portal", "bribe_sphinx", "prtl_spire"),
         PortalSpireSurvey: new Action("Portal Spire Survey", "portal", "spire_survey", "prtl_spire", {mission: true}),
         PortalMechBay: new Action("Portal Mech Bay", "portal", "mechbay", "prtl_spire"),
+        PortalSpire: new Action("Portal Spire", "portal", "spire", "prtl_spire"),
         PortalWaygate: new Action("Portal Waygate", "portal", "waygate", "prtl_spire"),
-
     }
 
     var projects = {
@@ -5411,10 +5411,11 @@
         addSetting("fleetAlien2Knowledge", 9000000);
         addSetting("fleetChthonianPower", 4500);
 
+        addSetting("mechScrap", "all");
+        addSetting("mechBuild", "random");
         addSetting("mechSize", "large");
         addSetting("mechSizeGravity", "large");
-        addSetting("mechScrap", "single");
-        addSetting("mechBuild", "random");
+        addSetting("mechSaveSupply", true);
 
         for (let i = 0; i < biomeList.length; i++) {
             addSetting("biome_w_" + biomeList[i], 0);
@@ -5567,11 +5568,15 @@
                             remainingAchievements++;
                         }
                     }
+                    if (!remainingRace) {
+                        continue;
+                    }
+
                     // We'll target the group with the highest percentage chance of getting an achievement
                     let remainingPercent = remainingAchievements / raceGroup.length;
 
                     // If we have Mass Extinction perk, and not affected by randomness - prioritize conditional races
-                    if (remainingRace !== races.junker && game.global.stats.achieve['mass_extinction'] && remainingAchievements > 0 && remainingRace.getCondition() !== '') {
+                    if (remainingRace !== races.junker && game.global.stats.achieve['mass_extinction'] && remainingRace.getCondition() !== '') {
                         targetedGroup.race = remainingRace;
                         targetedGroup.remainingPercent = 100;
                     }
@@ -8815,6 +8820,14 @@
             return;
         }
 
+        if (settings.mechSaveSupply) {
+            let timeToClear = (100 - game.global.portal.spire.progress) / m.getProgressSpeed();
+            let timeToFull = (resources.Supply.maxQuantity - resources.Supply.currentQuantity - m.getMechRefund(newMech)) / resources.Supply.rateOfChange;
+            if (timeToClear <= timeToFull) {
+                return;
+            }
+        }
+
         let baySpace = mechBay.max - mechBay.bay;
         let disabledBays = buildings.PortalMechBay.stateOffCount;
 
@@ -11086,15 +11099,17 @@
         let sizeOptions = MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}));
         buildStandartSettingsSelector(currentNode, "mechSize", "Prefered mech size", "Size of mech for autobuild", sizeOptions);
         buildStandartSettingsSelector(currentNode, "mechSizeGravity", "Gravity mech size", "Override prefered size with this on floors with high gravity", sizeOptions);
+        addStandardSectionSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     function resetMechSettings() {
+        settings.mechScrap = "all";
+        settings.mechBuild = "random";
         settings.mechSize = "large";
         settings.mechSizeGravity = "large";
-        settings.mechScrap = "single";
-        settings.mechBuild = "random";
+        settings.mechSaveSupply = true;
     }
 
     function buildEjectorSettings() {
@@ -11381,8 +11396,8 @@
 
         addStandardSectionSettingsToggle(currentNode, "storageLimitPreMad", "Limit Pre-MAD Storage", "Saves resources and shortens run time by limiting storage pre-MAD");
         addStandardSectionSettingsToggle(currentNode, "storageSafeReassign", "Reassign only empty storages", "Wait until storage is empty before reassigning containers to another resource, to prevent overflowing and wasting resources");
-        addStandardSectionSettingsToggle(currentNode, "storageAssignExtra", "Assign buffer storage", "With this option enabled storage assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\\eject\\switch production, etc.");
-        addStandardSectionSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign only for prioritized resources", "With this option enabled script assign storages only for prioritized resources, up to amount required by whatever demanded it. Such as queue or trigger costs. You don't normally need it, this can be useful when you need all your storage space to afford single building, and want to fully focus on it. Warning! Enabling this option without `Reassign only empty storages` will instantly unassign all your crates and containers, and may lead to loss of resources.");
+        addStandardSectionSettingsToggle(currentNode, "storageAssignExtra", "Assign buffer storage", "Assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\\eject\\switch production, etc.");
+        addStandardSectionSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign only for prioritized resources", "Assign storages only for prioritized resources, up to amount required by whatever demanded it. Such as queue or trigger costs. You don't normally need it, this can be useful when you need all your storage space to afford single building, and want to fully focus on it. Warning! Enabling this option without `Reassign only empty storages` will instantly unassign all your crates and containers, and may lead to loss of resources.");
 
         currentNode.append(`
           <table style="width:100%">
@@ -12004,7 +12019,7 @@
 
         addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire", "Enables special logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays.");
         addStandardSectionSettingsToggle(currentNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
-        addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings with this option enabled");
+        addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings.");
 
         let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
                              {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
