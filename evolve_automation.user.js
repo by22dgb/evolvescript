@@ -1481,15 +1481,7 @@
     // Biomes and traits sorted by habitability
     const planetBiomes = ["oceanic", "forest", "grassland", "desert", "volcanic", "tundra", "eden", "hellscape"];
     const planetTraits = ["magnetic", "rage", "elliptical", "stormy", "toxic", "ozone", "mellow", "trashed", "flare", "unstable", "dense"];
-    const planetBiomeRaces = {
-        hellscape: ["balorg", "imp"],
-        eden: ["seraph", "unicorn"],
-        oceanic: ["sharkin", "octigoran"],
-        forest: ["dryad", "satyr"],
-        desert: ["tuskin", "kamel"],
-        volcanic: ["phoenix", "salamander"],
-        tundra: ["yeti", "wendigo"]
-    }
+    const planetBiomeGenus = {hellscape: "demonic", eden: "angelic", oceanic: "aquatic", forest: "fey", desert: "sand", volcanic: "heat", tundra: "polar"};
 
     const challenges = {
         plasmid: "no_plasmid",
@@ -1506,6 +1498,7 @@
         banana: "banana",
     };
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...Object.keys(challenges).map(id => "challenge_" + id)];
+    const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", ascension: "Ascension"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech"];
@@ -5771,16 +5764,14 @@
             if (planet.trait !== "none" && !isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
                 planet.achieve++;
             }
-            if (planetBiomeRaces[planet.biome]) {
-                for (let j = 0; j < planetBiomeRaces[planet.biome].length; j++) {
-                    let race = planetBiomeRaces[planet.biome][j];
-                    if (!isAchievementUnlocked("extinct_" + race, alevel)) {
+            if (planetBiomeGenus[planet.biome]) {
+                for (let id in races) {
+                    if (races[id].genus === planetBiomeGenus[planet.biome] && !isAchievementUnlocked("extinct_" + races[id], alevel)) {
                         planet.achieve++;
                     }
                 }
-                // Both races have same genus, no need to check both
-                let genus = game.races[planetBiomeRaces[planet.biome][0]].type;
-                if (!isAchievementUnlocked("genus_" + genus, alevel)) {
+                // All races have same genus, no need to check both
+                if (!isAchievementUnlocked("genus_" + planetBiomeGenus[planet.biome], alevel)) {
                     planet.achieve++;
                 }
             }
@@ -10301,38 +10292,44 @@
         let queuedEvolution = settings.evolutionQueue[id];
 
         let raceName = "";
-        let nameClass = "";
+        let raceClass = "";
+        let prestigeName = "";
+        let prestigeClass = "";
 
         let race = races[queuedEvolution.userEvolutionTarget];
         if (race) {
             raceName = race.name;
-            nameClass = "has-text-info";
 
             // Check if we can evolve intro it
-            if (!race.isConditionMet()) {
-                nameClass = "has-text-danger";
+            if (race.isConditionMet()) {
+                raceClass = "has-text-info";
+            } else {
+                raceClass = "has-text-danger";
             }
         } else if (queuedEvolution.userEvolutionTarget === "auto") {
-            if (queuedEvolution.prestigeType === "ascension") {
-                raceName = "Auto Achievements (Pillars)";
-            } else if (queuedEvolution.prestigeType === "bioseed") {
-                raceName = "Auto Achievements (Greatness)";
-            } else {
-                raceName = "Auto Achievements (Extinction)";
-            }
-            nameClass = "has-text-warning";
+            raceName = "Auto Achievements";
+            raceClass = "has-text-warning";
         } else {
             raceName = "Unrecognized race!";
-            nameClass = "has-text-danger";
+            raceClass = "has-text-danger";
         }
         let star = $("#topBar .flair svg").clone();
         star.removeClass();
         star.addClass("star" + getConfiguredAchievementLevel(queuedEvolution));
-        star.css("margin-left", "0.2em");
+
+        if (queuedEvolution.prestigeType !== "none") {
+            if (prestigeNames[queuedEvolution.prestigeType]) {
+                prestigeName = `(${prestigeNames[queuedEvolution.prestigeType]})`;
+                prestigeClass = "has-text-info";
+            } else {
+                prestigeName = "Unrecognized prestige!";
+                prestigeClass = "has-text-danger";
+            }
+        }
 
         let queueNode = $(`
           <tr id="script_evolution_${id}" value="${id}" class="script-draggable">
-            <td style="width:25%"><span class="${nameClass}">${raceName}</span>${star.prop('outerHTML')}</td>
+            <td style="width:25%"><span class="${raceClass}">${raceName}</span> <span class="${prestigeClass}">${prestigeName}</span> ${star.prop('outerHTML')}</td>
             <td style="width:70%"><textarea class="textarea">${JSON.stringify(queuedEvolution, null, 4)}</textarea></td>
             <td style="width:5%"><a class="button is-dark is-small"><span>X</span></a></td>
           </tr>`);
