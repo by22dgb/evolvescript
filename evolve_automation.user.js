@@ -3504,8 +3504,7 @@
 
         lastLevel: -1,
         lastPrepared: -1,
-        bestSize: "",
-        bestBody: [],
+        bestBody: {small: [], medium: [], large: [], titan: []},
         bestWeapon: [],
 
         Size: ['small','medium','large','titan'],
@@ -3571,6 +3570,18 @@
             this._listVue = getVueById(this._listVueBinding);
             if (this._listVue === undefined) {
                 return false;
+            }
+
+            if (this.lastLevel !== game.global.portal.spire.count || this.lastPrepared !== game.global.blood.prepared) {
+                this.lastLevel = game.global.portal.spire.count;
+                this.lastPrepared = game.global.blood.prepared;
+
+                this.bestBody = {small: [], medium: [], large: [], titan: []};
+                this.bestWeapon = [];
+
+                // Redraw added label of Mech Lab after change of floor
+                removeMechInfo();
+                createMechInfo();
             }
 
             return true;
@@ -3649,15 +3660,15 @@
             return totalDamage;
         },
 
-        updateBestParts() {
+        updateBestBody(size) {
             let currentBestBodyMod = 0;
             let currentBestBodyList = [];
 
-            let equipmentSlots = this.SizeSlots[this.bestSize] + (game.global.blood.prepared ? 1 : 0);
+            let equipmentSlots = this.SizeSlots[size] + (game.global.blood.prepared ? 1 : 0);
 
             k_combinations(this.Equip, equipmentSlots).forEach((equip) => {
                 this.Chassis.forEach(chassis => {
-                    let mech = {size: this.bestSize, chassis: chassis, equip: equip};
+                    let mech = {size: size, chassis: chassis, equip: equip};
                     let mechMod = this.getBodyMod(mech);
                     if (mechMod > currentBestBodyMod) {
                         currentBestBodyMod = mechMod;
@@ -3667,50 +3678,36 @@
                     }
                 });
             });
-            this.bestBody = currentBestBodyList;
+            this.bestBody[size] = currentBestBodyList;
+        },
 
+        updateBestWeapon() {
             let currentBestWeaponMod = 0;
             let currentBestWeaponList = [];
 
             Object.keys(poly.monsters[game.global.portal.spire.boss].weapon).forEach(weapon => {
-                let mech = {hardpoint: new Array(this.SizeWeapons[this.bestSize]).fill(weapon)};
-                let mechMod = this.getWeaponMod(mech);
-                if (mechMod > currentBestWeaponMod) {
-                    currentBestWeaponMod = mechMod;
+                // We always comparing single weapon, best will always be best - regardless of real amount of guns
+                let weaponMod = this.getWeaponMod({hardpoint: [weapon]});
+                if (weaponMod > currentBestWeaponMod) {
+                    currentBestWeaponMod = weaponMod;
                     currentBestWeaponList = [weapon];
-                } else if (mechMod === currentBestWeaponMod) {
+                } else if (weaponMod === currentBestWeaponMod) {
                     currentBestWeaponList.push(weapon);
                 }
             });
             this.bestWeapon = currentBestWeaponList;
-
-            return true;
         },
 
-        updateLevel() {
-            if (game.global.portal.spire.count === this.lastLevel) {
-                return false;
+        getRandomMech(size) {
+            if (this.bestBody[size].length === 0) {
+                this.updateBestBody(size);
             }
-            this.lastLevel = game.global.portal.spire.count;
-            removeMechInfo();
-            createMechInfo();
-            return true;
-        },
-
-        updateMechDesign() {
-            let preferedSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
-            if (this.bestSize === preferedSize && this.lastPrepared === game.global.blood.prepared) {
-                return false;
+            if (this.bestWeapon.length === 0) {
+                this.updateBestWeapon();
             }
-            this.lastPrepared = game.global.blood.prepared;
-            this.bestSize = preferedSize;
-            return true;
-        },
-
-        getRandomMech() {
-            let randomBody = this.bestBody[Math.floor(Math.random() * this.bestBody.length)];
+            let randomBody = this.bestBody[size][Math.floor(Math.random() * this.bestBody[size].length)];
             let randomWeapon = this.bestWeapon[Math.floor(Math.random() * this.bestWeapon.length)];
-            let weaponsAmount = this.SizeWeapons[this.bestSize];
+            let weaponsAmount = this.SizeWeapons[size];
             let mech = {hardpoint: new Array(weaponsAmount).fill(randomWeapon), ...randomBody};
             return {...mech, ...this.getMechStats(mech)};
         },
@@ -5409,6 +5406,7 @@
         addSetting("mechSize", "large");
         addSetting("mechSizeGravity", "large");
         addSetting("mechSaveSupply", true);
+        addSetting("mechFillBay", true);
 
         for (let i = 0; i < biomeList.length; i++) {
             addSetting("biome_w_" + biomeList[i], 0);
@@ -8792,25 +8790,23 @@
         if (!m.initLab()) {
             return;
         }
-        let levelChanged = m.updateLevel();
         let mechBay = game.global.portal.mechbay;
 
         let newMech = {};
         if (settings.mechBuild === "random") {
-            if (m.updateMechDesign() || levelChanged) {
-                m.updateBestParts();
-            }
-            newMech = m.getRandomMech();
+            let preferedSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
+            newMech = m.getRandomMech(preferedSize);
         } else if (settings.mechBuild === "user") {
             newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
         }
         let [newSupply, targetSpace, newGems] = m.getMechCost(newMech);
 
-        // Not enough gems or max supply, can't do anything;
+        // Not enough gems or max supply, can't do anything
         if (resources.Soul_Gem.currentQuantity < newGems || resources.Supply.maxQuantity < newSupply) {
             return;
         }
 
+        // Save up supply for next floor
         if (settings.mechSaveSupply) {
             let timeToClear = (100 - game.global.portal.spire.progress) / m.getProgressSpeed();
             let timeToFull = (resources.Supply.maxQuantity - resources.Supply.currentQuantity - m.getMechRefund(newMech)) / resources.Supply.rateOfChange;
@@ -8819,49 +8815,8 @@
             }
         }
 
-        let baySpace = mechBay.max - mechBay.bay;
-        let disabledBays = buildings.PortalMechBay.stateOffCount;
-
-        // Check if we need to scrap anything
-        if (settings.mechBuild !== "none" && settings.mechScrap !== "none" && disabledBays === 0 && (baySpace < targetSpace || (settings.mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
-            let spaceGained = 0;
-            let supplyGained = 0;
-
-            // Get current list of mech
-            let mechList = mechBay.mechs
-              .map((mech, id) => ({id: id, ...mech, ...m.getMechStats(mech)}))
-              .filter(mech => mech.efficiency < newMech.efficiency)
-              .sort((a, b) => a.efficiency - b.efficiency);
-
-            // Remove worst mechs untill we have enough room for new mech
-            let trashMechs = [];
-            for (let i = 0; i < mechList.length && (baySpace + spaceGained < targetSpace || (settings.mechScrap === "all" && resources.Supply.currentQuantity + supplyGained < newSupply && m.getMechRefund(mechList[i]) / newSupply > mechList[i].power / newMech.power)); i++) {
-                spaceGained += m.getMechSpace(mechList[i]);
-                supplyGained += m.getMechRefund(mechList[i]);
-                trashMechs.push(mechList[i]);
-            }
-
-            // Now go scrapping, if possible and benefical
-            if (trashMechs.length > 0 && baySpace + spaceGained >= targetSpace && resources.Supply.currentQuantity + supplyGained >= newSupply) {
-                trashMechs.sort((a, b) => b.id - a.id);
-                trashMechs.forEach(mech => {
-                    m.scrapMech(mech.id);
-                });
-                resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
-            }
-            return;
-        }
-
-        // We have everything to get new mech
-        if (settings.mechBuild !== "none" && resources.Supply.currentQuantity >= newSupply && baySpace >= targetSpace) {
-            m.buildMech(newMech);
-            resources.Supply.currentQuantity -= newSupply;
-            resources.Soul_Gem.currentQuantity -= newGems;
-            return;
-        }
-
         // If some of the bays disabled - it means we're on building stage, let's rearrange mechs for best efficiency
-        if (disabledBays > 0) {
+        if (buildings.PortalMechBay.stateOffCount > 0) {
             let activeMechs = [];
             let inactiveMechs = [];
             let spaceUsed = 0;
@@ -8887,8 +8842,63 @@
                         m.dragMech(inactiveMechs[0].id, 0);
                     }
                 }
+            }
+            return;
+        }
+
+        let baySpace = mechBay.max - mechBay.bay;
+
+        // Check if we need to scrap anything
+        if (settings.mechBuild !== "none" && settings.mechScrap !== "none" && (baySpace < targetSpace || (settings.mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
+            let spaceGained = 0;
+            let supplyGained = 0;
+
+            // Get current list of mech
+            let mechList = mechBay.mechs
+              .map((mech, id) => ({id: id, ...mech, ...m.getMechStats(mech)}))
+              .filter(mech => mech.efficiency < newMech.efficiency)
+              .sort((a, b) => a.efficiency - b.efficiency);
+
+            // Remove worst mechs untill we have enough room for new mech
+            let trashMechs = [];
+            for (let i = 0; i < mechList.length && (baySpace + spaceGained < targetSpace || (settings.mechScrap === "all" && resources.Supply.currentQuantity + supplyGained < newSupply && m.getMechRefund(mechList[i]) / newSupply > mechList[i].power / newMech.power)); i++) {
+                spaceGained += m.getMechSpace(mechList[i]);
+                supplyGained += m.getMechRefund(mechList[i]);
+                trashMechs.push(mechList[i]);
+            }
+
+            // Now go scrapping, if possible and benefical
+            if (trashMechs.length > 0 && baySpace + spaceGained >= targetSpace && resources.Supply.currentQuantity + supplyGained >= newSupply) {
+                trashMechs.sort((a, b) => b.id - a.id);
+                trashMechs.forEach(mech => {
+                    m.scrapMech(mech.id);
+                });
+                resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
                 return;
             }
+            if (trashMechs.reduce((sum, mech) => sum += m.getMechSpace(mech), 0) >= targetSpace) {
+                // We still have scrapable mechs, just waiting for more supplies, to replace in with new one instantly
+                return;
+            }
+        }
+
+        // Try to squeeze in smaller mech, if we can't fit preferred one
+        if (settings.mechBuild === "random" && settings.mechFillBay && baySpace < targetSpace) {
+            for (let i = m.Size.length - 1; i >= 0; i--) {
+                if (m.getMechSpace({size: m.Size[i]}) <= baySpace) {
+                    newMech = m.getRandomMech(m.Size[i]);
+                    [newSupply, targetSpace, newGems] = m.getMechCost(newMech);
+                    break;
+                }
+            }
+        }
+
+        // We have everything to get new mech
+        if (settings.mechBuild !== "none" && resources.Supply.currentQuantity >= newSupply && baySpace >= targetSpace) {
+            m.buildMech(newMech);
+            resources.Supply.currentQuantity -= newSupply;
+            resources.Soul_Gem.currentQuantity -= newGems;
+            return;
         }
     }
 
@@ -9388,11 +9398,9 @@
             if (node.id === "popportal-spire") { // Spire tooltip
                 game.updateDebugData(); // Observer can be can be called at any time, make sure we have actual data
                 let speed = MechManager.getProgressSpeed();
-                if (speed > 0) {
-                    let time = (100 - game.global.portal.spire.progress) / speed * gameTicksPerSecond("mid");
-                    node.style.pointerEvents = "none";
-                    node.innerHTML += `<div id="popTimer" class="flair has-text-advanced vb">Cleared in [${poly.timeFormat(time)}]</div>`;
-                }
+                let time = speed > 0 ? (100 - game.global.portal.spire.progress) / speed * gameTicksPerSecond("mid") : -1;
+                node.style.pointerEvents = "none";
+                node.innerHTML += `<div id="popTimer" class="flair has-text-advanced vb">Cleared in [${poly.timeFormat(time)}]</div>`;
                 return;
             }
 
@@ -11096,6 +11104,7 @@
         buildStandartSettingsSelector(currentNode, "mechSize", "Prefered mech size", "Size of mech for autobuild", sizeOptions);
         buildStandartSettingsSelector(currentNode, "mechSizeGravity", "Gravity mech size", "Override prefered size with this on floors with high gravity", sizeOptions);
         addStandardSectionSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs");
+        addStandardSectionSettingsToggle(currentNode, "mechFillBay", "Fill remaining bay space with smaller mechs", "Once mech bay is packed with optimal mechs of prefered size up to the limit fill up remaining space with smaller mechs, if possible");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11106,6 +11115,7 @@
         settings.mechSize = "large";
         settings.mechSizeGravity = "large";
         settings.mechSaveSupply = true;
+        settings.mechFillBay = true;
     }
 
     function buildEjectorSettings() {
