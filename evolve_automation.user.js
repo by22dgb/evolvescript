@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.44
+// @version      3.3.1.45
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -8852,7 +8852,6 @@
             return;
         }
 
-        // TODO: Calculate time & income, and don't build near end of floor
         // We have everything to get new mech
         if (settings.mechBuild !== "none" && resources.Supply.currentQuantity >= newSupply && baySpace >= targetSpace) {
             m.buildMech(newMech);
