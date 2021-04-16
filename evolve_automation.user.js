@@ -4410,6 +4410,9 @@
         settings.researchRequest = true;
         settings.researchRequestSpace = false;
         settings.missionRequest = true;
+        settings.buildingsConflictQueue = true;
+        settings.buildingsConflictRQueue = true;
+        settings.buildingsConflictPQueue = true;
         settings.genesAssembleGeneAlways = true;
         settings.buildingAlwaysClick = false;
         settings.buildingClickPerTick = 50;
@@ -4928,6 +4931,7 @@
         }
 
         projects.LaunchFacility._weighting = 100;
+        projects.SuperCollider._weighting = 3;
         projects.StockExchange._weighting = 0.1;
         projects.ManaSyphon._autoMax = 79;
         projects.ManaSyphon.autoBuildEnabled = false;
@@ -5360,6 +5364,9 @@
         addSetting("buildingManageSpire", true);
         addSetting("buildingBuildIfStorageFull", false);
         addSetting("buildingsIgnoreZeroRate", false);
+        addSetting("buildingsConflictQueue", true);
+        addSetting("buildingsConflictRQueue", true);
+        addSetting("buildingsConflictPQueue", true);
         addSetting("buildingShrineType", "any");
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
@@ -10066,12 +10073,19 @@
         let currentNode = $('#script_generalContent');
         currentNode.empty().off("*");
 
+        addStandardSectionHeader1(currentNode, "Production");
         addStandardSectionSettingsToggle(currentNode, "triggerRequest", "Prioritize resources for triggers", "Readjust trade routes and production to resources required for active triggers");
         addStandardSectionSettingsToggle(currentNode, "queueRequest", "Prioritize resources for queue", "Readjust trade routes and production to resources required for buildings and researches in queue");
         addStandardSectionSettingsToggle(currentNode, "researchRequest", "Prioritize resources for Pre-MAD researches", "Readjust trade routes and production to resources required for unlocked and affordable researches (Works only with no active triggers, or queue)");
         addStandardSectionSettingsToggle(currentNode, "researchRequestSpace", "Prioritize resources for Space+ researches", "Readjust trade routes and production to resources required for unlocked and affordable researches (Works only with no active triggers, or queue");
         addStandardSectionSettingsToggle(currentNode, "missionRequest", "Prioritize resources for missions", "Readjust trade routes and production to resources required for unlocked and affordable missions");
 
+        addStandardSectionHeader1(currentNode, "Queue");
+        addStandardSectionSettingsToggle(currentNode, "buildingsConflictQueue", "Save resources for queued buildings", "Script won't use resources needed for queued buildings. 'No Queue Order' game setting switches whether it save resources for next item, or whole queue.");
+        addStandardSectionSettingsToggle(currentNode, "buildingsConflictRQueue", "Save resources for queued researches", "Script won't use resources needed for queued researches. 'No Queue Order' game setting switches whether it save resources for next item, or whole queue.");
+        addStandardSectionSettingsToggle(currentNode, "buildingsConflictPQueue", "Save resources for queued projects", "Script won't use resources needed for queued projects. 'No Queue Order' game setting switches whether it save resources for next item, or whole queue.");
+
+        addStandardSectionHeader1(currentNode, "Auto clicker");
         addStandardSectionSettingsToggle(currentNode, "genesAssembleGeneAlways", "Always assemble genes", "Will continue assembling genes even after De Novo Sequencing is researched");
         addStandardSectionSettingsToggle(currentNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of autoBuild, to bootstrap production. With this toggled on it will continue clicking forever");
         addStandardSectionSettingsNumber(currentNode, "buildingClickPerTick", "Maximum clicks per second", "Number of clicks performed at once, each second. Hardcapped by amount of missed resources");
@@ -12942,6 +12956,13 @@
     function getCostConflict(action) {
         for (let i = 0; i < state.queuedTargets.length; i++) {
             let otherObject = state.queuedTargets[i];
+            if (otherObject instanceof Technology) {
+                if (!settings.buildingsConflictRQueue) continue;
+            } else if (otherObject instanceof Project){
+                if (!settings.buildingsConflictPQueue) continue;
+            } else {
+                if (!settings.buildingsConflictQueue) continue;
+            }
 
             let blockKnowledge = true;
             for (let j = 0; j < otherObject.resourceRequirements.length; j++) {
