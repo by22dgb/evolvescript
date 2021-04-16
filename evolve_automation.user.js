@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.45
+// @version      3.3.1.46
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -19,7 +19,6 @@
 //
 // Here's some tips about non-intuitive features:
 //   Added numbers in Mech Labs represents: design efficiency, real mech power affected by mech size, and power per used space, respectively. For all three - bigger numbers are better.
-//   Amount of gems gathered by Auto Hell often highter than number estimated by HellSim, due to bought of mercs. You can try to work it around by increasing amount of Boot Camps in simulator, to roughtly match rate reinforcements with what you're actually having with script
 //   Buildings\researches queue, triggers, and available researches prioritize missing resources, overiding other script settings. If you have issues with factories producing not what you want, market buying not what you want, and such - you can disable this feature under general settings.
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
@@ -4363,6 +4362,7 @@
         settings.foreignAttackHealthySoldiersPercent = 90;
         settings.foreignHireMercMoneyStoragePercent = 90;
         settings.foreignHireMercCostLowerThanIncome = 1;
+        settings.foreignHireMercDeadSoldiers = 1;
         settings.foreignMinAdvantage = 40;
         settings.foreignMaxAdvantage = 50;
         settings.foreignMaxSiegeBattalion = 15;
@@ -5306,6 +5306,7 @@
         addSetting("foreignAttackHealthySoldiersPercent", 90);
         addSetting("foreignHireMercMoneyStoragePercent", 90);
         addSetting("foreignHireMercCostLowerThanIncome", 1);
+        addSetting("foreignHireMercDeadSoldiers", 1);
         addSetting("foreignMinAdvantage", 40);
         addSetting("foreignMaxAdvantage", 50);
         addSetting("foreignMaxSiegeBattalion", 15);
@@ -5438,12 +5439,25 @@
         }
     }
 
-    function getConfiguredAchievementLevel(scope) {
+    function getConfiguredAchievementLevel() {
         let a_level = 1;
-        if (scope.challenge_plasmid || scope.challenge_mastery) { a_level++; }
-        if (scope.challenge_trade) { a_level++; }
-        if (scope.challenge_craft) { a_level++; }
-        if (scope.challenge_crispr) { a_level++; }
+        if (game.global.race.universe === 'antimatter') {
+            if (settings.challenge_mastery) { a_level++; }
+        } else {
+            if (settings.challenge_plasmid) { a_level++; }
+        }
+        if (settings.challenge_trade) { a_level++; }
+        if (settings.challenge_craft) { a_level++; }
+        if (settings.challenge_crispr) { a_level++; }
+        return a_level;
+    }
+
+    function getQueueAchievementLevel(queue) {
+        let a_level = 1;
+        if (queue.challenge_plasmid || queue.challenge_mastery) { a_level++; }
+        if (queue.challenge_trade) { a_level++; }
+        if (queue.challenge_craft) { a_level++; }
+        if (queue.challenge_crispr) { a_level++; }
         return a_level;
     }
 
@@ -5520,7 +5534,7 @@
             // Try to pick race for achievement first
             if (settings.userEvolutionTarget === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
-                let achievementLevel = getConfiguredAchievementLevel(settings);
+                let achievementLevel = getConfiguredAchievementLevel();
                 let targetedGroup = {race: null, remainingPercent: 0};
 
                 let genusGroups = {};
@@ -5751,7 +5765,7 @@
         let planets = generatePlanets();
 
         // Let's try to calculate how many achievements we can get here
-        let alevel = getConfiguredAchievementLevel(settings);
+        let alevel = getConfiguredAchievementLevel();
         for (let i = 0; i < planets.length; i++){
             let planet = planets[i];
             planet.achieve = 0;
@@ -6039,7 +6053,7 @@
         if (m.isMercenaryUnlocked() && resources.Money.requestedQuantity <= 0) {
             let mercenariesHired = 0;
             let mercenaryCost = m.getMercenaryCost();
-            while (m.currentSoldiers < m.maxSoldiers && resources.Money.currentQuantity > mercenaryCost && ((resources.Money.currentQuantity - mercenaryCost > resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100) || (mercenaryCost < state.moneyMedian * settings.foreignHireMercCostLowerThanIncome))) {
+            while (m.currentSoldiers < m.maxSoldiers - settings.foreignHireMercDeadSoldiers && resources.Money.currentQuantity > mercenaryCost && ((resources.Money.currentQuantity - mercenaryCost > resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100) || (mercenaryCost < state.moneyMedian * settings.foreignHireMercCostLowerThanIncome))) {
                 m.hireMercenary();
                 mercenariesHired++;
                 mercenaryCost = m.getMercenaryCost();
@@ -7927,6 +7941,7 @@
             }
 
             let maxStateOn = building.count;
+            let currentStateOn = building.stateOnCount;
 
             // Max powered amount
             if (building === buildings.NeutronCitadel) {
@@ -7951,20 +7966,25 @@
             }
             // Max attractors configured by autoHell
             if (building === buildings.PortalAttractor && settings.autoHell && settings.hellHandleAttractors) {
-                maxStateOn = Math.min(maxStateOn, WarManager.hellAttractorMax);
-                maxStateOn = Math.min(maxStateOn, building.stateOnCount + 1);
-                maxStateOn = Math.max(maxStateOn, building.stateOnCount - 1);
+                let attractorAdjust = currentStateOn;
+                if (currentStateOn > WarManager.hellAttractorMax) {
+                    attractorAdjust--;
+                }
+                if (currentStateOn < WarManager.hellAttractorMax) {
+                    attractorAdjust++;
+                }
+                maxStateOn = Math.min(maxStateOn, attractorAdjust);
             }
             // Disable tourist center with full money
             if (building === buildings.TouristCenter && !game.global.race['ravenous'] && resources.Food.storageRatio < 0.7 && resources.Money.storageRatio > 0.98) {
-                maxStateOn = Math.min(maxStateOn, buildings.TouristCenter.stateOnCount - 1);
+                maxStateOn = Math.min(maxStateOn, currentStateOn - 1);
             }
             // Disable mills with surplus energy
             if (building === buildings.Mill && building.powered && resources.Food.storageRatio < 0.7 && (jobs.Farmer.count > 0 || jobs.Hunter.count > 0)) {
-                maxStateOn = Math.min(maxStateOn, building.stateOnCount - ((resources.Power.currentQuantity - 5) / (-building.powered)));
+                maxStateOn = Math.min(maxStateOn, currentStateOn - ((resources.Power.currentQuantity - 5) / (-building.powered)));
             }
             // Disable Belt Space Stations with no workers
-            if (building === buildings.BeltSpaceStation && (building.count - building.stateOnCount) * building.powered > resources.Power.currentQuantity) {
+            if (building === buildings.BeltSpaceStation && (building.count - currentStateOn) * building.powered > resources.Power.currentQuantity) {
                 maxStateOn = Math.min(maxStateOn, Math.floor(resources.Belt_Support.maxQuantity / 3) + 1);
                 if (settings.autoJobs && jobs.SpaceMiner.autoJobEnabled && jobs.SpaceMiner.breakpoints[2] !== -1) {
                     maxStateOn = Math.min(maxStateOn, Math.ceil(jobs.SpaceMiner.breakpoints[2] / 3));
@@ -8016,7 +8036,7 @@
 
             // If this is a power producing structure then only turn off one at a time!
             if (building.powered < 0) {
-                maxStateOn = Math.max(maxStateOn, building.stateOnCount - 1);
+                maxStateOn = Math.max(maxStateOn, currentStateOn - 1);
             }
 
             maxStateOn = Math.floor(maxStateOn);
@@ -8037,7 +8057,7 @@
                 resourceType.resource.rateOfChange -= consumptionRate * maxStateOn;
             }
 
-            building.tryAdjustState(maxStateOn - building.stateOnCount);
+            building.tryAdjustState(maxStateOn - currentStateOn);
 
             if (building === buildings.NeutronCitadel) {
                 building.extraDescription = `Next level will increase total consumption by ${getCitadelConsumption(maxStateOn+1) - getCitadelConsumption(maxStateOn)} MW<br>${building.extraDescription}`;
@@ -8883,7 +8903,7 @@
         }
 
         // Try to squeeze in smaller mech, if we can't fit preferred one
-        if (settings.mechBuild === "random" && settings.mechFillBay && baySpace < targetSpace) {
+        if (settings.mechBuild === "random" && settings.mechFillBay && baySpace < targetSpace && baySpace > 0) {
             for (let i = m.Size.length - 1; i >= 0; i--) {
                 if (m.getMechSpace({size: m.Size[i]}) <= baySpace) {
                     newMech = m.getRandomMech(m.Size[i]);
@@ -9208,7 +9228,7 @@
             if (needReset) {
                 // Let's double check it's actually *soft* reset
                 let resetButton = document.querySelector(".reset .button:not(.right)");
-                if (resetButton.querySelector(".tooltip-trigger").innerText === game.loc("reset_soft")) {
+                if (resetButton.innerText === game.loc("reset_soft")) {
                     if (settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
                         addEvolutionSetting();
                         settings.evolutionQueue.unshift(settings.evolutionQueue.pop());
@@ -9234,7 +9254,12 @@
                 return;
             }
             state.goal = "Standard";
-            updateTriggerSettingsContent(); // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
+            if (settings.triggers.length > 0) { // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
+                updateTriggerSettingsContent();
+            }
+            if (settings.evolutionQueue.length > 0) { // Update star icons, we didn't had them in evolution, and used placeholder
+                updateEvolutionSettingsContent();
+            }
         }
 
         // Some tabs doesn't init properly. Let's reload game when it happens.
@@ -10220,6 +10245,7 @@
         }
 
         $("#script_userEvolutionTarget").on('change', function() {
+            state.resetEvolutionTarget = true;
             let race = races[settings.userEvolutionTarget];
             if (race && race.getCondition() !== '') {
                 $("#script_race_warning").html(`<span class="${race.isConditionMet() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.getCondition()}. This condition is currently ${race.isConditionMet() ? "met" : "not met"}.</span>`);
@@ -10322,7 +10348,7 @@
         }
         let star = $("#topBar .flair svg").clone();
         star.removeClass();
-        star.addClass("star" + getConfiguredAchievementLevel(queuedEvolution));
+        star.addClass("star" + getQueueAchievementLevel(queuedEvolution));
 
         if (queuedEvolution.prestigeType !== "none") {
             if (prestigeNames[queuedEvolution.prestigeType]) {
@@ -10336,7 +10362,7 @@
 
         let queueNode = $(`
           <tr id="script_evolution_${id}" value="${id}" class="script-draggable">
-            <td style="width:25%"><span class="${raceClass}">${raceName}</span> <span class="${prestigeClass}">${prestigeName}</span> ${star.prop('outerHTML')}</td>
+            <td style="width:25%"><span class="${raceClass}">${raceName}</span> <span class="${prestigeClass}">${prestigeName}</span> ${star.prop('outerHTML') ?? (getQueueAchievementLevel(queuedEvolution)-1) + "*"}</td>
             <td style="width:70%"><textarea class="textarea">${JSON.stringify(queuedEvolution, null, 4)}</textarea></td>
             <td style="width:5%"><a class="button is-dark is-small"><span>X</span></a></td>
           </tr>`);
@@ -10877,6 +10903,7 @@
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignAttackHealthySoldiersPercent", "... and at least this percentage of your garrison is not injured", "Set to less than 100 to take advantage of being able to heal more soldiers in a game day than get wounded in a typical attack");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignHireMercMoneyStoragePercent", "Hire mercenary if money storage greater than percent", "Hire a mercenary if remaining money after purchase will be greater than this percent");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignHireMercCostLowerThanIncome", "OR if cost lower than money earned in X seconds", "Combines with the money storage percent setting to determine when to hire mercenaries");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignHireMercDeadSoldiers", "AND amount of dead soldiers above this number", "Hire a mercenary only when current amount of dead soldiers above given number");
 
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down this advantage, reducing potential loses");
