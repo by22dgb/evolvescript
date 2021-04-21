@@ -1479,12 +1479,12 @@
 
     // Biomes and traits sorted by habitability
     const planetBiomes = ["oceanic", "forest", "grassland", "desert", "volcanic", "tundra", "eden", "hellscape"];
-    const planetTraits = ["magnetic", "rage", "elliptical", "stormy", "toxic", "ozone", "mellow", "trashed", "flare", "unstable", "dense"];
+    const planetTraits = ["magnetic", "none", "rage", "elliptical", "stormy", "toxic", "ozone", "mellow", "trashed", "flare", "unstable", "dense"];
     const planetBiomeGenus = {hellscape: "demonic", eden: "angelic", oceanic: "aquatic", forest: "fey", desert: "sand", volcanic: "heat", tundra: "polar"};
 
     const challenges = {
-        plasmid: "no_plasmid",
         mastery: "weak_mastery",
+        plasmid: "no_plasmid",
         trade: "no_trade",
         craft: "no_craft",
         crispr: "no_crispr",
@@ -1973,6 +1973,11 @@
           () => "Not enough storage",
           () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
       ],[
+          () => buildings.PortalEastTower.isUnlocked() && buildings.PortalWestTower.isUnlocked(),
+          (building) => (building === buildings.PortalEastTower || building === buildings.PortalWestTower) && poly.hellSupression("gate") < settings.buildingTowerSuppression / 100,
+          () => "Too low supression",
+          () => 0
+      ],[
           () => settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole",
           (building) => {
               let gemsCost = building.resourceRequirements.find(requirement => requirement.resource === resources.Soul_Gem)?.quantity ?? 0;
@@ -2329,7 +2334,7 @@
             return game.global.race.casting[spell.id];
         },
 
-        // export function manaCost(spell,rate) from Evolve/src/industry.js
+        // export function manaCost(spell,rate) from industry.js
         manaCost(spell) {
             return spell * ((1.0025) ** spell - 1);
         },
@@ -3333,7 +3338,7 @@
         getHellReservedSoldiers(){
             let soldiers = 0;
             if (buildings.PortalSoulForge.stateOnCount > 0 || (buildings.PortalAssaultForge.isUnlocked() && buildings.PortalAssaultForge.autoBuildEnabled)) {
-                // export function soulForgeSoldiers() from Evolve/src/portal.js
+                // export function soulForgeSoldiers() from portal.js
                 soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
                 if (game.global.portal.gun_emplacement) {
                     soldiers -= game.global.portal.gun_emplacement.on * (game.global.tech.hell_gun >= 2 ? 2 : 1);
@@ -4559,14 +4564,14 @@
         JobManager.addJobToPriorityList(jobs.Scientist);
         JobManager.addJobToPriorityList(jobs.Professor);
         JobManager.addJobToPriorityList(jobs.CementWorker);
-        JobManager.addJobToPriorityList(jobs.Miner);
-        JobManager.addJobToPriorityList(jobs.CoalMiner);
-        JobManager.addJobToPriorityList(jobs.SpaceMiner);
         JobManager.addJobToPriorityList(jobs.Colonist);
         JobManager.addJobToPriorityList(jobs.HellSurveyor);
+        JobManager.addJobToPriorityList(jobs.Archaeologist);
+        JobManager.addJobToPriorityList(jobs.SpaceMiner);
+        JobManager.addJobToPriorityList(jobs.Miner);
+        JobManager.addJobToPriorityList(jobs.CoalMiner);
         JobManager.addJobToPriorityList(jobs.Banker);
         JobManager.addJobToPriorityList(jobs.Priest);
-        JobManager.addJobToPriorityList(jobs.Archaeologist);
         JobManager.addJobToPriorityList(jobs.Plywood);
         JobManager.addJobToPriorityList(jobs.Brick);
         JobManager.addJobToPriorityList(jobs.WroughtIron);
@@ -4579,23 +4584,23 @@
         jobs.Unemployed.breakpoints = [0, 0, 0];
         jobs.Hunter.breakpoints = [0, 0, 0];
         jobs.Farmer.breakpoints = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
-        jobs.Lumberjack.breakpoints = [5, 10, 10]; // Basic jobs are special - remaining workers divided between them
-        jobs.QuarryWorker.breakpoints = [5, 10, 10]; // Basic jobs are special - remaining workers divided between them
-        jobs.CrystalMiner.breakpoints = [5, 10, 10]; // Basic jobs are special - remaining workers divided between them
-        jobs.Scavenger.breakpoints = [0, 0, 10]; // Basic jobs are special - remaining workers divided between them
+        jobs.Lumberjack.breakpoints = [5, 10, 0]; // Basic jobs are special - remaining workers divided between them
+        jobs.QuarryWorker.breakpoints = [5, 10, 0]; // Basic jobs are special - remaining workers divided between them
+        jobs.CrystalMiner.breakpoints = [5, 10, 0]; // Basic jobs are special - remaining workers divided between them
+        jobs.Scavenger.breakpoints = [0, 0, 0]; // Basic jobs are special - remaining workers divided between them
 
         jobs.Scientist.breakpoints = [3, 6, -1];
         jobs.Professor.breakpoints = [6, 10, -1];
         jobs.Entertainer.breakpoints = [2, 5, -1];
         jobs.CementWorker.breakpoints = [4, 8, -1]; // Cement works are based on cap and stone rate of change
+        jobs.Colonist.breakpoints = [0, 0, -1];
+        jobs.HellSurveyor.breakpoints = [0, 0, -1];
+        jobs.Archaeologist.breakpoints = [0, 0, -1];
+        jobs.SpaceMiner.breakpoints = [0, 0, -1];
         jobs.Miner.breakpoints = [3, 5, -1];
         jobs.CoalMiner.breakpoints = [2, 4, -1];
         jobs.Banker.breakpoints = [3, 5, -1];
-        jobs.Colonist.breakpoints = [0, 0, -1];
-        jobs.SpaceMiner.breakpoints = [0, 0, -1];
-        jobs.HellSurveyor.breakpoints = [0, 0, -1];
         jobs.Priest.breakpoints = [0, 0, -1];
-        jobs.Archaeologist.breakpoints = [0, 0, -1];
     }
 
     function resetWeightingSettings() {
@@ -4621,6 +4626,7 @@
         settings.buildingBuildIfStorageFull = false;
         settings.buildingsIgnoreZeroRate = false;
         settings.buildingShrineType = "know";
+        settings.buildingTowerSuppression = 100;
 
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
             const building = BuildingManager.priorityList[i];
@@ -4931,8 +4937,9 @@
         }
 
         projects.LaunchFacility._weighting = 100;
-        projects.SuperCollider._weighting = 3;
-        projects.StockExchange._weighting = 0.1;
+        projects.SuperCollider._weighting = 5;
+        projects.Railway._weighting = 0.5;
+        projects.StockExchange._weighting = 0.5;
         projects.ManaSyphon._autoMax = 79;
         projects.ManaSyphon.autoBuildEnabled = false;
     }
@@ -4946,9 +4953,9 @@
     function resetProductionState() {
         // Smelter settings
         let smelterPriority = 0;
-        SmelterManager.Fuels.Star.priority = smelterPriority++;
         SmelterManager.Fuels.Inferno.priority = smelterPriority++;
         SmelterManager.Fuels.Oil.priority = smelterPriority++;
+        SmelterManager.Fuels.Star.priority = smelterPriority++;
         SmelterManager.Fuels.Coal.priority = smelterPriority++;
         SmelterManager.Fuels.Wood.priority = smelterPriority++;
 
@@ -5367,7 +5374,8 @@
         addSetting("buildingsConflictQueue", true);
         addSetting("buildingsConflictRQueue", true);
         addSetting("buildingsConflictPQueue", true);
-        addSetting("buildingShrineType", "any");
+        addSetting("buildingShrineType", "know");
+        addSetting("buildingTowerSuppression", 100);
         addSetting("buildingAlwaysClick", false);
         addSetting("buildingClickPerTick", 50);
         addSetting("buildingWeightingNew", 3);
@@ -5711,7 +5719,7 @@
         }
     }
 
-    // function setPlanet from Evolve/src/actions.js
+    // function setPlanet from actions.js
     // Produces same set of planets, accurate for v1.0.29
     function generatePlanets() {
         let seed = game.global.race.seed;
@@ -6344,8 +6352,6 @@
             return;
         }
 
-
-        let unemployedIndex = jobList.indexOf(jobs.Unemployed);
         let farmerIndex = isDemonRace() || isHunterRace() ? jobList.indexOf(jobs.Hunter) : jobList.indexOf(jobs.Farmer);
         let lumberjackIndex = isDemonRace() && isLumberRace() ? farmerIndex : jobList.indexOf(jobs.Lumberjack);
         let quarryWorkerIndex = jobList.indexOf(jobs.QuarryWorker);
@@ -6375,10 +6381,13 @@
                 foodRateOfChange += Math.max(resources.Food.currentQuantity / 3, 0);
             }
 
-            if (jobList.length === (unemployedIndex === -1 ? 1 : 2)) {
+            if (jobList.length === (jobList.indexOf(jobs.Unemployed) === -1 ? 1 : 2)) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs[farmerIndex] = availableEmployees;
                 log("autoJobs", "Pushing all farmers");
+            } else if (resources.Food.storageRatio > 0.99) {
+                // Full food storage, remove all farmers instantly
+                requiredJobs[farmerIndex] = 0;
             } else if (resources.Food.currentQuantity < minFoodStorage && foodRateOfChange < 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
                 requiredJobs[farmerIndex] = jobList[farmerIndex].count + 1;
@@ -6701,7 +6710,7 @@
             maxMorale = Math.min(maxMorale, settings.generalMaximumMorale);
         }
 
-        let optimalTax = Math.round((maxTaxRate - minTaxRate) * (1 - resources.Money.storageRatio)) + minTaxRate;
+        let optimalTax = Math.round((maxTaxRate - minTaxRate) * Math.max(0, 0.9 - resources.Money.storageRatio)) + minTaxRate;
 
         if (currentTaxRate < maxTaxRate && currentMorale > settings.generalMinimumMorale + 1 &&
             (currentTaxRate < optimalTax || currentMorale > maxMorale + 1)) {
@@ -7991,11 +8000,16 @@
                 maxStateOn = Math.min(maxStateOn, currentStateOn - ((resources.Power.currentQuantity - 5) / (-building.powered)));
             }
             // Disable Belt Space Stations with no workers
-            if (building === buildings.BeltSpaceStation && (building.count - currentStateOn) * building.powered > resources.Power.currentQuantity) {
+            if (building === buildings.BeltSpaceStation && resources.Power.currentQuantity - ((building.count - currentStateOn) * building.powered) < 20 && buildings.DwarfEleriumContainer.count > 0) {
                 maxStateOn = Math.min(maxStateOn, Math.floor(resources.Belt_Support.maxQuantity / 3) + 1);
                 if (settings.autoJobs && jobs.SpaceMiner.autoJobEnabled && jobs.SpaceMiner.breakpoints[2] !== -1) {
                     maxStateOn = Math.min(maxStateOn, Math.ceil(jobs.SpaceMiner.breakpoints[2] / 3));
                 }
+            }
+            // Disable useless Mine Layers
+            if (building === buildings.ChthonianMineLayer) {
+                let useless = (poly.piracy("gxy_chthonian") - 7500) / game.actions.galaxy.gxy_chthonian.minelayer.ship.rating();
+                maxStateOn = Math.min(maxStateOn, Math.max(0, currentStateOn - useless));
             }
             // Disable Waygate once it cleared
             if (building === buildings.PortalWaygate && haveTech("waygate", 3)) {
@@ -8167,7 +8181,7 @@
 
         let crateVolume = poly.crateValue();
         let containerVolume = poly.containerValue();
-        if (!(crateVolume > 0 && containerVolume > 0)) {
+        if (crateVolume <= 0 || containerVolume <= 0) {
             return;
         }
         let totalCrates = resources.Crates.currentQuantity;
@@ -8632,14 +8646,14 @@
         // Check if we can perform assault mission
         let assault = null;
         if (buildings.ChthonianMission.isUnlocked() && settings.fleetChthonianPower > 0) {
-            if ((settings.fleetChthonianPower === 2500 && allFleets[fleetIndex.frigate_ship].count >= 1) ||
-                (settings.fleetChthonianPower === 4500 && allFleets[fleetIndex.frigate_ship].count >= 2)) {
+            if ((settings.fleetChthonianPower == 2500 && allFleets[fleetIndex.frigate_ship].count >= 1) ||
+                (settings.fleetChthonianPower == 4500 && allFleets[fleetIndex.frigate_ship].count >= 2)) {
                 let totalPower = allFleets.reduce((sum, ship) => sum + (ship.power >= 80 ? ship.power * ship.count : 0), 0);
                 if (totalPower >= settings.fleetChthonianPower) {
                     assault = {shipPower: 80, region: "gxy_chthonian", mission: buildings.ChthonianMission};
                 }
             }
-            if (settings.fleetChthonianPower === 1250) {
+            if (settings.fleetChthonianPower == 1250) {
                 let totalPower = allFleets.reduce((sum, ship) => sum + (ship.power * ship.count), 0);
                 if (totalPower >= settings.fleetChthonianPower) {
                     assault = {shipPower: 1, region: "gxy_chthonian", mission: buildings.ChthonianMission};
@@ -12067,6 +12081,7 @@
         addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire", "Enables special logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays.");
         addStandardSectionSettingsToggle(currentNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
         addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings.");
+        addStandardSectionSettingsNumber(currentNode, "buildingTowerSuppression", "Minimum suppression for Towers", "East Tower and West Tower won't be built until minimum suppression is reached");
 
         let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
                              {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
@@ -13209,10 +13224,14 @@
 
 
     // Reimplemented:
-        // export function crateValue() from Evolve/src/resources.js
-        crateValue: () => Number(getVueById("createHead").buildCrateDesc().match(/(\d+)/g)[1]),
-        // export function containerValue() from Evolve/src/resources.js
-        containerValue: () => Number(getVueById("createHead").buildContainerDesc().match(/(\d+)/g)[1]),
+        // export function crateValue() from resources.js
+        crateValue: () => Number(getVueById("createHead")?.buildCrateDesc().match(/(\d+)/g)[1] ?? 0),
+        // export function containerValue() from resources.js
+        containerValue: () => Number(getVueById("createHead")?.buildContainerDesc().match(/(\d+)/g)[1] ?? 0),
+        // export function hellSupression(area, 0) from portal.js
+        hellSupression: area => parseFloat(getVueById("srprtl_" + area)?.$options.filters.filter("", "sup") ?? 0) / 100,
+        // export function piracy(region, true, true) from space.js
+        piracy: region => Number(getVueById(region)?.$options.filters.defense(region) ?? 0),
 
     // Firefox compatibility:
         adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}), wiki),
