@@ -23,7 +23,7 @@
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
 //     If some storage grew too high, taking all crates, you can disable expensive building, and Auto Storage won't try to fullfil its demands anymore. If you want to expand storage to build something manually, you can limit maximum level of building to 0, thus while it technically have auto build enabled, it won't ever be autobuilded, but you'll have needed storage.
-//   Order in which buildings receive power depends on order in buildings settings, you can drag and drop them to adjust priorities. Filtering works both for names, and for settings, e.g. you can filter for "build=on", "power=off", "weight>200" and such.
+//   Order in which buildings receive power depends on order in buildings settings, you can drag and drop them to adjust priorities. Filtering works both for names, and for settings, e.g. you can filter for "build=on", "power=off", "weight>200", "cost&soul gem" and such.
 //     By default Ascension Trigger placed where it can be activated as soon as possible without killing soldiers or population, and reducing prestige rewards. But it still can hurt production badly. If you're planning to ascend at very first opportunity(i.e. not planning to go for pillar or such), you may enable auto powering it. Otherwise you may want to delay with it till the moment when you'll be ready. (Or you can just move it where it will be less impacting on production, but that also means it'll take longer to get enough power)
 //   Auto Craft doesn't works well past MAD, you may have issues making it craft expensive resource like mythril, consider enabling Auto Craftsmen even if you're playing with manual craft
 //   Evolution Queue can change any script settings, not only those which you have after adding new task, you can append any variables and their values manually, if you're capable to read code, and can find internal names and acceptable values of those variables. Settings applied at the moment when new evolution starts. (Or right before reset in case of Cataclysm)
@@ -12180,7 +12180,7 @@
         let trs = document.getElementById("script_buildingTableBody").getElementsByTagName("tr");
 
         let filterChecker = null;
-        let reg = filter.match(/^(.+)([<=>])(.+)$/);
+        let reg = filter.match(/^(.+)([<=>&])(.+)$/);
         if (reg) {
             let testVar = null;
             switch (reg[1]) {
@@ -12196,6 +12196,9 @@
                 case "WEIGHTING":
                     testVar = "_weighting";
                     break;
+                case "COST":
+                    testVar = "resourceRequirements";
+                    break;
             }
             let testCmp = null;
             switch (reg[2]) {
@@ -12203,10 +12206,13 @@
                     testCmp = (a, b) => a > b;
                     break;
                 case "=":
-                    testCmp = (a, b) => a === b;
+                    testCmp = (a, b) => a == b;
                     break;
                 case "<":
                     testCmp = (a, b) => a < b;
+                    break;
+                case "&":
+                    testCmp = (a, b) => a.find(item => item.resource.title.toUpperCase().indexOf(b) > -1);
                     break;
             }
             let testVal = null;
@@ -12220,7 +12226,7 @@
                     testVal = false;
                     break;
                 default:
-                    testVal = parseFloat(reg[3]);
+                    testVal = reg[3];
                     break;
             }
             if (testVar !== null && testCmp !== null && testVal !== null) {
