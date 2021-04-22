@@ -3780,6 +3780,11 @@
             return 0;
         },
 
+        mechDesc(mech) {
+            // (${mech.hardpoint.map(id => game.loc("portal_mech_weapon_" + id)).join(", ")}) [${mech.equip.map(id => game.loc("portal_mech_equip_" + id)).join(", ")}]
+            return `${game.loc("portal_mech_size_" + mech.size)} ${game.loc("portal_mech_chassis_" + mech.chassis)} (${Math.round(mech.rating * 100)}%)`;
+        },
+
         buildMech(mech) {
             this._assemblyVue.setSize(mech.size);
             this._assemblyVue.setType(mech.chassis);
@@ -3790,10 +3795,12 @@
                 this._assemblyVue.setEquip(mech.equip[i], i);
             }
             this._assemblyVue.build();
+            GameLog.logSuccess(GameLog.Types.mech_build, `${this.mechDesc(mech)} mech has been built.`);
         },
 
-        scrapMech(id) {
-            this._listVue.scrap(id);
+        scrapMech(mech) {
+            this._listVue.scrap(mech.id);
+            GameLog.logSuccess(GameLog.Types.mech_scrap, `${this.mechDesc(mech)} mech has been scrapped.`);
         },
 
         dragMech(oldId, newId) {
@@ -4123,14 +4130,16 @@
 
     var GameLog = {
         Types: {
-            special: { id: "special", name: "Specials", settingKey: "log_special", },
-            construction: { id: "construction", name: "Construction", settingKey: "log_construction", },
-            multi_construction: { id: "multi_construction", name: "Multi-part Construction", settingKey: "log_multi_construction", },
-            arpa: { id: "arpa", name: "A.R.P.A Progress", settingKey: "log_arpa", },
-            research: { id: "research", name: "Research", settingKey: "log_research", },
-            spying: { id: "spying", name: "Spying", settingKey: "log_spying", },
-            attack: { id: "attack", name: "Attack", settingKey: "log_attack", },
-            mercenary: { id: "mercenary", name: "Mercenaries", settingKey: "log_mercenary", },
+            special: {name: "Specials", settingKey: "log_special"},
+            construction: {name: "Construction", settingKey: "log_construction"},
+            multi_construction: {name: "Multi-part Construction", settingKey: "log_multi_construction"},
+            arpa: {name: "A.R.P.A Progress", settingKey: "log_arpa"},
+            research: {name: "Research", settingKey: "log_research"},
+            spying: {name: "Spying", settingKey: "log_spying"},
+            attack: {name: "Attack", settingKey: "log_attack"},
+            mercenary: {name: "Mercenaries", settingKey: "log_mercenary"},
+            mech_build: {name: "Mech Build", settingKey: "log_mech_build"},
+            mech_scrap: {name: "Mech Scrap", settingKey: "log_mech_scrap"},
         },
 
         logSuccess(loggingType, text) {
@@ -5001,9 +5010,7 @@
         Object.assign(DroidManager.Productions.Uranium, {priority: 1, weighting: 1});
         Object.assign(DroidManager.Productions.Coal, {priority: 1, weighting: 1});
 
-        for (let spell of Object.values(RitualManager.Productions)) {
-            spell.weighting = 1;
-        }
+        Object.values(RitualManager.Productions).forEach(spell => spell.weighting = 1);
     }
 
     function resetTriggerSettings() {
@@ -5016,10 +5023,7 @@
     function resetLoggingSettings() {
         settings["logEnabled"] = true;
 
-        for (let loggingTypeKey in GameLog.Types) {
-            let loggingType = GameLog.Types[loggingTypeKey];
-            settings[loggingType.settingKey] = true;
-        }
+        Object.values(GameLog.Types).forEach(log => settings[log.settingKey] = true);
         settings[GameLog.Types.arpa.settingKey] = false;
     }
 
@@ -5292,10 +5296,7 @@
 
         addSetting("logEnabled", true);
         addSetting(GameLog.Types.arpa.settingKey, false);
-        for (let loggingTypeKey in GameLog.Types) {
-            let loggingType = GameLog.Types[loggingTypeKey];
-            addSetting(loggingType.settingKey, true);
-        }
+        Object.values(GameLog.Types).forEach(log => addSetting(log.settingKey, true));
 
         addSetting("autoPylon", false);
         addSetting("autoQuarry", false);
@@ -5380,9 +5381,7 @@
         addSetting("userPlanetTargetName", "none");
         addSetting("userEvolutionTarget", "auto");
 
-        for (let id in challenges) {
-            addSetting("challenge_" + id, false);
-        }
+        Object.values(challenges).forEach(id => addSetting("challenge_" + id, false));
 
         addSetting("researchFilter", false);
         addSetting("userResearchTheology_1", "auto");
@@ -5422,14 +5421,9 @@
         addSetting("researchRequestSpace", false);
         addSetting("missionRequest", true);
 
-        // Collapse or expand settings sections
-        for (let i = 0; i < settingsSections.length; i++) {
-            addSetting(settingsSections[i] + "SettingsCollapsed", true);
-        }
+        settingsSections.forEach(id => addSetting(id + "SettingsCollapsed", true));
+        galaxyRegions.forEach((id, index) => addSetting("fleet_pr_" + id, index));
 
-        for (let i = 0; i < galaxyRegions.length; i++) {
-            addSetting("fleet_pr_" + galaxyRegions[i], i);
-        }
         addSetting("fleetMaxCover", true);
         addSetting("fleetEmbassyKnowledge", 6000000);
         addSetting("fleetAlienGiftKnowledge", 6500000);
@@ -5445,34 +5439,15 @@
         addSetting("buildingManageSpire", true);
         addSetting("buildingMechsFirst", true);
 
-        for (let i = 0; i < biomeList.length; i++) {
-            addSetting("biome_w_" + biomeList[i], 0);
-        }
-        for (let i = 0; i < traitList.length; i++) {
-            addSetting("trait_w_" + traitList[i], 0);
-        }
-        for (let i = 0; i < extraList.length; i++) {
-            addSetting("extra_w_" + extraList[i], 0);
-        }
+        biomeList.forEach(id => addSetting("biome_w_" + id, 0));
+        traitList.forEach(id => addSetting("trait_w_" + id, 0));
+        extraList.forEach(id => addSetting("extra_w_" + id, 0));
 
         // TODO: Remove me some day. Cleaning up old settings.
-        let unusedStandalone = ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser"];
-        let unused012 = ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"];
-        for (let i = 0; i < unused012.length; i++) {
-            for (let j = 0; j <= 2; j++) {
-                delete settings[unused012[i] + j];
-            }
-        }
-        for (let i = 0; i < unusedStandalone.length; i++) {
-            delete settings[unusedStandalone[i]];
-        }
-        for (let resource of Object.values(resources)) {
-            delete settings['res_storage_w_' + resource.id];
-        }
-        for (let i = 0; i < ProjectManager.priorityList.length; i++) {
-            let project = ProjectManager.priorityList[i];
-            delete settings['arpa_ignore_money_' + project.id];
-        }
+        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser"].forEach(id => delete settings[id]);
+        ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settings[id + index]));
+        Object.values(resources).forEach(resource => delete settings['res_storage_w_' + resource.id]);
+        Object.values(projects).forEach(project => delete settings['arpa_ignore_money_' + project.id]);
     }
 
     function getConfiguredAchievementLevel() {
@@ -8933,10 +8908,8 @@
 
             // Now go scrapping, if possible and benefical
             if (trashMechs.length > 0 && baySpace + spaceGained >= newSpace && resources.Supply.currentQuantity + supplyGained >= newSupply) {
-                trashMechs.sort((a, b) => b.id - a.id);
-                trashMechs.forEach(mech => {
-                    m.scrapMech(mech.id);
-                });
+                trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
+                trashMechs.forEach(mech => m.scrapMech(mech));
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
                 return;
             }
@@ -12485,10 +12458,7 @@
 
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "logEnabled", "Enable logging", "Master switch to enable logging of script actions in the game message queue");
 
-        for (let loggingTypeKey in GameLog.Types) {
-            let loggingType = GameLog.Types[loggingTypeKey];
-            addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, loggingType.settingKey, loggingType.name, `If logging is enabled then logs ${loggingType.name} actions`);
-        }
+        Object.values(GameLog.Types).forEach(log => addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, log.settingKey, log.name, `If logging is enabled then logs ${log.name} actions`));
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
