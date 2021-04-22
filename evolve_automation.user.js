@@ -1973,6 +1973,27 @@
           () => "Not enough storage",
           () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
       ],[
+          () => settings.autoMech && settings.buildingMechsFirst && buildings.PortalMechBay.count > 0,
+          (building) => {
+              if (building === buildings.PortalPurifier || building === buildings.PortalPort || building === buildings.PortalBaseCamp || building === buildings.PortalMechBay) {
+                  let mechBay = game.global.portal.mechbay;
+                  let newSize = "";
+                  if (settings.mechBuild === "random") {
+                      newSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
+                  } else if (settings.mechBuild === "user") {
+                      newSize = mechBay.blueprint.size;
+                  } else {
+                      return false;
+                  }
+                  let [newSupply, newSpace, newGems] = MechManager.getMechCost({size: newSize});
+                  if (newSpace <= mechBay.max - mechBay.bay && newSupply <= resources.Supply.maxQuantity && newGems <= resources.Soul_Gem.currentQuantity) {
+                      return true;
+                  }
+              }
+          },
+          () => "Saving resources for new mech",
+          () => 0
+      ],[
           () => buildings.PortalEastTower.isUnlocked() && buildings.PortalWestTower.isUnlocked(),
           (building) => (building === buildings.PortalEastTower || building === buildings.PortalWestTower) && poly.hellSupression("gate") < settings.buildingTowerSuppression / 100,
           () => "Too low supression",
@@ -2038,7 +2059,7 @@
           () => buildings.PortalWaygate.isUnlocked() && haveTech("waygate", 2),
           (building) => building === buildings.PortalWaygate,
           () => "Not avaiable",
-          () => 0 // We can't limit waygate ising gameMax, as max here doesn't constant. It's start with 10, but after building count reduces down to 1
+          () => 0 // We can't limit waygate using gameMax, as max here doesn't constant. It's start with 10, but after building count reduces down to 1
       ],[
           () => buildings.PortalSphinx.isUnlocked(),
           (building) => building === buildings.PortalSphinx && game.global.tech.hell_spire >= 8,
@@ -2079,7 +2100,7 @@
               }
           },
           () => "Wrong shrine",
-          () => 0 // Shrine
+          () => 0
       ],[
           () => game.global.race['slaver'],
           (building) => {
@@ -4622,7 +4643,6 @@
     }
 
     function resetBuildingSettings() {
-        settings.buildingManageSpire = true;
         settings.buildingBuildIfStorageFull = false;
         settings.buildingsIgnoreZeroRate = false;
         settings.buildingShrineType = "know";
@@ -5368,7 +5388,6 @@
         addSetting("userResearchTheology_1", "auto");
         addSetting("userResearchTheology_2", "auto");
 
-        addSetting("buildingManageSpire", true);
         addSetting("buildingBuildIfStorageFull", false);
         addSetting("buildingsIgnoreZeroRate", false);
         addSetting("buildingsConflictQueue", true);
@@ -5417,12 +5436,14 @@
         addSetting("fleetAlien2Knowledge", 9000000);
         addSetting("fleetChthonianPower", 4500);
 
-        addSetting("mechScrap", "all");
+        addSetting("mechScrap", "mixed");
         addSetting("mechBuild", "random");
         addSetting("mechSize", "large");
         addSetting("mechSizeGravity", "large");
         addSetting("mechSaveSupply", true);
         addSetting("mechFillBay", true);
+        addSetting("buildingManageSpire", true);
+        addSetting("buildingMechsFirst", true);
 
         for (let i = 0; i < biomeList.length; i++) {
             addSetting("biome_w_" + biomeList[i], 0);
@@ -8840,7 +8861,7 @@
         } else if (settings.mechBuild === "user") {
             newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
         }
-        let [newSupply, targetSpace, newGems] = m.getMechCost(newMech);
+        let [newSupply, newSpace, newGems] = m.getMechCost(newMech);
 
         // Not enough gems or max supply, can't do anything
         if (resources.Soul_Gem.currentQuantity < newGems || resources.Supply.maxQuantity < newSupply) {
@@ -8889,8 +8910,10 @@
 
         let baySpace = mechBay.max - mechBay.bay;
 
+        let mechScrap = settings.mechScrap === "mixed" ? game.checkAffordable(buildings.PortalMechBay.definition, true) ? "single" : "all" : settings.mechScrap;
+
         // Check if we need to scrap anything
-        if (settings.mechBuild !== "none" && settings.mechScrap !== "none" && (baySpace < targetSpace || (settings.mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
+        if (settings.mechBuild !== "none" && mechScrap !== "none" && (baySpace < newSpace || (mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
             let spaceGained = 0;
             let supplyGained = 0;
 
@@ -8902,14 +8925,14 @@
 
             // Remove worst mechs untill we have enough room for new mech
             let trashMechs = [];
-            for (let i = 0; i < mechList.length && (baySpace + spaceGained < targetSpace || (settings.mechScrap === "all" && resources.Supply.currentQuantity + supplyGained < newSupply && m.getMechRefund(mechList[i]) / newSupply > mechList[i].power / newMech.power)); i++) {
+            for (let i = 0; i < mechList.length && (baySpace + spaceGained < newSpace || (mechScrap === "all" && resources.Supply.currentQuantity + supplyGained < newSupply && m.getMechRefund(mechList[i]) / newSupply > mechList[i].power / newMech.power)); i++) {
                 spaceGained += m.getMechSpace(mechList[i]);
                 supplyGained += m.getMechRefund(mechList[i]);
                 trashMechs.push(mechList[i]);
             }
 
             // Now go scrapping, if possible and benefical
-            if (trashMechs.length > 0 && baySpace + spaceGained >= targetSpace && resources.Supply.currentQuantity + supplyGained >= newSupply) {
+            if (trashMechs.length > 0 && baySpace + spaceGained >= newSpace && resources.Supply.currentQuantity + supplyGained >= newSupply) {
                 trashMechs.sort((a, b) => b.id - a.id);
                 trashMechs.forEach(mech => {
                     m.scrapMech(mech.id);
@@ -8917,25 +8940,25 @@
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
                 return;
             }
-            if (trashMechs.reduce((sum, mech) => sum += m.getMechSpace(mech), 0) >= targetSpace) {
+            if (trashMechs.reduce((sum, mech) => sum += m.getMechSpace(mech), 0) >= newSpace) {
                 // We still have scrapable mechs, just waiting for more supplies, to replace in with new one instantly
                 return;
             }
         }
 
         // Try to squeeze in smaller mech, if we can't fit preferred one
-        if (settings.mechBuild === "random" && settings.mechFillBay && baySpace < targetSpace && baySpace > 0) {
+        if (settings.mechBuild === "random" && settings.mechFillBay && baySpace < newSpace && baySpace > 0) {
             for (let i = m.Size.length - 1; i >= 0; i--) {
                 if (m.getMechSpace({size: m.Size[i]}) <= baySpace) {
                     newMech = m.getRandomMech(m.Size[i]);
-                    [newSupply, targetSpace, newGems] = m.getMechCost(newMech);
+                    [newSupply, newSpace, newGems] = m.getMechCost(newMech);
                     break;
                 }
             }
         }
 
         // We have everything to get new mech
-        if (settings.mechBuild !== "none" && resources.Supply.currentQuantity >= newSupply && baySpace >= targetSpace) {
+        if (settings.mechBuild !== "none" && resources.Supply.currentQuantity >= newSupply && baySpace >= newSpace) {
             m.buildMech(newMech);
             resources.Supply.currentQuantity -= newSupply;
             resources.Soul_Gem.currentQuantity -= newGems;
@@ -9982,6 +10005,7 @@
                 settings[settingName] = parsedValue;
                 updateSettingsFromState();
             }
+            textBox.val(settings[settingName]);
         });
     }
 
@@ -10027,6 +10051,7 @@
                     $('#script_' + settingName).val(settings[settingName]);
                 }
             }
+            textBox.val(settings[settingName]);
         });
     }
 
@@ -10040,6 +10065,7 @@
                 object[property] = parsedValue;
                 updateSettingsFromState();
             }
+            textBox.val(settings[settingKey]);
         });
 
         return textBox;
@@ -10845,6 +10871,7 @@
 
                 updateSettingsFromState();
             }
+            textBox.val(trigger[property]);
         });
 
         return textBox;
@@ -11149,7 +11176,8 @@
 
         let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
                             {val: "single", label: "Single worst", hint: "Scrap mechs with worst efficiency one by one, when they can be replaced with better ones"},
-                            {val: "all", label: "All inefficient", hint: "Scrap all mechs with bad efficiency, replacing them with good ones, E.g. it will be able to scrap 30 mechs of 10% efficiency, and replace them with 10 mechs of 200% efficiency at once. Which will have a better immediate performance than slow replacement of them one by one. But if you're climbing spire too fast you may finish current floor before bay will be repopulated back to full, and risking to enter next floor with half-empty bay of suboptimal mechs."}];
+                            {val: "all", label: "All inefficient", hint: "Scrap all mechs with bad efficiency, replacing them with good ones, E.g. it will be able to scrap 30 mechs of 10% efficiency, and replace them with 10 mechs of 200% efficiency at once. Which will have a better immediate performance than slow replacement of them one by one. But if you're climbing spire too fast you may finish current floor before bay will be repopulated back to full, and risking to enter next floor with half-empty bay of suboptimal mechs."},
+                            {val: "mixed", label: "Mixed", hint: "Works as 'Single worst' while more bays still can be builded, and as 'All inefficient' after that."}];
         buildStandartSettingsSelector(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped", scrapOptions);
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
@@ -11161,16 +11189,22 @@
         addStandardSectionSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs");
         addStandardSectionSettingsToggle(currentNode, "mechFillBay", "Fill remaining bay space with smaller mechs", "Once mech bay is packed with optimal mechs of prefered size up to the limit fill up remaining space with smaller mechs, if possible");
 
+        addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire Buildings", "Enables special powering logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays. This option requires Auto Build and Auto Power.");
+        addStandardSectionSettingsToggle(currentNode, "buildingMechsFirst", "Fill bays before buildings new ones", "Fill existed bays with mechs first, before spending resources on expanding them further");
+
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
     function resetMechSettings() {
-        settings.mechScrap = "all";
+        settings.mechScrap = "mixed";
         settings.mechBuild = "random";
         settings.mechSize = "large";
         settings.mechSizeGravity = "large";
         settings.mechSaveSupply = true;
         settings.mechFillBay = true;
+
+        settings.buildingManageSpire = true;
+        settings.buildingMechsFirst = true;
     }
 
     function buildEjectorSettings() {
@@ -11981,6 +12015,7 @@
                 job.breakpoints[breakpoint - 1] = employees;
                 updateSettingsFromState();
             }
+            jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job._originalId]);
         });
 
         return jobBreakpointTextbox;
@@ -12053,6 +12088,7 @@
                 settings[settingName] = parsedValue;
                 updateSettingsFromState();
             }
+            weightInput.val(settings[settingName]);
         });
 
         table.append(ruleNode);
@@ -12078,7 +12114,6 @@
         let currentNode = $('#script_buildingContent');
         currentNode.empty().off("*");
 
-        addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire", "Enables special logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays.");
         addStandardSectionSettingsToggle(currentNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
         addStandardSectionSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings.");
         addStandardSectionSettingsNumber(currentNode, "buildingTowerSuppression", "Minimum suppression for Towers", "East Tower and West Tower won't be built until minimum suppression is reached");
