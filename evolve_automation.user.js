@@ -5438,6 +5438,7 @@
         addSetting("mechFillBay", true);
         addSetting("buildingManageSpire", true);
         addSetting("buildingMechsFirst", true);
+        addSetting("mechBaysFirst", true);
 
         biomeList.forEach(id => addSetting("biome_w_" + id, 0));
         traitList.forEach(id => addSetting("trait_w_" + id, 0));
@@ -8847,29 +8848,6 @@
         }
         let mechBay = game.global.portal.mechbay;
 
-        let newMech = {};
-        if (settings.mechBuild === "random") {
-            let preferedSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
-            newMech = m.getRandomMech(preferedSize);
-        } else if (settings.mechBuild === "user") {
-            newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
-        }
-        let [newSupply, newSpace, newGems] = m.getMechCost(newMech);
-
-        // Not enough gems or max supply, can't do anything
-        if (resources.Soul_Gem.currentQuantity < newGems || resources.Supply.maxQuantity < newSupply) {
-            return;
-        }
-
-        // Save up supply for next floor
-        if (settings.mechSaveSupply) {
-            let timeToClear = (100 - game.global.portal.spire.progress) / m.getProgressSpeed();
-            let timeToFull = (resources.Supply.maxQuantity - resources.Supply.currentQuantity - m.getMechRefund(newMech)) / resources.Supply.rateOfChange;
-            if (timeToClear <= timeToFull) {
-                return;
-            }
-        }
-
         // If some of the bays disabled - it means we're on building stage, let's rearrange mechs for best efficiency
         if (buildings.PortalMechBay.stateOffCount > 0) {
             let activeMechs = [];
@@ -8901,9 +8879,34 @@
             return;
         }
 
-        let baySpace = mechBay.max - mechBay.bay;
+        let newMech = {};
+        if (settings.mechBuild === "random") {
+            let preferedSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
+            newMech = m.getRandomMech(preferedSize);
+        } else if (settings.mechBuild === "user") {
+            newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
+        }
+        let [newSupply, newSpace, newGems] = m.getMechCost(newMech);
 
+        // Not enough gems, max supply, or saving supply for something else can't do anything
+        if (resources.Soul_Gem.currentQuantity < newGems || resources.Supply.maxQuantity < newSupply || resources.Supply.requestedQuantity > 0) {
+            return;
+        }
+
+        // Save up supply for next floor
+        if (settings.mechSaveSupply) {
+            let timeToClear = (100 - game.global.portal.spire.progress) / m.getProgressSpeed();
+            let timeToFull = (resources.Supply.maxQuantity - resources.Supply.currentQuantity - m.getMechRefund(newMech)) / resources.Supply.rateOfChange;
+            if (timeToClear <= timeToFull) {
+                return;
+            }
+        }
+
+        let baySpace = mechBay.max - mechBay.bay;
         let mechScrap = settings.mechScrap === "mixed" ? game.checkAffordable(buildings.PortalMechBay.definition, true) ? "single" : "all" : settings.mechScrap;
+        if (settings.mechBaysFirst && settings.autoBuild && (buildings.PortalPurifier.weighting > 0 || buildings.PortalMechBay.weighting > 0)) {
+            mechScrap = "none";
+        }
 
         // Check if we need to scrap anything
         if (settings.mechBuild !== "none" && mechScrap !== "none" && (baySpace < newSpace || (mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
@@ -11182,6 +11185,7 @@
 
         addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire Buildings", "Enables special powering logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays. This option requires Auto Build and Auto Power.");
         addStandardSectionSettingsToggle(currentNode, "buildingMechsFirst", "Fill bays before building new ones", "Fill existed bays with mechs first, before spending resources on spire buildings");
+        addStandardSectionSettingsToggle(currentNode, "mechBaysFirst", "Maximize bays before scrapping mechs", "Only scrap mechs when no new bays can be builded");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11196,6 +11200,7 @@
 
         settings.buildingManageSpire = true;
         settings.buildingMechsFirst = true;
+        settings.mechBaysFirst = true;
     }
 
     function buildEjectorSettings() {
@@ -12396,7 +12401,7 @@
         let currentNode = $('#script_projectContent');
         currentNode.empty().off("*");
 
-        addStandardSectionSettingsToggle(currentNode, "arpaScaleWeighting", "Scale weighting with progress", "Projects weighing scales  with current progress, making script more eager to spend resources on finishing nearly constructed projects.");
+        addStandardSectionSettingsToggle(currentNode, "arpaScaleWeighting", "Scale weighting with progress", "Projects weighting scales  with current progress, making script more eager to spend resources on finishing nearly constructed projects.");
 
         currentNode.append(`
           <table style="width:100%">
