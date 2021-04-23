@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.47
+// @version      3.3.1.48
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -390,7 +390,7 @@
             if (!this.storeOverflow && this.currentQuantity > this.storageRequired && this.currentCrates + this.currentContainers > 0) {
                 return false;
             }
-            return this.storageRatio < 0.99 || this.isDemanded() || this.storeOverflow || this.currentEject > 0 || this.currentSupply > 0 || this.currentTradeDiff < 0 ;
+            return this.storageRatio < 0.99 || this.isDemanded() || this.storeOverflow;
         }
 
         increaseEjection(count) {
@@ -1986,6 +1986,11 @@
     const wrDescription = 2; // Description displayed in tooltip when rule applied, takes return value of individual condition, and building
     const wrMultiplier = 3; // Weighting mulptiplier. Called first without any context; rules returning x1 also won't be checked
     var weightingRules = [[
+          () => !settings.autoBuild,
+          () => true,
+          () => "AutoBuild disabled",
+          () => 0 // Set weighting to zero right away, and skip all checks if autoBuild is disabled
+      ],[
           () => true,
           (building) => !building.isUnlocked(),
           () => "Locked",
@@ -1994,12 +1999,12 @@
           () => true,
           (building) => !building.autoBuildEnabled,
           () => "AutoBuild disabled",
-          () => 0 // Configured in autoBuild
+          () => 0
       ],[
           () => true,
           (building) => building.count >= building.autoMax,
           () => "Maximum amount reached",
-          () => 0 // Configured in autoBuild
+          () => 0
       ],[
           () => true,
           (building) => !building.isAffordable(true),
@@ -3993,7 +3998,7 @@
                 project.weighting = project._weighting;
                 project.extraDescription = "";
 
-                if (!project.autoBuildEnabled) {
+                if (!project.autoBuildEnabled || !settings.autoARPA) {
                     project.weighting = 0;
                     project.extraDescription += "AutoBuild disabled<br>";
                 }
@@ -5000,7 +5005,7 @@
 
         projects.LaunchFacility._weighting = 100;
         projects.SuperCollider._weighting = 5;
-        projects.Railway._weighting = 0.5;
+        projects.Railway._weighting = 0.01;
         projects.StockExchange._weighting = 0.5;
         projects.ManaSyphon._autoMax = 79;
         projects.ManaSyphon.autoBuildEnabled = false;
@@ -7715,13 +7720,7 @@
         }
 
         let targetsList = [...state.queuedTargets, ...state.triggerTargets];
-        let buildingList = [];
-        if (settings.autoBuild) {
-            buildingList = buildingList.concat(BuildingManager.managedPriorityList());
-        }
-        if (settings.autoARPA) {
-            buildingList = buildingList.concat(ProjectManager.managedPriorityList());
-        }
+        let buildingList = [...BuildingManager.managedPriorityList(), ...ProjectManager.managedPriorityList()];
 
         // Sort array so we'll have prioritized buildings on top. We'll need that below to avoid deathlocks, when building 1 waits for building 2, and building 2 waits for building 3. That's something we don't want to happen when building 1 and building 3 doesn't conflicts with each other.
         buildingList.sort((a, b) => b.weighting - a.weighting);
@@ -7829,7 +7828,7 @@
 
             // Build building
             if (building.click()) {
-                affordableCache = {};
+                affordableCache = {}; // Clear cache after spending resources, and recheck buildings again
                 if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
                     removePoppers();
                 }
@@ -8882,7 +8881,7 @@
         }
         let mechBay = game.global.portal.mechbay;
 
-        // If some of the bays disabled - it means we're on building stage, let's rearrange mechs for best efficiency
+        // Rearrange mechs for best efficiency if some of the bays are disabled
         if (buildings.PortalMechBay.stateOffCount > 0) {
             let activeMechs = [];
             let inactiveMechs = [];
@@ -8937,9 +8936,13 @@
         }
 
         let baySpace = mechBay.max - mechBay.bay;
-        let mechScrap = settings.mechScrap === "mixed" ? (buildings.PortalMechBay.isAffordable(true) || buildings.PortalPurifier.isAffordable(true)) ? "single" : "all" : settings.mechScrap;
-        if (settings.mechBaysFirst && settings.autoBuild && (buildings.PortalPurifier.weighting > 0 || buildings.PortalMechBay.weighting > 0)) {
+        let mechScrap = settings.mechScrap;
+        if (settings.mechBaysFirst && (buildings.PortalPurifier.weighting > 0 || buildings.PortalMechBay.weighting > 0) && resources.Supply.storageRatio < 1) {
+            // We can build purifier or bay once we'll have enough resources, don't scrap anything
             mechScrap = "none";
+        } else if (settings.mechScrap === "mixed") {
+            // This one a bit different from check above, it's affordable, but may stay with zero weighting for some reason(e.g. waiting for new mech, or energy for purifier)
+            mechScrap = buildings.PortalPurifier.isAffordable(true) || buildings.PortalMechBay.isAffordable(true) ? "single" : "all";
         }
 
         // Check if we need to scrap anything
