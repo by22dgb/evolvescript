@@ -344,6 +344,14 @@
             return value;
         }
 
+        isDemanded() {
+            return this.requestedQuantity > this.currentQuantity;
+        }
+
+        get spareQuantity() {
+            return Math.max(0, this.currentQuantity - this.requestedQuantity);
+        }
+
         isUnlocked() {
             return this.instance?.display;
         }
@@ -378,7 +386,11 @@
         }
 
         isUseful() {
-            return this.storageRatio < 0.99 || this.requestedQuantity > 0 || this.storeOverflow || this.currentEject > 0 || this.currentSupply > 0 || this.currentTradeDiff < 0 ;
+            // Spending accumulated resources
+            if (!this.storeOverflow && this.currentQuantity > this.storageRequired && this.currentCrates + this.currentContainers > 0) {
+                return false;
+            }
+            return this.storageRatio < 0.99 || this.isDemanded() || this.storeOverflow || this.currentEject > 0 || this.currentSupply > 0 || this.currentTradeDiff < 0 ;
         }
 
         increaseEjection(count) {
@@ -775,11 +787,14 @@
             }
         }
 
-        // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
-        isClickable() {
-            return this.isUnlocked() && game.checkAffordable(this.definition, false) && this.count < this.gameMax;
+        isAffordable(max = false) {
+            return game.checkAffordable(this.definition, max);
         }
 
+        // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
+        isClickable() {
+            return this.isUnlocked() && this.isAffordable() && this.count < this.gameMax;
+        }
 
         // This is a "safe" click. It will only click if the container is currently clickable.
         // ie. it won't bypass the interface and click the node if it isn't clickable in the UI.
@@ -1057,8 +1072,20 @@
             return this.instance?.complete ?? 0;
         }
 
+        isAffordable(max = false) {
+            // We can't use exposed checkAffordable with projects, so let's write it. Luckily project need only basic resoruces
+            let check = max ? "maxQuantity" : "currentQuantity";
+            for (let i = 0; i < this.resourceRequirements.length; i++) {
+                let req = this.resourceRequirements[i];
+                if (req.resource[check] < req.quantity) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         isClickable() {
-            return this.isUnlocked() && checkAffordable(this, false);
+            return this.isUnlocked() && this.isAffordable(this, false);
         }
 
         click(amount = 1) {
@@ -1121,9 +1148,13 @@
             return this.title;
         }
 
+        isAffordable(max = false) {
+            return game.checkAffordable(this.definition, max);
+        }
+
         // Whether the action is clickable is determined by whether it is unlocked, affordable and not a "permanently clickable" action
         isClickable() {
-            return this.isUnlocked() && game.checkAffordable(this.definition, false);
+            return this.isUnlocked() && this.isAffordable();
         }
 
         // This is a "safe" click. It will only click if the container is currently clickable.
@@ -1282,15 +1313,17 @@
 
         isActionPossible() {
             // check against MAX as we want to know if it is possible...
+            let obj = null;
             if (this.actionType === "research") {
-                return techIds[this.actionId].isUnlocked() && game.checkAffordable(techIds[this.actionId].definition, true);
+                obj = techIds[this.actionId];
             }
             if (this.actionType === "build") {
-                return buildingIds[this.actionId].isUnlocked() && game.checkAffordable(buildingIds[this.actionId].definition, true);
+                obj = buildingIds[this.actionId];
             }
             if (this.actionType === "arpa") {
-                return arpaIds[this.actionId].isUnlocked() && checkAffordable(arpaIds[this.actionId], true);
+                obj = arpaIds[this.actionId];
             }
+            return obj && obj.isUnlocked() && obj.isAffordable(true);
         }
 
         updateComplete() {
@@ -1969,7 +2002,7 @@
           () => 0 // Configured in autoBuild
       ],[
           () => true,
-          (building) => !game.checkAffordable(building.definition, true),
+          (building) => !building.isAffordable(true),
           () => "Not enough storage",
           () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
       ],[
@@ -2012,8 +2045,8 @@
           () => {
               let bireme = buildings.PortalBireme;
               let transport = buildings.PortalTransport;
-              return (bireme.autoBuildEnabled && bireme.isUnlocked() && bireme.count < bireme.autoMax && game.checkAffordable(bireme.definition, true)) &&
-                     (transport.autoBuildEnabled && transport.isUnlocked() && transport.count < transport.autoMax && game.checkAffordable(transport.definition, true));
+              return (bireme.autoBuildEnabled && bireme.isUnlocked() && bireme.count < bireme.autoMax && bireme.isAffordable(true)) &&
+                     (transport.autoBuildEnabled && transport.isUnlocked() && transport.count < transport.autoMax && transport.isAffordable(true));
           },
           (building) => {
               if (building === buildings.PortalBireme || building === buildings.PortalTransport) {
@@ -2036,8 +2069,8 @@
           () => {
               let port = buildings.PortalPort;
               let camp = buildings.PortalBaseCamp;
-              return (port.autoBuildEnabled && port.isUnlocked() && port.count < port.autoMax && game.checkAffordable(port.definition, true)) &&
-                     (camp.autoBuildEnabled && camp.isUnlocked() && camp.count < camp.autoMax && game.checkAffordable(camp.definition, true));
+              return (port.autoBuildEnabled && port.isUnlocked() && port.count < port.autoMax && port.isAffordable(true)) &&
+                     (camp.autoBuildEnabled && camp.isUnlocked() && camp.count < camp.autoMax && camp.isAffordable(true));
           },
           (building) => {
               if (building === buildings.PortalPort || building === buildings.PortalBaseCamp) {
@@ -2185,7 +2218,7 @@
           () => "Not needed for current prestige",
           () => 0
       ],[
-          () => settings.prestigeType === "mad" && (haveTech("mad") || game.checkAffordable(techIds['tech-mad'].definition, true)),
+          () => settings.prestigeType === "mad" && (haveTech("mad") || techIds['tech-mad'].isAffordable(true)),
           (building) => !building.is.housing && !building.is.garrison,
           () => "Awaiting MAD prestige",
           () => settings.buildingWeightingMADUseless
@@ -6062,10 +6095,10 @@
         }
 
         // Mercenaries can still be hired once the "foreign" section is hidden by unification so do this before checking if warManager is unlocked
-        if (m.isMercenaryUnlocked() && resources.Money.requestedQuantity <= 0) {
-            let mercenariesHired = 0;
+        if (m.isMercenaryUnlocked()) {
             let mercenaryCost = m.getMercenaryCost();
-            while (m.currentSoldiers < m.maxSoldiers - settings.foreignHireMercDeadSoldiers && resources.Money.currentQuantity > mercenaryCost && ((resources.Money.currentQuantity - mercenaryCost > resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100) || (mercenaryCost < state.moneyMedian * settings.foreignHireMercCostLowerThanIncome))) {
+            let mercenariesHired = 0;
+            while (m.currentSoldiers < m.maxSoldiers - settings.foreignHireMercDeadSoldiers && resources.Money.spareQuantity >= mercenaryCost && ((resources.Money.currentQuantity - mercenaryCost > resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100) || (mercenaryCost < state.moneyMedian * settings.foreignHireMercCostLowerThanIncome))) {
                 m.hireMercenary();
                 mercenariesHired++;
                 mercenaryCost = m.getMercenaryCost();
@@ -6437,13 +6470,13 @@
                 job.resource.resourceRequirements.forEach(requirement => {
                     afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / (requirement.quantity * costMod) / 2);
                     lowestRatio = Math.min(lowestRatio, requirement.resource.storageRatio);
-                    if (requirement.resource.requestedQuantity > 0 && job.resource.requestedQuantity <= 0) {
+                    if (requirement.resource.isDemanded() && !job.resource.isDemanded()) {
                         afforableAmount = 0;
                     }
                   }
                 );
 
-                if (lowestRatio < job.resource.preserve && job.resource.requestedQuantity <= 0) {
+                if (lowestRatio < job.resource.preserve && !job.resource.isDemanded()) {
                     continue;
                 }
 
@@ -6465,7 +6498,7 @@
                 availableJobs.push(job);
             }
 
-            let requestedJobs = availableJobs.filter(job => job.resource.requestedQuantity > 0);
+            let requestedJobs = availableJobs.filter(job => job.resource.isDemanded());
             if (requestedJobs.length > 0) {
                 availableJobs = requestedJobs;
             } else if (settings.productionPrioritizeDemanded) {
@@ -6766,10 +6799,10 @@
             return;
         }
 
-        let chrysotileWeigth = resources.Chrysotile.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : (100 - resources.Chrysotile.storageRatio * 100);
-        let stoneWeigth = resources.Stone.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : (100 - resources.Stone.storageRatio * 100);
+        let chrysotileWeigth = resources.Chrysotile.isDemanded() ? Number.MAX_SAFE_INTEGER : (100 - resources.Chrysotile.storageRatio * 100);
+        let stoneWeigth = resources.Stone.isDemanded() ? Number.MAX_SAFE_INTEGER : (100 - resources.Stone.storageRatio * 100);
         if (buildings.MetalRefinery.count > 0) {
-            stoneWeigth = Math.max(stoneWeigth, resources.Aluminium.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : (100 - resources.Aluminium.storageRatio * 100));
+            stoneWeigth = Math.max(stoneWeigth, resources.Aluminium.isDemanded() ? Number.MAX_SAFE_INTEGER : (100 - resources.Aluminium.storageRatio * 100));
         }
         let newAsbestos = Math.round(chrysotileWeigth / (chrysotileWeigth + stoneWeigth) * 100);
 
@@ -6891,10 +6924,10 @@
                 break;
         }
 
-        if (resources.Iron.requestedQuantity > 0) {
+        if (resources.Iron.isDemanded()) {
             ironWeighting = Number.MAX_SAFE_INTEGER;
         }
-        if (resources.Steel.requestedQuantity > 0) {
+        if (resources.Steel.isDemanded()) {
             steelWeighting = Number.MAX_SAFE_INTEGER;
         }
 
@@ -6937,7 +6970,7 @@
             let production = allProducts[i];
             if (production.unlocked && production.enabled) {
                 if (production.weighting > 0) {
-                    let priority = (production.resource.requestedQuantity > 0) ? Number.MAX_SAFE_INTEGER : production.priority;
+                    let priority = (production.resource.isDemanded()) ? Number.MAX_SAFE_INTEGER : production.priority;
                     // Force crafting Stanene up to 3% when we have Vitreloy Plants
                     if (production === FactoryManager.Productions.Stanene && resources.Stanene.storageRatio < 0.03 && buildings.Alien1VitreloyPlant.count > 0) {
                         priority = -1;
@@ -6983,8 +7016,8 @@
                         if (resourceCost.resource.storageRatio < 0.98) {
                             rate -= resourceCost.minRateOfChange;
                         }
-                        if (production.resource.requestedQuantity > 0 && resourceCost.resource.requestedQuantity <= 0) {
-                            rate += resourceCost.resource.currentQuantity;
+                        if (production.resource.isDemanded()) {
+                            rate += resourceCost.resource.spareQuantity;
                         }
 
                         // If we can't afford it (it's above our minimum rate of change) then remove a factory
@@ -6993,7 +7026,7 @@
                             let affordableAmount = Math.floor(rate / resourceCost.quantity);
                             actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
                         }
-                        if (resourceCost.resource.requestedQuantity > 0 && production.resource.requestedQuantity <= 0) {
+                        if (resourceCost.resource.isDemanded() && !production.resource.isDemanded()) {
                             actualRequiredFactories = 0;
                         }
                     });
@@ -7057,7 +7090,7 @@
         for (let i = 0; i < allProducts.length; i++) {
             let production = allProducts[i];
             if (production.weighting > 0) {
-                let priority = production.resource.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : production.priority;
+                let priority = production.resource.isDemanded() ? Number.MAX_SAFE_INTEGER : production.priority;
                 priorityGroups[priority] = priorityGroups[priority] ?? [];
                 priorityGroups[priority].push(production);
             }
@@ -7192,7 +7225,7 @@
                 }
 
                 let resource = resourcesBySupplyValue[i];
-                if (!resource.supplyEnabled || resource.requestedQuantity > 0) {
+                if (!resource.supplyEnabled || resource.isDemanded()) {
                     continue;
                 }
 
@@ -7240,7 +7273,7 @@
                 }
 
                 let resource = resourcesByAtomicMass[i];
-                if (!resource.ejectEnabled || resource.requestedQuantity > 0) {
+                if (!resource.ejectEnabled || resource.isDemanded()) {
                     continue;
                 }
 
@@ -7252,6 +7285,7 @@
                 if (resource === resources.Food) { allowedRatio = 0.11; }
                 if (resource === resources.Uranium) { allowedRatio = 0.2; } // Uranium powers buildings which add to storage cap (proxima transfer station) so this flickers if it gets too low
                 if (resource === resources.Neutronium) { allowedRatio = Math.max(allowedRatio, (resourceCost(techIds["tech-stabilize_blackhole"], resources.Neutronium) / resource.maxQuantity) + 0.01); }
+                allowedRatio = Math.max(allowedRatio, resource.requestedQuantity / resource.maxQuantity + 0.01)
 
                 if (resource.storageRatio > allowedRatio) {
                     let allowedQuantity = allowedRatio * resource.maxQuantity;
@@ -7264,7 +7298,7 @@
                         ejectorAdjustments[resource.id] = allowedQuantity;
                     }
                 } else {
-                    if ((resource === resources.Food || resource === resources.Uranium || resource === resources.Neutronium) && resource.storageRatio < allowedRatio - 0.01) {
+                    if (resource.storageRatio < allowedRatio - 0.01) {
                         continue;
                     } else if (resource.storageRatio > 0.01) {
                         ejectorAdjustments[resource.id] = Math.max(0, Math.min(remaining, roundedRateOfChange));
@@ -7286,7 +7320,7 @@
                 }
 
                 let resource = resourcesByAtomicMass[i];
-                if (!resource.ejectEnabled || resource.storageRatio < 0.985 || resource.requestedQuantity > 0) {
+                if (!resource.ejectEnabled || resource.storageRatio < 0.985 || resource.isDemanded()) {
                     continue;
                 }
 
@@ -7302,7 +7336,7 @@
                     }
 
                     let resource = resourcesByAtomicMass[i];
-                    if (!resource.ejectEnabled || resource.requestedQuantity > 0) {
+                    if (!resource.ejectEnabled || resource.isDemanded()) {
                         continue;
                     }
 
@@ -7310,11 +7344,11 @@
                     remaining += ejectorAdjustments[resource.id];
 
                     // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless it's on demand.
-                    if (game.global.race['decay'] && resource.requestedQuantity <= 0) {
+                    if (game.global.race['decay'] && !resource.isDemanded()) {
                         ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentDecay * settings.prestigeWhiteholeDecayRate));
                     }
 
-                    if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 1 && resource.currentQuantity >= resource.storageRequired && resource.requestedQuantity <= 0) {
+                    if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 1 && resource.currentQuantity >= resource.storageRequired && !resource.isDemanded()) {
                         ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true, supply: true})));
                     }
 
@@ -7488,7 +7522,7 @@
                 continue;
             }
 
-            if (resource.autoBuyEnabled === true && resource.storageRatio < resource.autoBuyRatio && resources.Money.requestedQuantity <= 0) {
+            if (resource.autoBuyEnabled === true && resource.storageRatio < resource.autoBuyRatio && !resources.Money.isDemanded()) {
                 let storableAmount = Math.floor((resource.autoBuyRatio - resource.storageRatio) * resource.maxQuantity);
                 let affordableAmount = Math.floor((resources.Money.currentQuantity - minimumMoneyAllowed) / MarketManager.getUnitBuyPrice(resource));
                 let maxAllowedUnits = Math.min(storableAmount, affordableAmount);
@@ -7700,7 +7734,7 @@
             let building = buildingList[i];
 
             // Only go further if it's affordable building, and not current target
-            if (targetsList.includes(building) || !(affordableCache[building.id] ?? (affordableCache[building.id] = checkAffordable(building, false)))) {
+            if (targetsList.includes(building) || !(affordableCache[building.id] ?? (affordableCache[building.id] = building.isAffordable()))) {
                 continue;
             }
 
@@ -7723,7 +7757,7 @@
                     }
                     // And we don't want to process clickable buildings - all buildings with highter weighting should already been proccessed.
                     // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                    if (weightDiffRatio < 10 && (affordableCache[other.id] ?? (affordableCache[other.id] = checkAffordable(other, false)))){
+                    if (weightDiffRatio < 10 && (affordableCache[other.id] ?? (affordableCache[other.id] = other.isAffordable()))){
                         continue;
                     }
 
@@ -8495,9 +8529,9 @@
         // Check demanded resources
         for (let id in resources) {
             let resource = resources[id];
-            if (resource.requestedQuantity > 0 && resource.isUnlocked() && resource.isTradable()) {
+            if (resource.isDemanded() && resource.isUnlocked() && resource.isTradable()) {
                 // Calculate amount of routes we need
-                let routes = Math.ceil(resource.requestedQuantity / resource.tradeRouteQuantity);
+                let routes = Math.ceil((resource.requestedQuantity - resource.currentQuantity) / resource.tradeRouteQuantity);
 
                 // Add routes
                 resourcesToTrade.push({
@@ -8516,7 +8550,7 @@
         }
 
         // And now if have nothing on demand - initialize regular trades
-        if (resourcesToTrade.length === 0 && resources.Money.requestedQuantity <= 0) {
+        if (resourcesToTrade.length === 0 && !resources.Money.isDemanded()) {
             for (let i = 0; i < tradableResources.length; i++) {
                 let resource = tradableResources[i];
                 if (resource.autoTradeBuyEnabled && resource.autoTradeBuyRoutes > 0) {
@@ -8888,8 +8922,8 @@
         }
         let [newSupply, newSpace, newGems] = m.getMechCost(newMech);
 
-        // Not enough gems, max supply, or saving supply for something else can't do anything
-        if (resources.Soul_Gem.currentQuantity < newGems || resources.Supply.maxQuantity < newSupply || resources.Supply.requestedQuantity > 0) {
+        // Not enough gems or max supply
+        if (resources.Soul_Gem.currentQuantity < newGems || resources.Supply.maxQuantity < newSupply) {
             return;
         }
 
@@ -8903,7 +8937,7 @@
         }
 
         let baySpace = mechBay.max - mechBay.bay;
-        let mechScrap = settings.mechScrap === "mixed" ? game.checkAffordable(buildings.PortalMechBay.definition, true) ? "single" : "all" : settings.mechScrap;
+        let mechScrap = settings.mechScrap === "mixed" ? (buildings.PortalMechBay.isAffordable(true) || buildings.PortalPurifier.isAffordable(true)) ? "single" : "all" : settings.mechScrap;
         if (settings.mechBaysFirst && settings.autoBuild && (buildings.PortalPurifier.weighting > 0 || buildings.PortalMechBay.weighting > 0)) {
             mechScrap = "none";
         }
@@ -8952,7 +8986,7 @@
         }
 
         // We have everything to get new mech
-        if (settings.mechBuild !== "none" && resources.Supply.currentQuantity >= newSupply && baySpace >= newSpace) {
+        if (settings.mechBuild !== "none" && resources.Supply.spareQuantity >= newSupply && baySpace >= newSpace) {
             m.buildMech(newMech);
             resources.Supply.currentQuantity -= newSupply;
             resources.Soul_Gem.currentQuantity -= newGems;
@@ -9091,12 +9125,10 @@
         }
 
         let prioritizedTasks = [];
-
         // Building and research queues
         if (settings.queueRequest) {
             prioritizedTasks = prioritizedTasks.concat(state.queuedTargets);
         }
-
         // Active triggers
         if (settings.triggerRequest) {
             prioritizedTasks = prioritizedTasks.concat(state.triggerTargets);
@@ -9125,19 +9157,15 @@
                     if (demandedObject instanceof Project && demandedObject.progress < 99) {
                         required *= 2;
                     }
-                    resource.requestedQuantity = Math.max(resource.requestedQuantity, required - resource.currentQuantity);
+                    resource.requestedQuantity = Math.max(resource.requestedQuantity, required);
                 }
             }
         }
 
         // TODO: Make it work with other resources; Pit Assault Mission requires various stuff
         if (settings.missionRequest) {
-            if (resources.Oil.currentQuantity < state.oilRequiredByMissions && resources.Oil.storageRatio < 0.98) {
-                resources.Oil.requestedQuantity = Math.max(resources.Oil.requestedQuantity, state.oilRequiredByMissions - resources.Oil.currentQuantity);
-            }
-            if (resources.Helium_3.currentQuantity < state.heliumRequiredByMissions && resources.Helium_3.storageRatio < 0.98) {
-                resources.Helium_3.requestedQuantity = Math.max(resources.Helium_3.requestedQuantity, state.heliumRequiredByMissions - resources.Helium_3.currentQuantity);
-            }
+            resources.Oil.requestedQuantity = Math.max(resources.Oil.requestedQuantity, state.oilRequiredByMissions);
+            resources.Helium_3.requestedQuantity = Math.max(resources.Helium_3.requestedQuantity, state.heliumRequiredByMissions);
         }
 
         // Prioritize material for craftables
@@ -9147,9 +9175,7 @@
                 // Only craftables stores their cost in resourceRequirements, no need for additional checks
                 for (let i = 0; i < resource.resourceRequirements.length; i++) {
                     let material = resource.resourceRequirements[i].resource;
-                    if (material.storageRatio < resource.preserve + 0.05) {
-                        material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (resource.preserve + 0.05) - material.currentQuantity);
-                    }
+                    material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (resource.preserve + 0.05));
                 }
             }
         }
@@ -9167,7 +9193,7 @@
                     obj.resourceRequirements.forEach(requirement => {
                         requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
                     });
-                    if (checkAffordable(obj, true)) {
+                    if (obj.isAffordable(true)) {
                         state.queuedTargets.push(obj);
                     }
                 }
@@ -9181,7 +9207,7 @@
             for (let i = 0; i < game.global.r_queue.queue.length; i++) {
                 let id = game.global.r_queue.queue[i].id;
                 let obj = techIds[id];
-                if (obj && game.checkAffordable(obj.definition, true)) {
+                if (obj && obj.isAffordable(true)) {
                     state.queuedTargets.push(obj);
                 }
                 if (!game.global.settings.qAny) {
@@ -9552,6 +9578,9 @@
         if (settings.autoJobs) {
             autoJobs();
         }
+        if (settings.autoFleet) {
+            autoFleet(); // Need to know Mine Layers stateOnCount, called before autoPower while it's still valid
+        }
         if (settings.autoPower) {
             autoPower();
         }
@@ -9560,9 +9589,6 @@
         }
         if (settings.autoMech) {
             autoMech(); // Called after autoBuild to not steal supplies from mechs
-        }
-        if (settings.autoFleet) {
-            autoFleet();
         }
         if (settings.autoAssembleGene) {
             autoAssembleGene(); // Called after arpa, buildings, and research to not steal knowledge from them
@@ -11171,7 +11197,7 @@
         let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
                             {val: "single", label: "Single worst", hint: "Scrap mechs with worst efficiency one by one, when they can be replaced with better ones"},
                             {val: "all", label: "All inefficient", hint: "Scrap all mechs with bad efficiency, replacing them with good ones, E.g. it will be able to scrap 30 mechs of 10% efficiency, and replace them with 10 mechs of 200% efficiency at once. Which will have a better immediate performance than slow replacement of them one by one. But if you're climbing spire too fast you may finish current floor before bay will be repopulated back to full, and risking to enter next floor with half-empty bay of suboptimal mechs."},
-                            {val: "mixed", label: "Mixed", hint: "Works as 'Single worst' while more bays still can be builded, and as 'All inefficient' after that."}];
+                            {val: "mixed", label: "Mixed", hint: "Works as 'Single worst' when more bays or purifiers still can be afforded, and as 'All inefficient' when not."}];
         buildStandartSettingsSelector(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped", scrapOptions);
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
@@ -13226,22 +13252,6 @@
             }
         }
         return object;
-    }
-
-    function checkAffordable(obj, max) {
-        if (obj instanceof Project) {
-            // We can't use exposed checkAffordable with projects, so let's write it. Luckily project need only basic resoruces
-            let check = max ? "maxQuantity" : "currentQuantity";
-            for (let i = 0; i < obj.resourceRequirements.length; i++) {
-                let req = obj.resourceRequirements[i];
-                if (req.resource[check] < req.quantity) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        // But other things can have some exotic checks like army, or structs, let's ask game
-        return game.checkAffordable(obj.definition, max);
     }
 
     var poly = {
