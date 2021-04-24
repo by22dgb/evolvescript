@@ -4944,20 +4944,20 @@
         BuildingManager.addBuildingToPriorityList(buildings.StargateDepot);
         BuildingManager.addBuildingToPriorityList(buildings.DwarfEleriumContainer);
 
-        BuildingManager.addBuildingToPriorityList(buildings.GasMining);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronMission);
-        BuildingManager.addBuildingToPriorityList(buildings.NeutronMiner);
-        BuildingManager.addBuildingToPriorityList(buildings.NeutronStellarForge);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronCitadel);
+        BuildingManager.addBuildingToPriorityList(buildings.NeutronStellarForge);
+        BuildingManager.addBuildingToPriorityList(buildings.NeutronMiner);
 
+        BuildingManager.addBuildingToPriorityList(buildings.MassDriver);
         BuildingManager.addBuildingToPriorityList(buildings.MetalRefinery);
-        BuildingManager.addBuildingToPriorityList(buildings.Mine);
         BuildingManager.addBuildingToPriorityList(buildings.Casino);
         BuildingManager.addBuildingToPriorityList(buildings.HellSpaceCasino);
         BuildingManager.addBuildingToPriorityList(buildings.RockQuarry);
         BuildingManager.addBuildingToPriorityList(buildings.Sawmill);
+        BuildingManager.addBuildingToPriorityList(buildings.GasMining);
         BuildingManager.addBuildingToPriorityList(buildings.GasMoonOilExtractor);
-        BuildingManager.addBuildingToPriorityList(buildings.MassDriver);
+        BuildingManager.addBuildingToPriorityList(buildings.Mine);
         BuildingManager.addBuildingToPriorityList(buildings.CoalMine);
 
         // AutoBuild disabled by default for buildings consuming Soul Gems
@@ -8935,10 +8935,13 @@
             }
         }
 
-        let baySpace = mechBay.max - mechBay.bay;
         let mechScrap = settings.mechScrap;
-        if (settings.mechBaysFirst && (buildings.PortalPurifier.weighting > 0 || buildings.PortalMechBay.weighting > 0) && resources.Supply.storageRatio < 1) {
-            // We can build purifier or bay once we'll have enough resources, don't scrap anything
+        let scrapOverflown = resources.Supply.currentQuantity + m.getMechRefund(newMech) >= resources.Supply.maxQuantity; // Not 100% accurate as it may decide to scrap something else, but still better than nothing
+        if (game.global.tech.waygate === 2 && !scrapOverflown) {
+            // We're fighting Demon Lord, don't scrap anything - all mechs are equially good here. Just stack as many of them as possible.
+            mechScrap = "none";
+        } else if (settings.mechBaysFirst && (buildings.PortalPurifier.weighting > 0 || buildings.PortalMechBay.weighting > 0) && !scrapOverflown) {
+            // We can build purifier or bay once we'll have enough resources
             mechScrap = "none";
         } else if (settings.mechScrap === "mixed") {
             // This one a bit different from check above, it's affordable, but may stay with zero weighting for some reason(e.g. waiting for new mech, or energy for purifier)
@@ -8946,6 +8949,7 @@
         }
 
         // Check if we need to scrap anything
+        let baySpace = mechBay.max - mechBay.bay;
         if (settings.mechBuild !== "none" && mechScrap !== "none" && (baySpace < newSpace || (mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
             let spaceGained = 0;
             let supplyGained = 0;
@@ -11214,7 +11218,7 @@
 
         addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire Buildings", "Enables special powering logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays. This option requires Auto Build and Auto Power.");
         addStandardSectionSettingsToggle(currentNode, "buildingMechsFirst", "Fill bays before building new ones", "Fill existed bays with mechs first, before spending resources on spire buildings");
-        addStandardSectionSettingsToggle(currentNode, "mechBaysFirst", "Maximize bays before scrapping mechs", "Only scrap mechs when no new bays can be builded");
+        addStandardSectionSettingsToggle(currentNode, "mechBaysFirst", "Maximize bays before replacing mechs", "Only scrap mechs when no new bays can be builded");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
