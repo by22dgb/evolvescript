@@ -23,7 +23,8 @@
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
 //     If some storage grew too high, taking all crates, you can disable expensive building, and Auto Storage won't try to fullfil its demands anymore. If you want to expand storage to build something manually, you can limit maximum level of building to 0, thus while it technically have auto build enabled, it won't ever be autobuilded, but you'll have needed storage.
-//   Order in which buildings receive power depends on order in buildings settings, you can drag and drop them to adjust priorities. Filtering works both for names, and for settings, e.g. you can filter for "build=on", "power=off", "weight>200", "cost&soul gem" and such.
+//   Order in which buildings receive power depends on order in buildings settings, you can drag and drop them to adjust priorities.
+//     Filtering works with names, some settings, and resoruce cost. E.g. you can filter for "build==on", "power==off", "weight<100", "soul gem>0", "iron>=1G" and such.
 //     By default Ascension Trigger placed where it can be activated as soon as possible without killing soldiers or population, and reducing prestige rewards. But it still can hurt production badly. If you're planning to ascend at very first opportunity(i.e. not planning to go for pillar or such), you may enable auto powering it. Otherwise you may want to delay with it till the moment when you'll be ready. (Or you can just move it where it will be less impacting on production, but that also means it'll take longer to get enough power)
 //   Auto Craft doesn't works well past MAD, you may have issues making it craft expensive resource like mythril, consider enabling Auto Craftsmen even if you're playing with manual craft
 //   Evolution Queue can change any script settings, not only those which you have after adding new task, you can append any variables and their values manually, if you're capable to read code, and can find internal names and acceptable values of those variables. Settings applied at the moment when new evolution starts. (Or right before reset in case of Cataclysm)
@@ -1837,7 +1838,7 @@
         AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
         AlphaMiningDroid: new Action("Alpha Mining Droid", "interstellar", "mining_droid", "int_alpha"),
         AlphaProcessing: new Action("Alpha Processing Facility", "interstellar", "processing", "int_alpha"),
-        AlphaFusion: new Action("Alpha Fusion", "interstellar", "fusion", "int_alpha"),
+        AlphaFusion: new Action("Alpha Fusion Reactor", "interstellar", "fusion", "int_alpha"),
         AlphaLaboratory: new Action("Alpha Laboratory", "interstellar", "laboratory", "int_alpha", {knowledge: true}),
         AlphaExchange: new Action("Alpha Exchange", "interstellar", "exchange", "int_alpha"),
         AlphaGraphenePlant: new Action("Alpha Graphene Plant", "interstellar", "g_factory", "int_alpha"),
@@ -8694,8 +8695,8 @@
         // Check if we can perform assault mission
         let assault = null;
         if (buildings.ChthonianMission.isUnlocked() && settings.fleetChthonianPower > 0) {
-            if ((settings.fleetChthonianPower == 2500 && allFleets[fleetIndex.frigate_ship].count >= 1) ||
-                (settings.fleetChthonianPower == 4500 && allFleets[fleetIndex.frigate_ship].count >= 2)) {
+            if ((settings.fleetChthonianPower == 2500 && allFleets[fleetIndex.frigate_ship].count >= 2) ||
+                (settings.fleetChthonianPower == 4500 && allFleets[fleetIndex.frigate_ship].count >= 1)) {
                 let totalPower = allFleets.reduce((sum, ship) => sum + (ship.power >= 80 ? ship.power * ship.count : 0), 0);
                 if (totalPower >= settings.fleetChthonianPower) {
                     assault = {shipPower: 80, region: "gxy_chthonian", mission: buildings.ChthonianMission};
@@ -8909,6 +8910,12 @@
                     }
                 }
             }
+            if (inactiveMechs.length > 0) {
+                return; // Can't do much while having disabled mechs, without scrapping them all. And that's really bad idea. Just wait until bays will be enabled back.
+            }
+        }
+
+        if (settings.mechBuild === "none") {
             return;
         }
 
@@ -8926,31 +8933,42 @@
             return;
         }
 
+        let baySpace = mechBay.max - mechBay.bay;
+
         // Save up supply for next floor
+        let timeToClear = (100 - game.global.portal.spire.progress) / m.getProgressSpeed();
         if (settings.mechSaveSupply) {
-            let timeToClear = (100 - game.global.portal.spire.progress) / m.getProgressSpeed();
-            let timeToFull = (resources.Supply.maxQuantity - resources.Supply.currentQuantity - m.getMechRefund(newMech)) / resources.Supply.rateOfChange;
-            if (timeToClear <= timeToFull) {
+            let missingSupplies = resources.Supply.maxQuantity - resources.Supply.currentQuantity;
+            if (baySpace < newSpace) { // Not always accurate as we can't really predict what will be scrapped, but should be adequate for estimation
+                missingSupplies -= m.getMechRefund(newMech);
+            }
+            let timeToFullSupplies = missingSupplies / resources.Supply.rateOfChange;
+            if (timeToClear <= timeToFullSupplies) {
                 return;
             }
         }
 
         let mechScrap = settings.mechScrap;
         let scrapOverflown = resources.Supply.currentQuantity + m.getMechRefund(newMech) >= resources.Supply.maxQuantity; // Not 100% accurate as it may decide to scrap something else, but still better than nothing
-        if (game.global.tech.waygate === 2 && !scrapOverflown) {
+        if (buildings.PortalWaygate.stateOnCount === 1 && !scrapOverflown) {
             // We're fighting Demon Lord, don't scrap anything - all mechs are equially good here. Just stack as many of them as possible.
             mechScrap = "none";
         } else if (settings.mechBaysFirst && (buildings.PortalPurifier.weighting > 0 || buildings.PortalMechBay.weighting > 0) && !scrapOverflown) {
             // We can build purifier or bay once we'll have enough resources
             mechScrap = "none";
         } else if (settings.mechScrap === "mixed") {
-            // This one a bit different from check above, it's affordable, but may stay with zero weighting for some reason(e.g. waiting for new mech, or energy for purifier)
-            mechScrap = buildings.PortalPurifier.isAffordable(true) || buildings.PortalMechBay.isAffordable(true) ? "single" : "all";
+            let allMechsCosts = Math.floor(baySpace / newSpace) * newSupply;
+            if (settings.mechSaveSupply) { // If we're going to save up supplies we need to reserve time for it
+                allMechsCosts += resources.Supply.maxQuantity;
+            }
+            let timeToFullBay = (allMechsCosts - resources.Supply.currentQuantity) / resources.Supply.rateOfChange;
+            // timeToFullBay doesn't changes much after initial adjustments, while timeToClear constantly goes down with new mechs, let's scale it with bay fill ratio
+            let estimatedTimeToClear = timeToClear * (mechBay.bay / mechBay.max);
+            mechScrap = timeToFullBay > estimatedTimeToClear ? "single" : "all";
         }
 
         // Check if we need to scrap anything
-        let baySpace = mechBay.max - mechBay.bay;
-        if (settings.mechBuild !== "none" && mechScrap !== "none" && (baySpace < newSpace || (mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
+        if (mechScrap !== "none" && (baySpace < newSpace || (mechScrap === "all" && resources.Supply.currentQuantity < newSupply))) {
             let spaceGained = 0;
             let supplyGained = 0;
 
@@ -8973,16 +8991,15 @@
                 trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
                 trashMechs.forEach(mech => m.scrapMech(mech));
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
-                return;
+                return; // Just scrapped something, give game a second to recalculate mechs before buying replacement
             }
             if (trashMechs.reduce((sum, mech) => sum += m.getMechSpace(mech), 0) >= newSpace) {
-                // We still have scrapable mechs, just waiting for more supplies, to replace in with new one instantly
-                return;
+                return; // We have scrapable mechs, but don't want to scrap them right now. Waiting for more supplies for instant replace.
             }
         }
 
         // Try to squeeze in smaller mech, if we can't fit preferred one
-        if (settings.mechBuild === "random" && settings.mechFillBay && baySpace < newSpace && baySpace > 0) {
+        if (settings.mechFillBay && baySpace < newSpace && baySpace > 0) {
             for (let i = m.Size.length - 1; i >= 0; i--) {
                 if (m.getMechSpace({size: m.Size[i]}) <= baySpace) {
                     newMech = m.getRandomMech(m.Size[i]);
@@ -8993,7 +9010,7 @@
         }
 
         // We have everything to get new mech
-        if (settings.mechBuild !== "none" && resources.Supply.spareQuantity >= newSupply && baySpace >= newSpace) {
+        if (resources.Supply.spareQuantity >= newSupply && baySpace >= newSpace) {
             m.buildMech(newMech);
             resources.Supply.currentQuantity -= newSupply;
             resources.Soul_Gem.currentQuantity -= newGems;
@@ -11203,22 +11220,22 @@
 
         let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
                             {val: "single", label: "Single worst", hint: "Scrap mechs with worst efficiency one by one, when they can be replaced with better ones"},
-                            {val: "all", label: "All inefficient", hint: "Scrap all mechs with bad efficiency, replacing them with good ones, E.g. it will be able to scrap 30 mechs of 10% efficiency, and replace them with 10 mechs of 200% efficiency at once. Which will have a better immediate performance than slow replacement of them one by one. But if you're climbing spire too fast you may finish current floor before bay will be repopulated back to full, and risking to enter next floor with half-empty bay of suboptimal mechs."},
-                            {val: "mixed", label: "Mixed", hint: "Works as 'Single worst' when more bays or purifiers still can be afforded, and as 'All inefficient' when not."}];
+                            {val: "all", label: "All inefficient", hint: "Scrap all mechs with bad efficiency, replacing them with good ones, E.g. it will be able to scrap 30 mechs of 10% efficiency, and replace them with 10 mechs of 200% efficiency at once. This option will clear current floor at best possible speed, but if you're climbing spire too fast you may finish current floor before bay will be repopulated with new mechs back to full, and risking to enter next floor with half-empty bay of suboptimal mechs."},
+                            {val: "mixed", label: "Excess inefficient", hint: "Compromise between two options above: scrap as much inefficient mechs as possible, preserving enough of old mechs to have full mech bay by the moment when floor will be cleared, based on progress and earning estimations."}];
         buildStandartSettingsSelector(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped", scrapOptions);
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
                             {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
         buildStandartSettingsSelector(currentNode, "mechBuild", "Build mechs", "Configures what will be build", buildOptions);
         let sizeOptions = MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}));
-        buildStandartSettingsSelector(currentNode, "mechSize", "Prefered mech size", "Size of mech for autobuild", sizeOptions);
+        buildStandartSettingsSelector(currentNode, "mechSize", "Prefered mech size", "Size of random mechs", sizeOptions);
         buildStandartSettingsSelector(currentNode, "mechSizeGravity", "Gravity mech size", "Override prefered size with this on floors with high gravity", sizeOptions);
         addStandardSectionSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
         addStandardSectionSettingsToggle(currentNode, "mechFillBay", "Fill remaining bay space with smaller mechs", "Once mech bay is packed with optimal mechs of prefered size up to the limit fill up remaining space with smaller mechs, if possible");
 
-        addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire Buildings", "Enables special powering logic for Purifier, Port, Base Camp, and Mech Bays. At first script will try to maximize supplies cap, building up as many ports and camps as possible at best ratio, then build up as many mech bays as current supplies cap allows, and only after that switch support to mech bays. This option requires Auto Build and Auto Power.");
-        addStandardSectionSettingsToggle(currentNode, "buildingMechsFirst", "Fill bays before building new ones", "Fill existed bays with mechs first, before spending resources on spire buildings");
-        addStandardSectionSettingsToggle(currentNode, "mechBaysFirst", "Maximize bays before replacing mechs", "Only scrap mechs when no new bays can be builded");
+        addStandardSectionSettingsToggle(currentNode, "buildingManageSpire", "Manage Spire Buildings", "Enables special powering logic for Purifier, Port, Base Camp, and Mech Bays. Script will try to maximize supplies cap, building as many ports and camps as possible at best ratio, disabling mech bays when more support needed. With this cap it'll build up as many mech bays as possible, and once maximum bays is built - it'll turn them all on. This option requires Auto Build and Auto Power.");
+        addStandardSectionSettingsToggle(currentNode, "buildingMechsFirst", "Fill bays before building new ones", "Fill mech bays up to current limit before spending resources on additional spire buildings");
+        addStandardSectionSettingsToggle(currentNode, "mechBaysFirst", "Maximize bays before replacing mechs", "Scrap old mechs only when no new bays and purifiers can be builded");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -12244,62 +12261,49 @@
         let trs = document.getElementById("script_buildingTableBody").getElementsByTagName("tr");
 
         let filterChecker = null;
-        let reg = filter.match(/^(.+)([<=>&])(.+)$/);
-        if (reg) {
-            let testVar = null;
+        let reg = filter.match(/^(.+)(<=|>=|===|==|<|>|!==|!=)(.+)$/);
+        if (reg?.length === 4) {
+            let buildingValue = null;
             switch (reg[1]) {
                 case "BUILD":
                 case "AUTOBUILD":
-                    testVar = "autoBuildEnabled";
+                    buildingValue = (b) => b.autoBuildEnabled;
                     break;
                 case "POWER":
                 case "AUTOPOWER":
-                    testVar = "autoStateEnabled";
+                    buildingValue = (b) => b.autoStateEnabled;
                     break;
                 case "WEIGHT":
                 case "WEIGHTING":
-                    testVar = "_weighting";
+                    buildingValue = (b) => b._weighting;
                     break;
                 case "MAX":
                 case "MAXBUILD":
-                    testVar = "_autoMax";
+                    buildingValue = (b) => b._autoMax;
                     break;
-                case "COST":
-                    testVar = "resourceRequirements";
+                case "POWER":
+                case "POWERED":
+                    buildingValue = (b) => b.powered;
                     break;
+                default: // Cost check, get resource quantity by name
+                    buildingValue = (b) => b.resourceRequirements.find(req => req.resource.title.toUpperCase().indexOf(reg[1]) > -1)?.quantity ?? 0;
             }
-            let testCmp = null;
-            switch (reg[2]) {
-                case ">":
-                    testCmp = (a, b) => a > b;
-                    break;
-                case "=":
-                    testCmp = (a, b) => a == b;
-                    break;
-                case "<":
-                    testCmp = (a, b) => a < b;
-                    break;
-                case "&":
-                    testCmp = (a, b) => a.find(item => item.resource.title.toUpperCase().indexOf(b) > -1);
-                    break;
-            }
-            let testVal = null;
+            let testValue = null;
             switch (reg[3]) {
                 case "ON":
                 case "TRUE":
-                    testVal = true;
+                    testValue = true;
                     break;
                 case "OFF":
                 case "FALSE":
-                    testVal = false;
+                    testValue = false;
                     break;
                 default:
-                    testVal = reg[3];
+                    testValue = getRealNumber(reg[3]);
                     break;
             }
-            if (testVar !== null && testCmp !== null && testVal !== null) {
-                filterChecker = (building) => testCmp(building[testVar], testVal);
-            }
+            filterChecker = (building) => eval(`${buildingValue(building)} ${reg[2]} ${testValue}`);
+
         }
 
         // Loop through all table rows, and hide those who don't match the search query
@@ -12966,10 +12970,6 @@
                 createMarketToggle(resource);
             }
         }
-
-        if (game.global.galaxy['trade']) {
-            $("#galaxyTrade .trade .zero").text("×");
-        }
     }
 
     function removeMarketToggles() {
@@ -12983,14 +12983,10 @@
             $("#market .market-item[id] .trade > :first-child").text("Routes:");
             $("#market > .market-item .trade .zero").text("Cancel Routes");
         }
-
-        if (game.global.galaxy['trade']) {
-            $("#galaxyTrade .trade .zero").text("Cancel Routes");
-        }
     }
 
     // Util functions
-    //https://gist.github.com/axelpale/3118596
+    // https://gist.github.com/axelpale/3118596
     function k_combinations(set, k) {
         if (k > set.length || k <= 0) {
             return [];
