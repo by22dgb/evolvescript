@@ -6747,6 +6747,9 @@
         }
 
         let optimalTax = Math.round((maxTaxRate - minTaxRate) * Math.max(0, 0.9 - resources.Money.storageRatio)) + minTaxRate;
+        if (resources.Money.isDemanded()) {
+            optimalTax = maxTaxRate;
+        }
 
         if (currentTaxRate < maxTaxRate && currentMorale > settings.generalMinimumMorale + 1 &&
             (currentTaxRate < optimalTax || currentMorale > maxMorale + 1)) {
@@ -7225,6 +7228,7 @@
 
         if (resources.Supply.storageRatio < 1) {
             let remaining = buildings.PortalTransport.stateOnCount * 5;
+            let keepRatio = 0.97;
             for (let i = 0; i < resourcesBySupplyValue.length; i++) {
                 if (remaining <= 0) {
                     break;
@@ -7237,17 +7241,17 @@
 
                 let allowedSupply = 0;
                 if (resource.isCraftable()) {
-                    if (resource.currentQuantity > resource.storageRequired / 0.97) {
-                        allowedSupply = Math.floor((resource.currentQuantity - (resource.storageRequired / 0.97)) / resource.supplyVolume);
+                    if (resource.currentQuantity > resource.storageRequired / keepRatio) {
+                        allowedSupply = Math.max(0, Math.floor((resource.currentQuantity - (resource.storageRequired / 0.97)) / resource.supplyVolume));
                     }
                 } else {
-                    if (resource.storageRatio > 0.98) {
+                    if (resource.storageRatio > keepRatio + 0.01) {
                         allowedSupply = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
-                    } else if (resource.storageRatio > 0.97) {
-                        allowedSupply = Math.max(1, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
+                    } else if (resource.storageRatio > keepRatio) {
+                        allowedSupply = Math.max(0, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
                     }
                 }
-                transportAdjustments[resource.id] = Math.min(remaining, Math.max(0, allowedSupply));
+                transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
                 remaining -= transportAdjustments[resource.id];
             }
         }
@@ -7259,8 +7263,8 @@
     }
 
     function autoMassEjector() {
-        let ejector = buildings.BlackholeMassEjector
-        if (ejector.stateOnCount < 1) {
+        let enabledEjectors = buildings.BlackholeMassEjector.stateOnCount;
+        if (enabledEjectors < 1) {
             return;
         }
 
@@ -7269,10 +7273,44 @@
             ejectorAdjustments[resourcesByAtomicMass[i].id] = 0;
         }
 
-        // Eject everything!
-        if (ejector.stateOnCount >= settings.prestigeWhiteholeEjectAllCount) {
-            let remaining = ejector.stateOnCount * 1000;
+        let remaining = enabledEjectors * 1000;
 
+        // Eject above ratio
+        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+            if (remaining <= 0) {
+                break;
+            }
+
+            let resource = resourcesByAtomicMass[i];
+            if (!resource.ejectEnabled || resource.isDemanded()) {
+                continue;
+            }
+
+            let keepRatio = enabledEjectors >= settings.prestigeWhiteholeEjectAllCount ? 0.05 : 0.985;
+            if (resource === resources.Food && !game.global.race['ravenous']) {
+                keepRatio = Math.max(keepRatio, 0.25);
+            }
+            keepRatio = Math.max(keepRatio, resource.requestedQuantity / resource.maxQuantity + 0.01);
+
+            let allowedEject = 0;
+            if (resource.isCraftable()) {
+                if (resource.currentQuantity > resource.storageRequired / keepRatio) {
+                    allowedEject = Math.max(0, Math.floor(resource.currentQuantity - (resource.storageRequired / 0.97)));
+                }
+            } else {
+                if (resource.storageRatio > keepRatio + 0.01) {
+                    allowedEject = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true, supply: true})));
+                } else if (resource.storageRatio > keepRatio) {
+                    allowedEject = Math.max(0, Math.floor(resource.calculateRateOfChange({buy: true, supply: true})));
+                }
+            }
+
+            ejectorAdjustments[resource.id] = Math.min(remaining, allowedEject);
+            remaining -= ejectorAdjustments[resource.id];
+        }
+
+        // If we still have some ejectors remaining, let's try to find something else
+        if (remaining > 0 && (settings.prestigeWhiteholeEjectExcess || (game.global.race['decay'] && settings.prestigeWhiteholeDecayRate > 0))) {
             for (let i = 0; i < resourcesByAtomicMass.length; i++) {
                 if (remaining <= 0) {
                     break;
@@ -7283,84 +7321,20 @@
                     continue;
                 }
 
-                let roundedRateOfChange = Math.floor(resource.calculateRateOfChange({buy: true, supply: true}));
+                let ejectableAmount = ejectorAdjustments[resource.id];
+                remaining += ejectorAdjustments[resource.id];
 
-                // These are from the autoPower(). If we reduce below these figures then buildings start being turned off...
-                // Leave enough neutronium to stabilise the blackhole if required
-                let allowedRatio = 0.06;
-                if (resource === resources.Food) { allowedRatio = 0.11; }
-                if (resource === resources.Uranium) { allowedRatio = 0.2; } // Uranium powers buildings which add to storage cap (proxima transfer station) so this flickers if it gets too low
-                if (resource === resources.Neutronium) { allowedRatio = Math.max(allowedRatio, (resourceCost(techIds["tech-stabilize_blackhole"], resources.Neutronium) / resource.maxQuantity) + 0.01); }
-                allowedRatio = Math.max(allowedRatio, resource.requestedQuantity / resource.maxQuantity + 0.01)
-
-                if (resource.storageRatio > allowedRatio) {
-                    let allowedQuantity = allowedRatio * resource.maxQuantity;
-
-                    // If we've got greater than X% left then eject away!
-                    if (allowedQuantity > remaining) {
-                        // Our current quantity is greater than our remining ejection capability so just eject what we can
-                        ejectorAdjustments[resource.id] = remaining;
-                    } else {
-                        ejectorAdjustments[resource.id] = allowedQuantity;
-                    }
-                } else {
-                    if (resource.storageRatio < allowedRatio - 0.01) {
-                        continue;
-                    } else if (resource.storageRatio > 0.01) {
-                        ejectorAdjustments[resource.id] = Math.max(0, Math.min(remaining, roundedRateOfChange));
-                    }
+                // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless it's on demand.
+                if (game.global.race['decay'] && !resource.isDemanded()) {
+                    ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentDecay * settings.prestigeWhiteholeDecayRate));
                 }
 
+                if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 1 && resource.currentQuantity >= resource.storageRequired) {
+                    ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true, supply: true})));
+                }
+
+                ejectorAdjustments[resource.id] = Math.min(remaining, ejectableAmount);
                 remaining -= ejectorAdjustments[resource.id];
-            }
-        }
-
-        // Limited eject
-        if (ejector.stateOnCount < settings.prestigeWhiteholeEjectAllCount) {
-            let remaining = ejector.stateOnCount * 1000;
-
-            // First we want to eject capped resources
-            for (let i = 0; i < resourcesByAtomicMass.length; i++) {
-                if (remaining <= 0) {
-                    break;
-                }
-
-                let resource = resourcesByAtomicMass[i];
-                if (!resource.ejectEnabled || resource.storageRatio < 0.985 || resource.isDemanded()) {
-                    continue;
-                }
-
-                ejectorAdjustments[resource.id] = Math.min(remaining, Math.ceil(resource.calculateRateOfChange({buy: true, supply: true})));
-                remaining -= ejectorAdjustments[resource.id];
-            }
-
-            // And if we still have some ejectors remaining, let's try to find something else
-            if (remaining > 0 && (settings.prestigeWhiteholeEjectExcess || (game.global.race['decay'] && settings.prestigeWhiteholeDecayRate > 0))) {
-                for (let i = 0; i < resourcesByAtomicMass.length; i++) {
-                    if (remaining <= 0) {
-                        break;
-                    }
-
-                    let resource = resourcesByAtomicMass[i];
-                    if (!resource.ejectEnabled || resource.isDemanded()) {
-                        continue;
-                    }
-
-                    let ejectableAmount = ejectorAdjustments[resource.id];
-                    remaining += ejectorAdjustments[resource.id];
-
-                    // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless it's on demand.
-                    if (game.global.race['decay'] && !resource.isDemanded()) {
-                        ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentDecay * settings.prestigeWhiteholeDecayRate));
-                    }
-
-                    if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 1 && resource.currentQuantity >= resource.storageRequired && !resource.isDemanded()) {
-                        ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true, supply: true})));
-                    }
-
-                    ejectorAdjustments[resource.id] = Math.min(remaining, ejectableAmount);
-                    remaining -= ejectorAdjustments[resource.id];
-                }
             }
         }
 
@@ -8957,12 +8931,13 @@
             // We can build purifier or bay once we'll have enough resources
             mechScrap = "none";
         } else if (settings.mechScrap === "mixed") {
-            let allMechsCosts = Math.floor(baySpace / newSpace) * newSupply;
+            let supplyCost = Math.floor(baySpace / newSpace) * newSupply;
             if (settings.mechSaveSupply) { // If we're going to save up supplies we need to reserve time for it
-                allMechsCosts += resources.Supply.maxQuantity;
+                supplyCost += resources.Supply.maxQuantity;
             }
-            let timeToFullBay = (allMechsCosts - resources.Supply.currentQuantity) / resources.Supply.rateOfChange;
-            // timeToFullBay doesn't changes much after initial adjustments, while timeToClear constantly goes down with new mechs, let's scale it with bay fill ratio
+            // This estimation ignore soul gems. Their rateOfChange too unreliable, let's just assume we always have enough for mechs
+            let timeToFullBay = (supplyCost - resources.Supply.currentQuantity) / resources.Supply.rateOfChange;
+            // timeToClear changes drastically with new mechs, let's try to normalize it, scaling it with bay fill ratio
             let estimatedTimeToClear = timeToClear * (mechBay.bay / mechBay.max);
             mechScrap = timeToFullBay > estimatedTimeToClear ? "single" : "all";
         }
@@ -11472,7 +11447,6 @@
         });
 
         addStandardHeading(currentNode, "Galaxy Trades");
-        addStandardSectionSettingsToggle(currentNode, "autoGalaxyMarket", "Manage Galaxy Trades", "Automatically adjust galaxy trade routes");
 
         currentNode.append(`
           <table style="width:100%">
@@ -12664,6 +12638,7 @@
             createSettingToggle(scriptNode, 'autoPower', 'Manages power based on a priority order of buildings. Starts with city based building then space based.');
             createSettingToggle(scriptNode, 'autoStorage', 'Assigns crates and containers to resources needed for buildings enabled for auto build, queued buildings, and enabled projects');
             createSettingToggle(scriptNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes.', createMarketToggles, removeMarketToggles);
+            createSettingToggle(scriptNode, 'autoGalaxyMarket', 'Manages galaxy trade routes');
             createSettingToggle(scriptNode, 'autoResearch', 'Performs research when minimum requirements are met. ');
             createSettingToggle(scriptNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(scriptNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
