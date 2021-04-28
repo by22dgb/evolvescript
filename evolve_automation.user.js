@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.48
+// @version      3.3.1.49
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -392,6 +392,42 @@
                 return false;
             }
             return this.storageRatio < 0.99 || this.isDemanded() || this.storeOverflow;
+        }
+
+        getProduction(source) {
+            let produced = 0;
+            let labelFound = false;
+            for (let [label, value] of Object.entries(game.breakdown.p[this._id])) {
+                if (value.indexOf("%") === -1) {
+                    if (labelFound) {
+                        break;
+                    } else if (label === game.loc(source)) {
+                        labelFound = true;
+                        produced += parseFloat(value) || 0;
+                    }
+                } else if (labelFound) {
+                    produced *= 1 + (parseFloat(value) || 0) / 100;
+                }
+            }
+            return produced * state.globalProductionModifier;
+        }
+
+        getBusyWorkers(workersSource, workersCount) {
+            if (workersCount === 0) {
+                if (this.calculateRateOfChange({all: true}) < 0 && state.assignLoop !== state.loopCounter) {
+                    state.assignLoop = state.loopCounter;
+                    return 1;
+                } else {
+                    return 0;
+                }
+            };
+            let totalIncome = this.getProduction(workersSource);
+            let resPerWorker = totalIncome / workersCount;
+            let usedIncome = totalIncome - this.calculateRateOfChange({all: true});
+            if (usedIncome <= 0) {
+                return 0;
+            };
+            return Math.ceil(usedIncome / resPerWorker);
         }
 
         increaseEjection(count) {
@@ -1550,6 +1586,7 @@
         game: null,
         loopCounter: 1,
         multiplierLoop: 0,
+        assignLoop: 0,
         buildingToggles: 0,
         evolutionAttempts: 0,
 
@@ -1560,9 +1597,9 @@
         queuedTargets: [],
         triggerTargets: [],
 
+        globalProductionModifier: 1,
         moneyIncomes: new Array(11).fill(0),
         moneyMedian: 0,
-
         soulGemIncomes: [],
         soulGemLast: Number.MAX_SAFE_INTEGER,
 
@@ -2225,7 +2262,7 @@
           () => 0
       ],[
           () => settings.prestigeType === "mad" && (haveTech("mad") || techIds['tech-mad'].isAffordable(true)),
-          (building) => !building.is.housing && !building.is.garrison,
+          (building) => !building.is.housing && !building.is.garrison && resourceCost(building, resources.Knowledge) <= 0,
           () => "Awaiting MAD prestige",
           () => settings.buildingWeightingMADUseless
       ],[
@@ -4249,6 +4286,8 @@
         buildings.PortalBridge.gameMax = 10;
         buildings.GorddonEmbassy.gameMax = 1;
         buildings.Alien1Consulate.gameMax = 1;
+        projects.LaunchFacility.gameMax = 1;
+        projects.ManaSyphon.gameMax = 80;
 
         buildings.CoalPower.addResourceConsumption(() => game.global.race.universe === "magic" ? resources.Mana : resources.Coal, () => game.global.race['environmentalist'] ? 0 : game.global.race.universe === "magic" ? 0.05 : 0.65);
         buildings.OilPower.addResourceConsumption(resources.Oil, () => game.global.race['environmentalist'] ? 0 : 0.65);
@@ -7246,7 +7285,7 @@
                     }
                 } else {
                     if (resource.storageRatio > keepRatio + 0.01) {
-                        allowedSupply = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
+                        allowedSupply = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume), Math.ceil((resource.storageRatio - keepRatio) * resource.maxQuantity / resource.supplyVolume));
                     } else if (resource.storageRatio > keepRatio) {
                         allowedSupply = Math.max(0, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
                     }
@@ -7299,7 +7338,7 @@
                 }
             } else {
                 if (resource.storageRatio > keepRatio + 0.01) {
-                    allowedEject = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true, supply: true})));
+                    allowedEject = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true, supply: true})), Math.ceil((resource.storageRatio - keepRatio) * resource.maxQuantity));
                 } else if (resource.storageRatio > keepRatio) {
                     allowedEject = Math.max(0, Math.floor(resource.calculateRateOfChange({buy: true, supply: true})));
                 }
@@ -7751,7 +7790,7 @@
                             let totalRateOfCharge = resource.calculateRateOfChange({buy: true});
                             if (totalRateOfCharge > 0) {
                                 estimatedTime[other.id][resource.id] = (quantity - resource.currentQuantity) / totalRateOfCharge;
-                            } else if (settings.buildingsIgnoreZeroRate && resource.storageRatio < 0.97) {
+                            } else if (settings.buildingsIgnoreZeroRate && resource.storageRatio < 0.97 && resource.currentQuantity < quantity) {
                                 estimatedTime[other.id][resource.id] = Number.MAX_SAFE_INTEGER;
                             } else {
                                 // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
@@ -7871,8 +7910,8 @@
                 continue;
             }
 
-            // If user wants to stabilise blackhole when under minimum solar mass then do it
-            if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || (settings.prestigeType === "whitehole" && getBlackholeMass() < settings.prestigeWhiteholeMinMass))) {
+            // If user wants to stabilise blackhole then do it, unless we're on blackhole run
+            if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || settings.prestigeType === "whitehole" )) {
                 continue;
             }
 
@@ -8013,13 +8052,17 @@
             }
             // Disable useless Mine Layers
             if (building === buildings.ChthonianMineLayer) {
-                let mineAdjust = (7500 - poly.piracy("gxy_chthonian")) / game.actions.galaxy.gxy_chthonian.minelayer.ship.rating();
-                if (mineAdjust > 0) {
-                    maxStateOn = Math.min(maxStateOn, currentStateOn + Math.ceil(mineAdjust));
-                } else if (mineAdjust <= -1) {
-                    maxStateOn = Math.min(maxStateOn, currentStateOn + Math.floor(mineAdjust));
+                if (buildings.ChthonianRaider.stateOnCount === 0 && buildings.ChthonianExcavator.stateOnCount === 0) {
+                    maxStateOn = 0;
                 } else {
-                    maxStateOn = Math.min(maxStateOn, currentStateOn);
+                    let mineAdjust = (7500 - poly.piracy("gxy_chthonian")) / game.actions.galaxy.gxy_chthonian.minelayer.ship.rating();
+                    if (mineAdjust > 0) {
+                        maxStateOn = Math.min(maxStateOn, currentStateOn + Math.ceil(mineAdjust));
+                    } else if (mineAdjust <= -1) {
+                        maxStateOn = Math.min(maxStateOn, currentStateOn + Math.floor(mineAdjust));
+                    } else {
+                        maxStateOn = Math.min(maxStateOn, currentStateOn);
+                    }
                 }
             }
             // Disable uselss Guard Post
@@ -8043,18 +8086,38 @@
                 maxStateOn = 0;
             }
             // Disable useless expensive buildings
+            if (building === buildings.BeltEleriumShip && !resources.Elerium.isUseful()) {
+                maxStateOn = Math.min(maxStateOn, resources.Elerium.getBusyWorkers("job_space_miner", currentStateOn));
+            }
+            if (building === buildings.BeltIridiumShip && !resources.Iridium.isUseful()) {
+                maxStateOn = Math.min(maxStateOn, resources.Iridium.getBusyWorkers("job_space_miner", currentStateOn));
+            }
+            if (building === buildings.BeltIronShip && !resources.Iron.isUseful()) {
+                maxStateOn = Math.min(maxStateOn, resources.Iron.getBusyWorkers("job_space_miner", currentStateOn));
+            }
             if (building === buildings.BologniumShip && !resources.Bolognium.isUseful()) {
-                maxStateOn = 0;
-            }
-            if (building === buildings.ChthonianRaider && !resources.Vitreloy.isUseful() && !resources.Polymer.isUseful() && !resources.Neutronium.isUseful() && !resources.Deuterium.isUseful()) {
-                maxStateOn = 0;
-            }
-            if (building === buildings.Alien2ArmedMiner && !resources.Bolognium.isUseful() && !resources.Adamantite.isUseful() && !resources.Iridium.isUseful()) {
-                maxStateOn = 0;
+                maxStateOn = Math.min(maxStateOn, resources.Bolognium.getBusyWorkers("galaxy_bolognium_ship", currentStateOn));
             }
             if (building === buildings.Alien1VitreloyPlant && !resources.Vitreloy.isUseful()) {
-                maxStateOn = 0;
+                maxStateOn = Math.min(maxStateOn, resources.Vitreloy.getBusyWorkers("galaxy_vitreloy_plant_bd", currentStateOn));
             }
+            if (building === buildings.Alien2ArmedMiner && !resources.Bolognium.isUseful() && !resources.Adamantite.isUseful() && !resources.Iridium.isUseful()) {
+                let minShips = Math.max(resources.Bolognium.getBusyWorkers("galaxy_armed_miner_bd", currentStateOn),
+                                        resources.Adamantite.getBusyWorkers("galaxy_armed_miner_bd", currentStateOn),
+                                        resources.Iridium.getBusyWorkers("galaxy_armed_miner_bd", currentStateOn));
+                maxStateOn = Math.min(maxStateOn, minShips);
+            }
+            if (building === buildings.ChthonianRaider && !resources.Vitreloy.isUseful() && !resources.Polymer.isUseful() && !resources.Neutronium.isUseful() && !resources.Deuterium.isUseful()) {
+                let minShips = Math.max(resources.Vitreloy.getBusyWorkers("galaxy_raider", currentStateOn),
+                                        resources.Polymer.getBusyWorkers("galaxy_raider", currentStateOn),
+                                        resources.Neutronium.getBusyWorkers("galaxy_raider", currentStateOn),
+                                        resources.Deuterium.getBusyWorkers("galaxy_raider", currentStateOn));
+                maxStateOn = Math.min(maxStateOn, minShips);
+            }
+            if (building === buildings.ChthonianExcavator && !resources.Orichalcum.isUseful()) {
+                maxStateOn = Math.min(maxStateOn, resources.Orichalcum.getBusyWorkers("galaxy_excavator", currentStateOn));
+            }
+
 
             for (let j = 0; j < building.consumption.length; j++) {
                 let resourceType = building.consumption[j];
@@ -8648,11 +8711,11 @@
         // Init our current state
         let allRegions = [
             {name: "gxy_stargate", piracy: 0.1 * game.global.tech.piracy, armada: buildings.StargateDefensePlatform.stateOnCount * 20, useful: true},
-            {name: "gxy_gateway", piracy: 0.1 * game.global.tech.piracy, armada: buildings.GatewayStarbase.stateOnCount * 25, useful: buildings.BologniumShip.stateOnCount > 0 && resources.Bolognium.isUseful()},
+            {name: "gxy_gateway", piracy: 0.1 * game.global.tech.piracy, armada: buildings.GatewayStarbase.stateOnCount * 25, useful: buildings.BologniumShip.stateOnCount > 0},
             {name: "gxy_gorddon", piracy: 800, armada: 0, useful: buildings.GorddonFreighter.stateOnCount > 0 || buildings.Alien1SuperFreighter.stateOnCount > 0 || buildings.GorddonSymposium.stateOnCount > 0},
-            {name: "gxy_alien1", piracy: 1000, armada: 0, useful: buildings.Alien1VitreloyPlant.stateOnCount > 0 && resources.Vitreloy.isUseful()},
-            {name: "gxy_alien2", piracy: 2500, armada: buildings.Alien2Foothold.stateOnCount * 50 + buildings.Alien2ArmedMiner.stateOnCount * game.actions.galaxy.gxy_alien2.armed_miner.ship.rating(), useful: buildings.Alien2Scavenger.stateOnCount > 0 || (buildings.Alien2ArmedMiner.stateOnCount > 0 && (resources.Bolognium.isUseful() || resources.Adamantite.isUseful() || resources.Iridium.isUseful()))},
-            {name: "gxy_chthonian", piracy: 7500, armada: buildings.ChthonianMineLayer.stateOnCount * game.actions.galaxy.gxy_chthonian.minelayer.ship.rating() + buildings.ChthonianRaider.stateOnCount * game.actions.galaxy.gxy_chthonian.raider.ship.rating(), useful: (buildings.ChthonianExcavator.stateOnCount > 0 && resources.Orichalcum.isUseful()) || (buildings.ChthonianRaider.stateOnCount > 0 && (resources.Vitreloy.isUseful() || resources.Polymer.isUseful() || resources.Neutronium.isUseful() || resources.Deuterium.isUseful()))},
+            {name: "gxy_alien1", piracy: 1000, armada: 0, useful: buildings.Alien1VitreloyPlant.stateOnCount > 0},
+            {name: "gxy_alien2", piracy: 2500, armada: buildings.Alien2Foothold.stateOnCount * 50 + buildings.Alien2ArmedMiner.stateOnCount * game.actions.galaxy.gxy_alien2.armed_miner.ship.rating(), useful: buildings.Alien2Scavenger.stateOnCount > 0 || buildings.Alien2ArmedMiner.stateOnCount > 0},
+            {name: "gxy_chthonian", piracy: 7500, armada: buildings.ChthonianMineLayer.stateOnCount * game.actions.galaxy.gxy_chthonian.minelayer.ship.rating() + buildings.ChthonianRaider.stateOnCount * game.actions.galaxy.gxy_chthonian.raider.ship.rating(), useful: buildings.ChthonianExcavator.stateOnCount > 0 || buildings.ChthonianRaider.stateOnCount > 0},
         ];
         let allFleets = [
             {name: "scout_ship", count: 0, power: game.actions.galaxy.gxy_gateway.scout_ship.ship.rating()},
@@ -8922,12 +8985,12 @@
             }
         }
 
+        let canExpandBay = buildings.PortalPurifier.isAffordable(true) || buildings.PortalMechBay.isAffordable(true);
         let mechScrap = settings.mechScrap;
-        let scrapOverflown = resources.Supply.currentQuantity + m.getMechRefund(newMech) >= resources.Supply.maxQuantity; // Not 100% accurate as it may decide to scrap something else, but still better than nothing
-        if (buildings.PortalWaygate.stateOnCount === 1 && !scrapOverflown) {
+        if (buildings.PortalWaygate.stateOnCount === 1 && resources.Supply.currentQuantity + m.getMechRefund(newMech) < resources.Supply.maxQuantity) {
             // We're fighting Demon Lord, don't scrap anything - all mechs are equially good here. Just stack as many of them as possible.
             mechScrap = "none";
-        } else if (settings.mechBaysFirst && (buildings.PortalPurifier.weighting > 0 || buildings.PortalMechBay.weighting > 0) && !scrapOverflown) {
+        } else if (settings.mechBaysFirst && canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity) {
             // We can build purifier or bay once we'll have enough resources
             mechScrap = "none";
         } else if (settings.mechScrap === "mixed") {
@@ -8974,7 +9037,7 @@
         }
 
         // Try to squeeze in smaller mech, if we can't fit preferred one
-        if (settings.mechFillBay && baySpace < newSpace && baySpace > 0) {
+        if (settings.mechFillBay && !canExpandBay && baySpace < newSpace && baySpace > 0) {
             for (let i = m.Size.length - 1; i >= 0; i--) {
                 if (m.getMechSpace({size: m.Size[i]}) <= baySpace) {
                     newMech = m.getRandomMech(m.Size[i]);
@@ -9005,6 +9068,12 @@
                 resources.Money.currentTradeDiff = moneyDiff.Trade;
                 resources.Money.rateOfChange -= moneyDiff.Trade;
             }
+        }
+
+        // Parse global production modifiers
+        state.globalProductionModifier = 1;
+        for (let mod of Object.values(game.breakdown.p.Global)) {
+            state.globalProductionModifier *= 1 + (parseFloat(mod) || 0) / 100;
         }
 
         // Add clicking to rate of change, so we can sell or eject it.
@@ -9580,9 +9649,6 @@
         if (settings.autoFleet) {
             autoFleet(); // Need to know Mine Layers stateOnCount, called before autoPower while it's still valid
         }
-        if (settings.autoPower) {
-            autoPower();
-        }
         if (settings.autoBuild || settings.autoARPA) {
             autoBuild();
         }
@@ -9613,6 +9679,9 @@
         }
         if (settings.prestigeWhiteholeEjectEnabled) {
             autoMassEjector(); // Purge remaining rateOfChange, should be called after autoSupply
+        }
+        if (settings.autoPower) { // Called after purging of rateOfChange, to know useless resources
+            autoPower();
         }
         if (settings.prestigeType !== "none") {
             autoPrestige(); // Called after autoBattle to not launch attacks right before reset, killing soldiers
@@ -10231,7 +10300,7 @@
         // Whitehole
         addStandardSectionHeader1(currentNode, "Whitehole");
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeWhiteholeSaveGems", "Save up Soul Gems for reset", "Save up enough Soul Gems for reset, only excess gems will be used. This option does not affect triggers.");
-        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "prestigeWhiteholeMinMass", "Minimum solar mass for reset", "Required minimum solar mass of blackhole before prestiging");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "prestigeWhiteholeMinMass", "Minimum solar mass for reset", "Required minimum solar mass of blackhole before prestiging. Script do not stabilize on blackhole run, this number will need to be reached naturally");
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeWhiteholeStabiliseMass", "Stabilise blackhole", "Stabilises the blackhole with exotic materials, during whitehole run won't go beyond minimum mass set above");
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeWhiteholeEjectEnabled", "Enable mass ejector", "If not enabled the mass ejector will not be managed by the script");
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until 'Eject everything' option is activated.");
@@ -12080,7 +12149,7 @@
         addWeightingRule(tableBodyNode, "Knowledge storage", "Have unlocked unafforable researches", "buildingWeightingNeedfulKnowledge");
         addWeightingRule(tableBodyNode, "Knowledge storage", "All unlocked researches already affordable", "buildingWeightingUselessKnowledge");
         addWeightingRule(tableBodyNode, "Mass Ejector", "Existed ejectors not fully utilized", "buildingWeightingUnusedEjectors");
-        addWeightingRule(tableBodyNode, "Not housing or barrack", "MAD prestige enabled, and affordable", "buildingWeightingMADUseless");
+        addWeightingRule(tableBodyNode, "Not housing, barrack, or knowledge building", "MAD prestige enabled, and affordable", "buildingWeightingMADUseless");
         addWeightingRule(tableBodyNode, "Freight Yard, Container Port", "Have unused crates or containers", "buildingWeightingCrateUseless");
         addWeightingRule(tableBodyNode, "All fuel depots", "Missing Oil or Helium for techs and missions", "buildingWeightingMissingFuel");
         addWeightingRule(tableBodyNode, "Building with state (city)", "Some instances of this building are not working", "buildingWeightingNonOperatingCity");
