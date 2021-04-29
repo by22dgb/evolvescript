@@ -414,12 +414,7 @@
 
         getBusyWorkers(workersSource, workersCount) {
             if (workersCount === 0) {
-                if (this.calculateRateOfChange({all: true}) < 0 && state.assignLoop !== state.loopCounter) {
-                    state.assignLoop = state.loopCounter;
-                    return 1;
-                } else {
-                    return 0;
-                }
+                return 0;
             };
             let totalIncome = this.getProduction(workersSource);
             let resPerWorker = totalIncome / workersCount;
@@ -502,16 +497,6 @@
             return this.currentQuantity / this.maxQuantity;
         }
 
-        get usefulRatio() {
-            if (this.maxQuantity === 0) {
-                return 0;
-            }
-            if (this.storageRequired === 0) {
-                return 1;
-            }
-            return this.currentQuantity / Math.min(this.maxQuantity, this.storageRequired);
-        }
-
         get timeToFull() {
             if (this.storageRatio > 0.98) {
                 return 0; // Already full.
@@ -543,16 +528,11 @@
         }
 
         tryCraftX(count) {
-            if (!this.isUnlocked()) { return false; }
-            if (game.global.race['no_craft']) { return false; }
-
             let vue = getVueById(this._vueBinding);
             if (vue === undefined) { return false; }
 
             resetMultiplier();
             vue.craft(this.id, count);
-
-            return true;
         }
     }
 
@@ -1586,7 +1566,6 @@
         game: null,
         loopCounter: 1,
         multiplierLoop: 0,
-        assignLoop: 0,
         buildingToggles: 0,
         evolutionAttempts: 0,
 
@@ -3603,6 +3582,7 @@
         _listVueBinding: "mechList",
         _listVue: undefined,
 
+        mechList: [],
         lastLevel: -1,
         lastPrepared: -1,
         bestBody: {small: [], medium: [], large: [], titan: []},
@@ -3685,6 +3665,12 @@
                 createMechInfo();
             }
 
+            this.mechList = [];
+            let mechs = game.global.portal.mechbay.mechs;
+            for (let i = 0; i < mechs.length; i++) {
+                this.mechList.push({id: i, ...mechs[i], ...this.getMechStats(mechs[i])});
+            }
+
             return true;
         },
 
@@ -3746,17 +3732,15 @@
         },
 
         getProgressSpeed() {
-            let mechBay = game.global.portal.mechbay;
             let progressMod = this.getProgressMod();
             let spaceUsed = 0;
             let totalDamage = 0;
-            for (let i = 0; i < mechBay.mechs.length; i++) {
-                let mech = {id: i, ...mechBay.mechs[i], ...this.getMechStats(mechBay.mechs[i])};
-                spaceUsed += this.getMechSpace(mech);
-                if (spaceUsed > mechBay.max) {
+            for (let i = 0; i < this.mechList.length; i++) {
+                spaceUsed += this.getMechSpace(this.mechList[i]);
+                if (spaceUsed > game.global.portal.mechbay.max) {
                     break;
                 }
-                totalDamage += mech.power * progressMod;
+                totalDamage += this.mechList[i].power * progressMod;
             }
             return totalDamage;
         },
@@ -4478,7 +4462,7 @@
         settings.foreignHireMercDeadSoldiers = 1;
         settings.foreignMinAdvantage = 40;
         settings.foreignMaxAdvantage = 50;
-        settings.foreignMaxSiegeBattalion = 15;
+        settings.foreignMaxSiegeBattalion = 10;
 
         settings.foreignPacifist = false;
         settings.foreignUnification = true;
@@ -5929,44 +5913,36 @@
         craftLoop:
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
-            if (!craftable.isUnlocked()) {
+            if (!craftable.isUnlocked() || !craftable.autoCraftEnabled || craftable === resources.Scarletite) {
                 continue;
             }
 
-            if (craftable.autoCraftEnabled) {
-                let craftRatio = getCraftRatio(craftable);
+            let afforableAmount = Number.MAX_SAFE_INTEGER;
+            for (let j = 0; j < craftable.resourceRequirements.length; j++) {
+                let requirement = craftable.resourceRequirements[j];
+                let resource = requirement.resource;
 
-                //console.log("resource: " + craftable.id + ", length: " + craftable.requiredResources.length);
-                for (let i = 0; i < craftable.resourceRequirements.length; i++) {
-                    //console.log("resource: " + craftable.id + " required resource: " + craftable.requiredResources[i].id);
-                    if (craftable.resourceRequirements[i].resource.storageRatio < craftRatio) {
-                        continue craftLoop;
-                    }
+                if (resource.isDemanded()) { // Don't use demanded resources
+                    continue craftLoop;
+                } else if (craftable.currentQuantity > craftable.storageRequired * 100 && (resource.storageRatio < 1 || resource.calculateRateOfChange({all: true}) <= 0)) { // 100x craftables, try to save up resources
+                    continue craftLoop;
+                } else if (craftable.currentQuantity < craftable.storageRequired) { // Craftable is required, use all spare resources
+                    afforableAmount = Math.min(afforableAmount, resource.spareQuantity / requirement.quantity);
+                } else if (resource.currentQuantity > resource.storageRequired || resource.storageRatio > 0.999) { // Resource not required - consume last 10%
+                    afforableAmount = Math.min(afforableAmount, ((resource.storageRatio - 0.9) * resource.maxQuantity));
+                } else { // Resource is required, and craftable not required. Don't craft anything.
+                    continue craftLoop;
                 }
-
-                craftable.tryCraftX(5);
+            }
+            afforableAmount = Math.floor(afforableAmount);
+            if (afforableAmount >= 1) {
+                craftable.tryCraftX(afforableAmount);
+                for (let j = 0; j < craftable.resourceRequirements.length; j++) {
+                    let requirement = craftable.resourceRequirements[j];
+                    requirement.resource.currentQuantity -= requirement.quantity * afforableAmount;
+                }
             }
         }
-    }
-
-    function getCraftRatio(craftable) {
-        let craftRatio = 0.9;
-        // We want to get to a healthy number of buildings that require craftable materials so leaving crafting ratio low early
-        if (buildings.Library.count < 20 && resourceCost(buildings.Library, craftable) > craftable.currentQuantity) {
-            craftRatio = buildings.Library.count * 0.025;
-        }
-        if (buildings.Cottage.count < 20 && resourceCost(buildings.Cottage, craftable) > craftable.currentQuantity) {
-            craftRatio = buildings.Cottage.count * 0.025;
-        }
-        if (buildings.Wardenclyffe.count < 20 && resourceCost(buildings.Wardenclyffe, craftable) > craftable.currentQuantity) {
-            craftRatio = buildings.Wardenclyffe.count * 0.025;
-        }
-        // Iron tends to be in high demand, make sure we have enough wrought for at least one coal mine, to start collecting coal for researches as soon as possible
-        if (buildings.CoalMine.count < 1 && resourceCost(buildings.CoalMine, craftable) > craftable.currentQuantity) {
-            craftRatio = 0;
-        }
-
-        return craftRatio;
     }
 
     function manageGovernment() {
@@ -6502,29 +6478,33 @@
 
             // Get list of craftabe resources
             let availableJobs = [];
+            craftersLoop:
             for (let i = 0; i < JobManager.craftingJobs.length; i++) {
                 let job = JobManager.craftingJobs[i];
+                let resource = job.resource;
                 // Check if we're allowed to craft this resource
-                if (!job.isManaged() || !job.resource.autoCraftEnabled) {
+                if (!job.isManaged() || !resource.autoCraftEnabled) {
                     continue;
                 }
+                let resourceDemanded = resource.isDemanded();
 
                 // And have enough resources to craft it for at least 2 seconds
                 let afforableAmount = availableCraftsmen;
                 let lowestRatio = 1;
-                job.resource.resourceRequirements.forEach(requirement => {
+                for (let j = 0; j < resource.resourceRequirements.length; j++) {
+                    let requirement = resource.resourceRequirements[j];
+                    if (requirement.resource.isDemanded() && !resourceDemanded) {
+                        continue craftersLoop;
+                    }
                     afforableAmount = Math.min(afforableAmount, requirement.resource.currentQuantity / (requirement.quantity * costMod) / 2);
                     lowestRatio = Math.min(lowestRatio, requirement.resource.storageRatio);
-                    if (requirement.resource.isDemanded() && !job.resource.isDemanded()) {
-                        afforableAmount = 0;
-                    }
-                  }
-                );
+                }
 
-                if (lowestRatio < job.resource.preserve && !job.resource.isDemanded()) {
+                if (lowestRatio < resource.preserve && !resourceDemanded) {
                     continue;
                 }
 
+                // Assigning Scarletite right now, so it won't be filtered out by priority checks below, as we want to have scarletite + some other with remaining crafters
                 if (job === jobs.Scarletite) {
                     let maxScar = buildings.PortalHellForge.stateOnCount;
                     if (afforableAmount < maxScar) {
@@ -8925,8 +8905,8 @@
             let inactiveMechs = [];
             let spaceUsed = 0;
 
-            for (let i = 0; i < mechBay.mechs.length; i++) {
-                let mech = {id: i, ...mechBay.mechs[i], ...m.getMechStats(mechBay.mechs[i])};
+            for (let i = 0; i < m.mechList.length; i++) {
+                let mech = m.mechList[i];
                 spaceUsed += m.getMechSpace(mech);
                 if (spaceUsed <= mechBay.max) {
                     activeMechs.push(mech);
@@ -8952,16 +8932,14 @@
             }
         }
 
-        if (settings.mechBuild === "none") {
-            return;
-        }
-
         let newMech = {};
         if (settings.mechBuild === "random") {
             let preferedSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
             newMech = m.getRandomMech(preferedSize);
         } else if (settings.mechBuild === "user") {
             newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
+        } else { // mechBuild === "none"
+            return;
         }
         let [newSupply, newSpace, newGems] = m.getMechCost(newMech);
 
@@ -9000,8 +8978,10 @@
             }
             // This estimation ignore soul gems. Their rateOfChange too unreliable, let's just assume we always have enough for mechs
             let timeToFullBay = (supplyCost - resources.Supply.currentQuantity) / resources.Supply.rateOfChange;
-            // timeToClear changes drastically with new mechs, let's try to normalize it, scaling it with bay fill ratio
-            let estimatedTimeToClear = timeToClear * (mechBay.bay / mechBay.max);
+            // timeToClear changes drastically with new mechs, let's try to normalize it, scaling it with available power
+            let currentPower = m.mechList.reduce((sum, mech) => sum += mech.power, 0);
+            let estimatedTotalPower = currentPower + Math.floor(baySpace / newSpace) * newMech.power;
+            let estimatedTimeToClear = timeToClear * (currentPower / estimatedTotalPower);
             mechScrap = timeToFullBay > estimatedTimeToClear ? "single" : "all";
         }
 
@@ -9010,18 +8990,15 @@
             let spaceGained = 0;
             let supplyGained = 0;
 
-            // Get current list of mech
-            let mechList = mechBay.mechs
-              .map((mech, id) => ({id: id, ...mech, ...m.getMechStats(mech)}))
-              .filter(mech => mech.efficiency < newMech.efficiency)
-              .sort((a, b) => a.efficiency - b.efficiency);
+            // Get list of inefficient mech
+            let badMechList = m.mechList.filter(mech => mech.efficiency < newMech.efficiency).sort((a, b) => a.efficiency - b.efficiency);
 
             // Remove worst mechs untill we have enough room for new mech
             let trashMechs = [];
-            for (let i = 0; i < mechList.length && (baySpace + spaceGained < newSpace || (mechScrap === "all" && resources.Supply.currentQuantity + supplyGained < newSupply && m.getMechRefund(mechList[i]) / newSupply > mechList[i].power / newMech.power)); i++) {
-                spaceGained += m.getMechSpace(mechList[i]);
-                supplyGained += m.getMechRefund(mechList[i]);
-                trashMechs.push(mechList[i]);
+            for (let i = 0; i < badMechList.length && (baySpace + spaceGained < newSpace || (mechScrap === "all" && resources.Supply.currentQuantity + supplyGained < newSupply && m.getMechRefund(badMechList[i]) / newSupply > badMechList[i].power / newMech.power)); i++) {
+                spaceGained += m.getMechSpace(badMechList[i]);
+                supplyGained += m.getMechRefund(badMechList[i]);
+                trashMechs.push(badMechList[i]);
             }
 
             // Now go scrapping, if possible and benefical
@@ -9038,7 +9015,7 @@
 
         // Try to squeeze in smaller mech, if we can't fit preferred one
         if (settings.mechFillBay && !canExpandBay && baySpace < newSpace && baySpace > 0) {
-            for (let i = m.Size.length - 1; i >= 0; i--) {
+            for (let i = m.Size.length - 2; i >= 0; i--) {
                 if (m.getMechSpace({size: m.Size[i]}) <= baySpace) {
                     newMech = m.getRandomMech(m.Size[i]);
                     [newSupply, newSpace, newGems] = m.getMechCost(newMech);
@@ -9554,10 +9531,11 @@
             }
             if (node.id === "popportal-spire") { // Spire tooltip
                 game.updateDebugData(); // Observer can be can be called at any time, make sure we have actual data
-                let speed = MechManager.getProgressSpeed();
-                let time = speed > 0 ? (100 - game.global.portal.spire.progress) / speed * gameTicksPerSecond("mid") : -1;
-                node.style.pointerEvents = "none";
-                node.innerHTML += `<div id="popTimer" class="flair has-text-advanced vb">Cleared in [${poly.timeFormat(time)}]</div>`;
+                if (MechManager.initLab()) {
+                    let speed = MechManager.getProgressSpeed();
+                    let time = speed > 0 ? (100 - game.global.portal.spire.progress) / speed * gameTicksPerSecond("mid") : -1;
+                    node.innerHTML += `<div id="popTimer" class="flair has-text-advanced vb">Cleared in [${poly.timeFormat(time)}]</div>`;
+                }
                 return;
             }
 
@@ -9571,7 +9549,6 @@
                 obj = buildingIds[node.id.substr(3)];
             }
             if (obj && obj.extraDescription !== "") {
-                node.style.pointerEvents = "none";
                 node.innerHTML += `<div>${obj.extraDescription}</div>`;
             }
         }));
@@ -9856,6 +9833,7 @@
                 overflow: auto;
             }
 
+            /* Autocomplete styles */
             .ui-autocomplete {
                 background-color: #000;
                 position: absolute;
@@ -9863,7 +9841,6 @@
                 left: 0;
                 cursor: default;
             }
-
             .ui-helper-hidden-accessible {
                 border: 0;
                 clip: rect(0 0 0 0);
@@ -9874,6 +9851,13 @@
                 position: absolute;
                 width: 1px;
             }
+
+            /* Fixes for game styles */
+            #powerStatus { white-space: nowrap; }
+            .popper { pointer-events: none }
+            .area { width: calc(100% / 6) !important; max-width: 8rem; }
+            .offer-item { width: 16% !important; max-width: 7.5rem; }
+            .tradeTotal { margin-left: 11.5rem !important; }
         `
 
         // Create style document
