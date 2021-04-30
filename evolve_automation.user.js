@@ -1547,7 +1547,7 @@
         banana: "banana",
     };
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...Object.keys(challenges).map(id => "challenge_" + id)];
-    const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", ascension: "Ascension"};
+    const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", ascension: "Ascension", demonic: "Infusion"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech"];
@@ -4531,6 +4531,8 @@
         settings.prestigeWhiteholeEjectExcess = false;
         settings.prestigeWhiteholeDecayRate = 0.2;
         settings.prestigeWhiteholeEjectAllCount = 100;
+        settings.prestigeDemonicFloor = 100;
+        settings.prestigeDemonicBomb = false;
     }
 
     function resetGovernmentSettings() {
@@ -4636,6 +4638,8 @@
         settings.jobQuarryWeighting = 50;
         settings.jobCrystalWeighting = 50;
         settings.jobScavengerWeighting = 50;
+        settings.jobDisableMiners = false;
+        settings.jobDisableCraftsmans = false;
 
         for (let i = 0; i < JobManager.priorityList.length; i++){
             JobManager.priorityList[i].autoJobEnabled = true;
@@ -5334,6 +5338,8 @@
         addSetting("jobQuarryWeighting", 50);
         addSetting("jobCrystalWeighting", 50);
         addSetting("jobScavengerWeighting", 50);
+        addSetting("jobDisableMiners", false);
+        addSetting("jobDisableCraftsmans", false);
 
         addSetting("masterScriptToggle", true);
         addSetting("showSettings", true);
@@ -5380,6 +5386,8 @@
         addSetting("prestigeWhiteholeEjectExcess", false);
         addSetting("prestigeWhiteholeDecayRate", 0.2);
         addSetting("prestigeWhiteholeEjectAllCount", 100);
+        addSetting("prestigeDemonicFloor", 100);
+        addSetting("prestigeDemonicBomb", false);
 
         addSetting("autoAssembleGene", false);
         addSetting("genesAssembleGeneAlways", true);
@@ -5632,9 +5640,9 @@
                             continue;
                         }
 
-                        // We're going to check pillars for ascending, greatness achievement for bioseeding, or extinction achievement otherwise
+                        // We're going to check pillars for ascension and infusion, greatness achievement for bioseeding, or extinction achievement otherwise
                         let raceIsGood = false;
-                        if (settings.prestigeType === "ascension") {
+                        if (settings.prestigeType === "ascension" || settings.prestigeType === "demonic") {
                             raceIsGood = !race.isPillarUnlocked(achievementLevel);
                         } else if (settings.prestigeType === "bioseed") {
                             raceIsGood = !race.isGreatnessAchievementUnlocked(achievementLevel);
@@ -6483,7 +6491,7 @@
                 let job = JobManager.craftingJobs[i];
                 let resource = job.resource;
                 // Check if we're allowed to craft this resource
-                if (!job.isManaged() || !resource.autoCraftEnabled) {
+                if (!job.isManaged() || !resource.autoCraftEnabled || (settings.jobDisableCraftsmans && !game.global.race['no_craft'] && job !== jobs.Scarletite)) {
                     continue;
                 }
                 let resourceDemanded = resource.isDemanded();
@@ -6558,6 +6566,8 @@
             }
         }
 
+        let minersDisabled = settings.jobDisableMiners && buildings.GatewayStarbase.count > 0;
+
         // And deal with the rest now
         for (let i = 0; i < 3; i++) {
             for (let j = 0; j < jobList.length; j++) {
@@ -6584,6 +6594,10 @@
 
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
                 if (job === jobs.Banker && resources.Money.storageRatio > 0.98 && !haveTech("banking", 7)) {
+                    jobsToAssign = 0;
+                }
+                // Don't assign miners and Andromeda
+                if ((job === jobs.Miner || job === jobs.CoalMiner) && minersDisabled) {
                     jobsToAssign = 0;
                 }
 
@@ -7408,11 +7422,18 @@
                 return;
             case 'whitehole':
                 if (isWhiteholePrestigeAvailable()) { // Solar mass requirements met and research available
+                    state.goal = "Reset";
                     ["tech-infusion_confirm", "tech-infusion_check", "tech-exotic_infusion"].forEach(id => techIds[id].click());
                 }
                 return;
             case 'ascension':
                 // TODO: It'll need more options before allowing script to press reset. Infusing pillars before reset, and something for custom race.
+                return;
+            case 'demonic':
+                if (isDemonicPrestigeAvailable()) {
+                    state.goal = "Reset";
+                    techIds["tech-demonic_infusion"].click();
+                }
                 return;
         }
     }
@@ -7427,6 +7448,10 @@
 
     function isWhiteholePrestigeAvailable() {
         return getBlackholeMass() >= settings.prestigeWhiteholeMinMass && (techIds["tech-exotic_infusion"].isUnlocked() || techIds["tech-infusion_check"].isUnlocked() || techIds["tech-infusion_confirm"].isUnlocked());
+    }
+
+    function isDemonicPrestigeAvailable() {
+        return buildings.PortalSpire.count > settings.prestigeDemonicFloor && resources.Demonic_Essence.currentQuantity > 0 && techIds["tech-demonic_infusion"].isUnlocked();
     }
 
     function getBlackholeMass() {
@@ -7866,7 +7891,12 @@
 
             // Don't click any reset options without user consent... that would be a dick move, man.
             if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" ||
-                itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion" || itemId == "tech-dark_bomb") {
+                itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion") {
+                continue;
+            }
+
+            // Don't use Dark Bomb if not enabled
+            if (itemId == "tech-dark_bomb" && !settings.prestigeDemonicBomb) {
                 continue;
             }
 
@@ -7906,11 +7936,11 @@
             }
 
             if (itemId !== settings.userResearchTheology_2) {
-                if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType === "ascension")) {
+                if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && (settings.prestigeType === "ascension" || settings.prestigeType === "demonic"))) {
                     continue;
                 }
 
-                if (itemId === "tech-study" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType !== "ascension")) {
+                if (itemId === "tech-study" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType !== "ascension" && settings.prestigeType !== "demonic")) {
                     continue;
                 }
             }
@@ -8057,8 +8087,8 @@
                     maxStateOn = Math.min(maxStateOn, currentStateOn);
                 }
             }
-            // Disable Waygate once it cleared
-            if (building === buildings.PortalWaygate && haveTech("waygate", 3)) {
+            // Disable Waygate once it cleared, or if we're going to use bomb
+            if (building === buildings.PortalWaygate && (settings.prestigeDemonicBomb || haveTech("waygate", 3))) {
                 maxStateOn = 0;
             }
             // Once we unlocked Embassy - we don't need scouts and corvettes until we'll have piracy. Let's freeup support for more Bolognium ships
@@ -8949,10 +8979,11 @@
         }
 
         let baySpace = mechBay.max - mechBay.bay;
+        let lastFloor = settings.prestigeType === "demonic" && buildings.PortalSpire.count >= settings.prestigeDemonicFloor && haveTech("waygate", 3);
 
         // Save up supply for next floor
         let timeToClear = (100 - game.global.portal.spire.progress) / m.getProgressSpeed();
-        if (settings.mechSaveSupply) {
+        if (settings.mechSaveSupply && !lastFloor) {
             let missingSupplies = resources.Supply.maxQuantity - resources.Supply.currentQuantity;
             if (baySpace < newSpace) { // Not always accurate as we can't really predict what will be scrapped, but should be adequate for estimation
                 missingSupplies -= m.getMechRefund(newMech);
@@ -8982,7 +9013,7 @@
             let currentPower = m.mechList.reduce((sum, mech) => sum += mech.power, 0);
             let estimatedTotalPower = currentPower + Math.floor(baySpace / newSpace) * newMech.power;
             let estimatedTimeToClear = timeToClear * (currentPower / estimatedTotalPower);
-            mechScrap = timeToFullBay > estimatedTimeToClear ? "single" : "all";
+            mechScrap = timeToFullBay > estimatedTimeToClear && !lastFloor ? "single" : "all";
         }
 
         // Check if we need to scrap anything
@@ -9287,7 +9318,7 @@
                 let stars = game.alevel();
                 let newRace = races[game.global.race.species];
 
-                if (settings.prestigeType === "ascension" && newRace.isPillarUnlocked(stars)) {
+                if ((settings.prestigeType === "ascension" || settings.prestigeType === "demonic") && newRace.isPillarUnlocked(stars)) {
                     for (let id in races) {
                         let race = races[id];
                         if (race.isConditionMet() && !race.isPillarUnlocked(stars)) {
@@ -9315,7 +9346,7 @@
                     }
                 }
 
-                if (settings.prestigeType !== "bioseed" && settings.prestigeType !== "ascension" && newRace.isMadAchievementUnlocked(stars)) {
+                if (settings.prestigeType !== "bioseed" && settings.prestigeType !== "ascension" && settings.prestigeType !== "demonic" && newRace.isMadAchievementUnlocked(stars)) {
                     for (let id in races) {
                         let race = races[id];
                         if (race.isConditionMet() && !race.isMadAchievementUnlocked(stars)) {
@@ -10225,7 +10256,8 @@
       <option value = "cataclysm" title = "Perform cataclysm reset by researching Dial It To 11 once available">Cataclysm</option>
       <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
       <option value = "vacuum" title = "Build Mana Syphons until the end">Vacuum Collapse</option>
-      <option value = "ascension" title = "Allows research of Incorporeal Existence and Ascension. Ascension Machine managed by autoPower. User input still required to trigger reset, and create custom race.">Ascension</option>`;
+      <option value = "ascension" title = "Allows research of Incorporeal Existence and Ascension. Ascension Machine managed by autoPower. User input still required to trigger reset, and create custom race.">Ascension</option>
+      <option value = "demonic" title = "Sacrifice your entire civilization to absorb the essence of a greater demon lord">Demonic Infusion</option>`;
 
     function updatePrestigeSettingsContent(secondaryPrefix) {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
@@ -10248,13 +10280,15 @@
             // Special processing for prestige options. If they are ready to prestige then warn the user about enabling them.
             let confirmationText = "";
             if (this.value === "mad" && haveTech("mad")) {
-                confirmationText = "MAD has already been researched and may MAD immediately. Are you sure you want to enable MAD prestige?";
+                confirmationText = "MAD has already been researched. You may prestige immediately. Are you sure you want to toggle this prestige?";
             } else if (this.value === "bioseed" && isBioseederPrestigeAvailable()) {
-                confirmationText = "Bioseeder ship is ready to launch and may launch immediately. Are you sure you want to enable bioseeder prestige?";
+                confirmationText = "Required probes are built, and bioseeder ship is ready to launch. You may prestige immediately. Are you sure you want to toggle this prestige?";
             } else if (this.value === "cataclysm" && isCataclysmPrestigeAvailable()) {
-                confirmationText = "Dial It To 11 unlocked and may prestige immediately. Are you sure you want to enable cataclysm prestige?";
+                confirmationText = "Dial It To 11 is unlocked. You may prestige immediately. Are you sure you want to toggle this prestige?";
             } else if (this.value === "whitehole" && isWhiteholePrestigeAvailable()) {
-                confirmationText = "Whitehole exotic infusion is ready and may prestige immediately. Are you sure you want to enable whitehole prestige?";
+                confirmationText = "Required mass is reached, and exotic infusion is unlocked. You may prestige immediately. Are you sure you want to toggle this prestige?";
+            } else if (this.value === "demonic" && isDemonicPrestigeAvailable()) {
+                confirmationText = "Required floor is reached, and demon lord is already dead. You may prestige immediately. Are you sure you want to toggle this prestige?";
             }
 
             if (confirmationText !== "" && !confirm(confirmationText)) {
@@ -10290,6 +10324,11 @@
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until 'Eject everything' option is activated.");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate, only useful during Decay Challenge");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
+
+        // Demonic Infusion
+        addStandardSectionHeader1(currentNode, "Demonic Infusion");
+        addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "prestigeDemonicFloor", "Minimum spire floor for reset", "Perform reset after climbing up to this spire floor");
+        addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeDemonicBomb", "Use Dark Energy Bomb", "Kill Demon Lord with Dark Energy Bomb");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11996,6 +12035,8 @@
         addStandardSectionSettingsNumber(currentNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
         addStandardSectionSettingsNumber(currentNode, "jobCrystalWeighting", "Final Crystal Miner Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
         addStandardSectionSettingsNumber(currentNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
+        addStandardSectionSettingsToggle(currentNode, "jobDisableMiners", "Disable miners in Andromeda", "Disable Miners and Coal Miners after reaching Andromeda");
+        addStandardSectionSettingsToggle(currentNode, "jobDisableCraftsmans", "Craft manually when possible", "Disable non-Scarletite crafters when manual craft is allowed");
 
         currentNode.append(`
           <table style="width:100%">
