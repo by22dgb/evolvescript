@@ -497,6 +497,16 @@
             return this.currentQuantity / this.maxQuantity;
         }
 
+        get usefulRatio() {
+            if (this.maxQuantity === 0) {
+                return 0;
+            }
+            if (this.storageRequired === 0) {
+                return 1;
+            }
+            return this.currentQuantity / Math.min(this.maxQuantity, this.storageRequired);
+        }
+
         get timeToFull() {
             if (this.storageRatio > 0.98) {
                 return 0; // Already full.
@@ -1232,30 +1242,30 @@
             return game.races[this.id].type;
         }
 
-        isConditionMet() {
+        getHabitability() {
             if (this.id === "junker") {
-                return game.global.genes.challenge;
+                return game.global.genes.challenge ? 1 : 0;
             }
 
             switch (this.genus) {
                 case "aquatic":
-                    return game.global.city.biome === 'oceanic' || game.global.blood['unbound'];
+                    return game.global.city.biome === 'oceanic' ? 1 : getUnsuitedMod();
                 case "fey":
-                    return game.global.city.biome === 'forest' || game.global.blood['unbound'];
+                    return game.global.city.biome === 'forest' ? 1 : getUnsuitedMod();
                 case "sand":
-                    return game.global.city.biome === 'desert' || game.global.blood['unbound'];
+                    return game.global.city.biome === 'desert' ? 1 : getUnsuitedMod();
                 case "heat":
-                    return game.global.city.biome === 'volcanic' || game.global.blood['unbound'];
+                    return game.global.city.biome === 'volcanic' ? 1 : getUnsuitedMod();
                 case "polar":
-                    return game.global.city.biome === 'tundra' || game.global.blood['unbound'];
+                    return game.global.city.biome === 'tundra' ? 1 : getUnsuitedMod();
                 case "demonic":
-                    return game.global.city.biome === 'hellscape' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
+                    return game.global.city.biome === 'hellscape' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
                 case "angelic":
-                    return game.global.city.biome === 'eden' || game.global.blood['unbound'] && game.global.blood.unbound >= 3;
+                    return game.global.city.biome === 'eden' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
                 case undefined: // Nonexistent custom
-                    return false;
+                    return 0;
                 default:
-                    return true;
+                    return 1;
             }
         }
 
@@ -1591,7 +1601,6 @@
         craftableResourceList: [],
 
         evolutionTarget: null,
-        resetEvolutionTarget: false,
     };
 
     // Class instances
@@ -5579,8 +5588,6 @@
             if (settings.evolutionQueueRepeat) {
                 settings.evolutionQueue.push(queuedEvolution);
             }
-            state.evolutionTarget = races.antid; // That's a hack to not pull another evolution from queue while player selecting universe
-            state.resetEvolutionTarget = true;
             updateStateFromSettings();
             updateSettingsFromState();
             removeScriptSettings();
@@ -5593,12 +5600,6 @@
             return;
         }
 
-        // Load queued settings first, before choosing universe or planet - in case if they're need to be overriden
-        if (state.evolutionTarget === null) {
-            loadQueuedSettings();
-        }
-
-        // If we have performed a soft reset with a bioseeded ship then we get to choose our planet
         autoUniverseSelection();
         autoPlanetSelection();
 
@@ -5607,12 +5608,9 @@
             return;
         }
 
-        if (state.resetEvolutionTarget) {
-            state.resetEvolutionTarget = false;
-            state.evolutionTarget = null;
-        }
-
         if (state.evolutionTarget === null) {
+            loadQueuedSettings();
+
             // Try to pick race for achievement first
             if (settings.userEvolutionTarget === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
@@ -5622,7 +5620,7 @@
                 let genusGroups = {};
                 for (let id in races) {
                     let race = races[id];
-                    if (race.isConditionMet()) {
+                    if (race.getHabitability() > 0) {
                         genusGroups[race.genus] = genusGroups[race.genus] ?? [];
                         genusGroups[race.genus].push(race);
                     }
@@ -5658,14 +5656,20 @@
                     if (!remainingRace) {
                         continue;
                     }
+                    let raceSuited = remainingRace.getHabitability();
 
                     // We'll target the group with the highest percentage chance of getting an achievement
                     let remainingPercent = remainingAchievements / raceGroup.length;
 
-                    // If we have Mass Extinction perk, and not affected by randomness - prioritize conditional races
-                    if (remainingRace !== races.junker && game.global.stats.achieve['mass_extinction'] && remainingRace.getCondition() !== '') {
+                    // If we have Mass Extinction perk, and not affected by randomness - prioritize suited conditional races
+                    if (remainingRace !== races.junker && game.global.stats.achieve['mass_extinction'] && remainingRace.getCondition() !== '' && raceSuited === 1) {
                         targetedGroup.race = remainingRace;
                         targetedGroup.remainingPercent = 100;
+                    }
+
+                    // Deprioritize unsuited
+                    if (raceSuited < 1) {
+                        remainingPercent /= 100;
                     }
 
                     // If this group has the most races left with remaining achievements then target an uncompleted race in this group
@@ -5680,7 +5684,7 @@
             // Auto Achievements disabled, checking user specified race
             if (settings.userEvolutionTarget !== "auto") {
                 let userRace = races[settings.userEvolutionTarget];
-                if (userRace && userRace.isConditionMet()){
+                if (userRace && userRace.getHabitability() > 0){
                     // Race specified, and condition is met
                     state.evolutionTarget = userRace
                 }
@@ -5930,7 +5934,9 @@
                 let requirement = craftable.resourceRequirements[j];
                 let resource = requirement.resource;
 
-                if (resource.isDemanded()) { // Don't use demanded resources
+                if (craftable.isDemanded()) { // Craftable demanded, get as much as we can
+                    afforableAmount = Math.min(afforableAmount, resource.currentQuantity / requirement.quantity);
+                } else if (resource.isDemanded() || resource.usefulRatio < craftable.usefulRatio) { // Don't use demanded resources
                     continue craftLoop;
                 } else if (craftable.currentQuantity > craftable.storageRequired * 100 && (resource.storageRatio < 1 || resource.calculateRateOfChange({all: true}) <= 0)) { // 100x craftables, try to save up resources
                     continue craftLoop;
@@ -9321,7 +9327,7 @@
                 if ((settings.prestigeType === "ascension" || settings.prestigeType === "demonic") && newRace.isPillarUnlocked(stars)) {
                     for (let id in races) {
                         let race = races[id];
-                        if (race.isConditionMet() && !race.isPillarUnlocked(stars)) {
+                        if (race.getHabitability() > 0 && !race.isPillarUnlocked(stars)) {
                             GameLog.logWarning(GameLog.Types.special, `${newRace.name} pillar already infused, soft resetting and trying again.`);
                             needReset = true;
                             break;
@@ -9335,7 +9341,7 @@
                 if (settings.prestigeType === "bioseed" && newRace.isGreatnessAchievementUnlocked(stars)) {
                     for (let id in races) {
                         let race = races[id];
-                        if (race.isConditionMet() && !race.isGreatnessAchievementUnlocked(stars)) {
+                        if (race.getHabitability() > 0 && !race.isGreatnessAchievementUnlocked(stars)) {
                             GameLog.logWarning(GameLog.Types.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`);
                             needReset = true;
                             break;
@@ -9349,7 +9355,7 @@
                 if (settings.prestigeType !== "bioseed" && settings.prestigeType !== "ascension" && settings.prestigeType !== "demonic" && newRace.isMadAchievementUnlocked(stars)) {
                     for (let id in races) {
                         let race = races[id];
-                        if (race.isConditionMet() && !race.isMadAchievementUnlocked(stars)) {
+                        if (race.getHabitability() > 0 && !race.isMadAchievementUnlocked(stars)) {
                             GameLog.logWarning(GameLog.Types.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`);
                             needReset = true;
                             break;
@@ -9360,7 +9366,7 @@
                     }
                 }
 
-            } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].isConditionMet()) {
+            } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
                 GameLog.logWarning(GameLog.Types.special, `Wrong race, soft resetting and trying again.`);
                 needReset = true;
             }
@@ -10379,6 +10385,22 @@
         buildSettingsSection(sectionId, sectionName, resetFunction, updateEvolutionSettingsContent);
     }
 
+    function updateRaceWarning() {
+        let race = races[settings.userEvolutionTarget];
+        if (race && race.getCondition() !== '') {
+            let suited = race.getHabitability();
+            if (suited === 1) {
+                $("#script_race_warning").html(`<span class="has-text-success">This race have special requirements: ${race.getCondition()}. This condition is met.</span>`);
+            } else if (suited === 0) {
+                $("#script_race_warning").html(`<span class="has-text-danger">Warning! This race have special requirements: ${race.getCondition()}. This condition is not met.</span>`);
+            } else {
+                $("#script_race_warning").html(`<span class="has-text-warning">Warning! This race have special requirements: ${race.getCondition()}. This condition is bypassed. Race will have ${100 - suited * 100}% penalty.</span>`);
+            }
+        } else {
+            $("#script_race_warning").empty();
+        }
+    }
+
     function updateEvolutionSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
@@ -10403,20 +10425,12 @@
         buildStandartSettingsSelector(currentNode, "userEvolutionTarget", "Target Race", "Chosen race will be automatically selected during next evolution", raceOptions);
 
         currentNode.append(`<div><span id="script_race_warning"></span></div>`);
-
-        let race = races[settings.userEvolutionTarget];
-        if (race && race.getCondition() !== '') {
-            $("#script_race_warning").html(`<span class="${race.isConditionMet() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.getCondition()}. This condition is currently ${race.isConditionMet() ? "met" : "not met"}.</span>`);
-        }
+        updateRaceWarning();
 
         $("#script_userEvolutionTarget").on('change', function() {
-            state.resetEvolutionTarget = true;
-            let race = races[settings.userEvolutionTarget];
-            if (race && race.getCondition() !== '') {
-                $("#script_race_warning").html(`<span class="${race.isConditionMet() ? "has-text-warning" : "has-text-danger"}">Warning! This race have special requirements: ${race.getCondition()}. This condition is currently ${race.isConditionMet() ? "met" : "not met"}.</span>`);
-            } else {
-                $("#script_race_warning").empty();
-            }
+            state.evolutionTarget = null;
+            updateRaceWarning();
+
             let content = document.querySelector('#script_evolutionSettings .script-content');
             content.style.height = null;
             content.style.height = content.offsetHeight + "px"
@@ -10499,14 +10513,17 @@
             raceName = race.name;
 
             // Check if we can evolve intro it
-            if (race.isConditionMet()) {
+            let suited = race.getHabitability();
+            if (suited === 1) {
                 raceClass = "has-text-info";
-            } else {
+            } else if (suited === 0) {
                 raceClass = "has-text-danger";
+            } else {
+                raceClass = "has-text-warning";
             }
         } else if (queuedEvolution.userEvolutionTarget === "auto") {
             raceName = "Auto Achievements";
-            raceClass = "has-text-warning";
+            raceClass = "has-text-advanced";
         } else {
             raceName = "Unrecognized race!";
             raceClass = "has-text-danger";
@@ -13075,6 +13092,10 @@
             }
         }
         return combs;
+    }
+
+    function getUnsuitedMod() {
+        return !game.global.blood.unbound ? 0 : game.global.blood.unbound >= 4 ? 0.95 : game.global.blood.unbound >= 2 ? 0.9 : 0.8;
     }
 
     var baseDuration = {main: 250, mid: 1000, long: 500};
