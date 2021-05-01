@@ -3945,10 +3945,12 @@
                 let building = this.priorityList[i];
 
                 if (state.queuedTargets.includes(building)) {
+                    building.weighting = 0;
                     building.extraDescription = "Queued building, processing...<br>";
                     continue;
                 }
                 if (state.triggerTargets.includes(building)) {
+                    building.weighting = 0;
                     building.extraDescription = "Active trigger, processing...<br>";
                     continue;
                 }
@@ -4013,16 +4015,20 @@
             for (let i = 0; i < this.priorityList.length; i++){
                 let project = this.priorityList[i];
 
+                if (!project.isUnlocked()) {
+                    project.weighting = 0;
+                    project.extraDescription = "Locked<br>";
+                    continue;
+                }
+
                 if (state.queuedTargets.includes(project)) {
+                    project.weighting = 0;
                     project.extraDescription = "Queued project, processing...<br>";
                     continue;
                 }
                 if (state.triggerTargets.includes(project)) {
+                    project.weighting = 0;
                     project.extraDescription = "Active trigger, processing...<br>";
-                    continue;
-                }
-
-                if (!project.isUnlocked()) {
                     continue;
                 }
 
