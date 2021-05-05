@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.49
+// @version      3.3.1.50
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -7256,7 +7256,7 @@
 
         if (resources.Supply.storageRatio < 1) {
             let remaining = buildings.PortalTransport.stateOnCount * 5;
-            let keepRatio = 0.97;
+            let keepRatio = 0.975;
             for (let i = 0; i < resourcesBySupplyValue.length; i++) {
                 if (remaining <= 0) {
                     break;
@@ -7270,7 +7270,7 @@
                 let allowedSupply = 0;
                 if (resource.isCraftable()) {
                     if (resource.currentQuantity > resource.storageRequired / keepRatio) {
-                        allowedSupply = Math.max(0, Math.floor((resource.currentQuantity - (resource.storageRequired / 0.97)) / resource.supplyVolume));
+                        allowedSupply = Math.max(0, Math.floor((resource.currentQuantity - (resource.storageRequired / keepRatio)) / resource.supplyVolume));
                     }
                 } else {
                     if (resource.storageRatio > keepRatio + 0.01) {
@@ -7323,7 +7323,7 @@
             let allowedEject = 0;
             if (resource.isCraftable()) {
                 if (resource.currentQuantity > resource.storageRequired / keepRatio) {
-                    allowedEject = Math.max(0, Math.floor(resource.currentQuantity - (resource.storageRequired / 0.97)));
+                    allowedEject = Math.max(0, Math.floor(resource.currentQuantity - (resource.storageRequired / keepRatio)));
                 }
             } else {
                 if (resource.storageRatio > keepRatio + 0.01) {
@@ -7793,7 +7793,7 @@
                             let totalRateOfCharge = resource.calculateRateOfChange({buy: true});
                             if (totalRateOfCharge > 0) {
                                 estimatedTime[other.id][resource.id] = (quantity - resource.currentQuantity) / totalRateOfCharge;
-                            } else if (settings.buildingsIgnoreZeroRate && resource.storageRatio < 0.97 && resource.currentQuantity < quantity) {
+                            } else if (settings.buildingsIgnoreZeroRate && resource.storageRatio < 0.975 && resource.currentQuantity < quantity) {
                                 estimatedTime[other.id][resource.id] = Number.MAX_SAFE_INTEGER;
                             } else {
                                 // Craftables and such, which not producing at this moment. We can't realistically calculate how much time it'll take to fulfil requirement(too many factors), so let's assume we can get it any any moment.
