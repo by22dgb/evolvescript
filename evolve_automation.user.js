@@ -413,16 +413,15 @@
         }
 
         getBusyWorkers(workersSource, workersCount) {
-            if (workersCount === 0) {
-                return 0;
-            };
-            let totalIncome = this.getProduction(workersSource);
-            let resPerWorker = totalIncome / workersCount;
-            let usedIncome = totalIncome - this.calculateRateOfChange({all: true});
-            if (usedIncome <= 0) {
-                return 0;
-            };
-            return Math.ceil(usedIncome / resPerWorker);
+            if (workersCount > 0) {
+                let totalIncome = this.getProduction(workersSource);
+                let resPerWorker = totalIncome / workersCount;
+                let usedIncome = totalIncome - this.calculateRateOfChange({all: true});
+                if (usedIncome > 0) {
+                    return Math.ceil(usedIncome / resPerWorker);
+                }
+            }
+            return 0;
         }
 
         increaseEjection(count) {
@@ -729,7 +728,7 @@
             this.overridePowered = undefined;
 
             // Additional flags
-            this.is = flags ?? {};
+            this.is = normalizeProperties(flags) ?? {};
         }
 
         get definition() {
@@ -1778,7 +1777,7 @@
         Smokehouse: new Action("Smokehouse", "city", "smokehouse", ""),
         Casino: new Action("Casino", "city", "casino", ""),
         TouristCenter: new Action("Tourist Center", "city", "tourist_center", ""),
-        MassDriver: new Action("Mass Driver", "city", "mass_driver", ""),
+        MassDriver: new Action("Mass Driver", "city", "mass_driver", "", {knowledge: () => haveTech("mass", 2)}),
         Wharf: new Action("Wharf", "city", "wharf", ""),
         MetalRefinery: new Action("Metal Refinery", "city", "metal_refinery", ""),
         SlavePen: new Action("Slave Pen", "city", "slave_pen", ""),
@@ -7734,6 +7733,9 @@
             }
         }
 
+        BuildingManager.updateWeighting();
+        ProjectManager.updateWeighting();
+
         let targetsList = [...state.queuedTargets, ...state.triggerTargets];
         let buildingList = [...BuildingManager.managedPriorityList(), ...ProjectManager.managedPriorityList()];
 
@@ -9414,8 +9416,6 @@
         calculateRequiredStorages(); // Set res.storageRequired, uses obj.resourceRequirements
         updatePriorityTargets();  // Set queuedTargets and triggerTargets, modifies res.storageRequired
         prioritizeDemandedResources(); // Set res.requestedQuantity, uses queuedTargets and triggerTargets
-        BuildingManager.updateWeighting(); // Set obj.weighting, uses queuedTargets
-        ProjectManager.updateWeighting(); // Set obj.weighting, uses queuedTargets
 
         state.moneyIncomes.push(resources.Money.rateOfChange);
         state.moneyIncomes.shift();
@@ -9547,7 +9547,7 @@
     }
 
     function addTooltip(mutations) {
-        if (!settings.masterScriptToggle || (!settings.autoBuild && !settings.autoARPA && !settings.autoPower)) {
+        if (!settings.masterScriptToggle) {
             return;
         }
         mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
@@ -9609,9 +9609,6 @@
             return;
         }
 
-        if (settings.autoStorage) {
-            autoStorage();
-        }
         if (settings.buildingAlwaysClick || settings.autoBuild){
             autoGatherResources();
         }
@@ -9619,7 +9616,7 @@
             autoMarket(); // Invalidates values of resources, changes are random and can't be predicted, but we won't need values anywhere else
         }
         if (settings.autoResearch) {
-            autoResearch();
+            autoResearch(); // Called before autoBuild and autoAssembleGene - knowledge goes to techs first
         }
         if (settings.autoHell) {
             autoHell();
@@ -9645,26 +9642,29 @@
         if (settings.autoSmelter) {
             autoSmelter();
         }
+        if (settings.autoStorage) {
+            autoStorage(); // Called before autoJobs, autoFleet and autoPower - so they wont mess with quantum
+        }
+        if (settings.autoBuild || settings.autoARPA) {
+            autoBuild(); // Called after autoStorage to compensate fluctuations of quantum(caused by previous tick's adjustments) levels before weightings
+        }
         if (settings.autoJobs) {
             autoJobs();
         }
         if (settings.autoFleet) {
             autoFleet(); // Need to know Mine Layers stateOnCount, called before autoPower while it's still valid
         }
-        if (settings.autoBuild || settings.autoARPA) {
-            autoBuild();
-        }
         if (settings.autoMech) {
-            autoMech(); // Called after autoBuild to not steal supplies from mechs
+            autoMech(); // Called after autoBuild, to prevent stealing supplies from mechs
         }
         if (settings.autoAssembleGene) {
-            autoAssembleGene(); // Called after arpa, buildings, and research to not steal knowledge from them
+            autoAssembleGene(); // Called after autoBuild and autoResearches to prevent stealing knowledge from them
         }
         if (settings.autoMinorTrait) {
-            autoMinorTrait();
+            autoMinorTrait(); // Called after auto assemble to utilize new genes right asap
         }
         if (settings.autoCraft) {
-            autoCraft(); // Invalidates quantities of resources, missing exposed craftingRatio to calculate craft result on script side
+            autoCraft(); // Invalidates quantities of craftables, missing exposed craftingRatio to calculate craft result on script side
         }
         if (settings.autoFight) {
             manageSpies(); // Can unoccupy foreign power in rare occasions, without caching back new status, but such desync should not cause any harm
