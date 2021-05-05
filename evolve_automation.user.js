@@ -4677,8 +4677,8 @@
         JobManager.addJobToPriorityList(jobs.CementWorker);
         JobManager.addJobToPriorityList(jobs.Colonist);
         JobManager.addJobToPriorityList(jobs.HellSurveyor);
-        JobManager.addJobToPriorityList(jobs.Archaeologist);
         JobManager.addJobToPriorityList(jobs.SpaceMiner);
+        JobManager.addJobToPriorityList(jobs.Archaeologist);
         JobManager.addJobToPriorityList(jobs.Miner);
         JobManager.addJobToPriorityList(jobs.CoalMiner);
         JobManager.addJobToPriorityList(jobs.Banker);
@@ -4706,8 +4706,8 @@
         jobs.CementWorker.breakpoints = [4, 8, -1]; // Cement works are based on cap and stone rate of change
         jobs.Colonist.breakpoints = [0, 0, -1];
         jobs.HellSurveyor.breakpoints = [0, 0, -1];
-        jobs.Archaeologist.breakpoints = [0, 0, -1];
         jobs.SpaceMiner.breakpoints = [0, 0, -1];
+        jobs.Archaeologist.breakpoints = [0, 0, -1];
         jobs.Miner.breakpoints = [3, 5, -1];
         jobs.CoalMiner.breakpoints = [2, 4, -1];
         jobs.Banker.breakpoints = [3, 5, -1];
@@ -4967,12 +4967,6 @@
         BuildingManager.addBuildingToPriorityList(buildings.PortalGateTurret);
         BuildingManager.addBuildingToPriorityList(buildings.PortalInferniteMine);
 
-        BuildingManager.addBuildingToPriorityList(buildings.PortalLakeMission);
-        BuildingManager.addBuildingToPriorityList(buildings.PortalHarbour);
-        BuildingManager.addBuildingToPriorityList(buildings.PortalCoolingTower);
-        BuildingManager.addBuildingToPriorityList(buildings.PortalBireme);
-        BuildingManager.addBuildingToPriorityList(buildings.PortalTransport);
-
         BuildingManager.addBuildingToPriorityList(buildings.PortalSpireMission);
         BuildingManager.addBuildingToPriorityList(buildings.PortalPurifier);
         BuildingManager.addBuildingToPriorityList(buildings.PortalMechBay);
@@ -4984,11 +4978,16 @@
         BuildingManager.addBuildingToPriorityList(buildings.PortalSpireSurvey);
         BuildingManager.addBuildingToPriorityList(buildings.PortalWaygate);
 
+        BuildingManager.addBuildingToPriorityList(buildings.PortalLakeMission);
+        BuildingManager.addBuildingToPriorityList(buildings.PortalCoolingTower);
+        BuildingManager.addBuildingToPriorityList(buildings.PortalHarbour);
+        BuildingManager.addBuildingToPriorityList(buildings.PortalBireme);
+        BuildingManager.addBuildingToPriorityList(buildings.PortalTransport);
+
         BuildingManager.addBuildingToPriorityList(buildings.StargateDepot);
         BuildingManager.addBuildingToPriorityList(buildings.DwarfEleriumContainer);
 
         BuildingManager.addBuildingToPriorityList(buildings.NeutronMission);
-        BuildingManager.addBuildingToPriorityList(buildings.NeutronCitadel);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronStellarForge);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronMiner);
 
@@ -5000,31 +4999,16 @@
         BuildingManager.addBuildingToPriorityList(buildings.Sawmill);
         BuildingManager.addBuildingToPriorityList(buildings.GasMining);
         BuildingManager.addBuildingToPriorityList(buildings.GasMoonOilExtractor);
+        BuildingManager.addBuildingToPriorityList(buildings.NeutronCitadel);
         BuildingManager.addBuildingToPriorityList(buildings.Mine);
         BuildingManager.addBuildingToPriorityList(buildings.CoalMine);
 
-        // AutoBuild disabled by default for buildings consuming Soul Gems
+        // AutoBuild disabled by default for early(ish) buildings consuming Soul Gems
         buildings.RedVrCenter.autoBuildEnabled = false;
         buildings.NeutronCitadel.autoBuildEnabled = false;
         buildings.PortalWarDroid.autoBuildEnabled = false;
         buildings.PortalPredatorDrone.autoBuildEnabled = false;
         buildings.PortalRepairDroid.autoBuildEnabled = false;
-        buildings.Dreadnought.autoBuildEnabled = false;
-        buildings.CruiserShip.autoBuildEnabled = false;
-        buildings.FrigateShip.autoBuildEnabled = false;
-        buildings.BologniumShip.autoBuildEnabled = false;
-        buildings.CorvetteShip.autoBuildEnabled = false;
-        buildings.ScoutShip.autoBuildEnabled = false;
-        buildings.Alien2ArmedMiner.autoBuildEnabled = false;
-        buildings.PortalVault.autoBuildEnabled = false;
-        buildings.PortalHellForge.autoBuildEnabled = false;
-        buildings.PortalBireme.autoBuildEnabled = false;
-        buildings.PortalTransport.autoBuildEnabled = false;
-
-        // Same for Scarletite
-        buildings.PortalAncientPillars.autoBuildEnabled = false;
-        buildings.PortalEastTower.autoBuildEnabled = false;
-        buildings.PortalWestTower.autoBuildEnabled = false;
 
         // And Blood Stone
         buildings.PortalWaygate.autoBuildEnabled = false;
@@ -5080,16 +5064,16 @@
         Object.assign(resources.Plywood, {autoCraftEnabled: true, weighting: 1, preserve: 0});
         Object.assign(resources.Brick, {autoCraftEnabled: true, weighting: 1, preserve: 0});
         Object.assign(resources.Wrought_Iron, {autoCraftEnabled: true, weighting: 1, preserve: 0});
-        Object.assign(resources.Sheet_Metal, {autoCraftEnabled: true, weighting: 3, preserve: 0});
-        Object.assign(resources.Mythril, {autoCraftEnabled: true, weighting: 10, preserve: 0.1});
-        Object.assign(resources.Aerogel, {autoCraftEnabled: true, weighting: 10, preserve: 0});
+        Object.assign(resources.Sheet_Metal, {autoCraftEnabled: true, weighting: 2, preserve: 0});
+        Object.assign(resources.Mythril, {autoCraftEnabled: true, weighting: 3, preserve: 0.1});
+        Object.assign(resources.Aerogel, {autoCraftEnabled: true, weighting: 3, preserve: 0});
         Object.assign(resources.Nanoweave, {autoCraftEnabled: true, weighting: 10, preserve: 0});
-        Object.assign(resources.Scarletite, {autoCraftEnabled: true, weighting: 10, preserve: 0});
+        Object.assign(resources.Scarletite, {autoCraftEnabled: true, weighting: 1, preserve: 0});
 
-        Object.assign(DroidManager.Productions.Adamantite, {priority: 3, weighting: 1});
-        Object.assign(DroidManager.Productions.Aluminium, {priority: 2, weighting: 1});
-        Object.assign(DroidManager.Productions.Uranium, {priority: 1, weighting: 1});
-        Object.assign(DroidManager.Productions.Coal, {priority: 1, weighting: 1});
+        Object.assign(DroidManager.Productions.Adamantite, {priority: 1, weighting: 10});
+        Object.assign(DroidManager.Productions.Aluminium, {priority: 1, weighting: 1});
+        Object.assign(DroidManager.Productions.Uranium, {priority: -1, weighting: 10});
+        Object.assign(DroidManager.Productions.Coal, {priority: -1, weighting: 10});
 
         Object.values(RitualManager.Productions).forEach(spell => spell.weighting = 1);
     }
@@ -7823,7 +7807,7 @@
                         let resource = thisRequirement.resource;
 
                         // Ignore locked and capped resources
-                        if (!resource.isUnlocked() || resource.storageRatio > 0.98){
+                        if (!resource.isUnlocked() || resource.storageRatio >= 1){
                             continue;
                         }
 
@@ -8168,7 +8152,7 @@
                 maxStateOn = Math.max(maxStateOn, currentStateOn - 1);
             }
 
-            maxStateOn = Math.floor(maxStateOn);
+            maxStateOn = Math.max(0, Math.floor(maxStateOn));
 
             // Now when we know how many buildings we need - let's take resources
             for (let k = 0; k < building.consumption.length; k++) {
@@ -9423,17 +9407,15 @@
             setTimeout(()=> window.location.reload(), 5000);
         }
 
-        updateScriptData();
+        updateScriptData(); // Sync exposed data with script variables
 
-        BuildingManager.updateResourceRequirements();
-        BuildingManager.updateWeighting();
-        ProjectManager.updateResourceRequirements();
-        ProjectManager.updateWeighting();
-
-        // This three function depends on exact call order; probably can use some refactoring
-        calculateRequiredStorages(); // Reset and populate res.storageRequired
-        updatePriorityTargets();  // Reset and populate queuedTargets and triggerTargets, increases res.storageRequired
-        prioritizeDemandedResources(); // Reset and populate res.requestedQuantity, uses queuedTargets and triggerTargets
+        BuildingManager.updateResourceRequirements(); // Set obj.resourceRequirements
+        ProjectManager.updateResourceRequirements(); // Set obj.resourceRequirements
+        calculateRequiredStorages(); // Set res.storageRequired, uses obj.resourceRequirements
+        updatePriorityTargets();  // Set queuedTargets and triggerTargets, modifies res.storageRequired
+        prioritizeDemandedResources(); // Set res.requestedQuantity, uses queuedTargets and triggerTargets
+        BuildingManager.updateWeighting(); // Set obj.weighting, uses queuedTargets
+        ProjectManager.updateWeighting(); // Set obj.weighting, uses queuedTargets
 
         state.moneyIncomes.push(resources.Money.rateOfChange);
         state.moneyIncomes.shift();
@@ -12750,22 +12732,22 @@
             createSettingToggle(scriptNode, 'autoMech', 'Builds most effective large mechs for current spire floor. Least effective will be scrapped to make room for new ones.', startMechObserver, stopMechObserver);
             createSettingToggle(scriptNode, 'autoFleet', 'Manages Andromeda fleet to supress piracy');
             createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
-            createSettingToggle(scriptNode, 'autoCraft', 'Craft when a specified crafting ratio is met. This changes throughout the game - lower in the beginning and rising as the game progresses.', createCraftToggles, removeCraftToggles);
-            createSettingToggle(scriptNode, 'autoBuild', 'Builds city and space building when it can an production allows (eg. Won\'t build a Fission Reactor if you don\'t have enough uranium production).', createBuildingToggles, removeBuildingToggles);
-            createSettingToggle(scriptNode, 'autoPower', 'Manages power based on a priority order of buildings. Starts with city based building then space based.');
-            createSettingToggle(scriptNode, 'autoStorage', 'Assigns crates and containers to resources needed for buildings enabled for auto build, queued buildings, and enabled projects');
+            createSettingToggle(scriptNode, 'autoCraft', 'Automatically produce craftable resources, thresholds when it happens depends on current demands and stocks.', createCraftToggles, removeCraftToggles);
+            createSettingToggle(scriptNode, 'autoBuild', 'Construct buildings based on their weightings(user configured), and various rules(e.g. it won\'t build building which have no support to run)', createBuildingToggles, removeBuildingToggles);
+            createSettingToggle(scriptNode, 'autoPower', 'Manages power based on a priority order of buildings. Also disables currently useless buildings to save up resources.');
+            createSettingToggle(scriptNode, 'autoStorage', 'Assigns crates and containers to resources needed for buildings enabled for Auto Build, queued buildings, researches, and enabled projects');
             createSettingToggle(scriptNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes.', createMarketToggles, removeMarketToggles);
             createSettingToggle(scriptNode, 'autoGalaxyMarket', 'Manages galaxy trade routes');
-            createSettingToggle(scriptNode, 'autoResearch', 'Performs research when minimum requirements are met. ');
+            createSettingToggle(scriptNode, 'autoResearch', 'Performs research when minimum requirements are met.');
             createSettingToggle(scriptNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(scriptNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
-            createSettingToggle(scriptNode, 'autoCraftsmen', 'Enable this and autoJobs will also manage craftsmen.');
+            createSettingToggle(scriptNode, 'autoCraftsmen', 'With this option autoJobs will also manage craftsmens.');
             createSettingToggle(scriptNode, 'autoPylon', 'Manages pylon rituals');
             createSettingToggle(scriptNode, 'autoQuarry', 'Manages rock quarry stone to chrysotile ratio for smoldering races');
-            createSettingToggle(scriptNode, 'autoSmelter', 'Manages smelter output at different stages at the game.');
-            createSettingToggle(scriptNode, 'autoFactory', 'Manages factory production based on power and consumption. Produces alloys as a priority until nano-tubes then produces those as a priority.');
+            createSettingToggle(scriptNode, 'autoSmelter', 'Manages smelter fuel and production.');
+            createSettingToggle(scriptNode, 'autoFactory', 'Manages factory production.');
             createSettingToggle(scriptNode, 'autoMiningDroid', 'Manages mining droid production.');
-            createSettingToggle(scriptNode, 'autoGraphenePlant', 'Uses what fuel it can to fuel the graphene plant. Not currently user configurable.');
+            createSettingToggle(scriptNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
             createSettingToggle(scriptNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.');
             createSettingToggle(scriptNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings.');
 
