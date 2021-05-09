@@ -4546,6 +4546,8 @@
         settings.prestigeWhiteholeEjectExcess = false;
         settings.prestigeWhiteholeDecayRate = 0.2;
         settings.prestigeWhiteholeEjectAllCount = 100;
+        settings.prestigeAscensionSkipCustom = false;
+        settings.prestigeAscensionPillar = true;
         settings.prestigeDemonicFloor = 100;
         settings.prestigeDemonicBomb = false;
     }
@@ -5386,6 +5388,8 @@
         addSetting("prestigeWhiteholeEjectExcess", false);
         addSetting("prestigeWhiteholeDecayRate", 0.2);
         addSetting("prestigeWhiteholeEjectAllCount", 100);
+        addSetting("prestigeAscensionSkipCustom", false);
+        addSetting("prestigeAscensionPillar", true);
         addSetting("prestigeDemonicFloor", 100);
         addSetting("prestigeDemonicBomb", false);
 
@@ -6176,7 +6180,7 @@
 
         // Check if we want and can unify, unless we're already about to occupy something
         if (requiredTactic !== 4 && subdued >= 2 && haveTech("unify")){
-            if (settings.foreignOccupyLast && getAdvantage(bestAttackRating, 4, attackIndex) >= settings.foreignMinAdvantage) {
+            if (settings.foreignOccupyLast && getAdvantage(bestAttackRating, 4, attackIndex) > 0) {
                 // Occupy last force
                 requiredTactic = 4;
             }
@@ -7431,7 +7435,10 @@
                 }
                 return;
             case 'ascension':
-                // TODO: It'll need more options before allowing script to press reset. Infusing pillars before reset, and something for custom race.
+                if (isAscensionPrestigeAvailable()) {
+                    state.goal = "Reset";
+                    buildings.SiriusAscend.click();
+                }
                 return;
             case 'demonic':
                 if (isDemonicPrestigeAvailable()) {
@@ -7452,6 +7459,10 @@
 
     function isWhiteholePrestigeAvailable() {
         return getBlackholeMass() >= settings.prestigeWhiteholeMinMass && (techIds["tech-exotic_infusion"].isUnlocked() || techIds["tech-infusion_check"].isUnlocked() || techIds["tech-infusion_confirm"].isUnlocked());
+    }
+
+    function isAscensionPrestigeAvailable() {
+        return settings.prestigeAscensionSkipCustom && buildings.SiriusAscend.isUnlocked() && (game.global.race.universe === 'micro' || (settings.prestigeAscensionPillar && game.global.pillars[game.global.race.species] >= game.alevel()));
     }
 
     function isDemonicPrestigeAvailable() {
@@ -9590,6 +9601,16 @@
     }
 
     function automate() {
+        if (state.goal === "GameOverMan") { return; }
+
+        // Game doesn't expose anything during custom creation, let's check it separately
+        let createCustom = document.querySelector("#celestialLab .create button");
+        if (createCustom && settings.prestigeType === "ascension" && settings.prestigeAscensionSkipCustom) {
+            state.goal = "GameOverMan";
+            createCustom.click();
+            return;
+        }
+
         // Exposed global it's a deepcopy of real game state, and it's not guaranteed to be actual
         // So, to ensure we won't process same state of game twice - we're storing global, and will wait for *new* one
         // Game ticks faster than script, so normally it's not an issue. But maybe game will be on pause, or debug mode was disabled, or lag badly - better be sure
@@ -9609,8 +9630,6 @@
         // The user has turned off the master toggle. Stop taking any actions on behalf of the player.
         // We've still updated the UI etc. above; just not performing any actions.
         if (!settings.masterScriptToggle) { return; }
-
-        if (state.goal === "GameOverMan"){ return; }
 
         if (state.goal === "Evolution") {
             if (settings.autoEvolution) {
@@ -9821,6 +9840,7 @@
               height: 100%; /* Full height */
               background-color: rgb(0,0,0); /* Fallback color */
               background-color: rgba(10,10,10,.86); /* Blackish w/ opacity */
+              overflow-y: auto; /* Allow scrollbar */
             }
 
             /* Modal Content/Box */
@@ -9835,7 +9855,7 @@
                 padding: 0px;
                 //width: 80%;
                 width: 900px;
-                max-height: 90%;
+                //max-height: 90%;
                 border-radius: .5rem;
                 text-align: center;
             }
@@ -10291,6 +10311,8 @@
                 confirmationText = "Dial It To 11 is unlocked. You may prestige immediately. Are you sure you want to toggle this prestige?";
             } else if (this.value === "whitehole" && isWhiteholePrestigeAvailable()) {
                 confirmationText = "Required mass is reached, and exotic infusion is unlocked. You may prestige immediately. Are you sure you want to toggle this prestige?";
+            } else if (this.value === "ascension" && isAscensionPrestigeAvailable()) {
+                confirmationText = "Ascension machine is built and powered. Custom race won't be changed. You may prestige immediately. Are you sure you want to toggle this prestige?";
             } else if (this.value === "demonic" && isDemonicPrestigeAvailable()) {
                 confirmationText = "Required floor is reached, and demon lord is already dead. You may prestige immediately. Are you sure you want to toggle this prestige?";
             }
@@ -10329,6 +10351,11 @@
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until 'Eject everything' option is activated.");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate, only useful during Decay Challenge");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
+
+        // Ascension
+        addStandardSectionHeader1(currentNode, "Ascension");
+        addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeAscensionSkipCustom", "Skip Custom Race", "Perform reset without making any changes to custom. This option is required, script won't ascend automatically without it enabled.");
+        addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeAscensionPillar", "Wait for Pillar", "Wait for Pillar before ascending, unless it was done earlier");
 
         // Demonic Infusion
         addStandardSectionHeader1(currentNode, "Demonic Infusion");
