@@ -4535,6 +4535,7 @@
         settings.prestigeMADIgnoreArpa = true;
         settings.prestigeMADWait = true;
         settings.prestigeMADPopulation = 1;
+        settings.prestigeWaitAT = true;
         settings.prestigeBioseedConstruct = true;
         settings.prestigeEnabledBarracks = 100;
         settings.prestigeBioseedProbes = 3;
@@ -5374,6 +5375,7 @@
         addSetting("prestigeMADIgnoreArpa", true);
         addSetting("prestigeMADWait", true);
         addSetting("prestigeMADPopulation", 1);
+        addSetting("prestigeWaitAT", true);
         addSetting("prestigeBioseedConstruct", true);
         addSetting("prestigeEnabledBarracks", 100);
         addSetting("prestigeBioseedProbes", 3);
@@ -6122,8 +6124,12 @@
         if (m.isMercenaryUnlocked()) {
             let mercenaryCost = m.getMercenaryCost();
             let mercenariesHired = 0;
-            while (m.currentSoldiers < m.maxSoldiers - settings.foreignHireMercDeadSoldiers && resources.Money.spareQuantity >= mercenaryCost && ((resources.Money.currentQuantity - mercenaryCost > resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100) || (mercenaryCost < state.moneyMedian * settings.foreignHireMercCostLowerThanIncome))) {
-                m.hireMercenary();
+            let mercenaryMax = m.maxSoldiers - settings.foreignHireMercDeadSoldiers;
+            let minMoney = Math.max(resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100, (settings.storageAssignExtra ? resources.Money.storageRequired / 1.03 : resources.Money.storageRequired));
+            let maxCost = state.moneyMedian * settings.foreignHireMercCostLowerThanIncome;
+            while (m.currentSoldiers < mercenaryMax && resources.Money.currentQuantity >= mercenaryCost &&
+                  (resources.Money.currentQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
+                m.hireMercenary()) {
                 mercenariesHired++;
                 mercenaryCost = m.getMercenaryCost();
             }
@@ -7373,6 +7379,9 @@
     }
 
     function autoPrestige() {
+        if (settings.prestigeWaitAT && game.global.settings.at > 0) {
+            return;
+        }
         switch (settings.prestigeType) {
             case 'mad':
                 let madVue = getVueById("mad");
@@ -7446,7 +7455,7 @@
     }
 
     function isDemonicPrestigeAvailable() {
-        return buildings.PortalSpire.count > settings.prestigeDemonicFloor && resources.Demonic_Essence.currentQuantity > 0 && techIds["tech-demonic_infusion"].isUnlocked();
+        return buildings.PortalSpire.count > settings.prestigeDemonicFloor && haveTech("waygate", 3) && techIds["tech-demonic_infusion"].isUnlocked();
     }
 
     function getBlackholeMass() {
@@ -8205,21 +8214,25 @@
         if (settings.buildingManageSpire && resources.Spire_Support.rateOfChange > 0) {
             let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             let puri = buildings.PortalPurifier;
+            let mech = buildings.PortalMechBay;
             let port = buildings.PortalPort;
             let camp = buildings.PortalBaseCamp;
-            let mech = buildings.PortalMechBay;
-            let nextPuriCost = settings.autoBuild && puri.autoBuildEnabled && puri.count < puri.autoMax ? resourceCost(puri, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let nextMechCost = settings.autoBuild && mech.autoBuildEnabled && mech.count < mech.autoMax ? resourceCost(mech, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let puriBuildable = settings.autoBuild && puri.autoBuildEnabled && puri.count < puri.autoMax && resources.Money.maxQuantity >= resourceCost(puri, resources.Money);
+            let mechBuildable = settings.autoBuild && mech.autoBuildEnabled && mech.count < mech.autoMax && resources.Money.maxQuantity >= resourceCost(mech, resources.Money);
             let portBuildable = settings.autoBuild && port.autoBuildEnabled && port.count < port.autoMax && resources.Money.maxQuantity >= resourceCost(port, resources.Money);
             let campBuildable = settings.autoBuild && camp.autoBuildEnabled && camp.count < camp.autoMax && resources.Money.maxQuantity >= resourceCost(camp, resources.Money);
+            let nextPuriCost = puriBuildable && mechBuildable ? resourceCost(puri, resources.Supply) : Number.MAX_SAFE_INTEGER; // We don't need purifiers if mech bay already maxed
+            let nextMechCost = mechBuildable ? resourceCost(mech, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let maxPorts = portBuildable ? port.autoMax : port.count;
+            let maxCamps = campBuildable ? camp.autoMax : camp.count;
 
-            let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, port.count, portBuildable, camp.count, campBuildable);
+            let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             puri.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${puri.extraDescription}`;
 
             let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
 
             for (let targetMech = Math.min(mech.count, spireSupport); targetMech >= 0; targetMech--) {
-                let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, port.count, portBuildable, camp.count, campBuildable);
+                let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
                 if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost || targetPort > port.count || targetCamp > camp.count) {
                     mech.tryAdjustState(targetMech - mech.stateOnCount);
                     port.tryAdjustState(targetPort - port.stateOnCount);
@@ -8243,21 +8256,18 @@
         }
     }
 
-    function getBestSupplyRatio(support, currentPorts, portBuildable, currentCamps, campBuildable) {
+    function getBestSupplyRatio(support, maxPorts, maxCamps) {
         let bestSupplies = 0;
         let bestPort = support;
         let bestBaseCamp = 0;
         for (let i = 0; i < support; i++) {
-            let checkPort = portBuildable ? support - i : Math.min(support - i, currentPorts);
-            let checkCamp = campBuildable ? i : Math.min(i, currentCamps);
-
-            let maxSupplies = checkPort * (1 + checkCamp * 0.4);
+            let maxSupplies = Math.min(support - i, maxPorts) * (1 + Math.min(i, maxCamps) * 0.4);
             if (maxSupplies <= bestSupplies) {
                 break;
             }
             bestSupplies = maxSupplies;
-            bestPort = checkPort;
-            bestBaseCamp = checkCamp;
+            bestPort = Math.min(support - i, maxPorts);
+            bestBaseCamp = Math.min(i, maxCamps);
         }
         return [bestSupplies * 10000 + 100, bestPort, bestBaseCamp];
     }
@@ -10296,6 +10306,7 @@
             settings.prestigeType = this.value;
             updateSettingsFromState();
         });
+        addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeWaitAT", "Use all Accelerated Time", "Delay reset until all accelerated time will be used");
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "prestigeBioseedConstruct", "Ignore useless buildings", "Space Dock, Bioseeder Ship and Probes will be constructed only when Bioseed prestige enabled. World Collider won't be constructed during Bioseed. Jump Ship won't be constructed during Whitehole. Stellar Engine won't be constucted during Vacuum Collapse.");
         addStandardSectionSettingsNumber2(secondaryPrefix, currentNode, "prestigeEnabledBarracks", "Barracks after unification", "Percent of barracks to keep enabled after unification, disabling some of them can reduce stress. All barracks will be enabled back when Bioseeder Ship will be at 90%, or after building World Collider");
 
