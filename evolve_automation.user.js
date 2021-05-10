@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.50
+// @version      3.3.1.51
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2283,7 +2283,7 @@
           () => "Need more knowledge",
           () => settings.buildingWeightingNeedfulKnowledge
       ],[
-          () => buildings.BlackholeMassEjector.isUnlocked(),
+          () => buildings.BlackholeMassEjector.count > 0,
           (building) => building === buildings.BlackholeMassEjector && building.count * 1000 - game.global.interstellar.mass_ejector.total > 100,
           () => "Still have some unused ejectors",
           () => settings.buildingWeightingUnusedEjectors
