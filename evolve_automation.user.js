@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.51
+// @version      3.3.1.52
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -828,7 +828,6 @@
                 return false
             }
 
-            //this.updateResourceRequirements();
             this.resourceRequirements.forEach(requirement =>
                 requirement.resource.currentQuantity -= requirement.quantity
             );
@@ -1126,7 +1125,6 @@
                 amount = Math.floor(maxAffordable);
             }
 
-            //this.updateResourceRequirements();
             this.resourceRequirements.forEach(requirement =>
                 requirement.resource.currentQuantity -= requirement.quantity * amount
             );
@@ -1189,7 +1187,6 @@
                 return false
             }
 
-            //this.updateResourceRequirements();
             this.resourceRequirements.forEach(requirement =>
                 requirement.resource.currentQuantity -= requirement.quantity
             );
@@ -2019,6 +2016,16 @@
           (building) => !building.isUnlocked(),
           () => "Locked",
           () => 0 // Should always be on top, processing locked building may lead to issues
+      ],[
+          () => true,
+          (building) => state.queuedTargets.includes(building),
+          () => "Queued building, processing...",
+          () => 0
+      ],[
+          () => true,
+          (building) => state.triggerTargets.includes(building),
+          () => "Active trigger, processing...",
+          () => 0
       ],[
           () => true,
           (building) => !building.autoBuildEnabled,
@@ -3930,8 +3937,12 @@
         priorityList: [],
         statePriorityList: [],
 
-        updateResourceRequirements() {
-            this.priorityList.forEach(building => building.updateResourceRequirements());
+        updateBuildings() {
+            for (let i = 0; i < this.priorityList.length; i++){
+                let building = this.priorityList[i];
+                building.updateResourceRequirements();
+                building.extraDescription = "";
+            }
         },
 
         updateWeighting() {
@@ -3941,20 +3952,6 @@
             // Iterate over buildings
             for (let i = 0; i < this.priorityList.length; i++){
                 let building = this.priorityList[i];
-
-                if (state.queuedTargets.includes(building)) {
-                    building.weighting = 0;
-                    building.extraDescription = "Queued building, processing...<br>";
-                    continue;
-                }
-                if (state.triggerTargets.includes(building)) {
-                    building.weighting = 0;
-                    building.extraDescription = "Active trigger, processing...<br>";
-                    continue;
-                }
-
-                // Reset old weighting and note
-                building.extraDescription = "";
                 building.weighting = building._weighting;
 
                 // Apply weighting rules
@@ -3972,7 +3969,9 @@
                       }
                     }
                 }
-                building.extraDescription = "AutoBuild weighting: " + getNiceNumber(building.weighting) + "<br>" + building.extraDescription;
+                if (building.weighting > 0) {
+                    building.extraDescription = "AutoBuild weighting: " + getNiceNumber(building.weighting) + "<br>" + building.extraDescription;
+                }
             }
         },
 
@@ -4004,54 +4003,51 @@
     var ProjectManager = {
         priorityList: [],
 
-        updateResourceRequirements() {
-            this.priorityList.forEach(project => project.updateResourceRequirements());
+        updateProjects() {
+            for (let i = 0; i < this.priorityList.length; i++){
+                let project = this.priorityList[i];
+                project.updateResourceRequirements();
+                project.extraDescription = "";
+            }
         },
 
         updateWeighting() {
             // Iterate over projects
             for (let i = 0; i < this.priorityList.length; i++){
                 let project = this.priorityList[i];
+                project.weighting = project._weighting;
 
                 if (!project.isUnlocked()) {
                     project.weighting = 0;
                     project.extraDescription = "Locked<br>";
-                    continue;
                 }
-
+                if (!project.autoBuildEnabled || !settings.autoARPA) {
+                    project.weighting = 0;
+                    project.extraDescription = "AutoBuild disabled<br>";
+                }
+                if (project.count >= project.autoMax) {
+                    project.weighting = 0;
+                    project.extraDescription = "Maximum amount reached<br>";
+                }
+                if (settings.prestigeMADIgnoreArpa && !haveTech("mad") && !game.global.race['cataclysm']) {
+                    project.weighting = 0;
+                    project.extraDescription = "Projects ignored PreMAD<br>";
+                }
                 if (state.queuedTargets.includes(project)) {
                     project.weighting = 0;
                     project.extraDescription = "Queued project, processing...<br>";
-                    continue;
                 }
                 if (state.triggerTargets.includes(project)) {
                     project.weighting = 0;
                     project.extraDescription = "Active trigger, processing...<br>";
-                    continue;
-                }
-
-                project.weighting = project._weighting;
-                project.extraDescription = "";
-
-                if (!project.autoBuildEnabled || !settings.autoARPA) {
-                    project.weighting = 0;
-                    project.extraDescription += "AutoBuild disabled<br>";
-                }
-
-                if (project.count >= project.autoMax) {
-                    project.weighting = 0;
-                    project.extraDescription += "Maximum amount reached<br>";
-                }
-
-                if (settings.prestigeMADIgnoreArpa && !haveTech("mad") && !game.global.race['cataclysm']) {
-                    project.weighting = 0;
-                    project.extraDescription += "Projects ignored PreMAD<br>";
                 }
 
                 if (settings.arpaScaleWeighting) {
                     project.weighting /= 1 - (0.01 * project.progress);
                 }
-                project.extraDescription = "AutoARPA weighting: " + getNiceNumber(project.weighting) + " (1%)<br>" + project.extraDescription;
+                if (project.weighting > 0) {
+                    project.extraDescription = "AutoARPA weighting: " + getNiceNumber(project.weighting) + " (1%)<br>" + project.extraDescription;
+                }
             }
         },
 
@@ -9431,8 +9427,8 @@
 
         updateScriptData(); // Sync exposed data with script variables
 
-        BuildingManager.updateResourceRequirements(); // Set obj.resourceRequirements
-        ProjectManager.updateResourceRequirements(); // Set obj.resourceRequirements
+        BuildingManager.updateBuildings(); // Set obj.resourceRequirements
+        ProjectManager.updateProjects(); // Set obj.resourceRequirements
         calculateRequiredStorages(); // Set res.storageRequired, uses obj.resourceRequirements
         updatePriorityTargets();  // Set queuedTargets and triggerTargets, modifies res.storageRequired
         prioritizeDemandedResources(); // Set res.requestedQuantity, uses queuedTargets and triggerTargets
