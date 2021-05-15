@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.52
+// @version      3.3.1.53
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -835,9 +835,9 @@
             // Don't log evolution actions and gathering actions
             if (game.global.race.species !== "protoplasm" && !logIgnore.includes(this.id)) {
                 if (this.gameMax < Number.MAX_SAFE_INTEGER && this.count + 1 < this.gameMax) {
-                    GameLog.logSuccess(GameLog.Types.multi_construction, `${this.title} (${this.count + 1}) has been constructed.`);
+                    GameLog.logSuccess(GameLog.Types.multi_construction, poly.loc('build_success', [`${this.title} (${this.count + 1})`]));
                 } else {
-                    GameLog.logSuccess(GameLog.Types.construction, `${this.title} has been constructed.`);
+                    GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]));
                 }
             }
 
@@ -1130,9 +1130,9 @@
             );
 
             if (this.progress + amount < 100) {
-                GameLog.logSuccess(GameLog.Types.arpa, `${this.title} (${this.progress + amount}%) has been constructed.`);
+                GameLog.logSuccess(GameLog.Types.arpa, poly.loc('build_success', [`${this.title} (${this.progress + amount}%)`]));
             } else {
-                GameLog.logSuccess(GameLog.Types.construction, `${this.title} has been constructed.`);
+                GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]));
             }
 
             resetMultiplier();
@@ -1192,7 +1192,7 @@
             );
 
             getVueById(this._vueBinding).action();
-            GameLog.logSuccess(GameLog.Types.research, `${techIds[this.definition.id].title} has been researched.`);
+            GameLog.logSuccess(GameLog.Types.research, poly.loc('research_success', [techIds[this.definition.id].title]));
             return true;
         }
 
@@ -1480,7 +1480,7 @@
         }
 
         isUnlocked() {
-            return game.global.race.hasOwnProperty(this.traitName);
+            return game.global.settings.mtorder.includes(this.traitName);
         }
 
         geneCount() {
@@ -1594,7 +1594,7 @@
         goal: "Standard",
 
         craftableResourceList: [],
-
+        filterRegExp: null,
         evolutionTarget: null,
     };
 
@@ -2044,7 +2044,7 @@
       ],[
           () => settings.autoMech && settings.buildingMechsFirst && buildings.PortalMechBay.count > 0,
           (building) => {
-              if (building === buildings.PortalPurifier || building === buildings.PortalPort || building === buildings.PortalBaseCamp || building === buildings.PortalMechBay) {
+              if (building === buildings.PortalPurifier || building === buildings.PortalPort || building === buildings.PortalBaseCamp || building === buildings.PortalMechBay || building === buildings.PortalWaygate) {
                   let mechBay = game.global.portal.mechbay;
                   let newSize = "";
                   if (settings.mechBuild === "random") {
@@ -3869,7 +3869,7 @@
                 this._assemblyVue.setEquip(mech.equip[i], i);
             }
             this._assemblyVue.build();
-            GameLog.logSuccess(GameLog.Types.mech_build, `${this.mechDesc(mech)} mech has been built.`);
+            GameLog.logSuccess(GameLog.Types.mech_build, `${this.mechDesc(mech)} mech has been assembled.`);
         },
 
         scrapMech(mech) {
@@ -5083,10 +5083,11 @@
     }
 
     function resetLoggingSettings() {
-        settings["logEnabled"] = true;
-
+        settings.logEnabled = true;
         Object.values(GameLog.Types).forEach(log => settings[log.settingKey] = true);
         settings[GameLog.Types.arpa.settingKey] = false;
+
+        settings.logFilter = "";
     }
 
     function updateStateFromSettings() {
@@ -5361,6 +5362,7 @@
         addSetting("logEnabled", true);
         addSetting(GameLog.Types.arpa.settingKey, false);
         Object.values(GameLog.Types).forEach(log => addSetting(log.settingKey, true));
+        addSetting("logFilter", "");
 
         addSetting("autoPylon", false);
         addSetting("autoQuarry", false);
@@ -8223,10 +8225,12 @@
             let mech = buildings.PortalMechBay;
             let port = buildings.PortalPort;
             let camp = buildings.PortalBaseCamp;
-            let puriBuildable = settings.autoBuild && puri.autoBuildEnabled && puri.count < puri.autoMax && resources.Money.maxQuantity >= resourceCost(puri, resources.Money);
-            let mechBuildable = settings.autoBuild && mech.autoBuildEnabled && mech.count < mech.autoMax && resources.Money.maxQuantity >= resourceCost(mech, resources.Money);
-            let portBuildable = settings.autoBuild && port.autoBuildEnabled && port.count < port.autoMax && resources.Money.maxQuantity >= resourceCost(port, resources.Money);
-            let campBuildable = settings.autoBuild && camp.autoBuildEnabled && camp.count < camp.autoMax && resources.Money.maxQuantity >= resourceCost(camp, resources.Money);
+            // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
+            let buildAllowed = settings.autoBuild && (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.PortalSpire.count) / mech.count >= 1 || resources.Supply.storageRatio >= 1);
+            let puriBuildable = buildAllowed && puri.autoBuildEnabled && puri.count < puri.autoMax && resources.Money.maxQuantity >= resourceCost(puri, resources.Money);
+            let mechBuildable = buildAllowed && mech.autoBuildEnabled && mech.count < mech.autoMax && resources.Money.maxQuantity >= resourceCost(mech, resources.Money);
+            let portBuildable = buildAllowed && port.autoBuildEnabled && port.count < port.autoMax && resources.Money.maxQuantity >= resourceCost(port, resources.Money);
+            let campBuildable = buildAllowed && camp.autoBuildEnabled && camp.count < camp.autoMax && resources.Money.maxQuantity >= resourceCost(camp, resources.Money);
             let nextPuriCost = puriBuildable && mechBuildable ? resourceCost(puri, resources.Supply) : Number.MAX_SAFE_INTEGER; // We don't need purifiers if mech bay already maxed
             let nextMechCost = mechBuildable ? resourceCost(mech, resources.Supply) : Number.MAX_SAFE_INTEGER;
             let maxPorts = portBuildable ? port.autoMax : port.count;
@@ -8548,10 +8552,10 @@
         });
 
         traitList.forEach(trait => {
-            if (trait.weighting / totalWeighting >= trait.geneCost() / totalGeneCost) {
-                if (resources.Genes.currentQuantity > trait.geneCost()) {
-                    m.buyTrait(trait.traitName);
-                }
+            let traitCost = trait.geneCost();
+            if (trait.weighting / totalWeighting >= traitCost / totalGeneCost && resources.Genes.currentQuantity >= traitCost) {
+                m.buyTrait(trait.traitName);
+                resources.Genes.currentQuantity -= traitCost;
             }
         });
     }
@@ -9560,6 +9564,44 @@
                 }
             }
         }))).observe(document.querySelector("body"), {childList: true});
+
+        // Log filtering
+        buildFilterRegExp();
+        new MutationObserver(filterLog).observe(document.getElementById("msgQueue"), {childList: true});
+    }
+
+    function buildFilterRegExp() {
+        let regexps = [];
+        let validIds = [];
+        let strings = settings.logFilter.split(/[^a-z_]/g).filter(Boolean);
+        for (let i = 0; i < strings.length; i++) {
+            let id = strings[i];
+            // Loot message built from multiple strings without tokens, let's fake one for regexp below
+            let message = game.loc(id) + (id === "civics_garrison_gained" ? "%0" : "");
+            if (message === id) {
+                continue;
+            }
+            regexps.push(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%\d/g, ".*"));
+            validIds.push(id);
+        }
+        if (regexps.length > 0) {
+            state.filterRegExp = new RegExp("^" + regexps.join("|") + "$");
+            settings.logFilter = validIds.join(", ");
+        } else {
+            state.filterRegExp = null;
+            settings.logFilter = "";
+        }
+    }
+
+    function filterLog(mutations) {
+        if (!settings.masterScriptToggle) {
+            return;
+        }
+        mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+            if (state.filterRegExp?.test(node.innerText)) {
+                node.remove();
+            }
+        }));
     }
 
     function addTooltip(mutations) {
@@ -9756,9 +9798,10 @@
             return;
         }
 
-        // poly.adjustCosts and poly.checkAffordable it's wrappers for firefox, with code to bypass script sandbox. If we're not on firefox - ignore it, and call real function instead
-        if (typeof unsafeWindow === 'undefined') {
+        // Wrappers for firefox, with code to bypass script sandbox. If we're not on firefox - don't use it, call real functions instead
+        if (typeof unsafeWindow !== "object" || typeof cloneInto !== "function") {
             poly.adjustCosts = game.adjustCosts;
+            poly.loc = game.loc;
         }
 
         addScriptStyle();
@@ -12370,7 +12413,7 @@
         let reg = filter.match(/^(.+)(<=|>=|===|==|<|>|!==|!=)(.+)$/);
         if (reg?.length === 4) {
             let buildingValue = null;
-            switch (reg[1]) {
+            switch (reg[1].trim()) {
                 case "BUILD":
                 case "AUTOBUILD":
                     buildingValue = (b) => b.autoBuildEnabled;
@@ -12392,10 +12435,10 @@
                     buildingValue = (b) => b.powered;
                     break;
                 default: // Cost check, get resource quantity by name
-                    buildingValue = (b) => b.resourceRequirements.find(req => req.resource.title.toUpperCase().indexOf(reg[1]) > -1)?.quantity ?? 0;
+                    buildingValue = (b) => b.resourceRequirements.find(req => req.resource.title.toUpperCase().indexOf(reg[1].trim()) > -1)?.quantity ?? 0;
             }
             let testValue = null;
-            switch (reg[3]) {
+            switch (reg[3].trim()) {
                 case "ON":
                 case "TRUE":
                     testValue = true;
@@ -12405,7 +12448,7 @@
                     testValue = false;
                     break;
                 default:
-                    testValue = getRealNumber(reg[3]);
+                    testValue = getRealNumber(reg[3].trim());
                     break;
             }
             filterChecker = (building) => eval(`${buildingValue(building)} ${reg[2]} ${testValue}`);
@@ -12626,9 +12669,21 @@
         let currentNode = $(`#script_${secondaryPrefix}loggingContent`);
         currentNode.empty().off("*");
 
+        addStandardSectionHeader1(currentNode, "Script Messages");
         addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, "logEnabled", "Enable logging", "Master switch to enable logging of script actions in the game message queue");
-
         Object.values(GameLog.Types).forEach(log => addStandardSectionSettingsToggle2(secondaryPrefix, currentNode, log.settingKey, log.name, `If logging is enabled then logs ${log.name} actions`));
+
+        addStandardSectionHeader1(currentNode, "Game Messages");
+        let stringsUrl = `strings/strings${game.global.settings.locale === "en-US" ? "" : "." + game.global.settings.locale}.json`
+        currentNode.append(`<div><span>List of message IDs to filter, all game messages can be found <a href="${stringsUrl}" target="_blank">here</a>.</span><br><textarea id="script_logFilter" class="textarea" style="margin-top: 4px;">${settings.logFilter}</textarea></div>`);
+
+        // Settings textarea
+        $("#script_logFilter").on('change', function() {
+            settings.logFilter = this.value;
+            buildFilterRegExp();
+            this.value = settings.logFilter;
+            updateSettingsFromState();
+        });
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -13269,16 +13324,12 @@
     }
 
     function getGovName(govIndex) {
-        let govProp = "gov" + govIndex;
-        if (typeof game.global.civic.foreign[govProp]['name'] == "undefined") {
+        let foreign = game.global.civic.foreign["gov" + govIndex];
+        if (!foreign.name) {
             return "foreign power " + (govIndex + 1);
         }
 
-        // Firefox has issues if we use loc(key, variables) directly with variables as the game script won't detect it as an array
-        // Something to do with firefox's sandbox for userscripts?
-        // Anyway, just perform the replacement ourselves
-        let namePart1 = game.loc(`civics_gov${game.global.civic.foreign[govProp].name.s0}`);
-        return namePart1.replace("%0", game.global.civic.foreign[govProp].name.s1) + " (" + (govIndex + 1) + ")";
+        return poly.loc("civics_gov" + foreign.name.s0, [foreign.name.s1]) + ` (${govIndex + 1})`;
     }
 
     function getGovPower(govIndex) {
@@ -13396,6 +13447,7 @@
 
     // Firefox compatibility:
         adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}), wiki),
+        loc: (key, variables) => game.loc(key, cloneInto(variables, unsafeWindow)),
     };
 
     $().ready(mainAutoEvolveScript);
