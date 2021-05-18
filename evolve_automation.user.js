@@ -353,7 +353,7 @@
         }
 
         isUnlocked() {
-            return this.instance?.display;
+            return this.instance?.display ?? false;
         }
 
         isMarketUnlocked() {
@@ -599,14 +599,20 @@
                 return;
             }
 
-            let supportId = game.actions[this._region][this._inRegionId].info.support
-            if (!supportId) {
-                return;
+            if (this.id === "srspc_belt") {
+                let maxStations = settings.autoPower && buildings.BeltSpaceStation.autoStateEnabled ? buildings.BeltSpaceStation.count : buildings.BeltSpaceStation.stateOnCount;
+                let maxWorkers = settings.autoJobs && jobs.SpaceMiner.autoJobEnabled ? state.maxSpaceMiners : jobs.SpaceMiner.count;
+                this.maxQuantity = Math.min(maxStations * 3, maxWorkers);
+            } else {
+                this.maxQuantity = game.global[this._region][this.supportId].s_max;
             }
 
-            this.currentQuantity = game.global[this._region][supportId].support;
-            this.maxQuantity = game.global[this._region][supportId].s_max;
+            this.currentQuantity = game.global[this._region][this.supportId].support;
             this.rateOfChange = this.maxQuantity - this.currentQuantity;
+        }
+
+        get supportId() {
+            return game.actions[this._region][this._inRegionId].info.support;
         }
 
         get storageRatio() {
@@ -618,8 +624,7 @@
         }
 
         isUnlocked() {
-            let containerNode = document.getElementById(this.id);
-            return containerNode !== null && containerNode.style.display !== "none";
+            return game.global[this._region][this.supportId] !== undefined;
         }
     }
 
@@ -772,6 +777,14 @@
             return this.definition.hasOwnProperty("powered") || this.definition.hasOwnProperty("switchable");
         }
 
+        isMission() {
+            return this.definition.hasOwnProperty("grant");
+        }
+
+        isComplete() {
+            return haveTech(this.definition.grant[0], this.definition.grant[1]);
+        }
+
         // export function checkPowerRequirements(c_action) from actions.js
         checkPowerRequirements(def) {
             for (let [tech, value] of Object.entries(this.definition.power_reqs ?? {})) {
@@ -915,8 +928,7 @@
                 }
                 let minSupport = resource == resources.Belt_Support ? 2 : resource == resources.Gateway_Support ? 5 : 1;
 
-                // BeltSpaceStation is special case, as it provide jobs, which provides support, thus we can miss support even having enough buildings, if jobs not filled
-                if (resource.rateOfChange >= minSupport || (this === buildings.BeltSpaceStation && jobs.SpaceMiner.count < jobs.SpaceMiner.max)) {
+                if (resource.rateOfChange >= minSupport) {
                     uselessSupports.push(resource);
                 } else {
                     // If we have something useful - stop here, we care only about buildings with all suppors useless
@@ -939,7 +951,7 @@
                 return false;
             }
 
-            return (this.definition.powered && haveTech("high_tech", 2) && this.checkPowerRequirements()) || this.definition.switchable?.();
+            return (this.definition.powered && haveTech("high_tech", 2) && this.checkPowerRequirements()) || this.definition.switchable?.() || false;
         }
 
         get stateOnCount() {
@@ -1375,7 +1387,7 @@
             if (this.requirementType === "researched" && techIds[this.requirementId].isResearched()) {
                 return true;
             }
-            if (this.requirementType === "built" && buildingIds[this.requirementId].count >= this.requirementCount) {
+            if (this.requirementType === "built" && (buildingIds[this.requirementId].isMission() ? Number(buildingIds[this.requirementId].isComplete()) : buildingIds[this.requirementId].count) >= this.requirementCount) {
                 return true;
             }
             return false;
@@ -1484,15 +1496,15 @@
         }
 
         geneCount() {
-            return game.global.race?.minor?.[this.traitName] ?? 0;
+            return game.global.race.minor[this.traitName] ?? 0;
         }
 
         phageCount() {
-            return game.global.genes?.minor?.[this.traitName] ?? 0;
+            return game.global.genes.minor[this.traitName] ?? 0;
         }
 
         totalCount() {
-            return game.global.race?.[this.traitName] ?? 0;
+            return game.global.race[this.traitName] ?? 0;
         }
 
         geneCost() {
@@ -1581,6 +1593,7 @@
         queuedTargets: [],
         triggerTargets: [],
 
+        maxSpaceMiners: 0,
         globalProductionModifier: 1,
         moneyIncomes: new Array(11).fill(0),
         moneyMedian: 0,
@@ -1784,21 +1797,21 @@
         Pylon: new Action("Pylon", "city", "pylon", ""),
 
         // Space
-        SpaceTestLaunch: new Action("Test Launch", "space", "test_launch", "spc_home", {mission: true}),
+        SpaceTestLaunch: new Action("Test Launch", "space", "test_launch", "spc_home"),
         SpaceSatellite: new Action("Space Satellite", "space", "satellite", "spc_home", {knowledge: true}),
         SpaceGps: new Action("Space Gps", "space", "gps", "spc_home"),
         SpacePropellantDepot: new Action("Space Propellant Depot", "space", "propellant_depot", "spc_home"),
         SpaceNavBeacon: new Action("Space Navigation Beacon", "space", "nav_beacon", "spc_home"),
 
         // Moon
-        MoonMission: new Action("Moon Launch", "space", "moon_mission", "spc_moon", {mission: true}),
+        MoonMission: new Action("Moon Launch", "space", "moon_mission", "spc_moon"),
         MoonBase: new Action("Moon Base", "space", "moon_base", "spc_moon"),
         MoonIridiumMine: new Action("Moon Iridium Mine", "space", "iridium_mine", "spc_moon"),
         MoonHeliumMine: new Action("Moon Helium-3 Mine", "space", "helium_mine", "spc_moon"),
         MoonObservatory: new Action("Moon Observatory", "space", "observatory", "spc_moon", {knowledge: true}),
 
         // Red
-        RedMission: new Action("Red Mission", "space", "red_mission", "spc_red", {mission: true}),
+        RedMission: new Action("Red Mission", "space", "red_mission", "spc_red"),
         RedSpaceport: new Action("Red Spaceport", "space", "spaceport", "spc_red"),
         RedTower: new Action("Red Space Control", "space", "red_tower", "spc_red"),
         RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red", {housing: true}),
@@ -1813,18 +1826,18 @@
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
 
         // Hell
-        HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell", {mission: true}),
+        HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
         HellSpaceCasino: new Action("Hell Space Casino", "space", "spc_casino", "spc_hell"),
         HellSwarmPlant: new Action("Hell Swarm Plant", "space", "swarm_plant", "spc_hell"),
 
         // Sun
-        SunMission: new Action("Sun Mission", "space", "sun_mission", "spc_sun", {mission: true}),
+        SunMission: new Action("Sun Mission", "space", "sun_mission", "spc_sun"),
         SunSwarmControl: new Action("Sun Control Station", "space", "swarm_control", "spc_sun"),
         SunSwarmSatellite: new Action("Sun Swarm Satellite", "space", "swarm_satellite", "spc_sun"),
 
         // Gas
-        GasMission: new Action("Gas Mission", "space", "gas_mission", "spc_gas", {mission: true}),
+        GasMission: new Action("Gas Mission", "space", "gas_mission", "spc_gas"),
         GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas"),
         GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", "spc_gas"),
         GasSpaceDock: new SpaceDock(),
@@ -1834,26 +1847,26 @@
         GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "starDock", "launch_ship", "", "starDock"),
 
         // Gas moon
-        GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon", {mission: true}),
+        GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon"),
         GasMoonOutpost: new Action("Gas Moon Mining Outpost", "space", "outpost", "spc_gas_moon"),
         GasMoonDrone: new Action("Gas Moon Mining Drone", "space", "drone", "spc_gas_moon"),
         GasMoonOilExtractor: new Action("Gas Moon Oil Extractor", "space", "oil_extractor", "spc_gas_moon"),
 
         // Belt
-        BeltMission: new Action("Belt Mission", "space", "belt_mission", "spc_belt", {mission: true}),
+        BeltMission: new Action("Belt Mission", "space", "belt_mission", "spc_belt"),
         BeltSpaceStation: new Action("Belt Space Station", "space", "space_station", "spc_belt"),
         BeltEleriumShip: new Action("Belt Elerium Mining Ship", "space", "elerium_ship", "spc_belt"),
         BeltIridiumShip: new Action("Belt Iridium Mining Ship", "space", "iridium_ship", "spc_belt"),
         BeltIronShip: new Action("Belt Iron Mining Ship", "space", "iron_ship", "spc_belt"),
 
         // Dwarf
-        DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", "spc_dwarf", {mission: true}),
+        DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", "spc_dwarf"),
         DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", "spc_dwarf"),
         DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", "spc_dwarf"),
         DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
         DwarfWorldController: new Action("Dwarf WSC Control", "space", "world_controller", "spc_dwarf"),
 
-        AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha", {mission: true}),
+        AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
         AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
         AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
         AlphaMiningDroid: new Action("Alpha Mining Droid", "interstellar", "mining_droid", "int_alpha"),
@@ -1867,7 +1880,7 @@
         AlphaLuxuryCondo: new Action("Alpha Luxury Condo", "interstellar", "luxury_condo", "int_alpha", {housing: true}),
         AlphaExoticZoo: new Action("Alpha Exotic Zoo", "interstellar", "zoo", "int_alpha"),
 
-        ProximaMission: new Action("Proxima Mission", "interstellar", "proxima_mission", "int_proxima", {mission: true}),
+        ProximaMission: new Action("Proxima Mission", "interstellar", "proxima_mission", "int_proxima"),
         ProximaTransferStation: new Action("Proxima Transfer Station", "interstellar", "xfer_station", "int_proxima"),
         ProximaCargoYard: new Action("Proxima Cargo Yard", "interstellar", "cargo_yard", "int_proxima"),
         ProximaCruiser: new Action("Proxima Patrol Cruiser", "interstellar", "cruiser", "int_proxima", {garrison: true}),
@@ -1875,17 +1888,17 @@
         ProximaDysonSphere: new Action("Proxima Dyson Sphere", "interstellar", "dyson_sphere", "int_proxima"),
         ProximaOrichalcumSphere: new Action("Proxima Orichalcum Sphere", "interstellar", "orichalcum_sphere", "int_proxima"),
 
-        NebulaMission: new Action("Nebula Mission", "interstellar", "nebula_mission", "int_nebula", {mission: true}),
+        NebulaMission: new Action("Nebula Mission", "interstellar", "nebula_mission", "int_nebula"),
         NebulaNexus: new Action("Nebula Nexus", "interstellar", "nexus", "int_nebula"),
         NebulaHarvestor: new Action("Nebula Harvester", "interstellar", "harvester", "int_nebula"),
         NebulaEleriumProspector: new Action("Nebula Elerium Prospector", "interstellar", "elerium_prospector", "int_nebula"),
 
-        NeutronMission: new Action("Neutron Mission", "interstellar", "neutron_mission", "int_neutron", {mission: true}),
+        NeutronMission: new Action("Neutron Mission", "interstellar", "neutron_mission", "int_neutron"),
         NeutronMiner: new Action("Neutron Miner", "interstellar", "neutron_miner", "int_neutron"),
         NeutronCitadel: new Action("Neutron Citadel Station", "interstellar", "citadel", "int_neutron"),
         NeutronStellarForge: new Action("Neutron Stellar Forge", "interstellar", "stellar_forge", "int_neutron"),
 
-        Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole", {mission: true}),
+        Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole"),
         BlackholeFarReach: new Action("Blackhole Farpoint", "interstellar", "far_reach", "int_blackhole", {knowledge: true}),
         BlackholeStellarEngine: new Action("Blackhole Stellar Engine", "interstellar", "stellar_engine", "int_blackhole"),
         BlackholeMassEjector: new Action("Blackhole Mass Ejector", "interstellar", "mass_ejector", "int_blackhole"),
@@ -1895,8 +1908,8 @@
         BlackholeStargate: new Action("Blackhole Stargate", "interstellar", "stargate", "int_blackhole"),
         BlackholeCompletedStargate: new Action("Blackhole Completed Stargate", "interstellar", "s_gate", "int_blackhole"),
 
-        SiriusMission: new Action("Sirius Mission", "interstellar", "sirius_mission", "int_sirius", {mission: true}),
-        SiriusAnalysis: new Action("Sirius B Analysis", "interstellar", "sirius_b", "int_sirius", {mission: true}),
+        SiriusMission: new Action("Sirius Mission", "interstellar", "sirius_mission", "int_sirius"),
+        SiriusAnalysis: new Action("Sirius B Analysis", "interstellar", "sirius_b", "int_sirius"),
         SiriusSpaceElevator: new Action("Sirius Space Elevator", "interstellar", "space_elevator", "int_sirius"),
         SiriusGravityDome: new Action("Sirius Gravity Dome", "interstellar", "gravity_dome", "int_sirius"),
         SiriusAscensionMachine: new Action("Sirius Ascension Machine", "interstellar", "ascension_machine", "int_sirius"),
@@ -1904,7 +1917,7 @@
         SiriusAscend: new Action("Sirius Ascend", "interstellar", "ascend", "int_sirius"),
         SiriusThermalCollector: new Action("Sirius Thermal Collector", "interstellar", "thermal_collector", "int_sirius"),
 
-        GatewayMission: new Action("Gateway Mission", "galaxy", "gateway_mission", "gxy_gateway", {mission: true}),
+        GatewayMission: new Action("Gateway Mission", "galaxy", "gateway_mission", "gxy_gateway"),
         GatewayStarbase: new Action("Gateway Starbase", "galaxy", "starbase", "gxy_gateway", {garrison: true}),
         GatewayShipDock: new Action("Gateway Ship Dock", "galaxy", "ship_dock", "gxy_gateway"),
 
@@ -1920,7 +1933,7 @@
         StargateDepot: new Action("Stargate Depot", "galaxy", "gateway_depot", "gxy_stargate"),
         StargateDefensePlatform: new Action("Stargate Defense Platform", "galaxy", "defense_platform", "gxy_stargate"),
 
-        GorddonMission: new Action("Gorddon Mission", "galaxy", "gorddon_mission", "gxy_gorddon", {mission: true}),
+        GorddonMission: new Action("Gorddon Mission", "galaxy", "gorddon_mission", "gxy_gorddon"),
         GorddonEmbassy: new Action("Gorddon Embassy", "galaxy", "embassy", "gxy_gorddon", {housing: true}),
         GorddonDormitory: new Action("Gorddon Dormitory", "galaxy", "dormitory", "gxy_gorddon", {housing: true}),
         GorddonSymposium: new Action("Gorddon Symposium", "galaxy", "symposium", "gxy_gorddon", {knowledge: true}),
@@ -1931,13 +1944,13 @@
         Alien1VitreloyPlant: new Action("Alien 1 Vitreloy Plant", "galaxy", "vitreloy_plant", "gxy_alien1"),
         Alien1SuperFreighter: new Action("Alien 1 Super Freighter", "galaxy", "super_freighter", "gxy_alien1", {ship: true}),
 
-        Alien2Mission: new Action("Alien 2 Mission", "galaxy", "alien2_mission", "gxy_alien2", {mission: true}),
+        Alien2Mission: new Action("Alien 2 Mission", "galaxy", "alien2_mission", "gxy_alien2"),
         Alien2Foothold: new Action("Alien 2 Foothold", "galaxy", "foothold", "gxy_alien2"),
         Alien2ArmedMiner: new Action("Alien 2 Armed Miner", "galaxy", "armed_miner", "gxy_alien2", {ship: true}),
         Alien2OreProcessor: new Action("Alien 2 Ore Processor", "galaxy", "ore_processor", "gxy_alien2"),
         Alien2Scavenger: new Action("Alien 2 Scavenger", "galaxy", "scavenger", "gxy_alien2", {knowledge: true, ship: true}),
 
-        ChthonianMission: new Action("Chthonian Mission", "galaxy", "chthonian_mission", "gxy_chthonian", {mission: true}),
+        ChthonianMission: new Action("Chthonian Mission", "galaxy", "chthonian_mission", "gxy_chthonian"),
         ChthonianMineLayer: new Action("Chthonian Mine Layer", "galaxy", "minelayer", "gxy_chthonian", {ship: true}),
         ChthonianExcavator: new Action("Chthonian Excavator", "galaxy", "excavator", "gxy_chthonian"),
         ChthonianRaider: new Action("Chthonian Raider", "galaxy", "raider", "gxy_chthonian", {ship: true}),
@@ -1951,13 +1964,13 @@
         PortalSensorDrone: new Action("Portal Sensor Drone", "portal", "sensor_drone", "prtl_badlands"),
         PortalAttractor: new Action("Portal Attractor Beacon", "portal", "attractor", "prtl_badlands"),
 
-        PortalPitMission: new Action("Portal Pit Mission", "portal", "pit_mission", "prtl_pit", {mission: true}),
-        PortalAssaultForge: new Action("Portal Assault Forge", "portal", "assault_forge", "prtl_pit", {mission: true}),
+        PortalPitMission: new Action("Portal Pit Mission", "portal", "pit_mission", "prtl_pit"),
+        PortalAssaultForge: new Action("Portal Assault Forge", "portal", "assault_forge", "prtl_pit"),
         PortalSoulForge: new Action("Portal Soul Forge", "portal", "soul_forge", "prtl_pit"),
         PortalGunEmplacement: new Action("Portal Gun Emplacement", "portal", "gun_emplacement", "prtl_pit"),
         PortalSoulAttractor: new Action("Portal Soul Attractor", "portal", "soul_attractor", "prtl_pit"),
 
-        PortalSurveyRuins: new Action("Portal Survey Ruins", "portal", "ruins_mission", "prtl_ruins", {mission: true}),
+        PortalSurveyRuins: new Action("Portal Survey Ruins", "portal", "ruins_mission", "prtl_ruins"),
         PortalGuardPost: new Action("Portal Guard Post", "portal", "guard_post", "prtl_ruins"),
         PortalVault: new Action("Portal Vault", "portal", "vault", "prtl_ruins"),
         PortalArchaeology: new Action("Portal Archaeology", "portal", "archaeology", "prtl_ruins"),
@@ -1966,26 +1979,26 @@
         PortalInfernoPower: new Action("Portal Inferno Reactor", "portal", "inferno_power", "prtl_ruins"),
         PortalAncientPillars: new Action("Portal Ancient Pillars", "portal", "ancient_pillars", "prtl_ruins"),
 
-        PortalGateInvestigation: new Action("Portal Gate Investigation", "portal", "gate_mission", "prtl_gate", {mission: true}),
+        PortalGateInvestigation: new Action("Portal Gate Investigation", "portal", "gate_mission", "prtl_gate"),
         PortalEastTower: new Action("Portal East Tower", "portal", "east_tower", "prtl_gate"),
         PortalWestTower: new Action("Portal West Tower", "portal", "west_tower", "prtl_gate"),
         PortalGateTurret: new Action("Portal Gate Turret", "portal", "gate_turret", "prtl_gate"),
         PortalInferniteMine: new Action("Portal Infernite Mine", "portal", "infernite_mine", "prtl_gate"),
 
-        PortalLakeMission: new Action("Portal Scout Lake", "portal", "lake_mission", "prtl_lake", {mission: true}),
+        PortalLakeMission: new Action("Portal Scout Lake", "portal", "lake_mission", "prtl_lake"),
         PortalHarbour: new Action("Portal Harbour", "portal", "harbour", "prtl_lake"),
         PortalCoolingTower: new Action("Portal Cooling Tower", "portal", "cooling_tower", "prtl_lake"),
         PortalBireme: new Action("Portal Bireme Warship", "portal", "bireme", "prtl_lake", {ship: true}),
         PortalTransport: new Action("Portal Transport", "portal", "transport", "prtl_lake", {ship: true}),
 
-        PortalSpireMission: new Action("Portal Scout Island", "portal", "spire_mission", "prtl_spire", {mission: true}),
+        PortalSpireMission: new Action("Portal Scout Island", "portal", "spire_mission", "prtl_spire"),
         PortalPurifier: new Action("Portal Purifier", "portal", "purifier", "prtl_spire"),
         PortalPort: new Action("Portal Port", "portal", "port", "prtl_spire"),
         PortalBaseCamp: new Action("Portal Base Camp", "portal", "base_camp", "prtl_spire"),
         PortalBridge: new Action("Portal Bridge", "portal", "bridge", "prtl_spire"),
         PortalSphinx: new Action("Portal Sphinx", "portal", "sphinx", "prtl_spire"),
         PortalBribeSphinx: new Action("Portal Bribe Sphinx", "portal", "bribe_sphinx", "prtl_spire"),
-        PortalSpireSurvey: new Action("Portal Spire Survey", "portal", "spire_survey", "prtl_spire", {mission: true}),
+        PortalSpireSurvey: new Action("Portal Spire Survey", "portal", "spire_survey", "prtl_spire"),
         PortalMechBay: new Action("Portal Mech Bay", "portal", "mechbay", "prtl_spire"),
         PortalSpire: new Action("Portal Spire", "portal", "spire", "prtl_spire"),
         PortalWaygate: new Action("Portal Waygate", "portal", "waygate", "prtl_spire"),
@@ -3390,6 +3403,7 @@
             return game.global.civic.garrison.mercs;
         },
 
+        // function mercCost from civics.js
         getMercenaryCost() {
             let cost = Math.round((1.24 ** this.workers) * 75) - 50;
             if (cost > 25000){
@@ -3698,9 +3712,10 @@
                 }
             }
 
+
             this.bestMech = this.getRandomMech(game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize);
             this.mechsPower = this.activeMechs.reduce((sum, mech) => sum += mech.power, 0);
-            this.mechsPotential = this.mechsPower / (mechBay.max / this.getMechSpace(this.bestMech) * this.bestMech.power) || 0;
+            this.mechsPotential = this.mechsPower / (buildings.PortalMechBay.count * 25 / this.getMechSpace(this.bestMech) * this.bestMech.power) || 0;
 
             return true;
         },
@@ -4316,7 +4331,7 @@
         buildings.RedSpaceBarracks.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] ? 0 : 10);
         buildings.RedVrCenter.addResourceConsumption(resources.Red_Support, 1);
         buildings.HellGeothermal.addResourceConsumption(resources.Helium_3, 0.5);
-        buildings.SunSwarmControl.addResourceConsumption(resources.Sun_Support, -4);
+        buildings.SunSwarmControl.addResourceConsumption(resources.Sun_Support, () => game.actions.space.spc_sun.swarm_control.support() * -1);
         buildings.SunSwarmSatellite.addResourceConsumption(resources.Sun_Support, 1);
         buildings.GasMoonOutpost.addResourceConsumption(resources.Oil, 2);
         buildings.BeltSpaceStation.addResourceConsumption(resources.Belt_Support, -3);
@@ -4551,7 +4566,7 @@
         settings.prestigeAscensionSkipCustom = false;
         settings.prestigeAscensionPillar = true;
         settings.prestigeDemonicFloor = 100;
-        settings.prestigeDemonicPotential = 0.6;
+        settings.prestigeDemonicPotential = 0.4;
         settings.prestigeDemonicBomb = false;
     }
 
@@ -5036,7 +5051,7 @@
         }
 
         projects.LaunchFacility._weighting = 100;
-        projects.SuperCollider._weighting = 3;
+        projects.SuperCollider._weighting = 5;
         projects.Railway._weighting = 0.01;
         projects.StockExchange._weighting = 0.5;
         projects.ManaSyphon._autoMax = 79;
@@ -5396,7 +5411,7 @@
         addSetting("prestigeAscensionSkipCustom", false);
         addSetting("prestigeAscensionPillar", true);
         addSetting("prestigeDemonicFloor", 100);
-        addSetting("prestigeDemonicPotential", 0.6);
+        addSetting("prestigeDemonicPotential", 0.4);
         addSetting("prestigeDemonicBomb", false);
 
         addSetting("autoAssembleGene", false);
@@ -6611,6 +6626,12 @@
 
                 log("autoJobs", "job " + job._originalId + " currentBreakpoint " + currentBreakpoint + " availableEmployees " + availableEmployees);
 
+                if (job === jobs.SpaceMiner) {
+                    state.maxSpaceMiners = Math.max(state.maxSpaceMiners, Math.min(availableEmployees, job.breakpoints[i] === "-1" ? Number.MAX_SAFE_INTEGER : job.breakpoints[i]));
+                    let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
+                    jobsToAssign = Math.min(jobsToAssign, minersNeeded);
+                }
+
                 // Don't assign bankers if our money is maxed and bankers aren't contributing to our money storage cap
                 if (job === jobs.Banker && resources.Money.storageRatio > 0.98 && !haveTech("banking", 7)) {
                     jobsToAssign = 0;
@@ -7087,7 +7108,7 @@
                             let affordableAmount = Math.floor(rate / resourceCost.quantity);
                             actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
                         }
-                        if (resourceCost.resource.isDemanded() && !production.resource.isDemanded()) {
+                        if ((resourceCost.resource.isDemanded() && !production.resource.isDemanded()) || resourceCost.resource.storageRatio < 0.05) {
                             actualRequiredFactories = 0;
                         }
                     });
@@ -7484,7 +7505,7 @@
     }
 
     function getBlackholeMass() {
-        if (!game.global.interstellar?.stellar_engine?.exotic) {
+        if (!game.global.interstellar.stellar_engine?.exotic) {
             return 0;
         }
         return +(game.global.interstellar.stellar_engine.mass + game.global.interstellar.stellar_engine.exotic).toFixed(10);
@@ -8025,7 +8046,11 @@
                 }
 
                 // Just like for power, get our total resources available
-                resourceType.resource.rateOfChange += consumptionRate * building.stateOnCount;
+                if (building === buildings.BeltSpaceStation && resourceType.resource === resources.Belt_Support) {
+                    resources.Belt_Support.rateOfChange -= resources.Belt_Support.maxQuantity;
+                } else {
+                    resourceType.resource.rateOfChange += consumptionRate * building.stateOnCount;
+                }
             }
         }
 
@@ -8087,10 +8112,8 @@
             }
             // Disable Belt Space Stations with no workers
             if (building === buildings.BeltSpaceStation && resources.Power.currentQuantity - ((building.count - currentStateOn) * building.powered) < 20 && buildings.DwarfEleriumContainer.count > 0) {
-                maxStateOn = Math.min(maxStateOn, Math.floor(resources.Belt_Support.maxQuantity / 3) + 1);
-                if (settings.autoJobs && jobs.SpaceMiner.autoJobEnabled && jobs.SpaceMiner.breakpoints[2] !== -1) {
-                    maxStateOn = Math.min(maxStateOn, Math.ceil(jobs.SpaceMiner.breakpoints[2] / 3));
-                }
+                let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
+                maxStateOn = Math.min(maxStateOn, Math.ceil(minersNeeded / 3));
             }
             // Disable useless Mine Layers
             if (building === buildings.ChthonianMineLayer) {
@@ -8203,7 +8226,11 @@
                     consumptionRate = game.int_fuel_adjust(consumptionRate);
                 }
 
-                resourceType.resource.rateOfChange -= consumptionRate * maxStateOn;
+                if (building === buildings.BeltSpaceStation && resourceType.resource === resources.Belt_Support) {
+                    resources.Belt_Support.rateOfChange += resources.Belt_Support.maxQuantity;
+                } else {
+                    resourceType.resource.rateOfChange -= consumptionRate * maxStateOn;
+                }
             }
 
             building.tryAdjustState(maxStateOn - currentStateOn);
@@ -8243,7 +8270,7 @@
             let port = buildings.PortalPort;
             let camp = buildings.PortalBaseCamp;
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
-            let buildAllowed = settings.autoBuild && (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.PortalSpire.count) / mech.count >= 1 || resources.Supply.storageRatio >= 1);
+            let buildAllowed = settings.autoBuild && (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.PortalSpire.count) / mech.count > 1 || resources.Supply.storageRatio >= 1);
             let puriBuildable = buildAllowed && puri.autoBuildEnabled && puri.count < puri.autoMax && resources.Money.maxQuantity >= resourceCost(puri, resources.Money);
             let mechBuildable = buildAllowed && mech.autoBuildEnabled && mech.count < mech.autoMax && resources.Money.maxQuantity >= resourceCost(mech, resources.Money);
             let portBuildable = buildAllowed && port.autoBuildEnabled && port.count < port.autoMax && resources.Money.maxQuantity >= resourceCost(port, resources.Money);
@@ -8277,6 +8304,10 @@
         for (let i = 0; i < warnBuildings.length; i++) {
             let building = buildingIds[warnBuildings[i].parentNode.id];
             if (building && building.autoStateEnabled && !building.is.ship) {
+                if ((building === buildings.BeltEleriumShip || building === buildings.BeltIridiumShip || building === buildings.BeltIronShip) &&
+                    (buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount) <= resources.Belt_Support.maxQuantity) {
+                      continue;
+                }
                 building.tryAdjustState(-1);
                 break;
             }
@@ -9096,6 +9127,7 @@
         }
 
         // Parse global production modifiers
+        state.maxSpaceMiners = 0;
         state.globalProductionModifier = 1;
         for (let mod of Object.values(game.breakdown.p.Global)) {
             state.globalProductionModifier *= 1 + (parseFloat(mod) || 0) / 100;
@@ -9172,7 +9204,7 @@
             if (building.isUnlocked() && building.autoBuildEnabled){
                 let needStorage = true;
                 building.resourceRequirements.forEach(requirement => {
-                    if (building.is.mission){
+                    if (building.isMission()){
                         if (requirement.resource === resources.Helium_3){
                             state.heliumRequiredByMissions = Math.max(requirement.quantity*bufferMult, state.heliumRequiredByMissions);
                         }
@@ -9944,6 +9976,7 @@
 
             /* Fixes for game styles */
             #powerStatus { white-space: nowrap; }
+            .barracks { white-space: nowrap; }
             .popper { pointer-events: none }
             .area { width: calc(100% / 6) !important; max-width: 8rem; }
             .offer-item { width: 16% !important; max-width: 7.5rem; }
@@ -12320,7 +12353,7 @@
                              {val: "metal", label: "Metal", hint: "Build only Metal Shrines"},
                              {val: "know", label: "Knowledge", hint: "Build only Knowledge Shrines"},
                              {val: "tax", label: "Tax", hint: "Build only Tax Shrines"}];
-        addStandartSectionSettingsSelector(currentNode, "buildingShrineType", "Prefered Shrine", "Auto Build shrines only at moons of chosen shrine", shrineOptions);
+        addStandartSectionSettingsSelector(currentNode, "buildingShrineType", "Magnificent Shrine", "Auto Build shrines only at moons of chosen shrine", shrineOptions);
 
         currentNode.append(`
           <div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings..."></div>
