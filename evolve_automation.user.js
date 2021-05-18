@@ -7636,7 +7636,7 @@
             let trade = poly.galaxyOffers[i];
             let buyResource = resources[trade.buy.res];
             if (buyResource.galaxyMarketWeighting > 0) {
-                let priority = buyResource.requestedQuantity > 0 ? Number.MAX_SAFE_INTEGER : buyResource.galaxyMarketPriority;
+                let priority = buyResource.isDemanded() ? Number.MAX_SAFE_INTEGER : buyResource.galaxyMarketPriority;
                 priorityGroups[priority] = priorityGroups[priority] ?? [];
                 priorityGroups[priority].push(trade);
             }
@@ -8661,7 +8661,7 @@
 
         // Drop minimum income, if we have something on demand, but can't trade with our income
         if (resourcesToTrade.length > 0) {
-            if (minimumAllowedMoneyPerSecond > resources.Money.rateOfChange && resources.Money.requestedQuantity <= 0){
+            if (minimumAllowedMoneyPerSecond > resources.Money.rateOfChange && !resources.Money.isDemanded()){
                 minimumAllowedMoneyPerSecond = 0;
             }
         }
@@ -9300,7 +9300,7 @@
         // Prioritize material for craftables
         for (let id in resources) {
             let resource = resources[id];
-            if (resource.requestedQuantity > 0) {
+            if (resource.isDemanded()) {
                 // Only craftables stores their cost in resourceRequirements, no need for additional checks
                 for (let i = 0; i < resource.resourceRequirements.length; i++) {
                     let material = resource.resourceRequirements[i].resource;
