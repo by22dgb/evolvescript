@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.55
+// @version      3.3.1.56
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -390,7 +390,7 @@
             if (!this.storeOverflow && this.currentQuantity > this.storageRequired && this.currentCrates + this.currentContainers > 0) {
                 return false;
             }
-            return this.storageRatio < 0.99 || this.isDemanded() || this.storeOverflow;
+            return this.storageRatio < 0.99 || this.isDemanded() || this.currentEject > 0 || this.currentSupply > 0 || (this.storeOverflow && (this.currentCrates < this.autoCratesMax || this.currentContainers < this.autoContainersMax));
         }
 
         getProduction(source) {
@@ -1586,6 +1586,11 @@
         buildingToggles: 0,
         evolutionAttempts: 0,
 
+        lastWasteful: null,
+        lastLumber: null,
+        lastPopulationCount: 0,
+        lastFarmerCount: 0,
+
         warnDebug: true,
         warnPreload: true,
 
@@ -1863,7 +1868,7 @@
         DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", "spc_dwarf"),
         DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", "spc_dwarf"),
         DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
-        DwarfWorldController: new Action("Dwarf WSC Control", "space", "world_controller", "spc_dwarf"),
+        DwarfWorldController: new Action("Dwarf Complete World Collider", "space", "world_controller", "spc_dwarf"),
 
         AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
         AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
@@ -4257,7 +4262,8 @@
             }
             state.craftableResourceList.push(resources[name]);
         }
-        // TODO: Craft costs aren't constant. They can change if player mutate out of wasteful. But original game expose static objects, we'd need to refresh page to get actual data.
+        state.lastWasteful = game.global.race.wasteful;
+        state.lastLumber = isLumberRace();
 
         // Lets set our crate / container resource requirements
         resources.Crates.resourceRequirements = normalizeProperties([() => isLumberRace() ? {resource: resources.Plywood, quantity: 10} : {resource: resources.Stone, quantity: 200}]);
@@ -5060,6 +5066,7 @@
         settings.productionPrioritizeDemanded = true;
         settings.productionWaitMana = true;
         settings.productionSmelting = "storage";
+        settings.productionFactoryMinIngredients = 0.05;
     }
 
     function resetProductionState() {
@@ -5350,6 +5357,7 @@
         addSetting("productionPrioritizeDemanded", true);
         addSetting("productionWaitMana", true);
         addSetting("productionSmelting", "storage");
+        addSetting("productionFactoryMinIngredients", 0.05);
 
         addSetting("jobSetDefault", true);
         addSetting("jobLumberWeighting", 50);
@@ -6457,11 +6465,12 @@
         let minFarmers = 0;
         if (farmerIndex !== -1) {
             let foodRateOfChange = resources.Food.calculateRateOfChange({buy: true});
+            let foodRateOfChangeReal = foodRateOfChange * gameTicksPerSecond("mid");
             let minFoodStorage = resources.Food.maxQuantity * 0.2;
             let maxFoodStorage = resources.Food.maxQuantity * 0.6;
-            if (game.global.race['ravenous']) {
-                minFoodStorage = resources.Population.currentQuantity;
-                maxFoodStorage = resources.Population.currentQuantity * 2;
+            if (game.global.race['ravenous']) { // Ravenous hunger
+                minFoodStorage = resources.Population.currentQuantity * 1.5;
+                maxFoodStorage = resources.Population.currentQuantity * 3;
                 foodRateOfChange += Math.max(resources.Food.currentQuantity / 3, 0);
             }
 
@@ -6469,10 +6478,20 @@
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs[farmerIndex] = availableEmployees;
                 log("autoJobs", "Pushing all farmers");
+            } else if (resources.Population.currentQuantity > state.lastPopulationCount) {
+                let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
+                let farmerChange = jobList[farmerIndex].count - state.lastFarmerCount;
+
+                if (populationChange === farmerChange && foodRateOfChange > 0) {
+                    requiredJobs[farmerIndex] = jobList[farmerIndex].count - populationChange;
+                    log("autoJobs", "Removing a farmer due to population growth")
+                } else {
+                    requiredJobs[farmerIndex] = jobList[farmerIndex].count;
+                }
             } else if (resources.Food.isCapped()) {
                 // Full food storage, remove all farmers instantly
                 requiredJobs[farmerIndex] = 0;
-            } else if (resources.Food.currentQuantity < minFoodStorage && foodRateOfChange < 0) {
+            } else if (resources.Food.currentQuantity + foodRateOfChangeReal < minFoodStorage) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
                 if (jobList[farmerIndex].count === 0) { // We can't calculate production with no workers, assign one first
                     requiredJobs[farmerIndex] = 1;
@@ -6741,6 +6760,9 @@
                 log("autoJobs", "Adjusting job " + jobList[i]._originalId + " up by " + adjustment);
             }
         }
+
+        state.lastPopulationCount = resources.Population.currentQuantity;
+        state.lastFarmerCount = jobList[farmerIndex]?.count ?? 0;
 
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
         // Unless we're already assigning to default, and don't want it to be changed now
@@ -7110,7 +7132,7 @@
                             let affordableAmount = Math.floor(rate / resourceCost.quantity);
                             actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
                         }
-                        if ((resourceCost.resource.isDemanded() && !production.resource.isDemanded()) || resourceCost.resource.storageRatio < 0.05) {
+                        if ((resourceCost.resource.isDemanded() && !production.resource.isDemanded()) || resourceCost.resource.storageRatio < settings.productionFactoryMinIngredients) {
                             actualRequiredFactories = 0;
                         }
                     });
@@ -7900,10 +7922,13 @@
 
             // Build building
             if (building.click()) {
-                affordableCache = {}; // Clear cache after spending resources, and recheck buildings again
                 if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
                     removePoppers();
                 }
+                if (building.consumption.length > 0) { // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
+                    return;
+                }
+                affordableCache = {}; // Clear cache after spending resources, and recheck buildings again
             }
         }
     }
@@ -8111,10 +8136,11 @@
                 maxStateOn = Math.min(maxStateOn, currentStateOn - ((resources.Power.currentQuantity - 5) / (-building.powered)));
             }
             // Disable Belt Space Stations with no workers
-            if (building === buildings.BeltSpaceStation && resources.Power.currentQuantity - ((building.count - currentStateOn) * building.powered) < 20 &&
-                  resources.Elerium.maxQuantity - parseFloat(game.breakdown.c.Elerium[game.loc("space_belt_station_title")] ?? 0) > 300) {
+            if (building === buildings.BeltSpaceStation && resources.Power.currentQuantity - ((building.count - currentStateOn) * building.powered) < 20) {
+                let stationStorage = parseFloat(game.breakdown.c.Elerium[game.loc("space_belt_station_title")] ?? 0);
+                let extraStations = Math.floor((resources.Elerium.maxQuantity - resources.Elerium.storageRequired) / stationStorage);
                 let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
-                maxStateOn = Math.min(maxStateOn, Math.ceil(minersNeeded / 3));
+                maxStateOn = Math.min(maxStateOn, Math.max(currentStateOn - extraStations, Math.ceil(minersNeeded / 3)));
             }
             // Disable useless Mine Layers
             if (building === buildings.ChthonianMineLayer) {
@@ -8531,16 +8557,18 @@
             }
 
             // Build crates
-            let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(totalStorageMissing / crateVolume));
-            StorageManager.constructCrate(cratesToBuild);
+            if (resources.Crates.currentQuantity === 0) {
+                let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(totalStorageMissing / crateVolume));
+                StorageManager.constructCrate(cratesToBuild);
 
-            resources.Crates.currentQuantity += cratesToBuild;
-            resources.Crates.resourceRequirements.forEach(requirement =>
-                requirement.resource.currentQuantity -= requirement.quantity * cratesToBuild
-            );
+                resources.Crates.currentQuantity += cratesToBuild;
+                resources.Crates.resourceRequirements.forEach(requirement =>
+                    requirement.resource.currentQuantity -= requirement.quantity * cratesToBuild
+                );
+                totalStorageMissing -= cratesToBuild * crateVolume;
+            }
 
             // And containers, if still needed
-            totalStorageMissing -= cratesToBuild * crateVolume;
             if (totalStorageMissing > 0) {
                 let containersToBuild = Math.min(Math.floor(numberOfContainersWeCanBuild), Math.ceil(totalStorageMissing / crateVolume));
                 StorageManager.constructContainer(containersToBuild);
@@ -9243,7 +9271,7 @@
         if (settings.missionRequest) {
             for (let i = state.missionBuildingList.length - 1; i >= 0; i--) {
                 let mission = state.missionBuildingList[i];
-                if (mission.isUnlocked() && (mission !== buildings.BlackholeJumpShip || !settings.prestigeBioseedConstruct || settings.prestigeType !== "whitehole")) {
+                if (mission.isUnlocked() && mission.autoBuildEnabled && (mission !== buildings.BlackholeJumpShip || !settings.prestigeBioseedConstruct || settings.prestigeType !== "whitehole")) {
                     prioritizedTasks.push(mission);
                 } else if (mission.isComplete()) { // Mission finished, remove it from list
                     state.missionBuildingList.splice(i, 1);
@@ -9436,12 +9464,16 @@
         }
 
         // Some tabs doesn't init properly. Let's reload game when it happens.
+        // And same for some exposed\ingame tables
         // TODO: Remove me once it's fixed in game
         if ((buildings.BlackholeMassEjector.count > 0 && $('#resEjector').children().length === 0) || // Ejector tab
-            (buildings.PortalTransport.count > 0 && $('#resCargo').children().length === 0) || // Supply tab
-            (game.global.race['smoldering'] && buildings.RockQuarry.count > 0 && $("#iQuarry").length === 0)) { // Smoldering rock quarry
+              (buildings.PortalTransport.count > 0 && $('#resCargo').children().length === 0) || // Supply tab
+              (game.global.race['smoldering'] && buildings.RockQuarry.count > 0 && $("#iQuarry").length === 0) || // Smoldering rock quarry
+              state.lastWasteful !== game.global.race.wasteful || // Outdated craftCost
+              (state.lastLumber !== isLumberRace() && GalaxyTradeManager.initIndustry())) { // Outdated galaxyOffers
             state.goal = "GameOverMan";
             setTimeout(()=> window.location.reload(), 5000);
+            return;
         }
 
         updateScriptData(); // Sync exposed data with script variables
@@ -9471,12 +9503,12 @@
     }
 
     function verifyGameActions() {
-            // Check that actions that exist in game also exist in our script
-            verifyGameActionsExist(game.actions.city, buildings, false);
-            verifyGameActionsExist(game.actions.space, buildings, true);
-            verifyGameActionsExist(game.actions.interstellar, buildings, true);
-            verifyGameActionsExist(game.actions.portal, buildings, true);
-            verifyGameActionsExist(game.actions.galaxy, buildings, true);
+        // Check that actions that exist in game also exist in our script
+        verifyGameActionsExist(game.actions.city, buildings, false);
+        verifyGameActionsExist(game.actions.space, buildings, true);
+        verifyGameActionsExist(game.actions.interstellar, buildings, true);
+        verifyGameActionsExist(game.actions.portal, buildings, true);
+        verifyGameActionsExist(game.actions.galaxy, buildings, true);
     }
 
     function verifyGameActionsExist(gameObject, scriptObject, hasSubLevels) {
@@ -9762,6 +9794,8 @@
         if (settings.prestigeType !== "none") {
             autoPrestige(); // Called after autoBattle to not launch attacks right before reset, killing soldiers
         }
+
+        state.soulGemLast = resources.Soul_Gem.currentQuantity;
     }
 
     function mainAutoEvolveScript() {
@@ -10168,7 +10202,7 @@
     }
 
     function addStandardSectionSettingsNumber(node, settingName, labelText, hintText) {
-        node.append('<div style="margin-top: 5px; width: 500px; display: inline-block;"><label title="' + hintText + '" for="script_' + settingName + '">' + labelText + '</label><input id="script_' + settingName + '" type="text" class="input is-small" style="width: 150px; float: right;"></input></div>');
+        node.append('<div style="margin-top: 5px; width: 500px; display: inline-block;"><label title="' + hintText + '" for="script_' + settingName + '">' + labelText + '</label><input id="script_' + settingName + '" type="text" class="input is-small" style="height: 18px; width: 150px; float: right;"></input></div>');
 
         let textBox = $('#script_' + settingName);
         textBox.val(settings[settingName]);
@@ -10230,7 +10264,7 @@
     }
 
     function buildStandartSettingsInput(object, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
+        let textBox = $('<input type="text" class="input is-small" style="height: 25px; width:100%"/>');
         textBox.val(settings[settingKey]);
 
         textBox.on('change', function() {
@@ -11174,7 +11208,7 @@
     function addStandartSectionSettingsSelector(parentNode, settingName, displayName, hintText, optionsList) {
         parentNode.append(`
           <div style="margin-top: 5px; display: inline-block; width: 500px; text-align: left;">
-            <label for="script_${settingName}" title="${hintText}">${displayName}:</label>
+            <label for="script_${settingName}" title="${hintText}">${displayName}</label>
             <select id="script_${settingName}" style="width: 150px; float: right;"></select>
           </div>`);
 
@@ -11195,7 +11229,7 @@
 
         parentNode.append(`
           <div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
-            <label for="${computedSelectId}" title="${hintText}">${displayName}:</label>
+            <label for="${computedSelectId}" title="${hintText}">${displayName}</label>
             <select id="${computedSelectId}" style="width: 150px; float: right;"></select>
           </div>`);
 
@@ -11938,6 +11972,7 @@
 
     function updateProductionTableFactory(currentNode) {
         addStandardHeading(currentNode, "Factory");
+        addStandardSectionSettingsNumber(currentNode, "productionFactoryMinIngredients", "Minimum materials to preserve", "Factory will craft resoruces only when all required material above given ration");
 
         currentNode.append(`
           <table style="width:100%">
@@ -12214,7 +12249,7 @@
             return span;
         }
 
-        let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="width:100%"/>');
+        let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="height: 25px; width:100%;"/>');
         jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job._originalId]);
 
         jobBreakpointTextbox.on('change', function() {
@@ -12286,7 +12321,7 @@
           <tr>
             <td style="width:30%"><span class="has-text-info">${targetName}</span></td>
             <td style="width:60%"><span class="has-text-info">${conditionDesc}</span></td>
-            <td style="width:10%"><input type="text" class="input is-small" style="width:100%"/></td>
+            <td style="width:10%"><input type="text" class="input is-small" style="height: 25px; width:100%;"/></td>
           </tr>`);
 
         let weightInput = ruleNode.find('input');
@@ -12873,6 +12908,7 @@
 
             scriptNode.append('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
             $("#bulk-sell").on('mouseup', function() {
+                game.updateDebugData();
                 updateScriptData();
                 autoMarket(true, true);
             });
@@ -12996,6 +13032,8 @@
     }
 
     function startMechObserver() {
+        stopMechObserver();
+
         MechManager.mechObserver.observe(document.getElementById("mechLab"), {childList: true});
         createMechInfo();
     }
@@ -13006,6 +13044,8 @@
     }
 
     function createArpaToggles() {
+        removeArpaToggles();
+
         for (let i = 0; i < ProjectManager.priorityList.length; i++) {
             let project = ProjectManager.priorityList[i];
             let projectElement = $('#arpa' + project.id + ' .head');
@@ -13022,6 +13062,8 @@
     }
 
     function createCraftToggles() {
+        removeCraftToggles();
+
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
             let craftableElement = $('#res' + craftable.id);
