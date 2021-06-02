@@ -9623,7 +9623,7 @@
     function buildFilterRegExp() {
         let regexps = [];
         let validIds = [];
-        let strings = settings.logFilter.split(/[^a-z_]/g).filter(Boolean);
+        let strings = settings.logFilter.split(/[^0-9a-z_]/g).filter(Boolean);
         for (let i = 0; i < strings.length; i++) {
             let id = strings[i];
             // Loot message built from multiple strings without tokens, let's fake one for regexp below
