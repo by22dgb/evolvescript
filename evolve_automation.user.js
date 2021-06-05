@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.57
+// @version      3.3.1.58
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -7980,6 +7980,73 @@
         }
     }
 
+    function isTechAllowed(itemId) {
+        // Skip ignored techs
+        if (settings.researchIgnore.includes(itemId)) {
+            return false;
+        }
+
+        // Save soul gems for reset
+        if (settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole") {
+            let gemsCost = resourceCost(techIds[itemId], resources.Soul_Gem);
+            if (gemsCost > 0 && resources.Soul_Gem.currentQuantity - gemsCost < 10) {
+                return false;
+            }
+        }
+
+        // Don't click any reset options without user consent... that would be a dick move, man.
+        if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" ||
+            itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion") {
+            return false;
+        }
+
+        // Don't use Dark Bomb if not enabled
+        if (itemId == "tech-dark_bomb" && !settings.prestigeDemonicBomb) {
+            return false;
+        }
+
+        // Don't waste phage and plasmid on ascension techs if we're not going there
+        if ((itemId === "tech-incorporeal" || itemId === "tech-tech_ascension") && settings.prestigeType !== "ascension") {
+            return false;
+        }
+
+        // Alien Gift
+        if (itemId === "tech-xeno_gift" && resources.Knowledge.maxQuantity < settings.fleetAlienGiftKnowledge) {
+            return false;
+        }
+
+        // Unification
+        if (itemId === "tech-unification2" && !settings.foreignUnification) {
+            return false;
+        }
+
+        // If user wants to stabilize blackhole then do it, unless we're on blackhole run
+        if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || settings.prestigeType === "whitehole" )) {
+            return false;
+        }
+
+        if (itemId !== settings.userResearchTheology_1) {
+            if (itemId === "tech-anthropology" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType === "mad")) {
+                return false;
+            }
+
+            if (itemId === "tech-fanaticism" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType !== "mad")) {
+                return false;
+            }
+        }
+
+        if (itemId !== settings.userResearchTheology_2) {
+            if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && (settings.prestigeType === "ascension" || settings.prestigeType === "demonic"))) {
+                return false;
+            }
+
+            if (itemId === "tech-study" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType !== "ascension" && settings.prestigeType !== "demonic")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     function autoResearch() {
         let items = $('#tech .action:not(.cna)');
 
@@ -8000,72 +8067,7 @@
 
         for (let i = 0; i < items.length; i++) {
             let itemId = items[i].id;
-
-            // Skip ignored and conflicting techs
-            if (settings.researchIgnore.includes(itemId) || getCostConflict(techIds[itemId])) {
-                continue;
-            }
-
-            // Save soul gems
-            if (settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole") {
-                let gemsCost = resourceCost(techIds[itemId], resources.Soul_Gem);
-                if (gemsCost > 0 && resources.Soul_Gem.currentQuantity - gemsCost < 10) {
-                    continue;
-                }
-            }
-
-            // Don't click any reset options without user consent... that would be a dick move, man.
-            if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" ||
-                itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion") {
-                continue;
-            }
-
-            // Don't use Dark Bomb if not enabled
-            if (itemId == "tech-dark_bomb" && !settings.prestigeDemonicBomb) {
-                continue;
-            }
-
-            // Don't waste phage and plasmid on ascension techs if we're not going there
-            if ((itemId === "tech-incorporeal" || itemId === "tech-tech_ascension") && settings.prestigeType !== "ascension") {
-                continue;
-            }
-
-            // Alien Gift
-            if (itemId === "tech-xeno_gift" && resources.Knowledge.maxQuantity < settings.fleetAlienGiftKnowledge) {
-                continue;
-            }
-
-            // Unification
-            if (itemId === "tech-unification2" && !settings.foreignUnification) {
-                continue;
-            }
-
-            // If user wants to stabilise blackhole then do it, unless we're on blackhole run
-            if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || settings.prestigeType === "whitehole" )) {
-                continue;
-            }
-
-            if (itemId !== settings.userResearchTheology_1) {
-                if (itemId === "tech-anthropology" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType === "mad")) {
-                    continue;
-                }
-
-                if (itemId === "tech-fanaticism" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType !== "mad")) {
-                    continue;
-                }
-            }
-
-            if (itemId !== settings.userResearchTheology_2) {
-                if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && (settings.prestigeType === "ascension" || settings.prestigeType === "demonic"))) {
-                    continue;
-                }
-
-                if (itemId === "tech-study" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType !== "ascension" && settings.prestigeType !== "demonic")) {
-                    continue;
-                }
-            }
-
-            if (techIds[itemId].click()) {
+            if (isTechAllowed(itemId) && !getCostConflict(techIds[itemId]) && techIds[itemId].click()) {
                 BuildingManager.updateBuildings(); // Cache cost if we just unlocked some building
                 removePoppers();
                 return;
@@ -9294,7 +9296,7 @@
         // Get list of all unlocked techs, and find biggest numbers for each resource
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
         $("#tech .action").each(function() {
-            if (settings.researchIgnore.includes(this.id)) {
+            if (!isTechAllowed(this.id)) {
                 return;
             }
             let research = techIds[this.id];
@@ -9366,7 +9368,7 @@
         // Unlocked and affordable techs, and but only if we don't have anything more important
         if (prioritizedTasks.length === 0 && (haveTech("mad") ? settings.researchRequestSpace : settings.researchRequest)) {
             $("#tech .action:not(.cnam)").each(function() {
-                if (settings.researchIgnore.includes(this.id)) {
+                if (!isTechAllowed(this.id)) {
                     return;
                 }
                 prioritizedTasks.push(techIds[this.id]);
