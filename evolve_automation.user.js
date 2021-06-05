@@ -3942,7 +3942,11 @@
         },
 
         dragMech(oldId, newId) {
-            Sortable.get(this._listVue.$el).options.onEnd({oldDraggableIndex: oldId, newDraggableIndex: newId});
+            if (typeof unsafeWindow !== 'undefined') { // Yet another FF fix
+                win.Sortable.get(this._listVue.$el).options.onEnd(cloneInto({oldDraggableIndex: oldId, newDraggableIndex: newId}, unsafeWindow));
+            } else {
+                Sortable.get(this._listVue.$el).options.onEnd({oldDraggableIndex: oldId, newDraggableIndex: newId});
+            }
         }
     }
 
@@ -4230,7 +4234,7 @@
             // Checks both the game modal window and our script modal window
             // game = modalBox
             // script = scriptModal
-            return this.openedByScript || document.getElementById("modalBox") !== null || document.getElementById("scriptModal").style.display === "block";
+            return this.openedByScript || document.getElementById("modalBox") !== null || document.getElementById("scriptModal")?.style.display === "block";
         },
 
         checkCallbacks() {
@@ -13754,7 +13758,7 @@
         // export function mechCost(size,infernal) from portal.js
         mechCost: function(e,a){let l=9999,r=1e7;switch(e){case"small":{let e=game.global.blood.prepared>=2?5e4:75e3;r=a?2.5*e:e,l=a?20:1}break;case"medium":r=a?45e4:18e4,l=a?100:4;break;case"large":r=a?925e3:375e3,l=a?500:20;break;case"titan":r=a?15e5:75e4,l=a?1500:75;break;case"collector":{let e=game.global.blood.prepared>=2?8e3:1e4;r=a?2.5*e:e,l=1}}return{s:l,c:r}},
         // function terrainRating(mech,rating,effects) from portal.js
-        terrainRating: function(e,l,a){if(!e.equip.includes("special")||"small"!==e.size&&"medium"!==e.size&&"collector"!==e.size||l<1&&(l+=(1-l)*(a.includes("gravity")?.1:.2)),"small"!==e.size&&l<1){let e=0,i={small:0,medium:0,large:0,titan:0,collector:0};game.global.portal.mechbay.mechs.forEach(function(l){let a=MechManager.getMechSpace(l);e+a<=game.global.portal.mechbay.max&&(e+=a,i[l.size]++)}),(l+=(a.includes("fog")||a.includes("dark")?.005:.01)*i.small)>1&&(l=1)}return l},
+        terrainRating: function(e,l,a){if(!e.equip.includes("special")||"small"!==e.size&&"medium"!==e.size&&"collector"!==e.size||l<1&&(l+=(1-l)*(a.includes("gravity")?.1:.2)),"small"!==e.size&&l<1){let e=0,i={small:0,medium:0,large:0,titan:0,collector:0};for(let l=0;l<game.global.portal.mechbay.mechs.length;l++){let a=game.global.portal.mechbay.mechs[l];(e+=MechManager.getMechSpace(a))<=game.global.portal.mechbay.max&&i[a.size]++}(l+=(a.includes("fog")||a.includes("dark")?.005:.01)*i.small)>1&&(l=1)}return l},
         //function weaponPower(mech,power) from portal.js
         weaponPower: function(e,i){return i<1&&0!==i&&e.equip.includes("special")&&"titan"===e.size&&(i+=.25*(1-i)),e.equip.includes("special")&&"large"===e.size&&(i*=1.02),i},
 
