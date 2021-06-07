@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.59
+// @version      3.3.1.60
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2336,7 +2336,7 @@
           () => "No more Horseshoes needed",
           () => settings.buildingWeightingHorseshoeUseless
       ],[
-          () => game.global.race.calm && resources.Zen.storageRatio < 1,
+          () => game.global.race.calm && resources.Zen.currentQuantity < resources.Zen.maxQuantity,
           (building) => building === buildings.MeditationChamber,
           () => "No more Meditation Space needed",
           () => settings.buildingWeightingZenUseless
@@ -6068,10 +6068,12 @@
 
         // Appoint governor
         if (haveTech("governor") && settings.govGovernor !== "none" && getGovernor() === "") {
-            let govId = game.global.race.governor?.candidates?.findIndex(governor => governor.bg === settings.govGovernor);
-            let vue = getVueById("candidates");
-            if (vue && govId >= 0) {
-                vue.appoint(govId);
+            let candidates = game.global.race.governor?.candidates ?? [];
+            for (let i = 0; i < candidates.length; i++) {
+                if (candidates[i].bg === settings.govGovernor) {
+                    getVueById("candidates")?.appoint(i);
+                    break;
+                }
             }
         }
     }
@@ -8712,6 +8714,7 @@
         let importRouteCap = MarketManager.getImportRouteCap();
         let exportRouteCap = MarketManager.getExportRouteCap();
 
+        // TODO: Sell excess
         // Fill trade routes with selling
         for (let i = 0; i < tradableResources.length; i++) {
             let resource = tradableResources[i];
