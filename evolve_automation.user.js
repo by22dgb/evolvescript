@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.60
+// @version      3.3.1.61
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -732,12 +732,13 @@
         }
 
         get title() {
-            if (this.definition !== undefined) {
-                return typeof this.definition.title === 'string' ? this.definition.title : this.definition.title();
-            }
+            let def = this.definition;
+            return def ? typeof def.title === 'string' ? def.title : def.title() : this.name;
+        }
 
-            // There is no definition...
-            return this.name;
+        get desc() {
+            let def = this.definition;
+            return def ? typeof def.desc === 'string' ? def.desc : def.desc() : this.name;
         }
 
         get vue() {
@@ -4739,7 +4740,6 @@
         JobManager.addJobToPriorityList(jobs.Hunter);
         JobManager.addJobToPriorityList(jobs.Farmer);
         //JobManager.addJobToPriorityList(jobs.Forager);
-        JobManager.addJobToPriorityList(jobs.Miner);
         JobManager.addJobToPriorityList(jobs.Lumberjack);
         JobManager.addJobToPriorityList(jobs.QuarryWorker);
         JobManager.addJobToPriorityList(jobs.CrystalMiner);
@@ -4752,6 +4752,7 @@
         JobManager.addJobToPriorityList(jobs.HellSurveyor);
         JobManager.addJobToPriorityList(jobs.SpaceMiner);
         JobManager.addJobToPriorityList(jobs.Archaeologist);
+        JobManager.addJobToPriorityList(jobs.Miner);
         JobManager.addJobToPriorityList(jobs.CoalMiner);
         JobManager.addJobToPriorityList(jobs.Banker);
         JobManager.addJobToPriorityList(jobs.Priest);
@@ -9779,20 +9780,19 @@
             return;
         }
         mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
-            if (node.childElementCount === 0) { // Descriptions tooltip
-                return;
+            if (node.innerHTML.startsWith('<div>')) {
+                for (let building of Object.values(buildings)){
+                    if (node.innerHTML.startsWith('<div>' + building.desc)){
+                        node.innerHTML += `<div>${building.extraDescription}</div>`;
+                        return;
+                    }
+                }
             }
-            let obj = null;
-            if (node.id.match(/^poppopArpa/)) { // "poppopArpa[id-with-no-tab]" for projects
-                obj = arpaIds["arpa" + node.id.substr(10)];
-            } else if (node.id.match(/\d$/)) { // "popq[id][order]" for buildings in queue
-                let id = node.id.substr(4, node.id.length-5);
-                obj = buildingIds[id] || arpaIds[id];
-            } else { // "pop[id]" for normal buildings
-                obj = buildingIds[node.id.substr(3)];
-            }
-            if (obj && obj.extraDescription !== "") {
-                node.innerHTML += `<div>${obj.extraDescription}</div>`;
+            for (let project of Object.values(projects)){
+                if (node.innerHTML.startsWith(project.desc)){
+                    node.innerHTML += `<div style="border-top: solid .0625rem #999">${project.extraDescription}</div>`;
+                    return;
+                }
             }
         }));
     }
