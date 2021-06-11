@@ -742,29 +742,6 @@
             return def ? typeof def.desc === 'function' ? def.desc() : def.desc : this.name;
         }
 
-        matchTooltip(tooltip) {
-            let def = this.definition;
-            if (!def) {
-                return false;
-            }
-
-            // First check with no escaping, to make it faster; it seems to work for all buildings currently in game
-            if (!tooltip.startsWith('<div>' + (typeof def.desc === 'function' ? def.desc() : def.desc))) {
-                return false;
-            }
-
-            // Make sure it's actually our tooltip, with only desc there will be collisions between buildings and their techs
-            if (def.effect && tooltip.indexOf($(`<div>${typeof def.effect === 'function' ? def.effect() : def.effect}</div>`).html()) === -1) {
-                return false;
-            }
-
-            // Just in case
-            if (def.flair && tooltip.indexOf($(`<div>${typeof def.flair === 'function' ? def.flair() : def.flair}</div>`).html()) === -1) {
-                return false;
-            }
-            return true;
-        }
-
         get vue() {
             return getVueById(this._vueBinding);
         }
@@ -871,7 +848,7 @@
 
             // Hide active popper from action, so it won't rewrite it
             let popper = $('#popper');
-            if (popper.length > 0 && !this.matchTooltip(popper.html())) {
+            if (popper.length > 0 && popper.data('id').indexOf(this._vueBinding) === -1) {
                 popper.attr('id', 'TotallyNotAPopper');
                 this.vue.action();
                 popper.attr('id', 'popper');
@@ -9805,20 +9782,20 @@
             return;
         }
         mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
-            if (node.classList.contains('popper')) {
-                if (node.innerHTML.startsWith('<div>')) {
-                    for (let building of Object.values(buildings)){
-                        if (building.isUnlocked() && building.matchTooltip(node.innerHTML)){
-                            node.innerHTML += `<div>${building.extraDescription}</div>`;
-                            return;
-                        }
-                    }
+            if (node.id === "popper") {
+                let dataId = node.dataset.id;
+                let obj = null;
+                if (dataId.match(/^popArpa/)) { // "popArpa[id-with-no-tab]" for projects
+                    obj = arpaIds["arpa" + dataId.substr(7)];
+                } else if (dataId.match(/^q.*\d$/)) { // "q[id][order]" for buildings in queue
+                    let objId = dataId.substr(1, dataId.length-2);
+                    obj = buildingIds[objId] || arpaIds[objId];
+                } else { // "[id]" for normal buildings
+                    obj = buildingIds[dataId];
                 }
-                for (let project of Object.values(projects)){
-                    if (project.isUnlocked() && node.innerHTML.startsWith(project.desc)){
-                        node.innerHTML += `<div style="border-top: solid .0625rem #999">${project.extraDescription}</div>`;
-                        return;
-                    }
+
+                if (obj && obj.extraDescription !== "") {
+                    node.innerHTML += `<div style="border-top: solid .0625rem #999">${obj.extraDescription}</div>`;
                 }
             }
         }));
