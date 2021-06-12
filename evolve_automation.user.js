@@ -10374,7 +10374,8 @@
 
     function addSettingsSelect(node, settingName, labelText, hintText, optionsList) {
         let options = optionsList.map(item => `<option value="${item.val}" title="${item.hint}" ${item.val === settings[settingName] ? "selected" : ""}>${item.label}</option>`).join();
-        $(`<div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
+        return $(`
+           <div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
              <label title="${hintText}" tabindex="0">
                <span>${labelText}</span>
                <select class="script_${settingName}" style="width: 150px; float: right;">
@@ -10737,12 +10738,8 @@
         // Target evolution
         let raceOptions = [{val: "auto", label: "Auto Achievements", hint: "Picks race with not infused pillar for Ascension, with unearned Greatness achievement for Bioseed, or with unearned Extinction achievement in other cases. Conditional races are prioritized, when available."},
                            ...Object.values(races).map(race => ({val: race.id, label: race.name, hint: race.desc}))];
-        addSettingsSelect(currentNode, "userEvolutionTarget", "Target Race", "Chosen race will be automatically selected during next evolution", raceOptions);
-
-        currentNode.append(`<div><span id="script_race_warning"></span></div>`);
-        updateRaceWarning();
-
-        $("#script_userEvolutionTarget").on('change', function() {
+        addSettingsSelect(currentNode, "userEvolutionTarget", "Target Race", "Chosen race will be automatically selected during next evolution", raceOptions)
+          .on('change', 'select', function() {
             state.evolutionTarget = null;
             updateRaceWarning();
 
@@ -10750,6 +10747,9 @@
             content.style.height = null;
             content.style.height = content.offsetHeight + "px"
         });
+
+        currentNode.append(`<div><span id="script_race_warning"></span></div>`);
+        updateRaceWarning();
 
         addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Useless after getting mass exintion perk.");
 
@@ -11487,10 +11487,9 @@
                               {val: 1250, label: "Ignore casualties", hint: "Launch Chthonian Assault Mission when it can be won with any loses (1250+ total fleet power, many ships will be lost)"},
                               {val: 2500, label: "Lose 2 Frigates", hint: "Not available in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with average loses (2500+ total fleet power, two Frigates will be lost)"},
                               {val: 4500, label: "Lose 1 Frigate", hint: "Not available in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with minimal loses (4500+ total fleet power, one Frigate will be lost)"}];
-        addSettingsSelect(currentNode, "fleetChthonianPower", "Chthonian Mission", "Assault Chthonian when chosen outcome is achievable", assaultOptions);
-
+        addSettingsSelect(currentNode, "fleetChthonianPower", "Chthonian Mission", "Assault Chthonian when chosen outcome is achievable", assaultOptions)
+          .on('change', 'select', () => settings.fleetChthonianPower = parseInt(settings.fleetChthonianPower));
         // fleetChthonianPower need to be number, not string.
-        $("#script_fleetChthonianPower").on('change', () => settings.fleetChthonianPower = parseInt(settings.fleetChthonianPower));
 
         currentNode.append(`
           <table style="width:100%">
