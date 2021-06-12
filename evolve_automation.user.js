@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.63
+// @version      3.3.1.64
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3649,7 +3649,10 @@
 
         collectorValue: 150000, // Collector power mod. Higher number - more often they'll be scrapped
 
+        // TODO: We can't scrap old and build new mech in same tick due to vue bug, that's a workaround for it. Remove once fixed.
+        nextMech: null,
         spaceUsed: 0,
+
         activeMechs: [],
         inactiveMechs: [],
         mechsPower: 0,
@@ -3730,6 +3733,7 @@
                 this.lastLevel = game.global.portal.spire.count;
                 this.lastPrepared = game.global.blood.prepared;
                 this.lastSpecial = settings.mechSpecial;
+                this.nextMech = null;
 
                 this.updateBestWeapon();
                 this.Size.forEach(size => {
@@ -5632,6 +5636,7 @@
         addSetting("fleetChthonianPower", 4500);
 
         addSetting("mechScrap", "mixed");
+        addSetting("mechScrapEfficiency", 2);
         addSetting("mechBuild", "random");
         addSetting("mechSize", "auto");
         addSetting("mechSizeGravity", "auto");
@@ -8240,7 +8245,8 @@
                 // Disable uselss Guard Post
                 if (building === buildings.RuinsGuardPost) {
                     let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
-                    let postAdjust = Math.max((5000 - poly.hellSupression("ruins").rating) / postRating, (7500 - poly.hellSupression("gate").rating) / postRating);
+                    // 1 extra to workaround rounding errors
+                    let postAdjust = Math.max((5001 - poly.hellSupression("ruins").rating) / postRating, (7501 - poly.hellSupression("gate").rating) / postRating);
                     // We're reserving just one soldier for Guard Posts, so let's increase them by 1
                     maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
                 }
@@ -9134,7 +9140,8 @@
 
         let newMech = {};
         if (settings.mechBuild === "random") {
-            newMech = m.getRandomMech(m.getPreferedSize());
+            newMech = m.nextMech ?? m.getRandomMech(m.getPreferedSize());
+            m.nextMech = null;
         } else if (settings.mechBuild === "user") {
             newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
         } else { // mechBuild === "none"
@@ -9206,7 +9213,9 @@
                 }
                 let [gemRefund, supplyRefund] = m.getMechRefund(mech);
                 // Collector and scout does not refund gems. Let's pretend they're returning half of gem during filtering
-                return Math.min((gemRefund || 0.5) / newGems, supplyRefund / newSupply) > mech.power / newMech.power;
+                let costRatio = Math.min((gemRefund || 0.5) / newGems, supplyRefund / newSupply);
+                let powerRatio = mech.power / newMech.power;
+                return costRatio / powerRatio > settings.mechScrapEfficiency;
             }).sort((a, b) => a.efficiency - b.efficiency);
 
             // Remove worst mechs untill we have enough room for new mech
@@ -9225,6 +9234,7 @@
                 trashMechs.forEach(mech => m.scrapMech(mech));
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
                 resources.Soul_Gem.currentQuantity += gemsGained;
+                m.nextMech = newMech;
                 return; // Just scrapped something, give game a second to recalculate mechs before buying replacement
             }
             if (trashMechs.reduce((sum, mech) => sum += m.getMechSpace(mech), 0) >= newSpace) {
@@ -10345,7 +10355,7 @@
     }
 
     function addSettingsNumber(node, settingName, labelText, hintText) {
-        $(`<div style="display: inline-block; width: 90%; text-align: left;">
+        $(`<div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
              <label title="${hintText}" tabindex="0">
                <span>${labelText}</span>
                <input class="script_${settingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;" value="${settings[settingName]}"></input>
@@ -10635,8 +10645,7 @@
         // Demonic Infusion
         addSettingsHeader1(currentNode, "Demonic Infusion");
         addSettingsNumber(currentNode, "prestigeDemonicFloor", "Minimum spire floor for reset", "Perform reset after climbing up to this spire floor");
-        addSettingsNumber(currentNode, "prestigeDemonicPotential", "Maximum mech potential for reset", "Perform reset only if current mech team potential below given amount. Full bay of best mechs will have `1` potential. This allows to postpone reset while your team is still good, and can clear some floors fast.");
-
+        addSettingsNumber(currentNode, "prestigeDemonicPotential", "Maximum mech potential for reset", "Perform reset only if current mech team potential below given amount. Full bay of best mechs will have `1` potential. This allows to postpone reset if your team is still good after reaching target floor, and can quickly clear another floor");
         addSettingsToggle(currentNode, "prestigeDemonicBomb", "Use Dark Energy Bomb", "Kill Demon Lord with Dark Energy Bomb");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -10749,7 +10758,7 @@
             let set = challenges[i];
             addSettingsToggle(currentNode, `challenge_${set[0].id}`,
               set.map(c => game.loc(`evo_challenge_${c.id}`)).join(" | "),
-              set.map(c => game.loc(`evo_challenge_${c.id}_effect`)).join("&#013;"));
+              set.map(c => game.loc(`evo_challenge_${c.id}_effect`)).join("&#xA;"));
         }
 
         addStandardHeading(currentNode, "Evolution Queue");
@@ -11560,10 +11569,11 @@
         currentNode.empty().off("*");
 
         let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
-                            {val: "single", label: "Single worst", hint: "Scrap mechs with worst efficiency one by one, when they can be replaced with better ones"},
-                            {val: "all", label: "All inefficient", hint: "Scrap all mechs with bad efficiency, replacing them with good ones, E.g. it will be able to scrap 30 mechs of 10% efficiency, and replace them with 10 mechs of 200% efficiency at once. This option will clear current floor at best possible speed, but if you're climbing spire too fast you may finish current floor before bay will be repopulated with new mechs back to full, and risking to enter next floor with half-empty bay of suboptimal mechs."},
-                            {val: "mixed", label: "Excess inefficient", hint: "Compromise between two options above: scrap as much inefficient mechs as possible, preserving enough of old mechs to have full mech bay by the moment when floor will be cleared, based on progress and earning estimations."}];
+                            {val: "single", label: "Single worst", hint: "Scrap mechs only when mech bay is full, and script need more room to build mechs"},
+                            {val: "all", label: "All inefficient", hint: "Scrap all inefficient mechs immediately, using refounded resources to build better ones"},
+                            {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just  enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
         addSettingsSelect(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped. Infernal mechs won't ever be scrapped.", scrapOptions);
+        addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechPower / NewMechPower))' more than given number.&#xA;Efficiency below '1' is not recommended, at '0' this check will be effectively disabled, allowing to scrap anything(as long as power of new mech will be above power of scrapped mechs). E.g. script will be allowed to replace 99% mech with 100% one, even if it could just wait a minute, and build second mech without scrapping old one.&#xA;With efficiency of '1' script is allowed to scrap mechs when refounded resources can immediately make up loss of power. E.g. it will be allowed to replace three 33% mechs with single 100%. This value is most optimal power wise.&#xA;Efficiency above '1' will force script to tolerate presense of bad mechs, even if replacment could be immedately benefical, scapping only terriblest ones, and saving resources. E.g. with '2' efficiency script will keep mechs which are twice worse, than it would keep with '1' efficiency.");
 
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
@@ -11580,7 +11590,7 @@
                               {val: "never", label: "Never", hint: "Never add special equipment"}];
         addSettingsSelect(currentNode, "mechSpecial", "Special mechs", "Configures special equip", specialOptions);
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
-        addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, thus it most time-efficient to fight him while current mechs can't fight properly against regular monsters, and need some time for rebuilding. Auto Power needs to be on for this to work.");
+        addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
         addSettingsToggle(currentNode, "mechFillBay", "Fill remaining bay space with smaller mechs", "Once mech bay is packed with optimal mechs of prefered size up to the limit fill up remaining space with smaller mechs, if possible");
         addSettingsToggle(currentNode, "buildingMechsFirst", "Build spire buildings only with full bay", "Fill mech bays up to current limit before spending resources on additional spire buildings");
@@ -11655,6 +11665,7 @@
 
     function resetMechSettings() {
         settings.mechScrap = "mixed";
+        settings.mechScrapEfficiency = 2;
         settings.mechBuild = "random";
         settings.mechSize = "auto";
         settings.mechSizeGravity = "auto";
