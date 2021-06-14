@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.64
+// @version      3.3.1.65
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3661,6 +3661,7 @@
         lastLevel: -1,
         lastPrepared: -1,
         lastSpecial: "",
+        bestSize: [],
         bestMech: {},
         bestBody: {},
         bestWeapon: [],
@@ -3738,8 +3739,9 @@
                 this.updateBestWeapon();
                 this.Size.forEach(size => {
                     this.updateBestBody(size);
-                    this.bestMech[size] = this.getRandomMech(size); // Reference best mech, to compare power
+                    this.bestMech[size] = this.getRandomMech(size);
                 });
+                this.bestSize = Object.values(this.bestMech).filter(m => m.size !== 'collector').sort((a, b) => b.efficiency - a.efficiency).map(m => m.size);
 
                 // Redraw added label of Mech Lab after change of floor
                 removeMechInfo();
@@ -3766,7 +3768,7 @@
                 }
             }
 
-            let bestMech = this.bestMech[game.global.portal.spire.status.gravity ? 'medium' : 'large'];
+            let bestMech = this.bestMech[this.bestSize[0]];
             this.mechsPotential = this.mechsPower / (buildings.SpireMechBay.count * 25 / this.getMechSpace(bestMech) * bestMech.power) || 0;
 
             return true;
@@ -3841,14 +3843,11 @@
                 return floorSize; // This floor have configured size
             }
 
-            if (game.global.portal.spire.status.gravity) {
-                return 'medium'; // Auto size for gravity is always medium
-            }
-
-            for (let i = this.Size.length - 2; i > 0; i--) {
-                let {s, c} = poly.mechCost(this.Size[i]);
+            for (let i = 0; i < this.bestSize.length; i++) {
+                let mechSize = this.bestSize[i];
+                let {s, c} = poly.mechCost(mechSize);
                 if (resources.Soul_Gem.spareQuantity >= s && resources.Supply.maxQuantity >= c) {
-                    return this.Size[i]; // Affordable mech for auto size, selected among medium, heavy, and titan
+                    return mechSize; // Affordable mech for auto size
                 }
             }
 
@@ -8376,7 +8375,7 @@
         if (manageSpire && resources.Spire_Support.rateOfChange > 0) {
             let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
-            let buildAllowed = (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) / buildings.SpireMechBay.count > 1 || resources.Supply.isCapped());
+            let buildAllowed = (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) > buildings.SpireMechBay.count);
             const spireBuildable = (building) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money);
             let mechBuildable = spireBuildable(buildings.SpireMechBay);
             let puriBuildable = spireBuildable(buildings.SpirePurifier);
@@ -9207,6 +9206,7 @@
             let powerLost = 0;
 
             // Get list of inefficient mech
+            let scrapEfficiency = lastFloor ? Math.min(settings.mechScrapEfficiency, 1) : settings.mechScrapEfficiency;
             let badMechList = m.activeMechs.filter(mech => {
                 if (mech.infernal || mech.power >= m.bestMech[mech.size].power) {
                     return false;
@@ -9215,7 +9215,7 @@
                 // Collector and scout does not refund gems. Let's pretend they're returning half of gem during filtering
                 let costRatio = Math.min((gemRefund || 0.5) / newGems, supplyRefund / newSupply);
                 let powerRatio = mech.power / newMech.power;
-                return costRatio / powerRatio > settings.mechScrapEfficiency;
+                return costRatio / powerRatio > scrapEfficiency;
             }).sort((a, b) => a.efficiency - b.efficiency);
 
             // Remove worst mechs untill we have enough room for new mech
@@ -9229,7 +9229,7 @@
             }
 
             // Now go scrapping, if possible and benefical
-            if (trashMechs.length > 0 && powerLost < newMech.power && baySpace + spaceGained >= newSpace && resources.Supply.spareQuantity + supplyGained >= newSupply && resources.Soul_Gem.spareQuantity + gemsGained >= newGems) {
+            if (trashMechs.length > 0 && powerLost / spaceGained < newMech.efficiency && baySpace + spaceGained >= newSpace && resources.Supply.spareQuantity + supplyGained >= newSupply && resources.Soul_Gem.spareQuantity + gemsGained >= newGems) {
                 trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
                 trashMechs.forEach(mech => m.scrapMech(mech));
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
@@ -11568,11 +11568,11 @@
         currentNode.empty().off("*");
 
         let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
-                            {val: "single", label: "Single worst", hint: "Scrap mechs only when mech bay is full, and script need more room to build mechs"},
+                            {val: "single", label: "Full bay", hint: "Scrap mechs only when mech bay is full, and script need more room to build mechs"},
                             {val: "all", label: "All inefficient", hint: "Scrap all inefficient mechs immediately, using refounded resources to build better ones"},
                             {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just  enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
         addSettingsSelect(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped. Infernal mechs won't ever be scrapped.", scrapOptions);
-        addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechPower / NewMechPower))' more than given number.&#xA;Efficiency below '1' is not recommended, at '0' this check will be effectively disabled, allowing to scrap anything(as long as power of new mech will be above power of scrapped mechs). E.g. script will be allowed to replace 99% mech with 100% one, even if it could just wait a minute, and build second mech without scrapping old one.&#xA;With efficiency of '1' script is allowed to scrap mechs when refounded resources can immediately make up loss of power. E.g. it will be allowed to replace three 33% mechs with single 100%. This value is most optimal power wise.&#xA;Efficiency above '1' will force script to tolerate presense of bad mechs, even if replacment could be immedately benefical, scapping only terriblest ones, and saving resources. E.g. with '2' efficiency script will keep mechs which are twice worse, than it would keep with '1' efficiency.");
+        addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechPower / NewMechPower))' more than given number.&#xA;For the cases when exchanged mechs have same size(1/3 refund) it means that with 1 eff. script allowed to scrap mechs under 33.3%. 1.5 eff. - under 22.2%, 2 eff. - under 16.6%, 0.5 eff. - under 66.6%, 0 eff. - under 100%, etc.&#xA;Efficiency below '1' is not recommended, unless scrap set to 'Full bay', as it's a breakpoint when refunded resources can immidiately compensate lost power, resulting with best power growth rate.&#xA;Efficiency above '1' is useful to save resources for more desperate times, or to compensate low soul gems income.");
 
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
