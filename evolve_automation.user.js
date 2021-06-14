@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.65
+// @version      3.3.1.66
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -6751,7 +6751,7 @@
                     jobsToAssign = Math.min(jobsToAssign, minersNeeded);
                 }
 
-                if (job === jobs.Entertainer && !haveTech("superstars")) {
+                if (job === jobs.Entertainer && !haveTech("superstar")) {
                     let taxBuffer = (settings.autoTax || haveTask("tax")) && game.global.civic.taxes.tax_rate < poly.taxCap(false) ? 1 : 0;
                     let entertainerMorale = game.global.tech['theatre'] + (game.global.race['musical'] ? 1 : 0);
                     let moraleExtra = game.global.city.morale.potential - game.global.city.morale.cap - taxBuffer;
@@ -9206,7 +9206,7 @@
             let powerLost = 0;
 
             // Get list of inefficient mech
-            let scrapEfficiency = lastFloor ? Math.min(settings.mechScrapEfficiency, 1) : settings.mechScrapEfficiency;
+            let scrapEfficiency = lastFloor ? Math.min(settings.mechScrapEfficiency, baySpace < newSpace ? 0 : 1) : settings.mechScrapEfficiency;
             let badMechList = m.activeMechs.filter(mech => {
                 if (mech.infernal || mech.power >= m.bestMech[mech.size].power) {
                     return false;
