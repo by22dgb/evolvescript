@@ -568,7 +568,7 @@
             }
 
             this.currentQuantity = game.global.city.power;
-            this.maxQuantity = Number.MAX_SAFE_INTEGER;
+            this.maxQuantity = Object.values(buildings).reduce((net, b) => net + (b === buildings.NeutronCitadel ? getCitadelConsumption(b.count) - getCitadelConsumption(b.stateOnCount) : b.stateOffCount * b.powered), 0);
             this.rateOfChange = game.global.city.power;
         }
 
@@ -1854,7 +1854,7 @@
 
         // Gas
         GasMission: new Action("Gas Mission", "space", "gas_mission", "spc_gas"),
-        GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas"),
+        GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas", {smart: true}),
         GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", "spc_gas"),
         GasSpaceDock: new SpaceDock("Gas Space Dock", "space", "star_dock", "spc_gas"),
         GasSpaceDockProbe: new ModalAction("Gas Space Probe", "starDock", "probes", "", "starDock"),
@@ -1866,7 +1866,7 @@
         GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon"),
         GasMoonOutpost: new Action("Gas Moon Mining Outpost", "space", "outpost", "spc_gas_moon"),
         GasMoonDrone: new Action("Gas Moon Mining Drone", "space", "drone", "spc_gas_moon"),
-        GasMoonOilExtractor: new Action("Gas Moon Oil Extractor", "space", "oil_extractor", "spc_gas_moon"),
+        GasMoonOilExtractor: new Action("Gas Moon Oil Extractor", "space", "oil_extractor", "spc_gas_moon", {smart: true}),
 
         // Belt
         BeltMission: new Action("Belt Mission", "space", "belt_mission", "spc_belt"),
@@ -2304,12 +2304,12 @@
           () => "New building",
           () => settings.buildingWeightingNew
       ],[
-          () => resources.Power.isUnlocked() && resources.Power.currentQuantity < (game.global.race['emfield'] ? 1.5 : 1),
+          () => resources.Power.isUnlocked() && resources.Power.currentQuantity < resources.Power.maxQuantity,
           (building) => building === buildings.LakeCoolingTower || building.powered < 0,
           () => "Need more energy",
           () => settings.buildingWeightingNeedfulPowerPlant
       ],[
-          () => resources.Power.isUnlocked() && resources.Power.currentQuantity > (game.global.race['emfield'] ? 1.5 : 1),
+          () => resources.Power.isUnlocked() && resources.Power.currentQuantity > resources.Power.maxQuantity,
           (building) => building !== buildings.Mill && building.powered < 0,
           () => "No need for more energy",
           () => settings.buildingWeightingUselessPowerPlant
@@ -4332,7 +4332,7 @@
     function initialiseState() {
         // Construct craftable resource list
         for (let [name, costs] of Object.entries(game.craftCost)) {
-            if (resources[name]) {
+            if (resources[name]) { // Ignore Thermite
                 for (let i = 0; i < costs.length; i++) {
                     resources[name].resourceRequirements.push(new ResourceRequirement(resources[costs[i].r], costs[i].a));
                 }
@@ -8195,15 +8195,29 @@
                 if (manageTransport && (building === buildings.LakeTransport || building === buildings.LakeBireme)) {
                     continue;
                 }
-                // Disable empty buildings
-                if (building === buildings.CementPlant && jobs.CementWorker.count === 0) {
-                    maxStateOn = 0;
-                }
-                if (building === buildings.Mine && jobs.Miner.count === 0) {
-                    maxStateOn = 0;
-                }
-                if (building === buildings.CoalMine && jobs.CoalMiner.count === 0) {
-                    maxStateOn = 0;
+                if (resources.Power.currentQuantity <= resources.Power.maxQuantity) { // Saving power, unless we can afford everything
+                    // Disable Belt Space Stations with no workers
+                    if (building === buildings.BeltSpaceStation) {
+                        let stationStorage = parseFloat(game.breakdown.c.Elerium[game.loc("space_belt_station_title")] ?? 0);
+                        let extraStations = Math.floor((resources.Elerium.maxQuantity - resources.Elerium.storageRequired) / stationStorage);
+                        let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
+                        maxStateOn = Math.min(maxStateOn, Math.max(currentStateOn - extraStations, Math.ceil(minersNeeded / 3)));
+                    }
+                    if (building === buildings.CementPlant && jobs.CementWorker.count === 0) {
+                        maxStateOn = 0;
+                    }
+                    if (building === buildings.Mine && jobs.Miner.count === 0) {
+                        maxStateOn = 0;
+                    }
+                    if (building === buildings.CoalMine && jobs.CoalMiner.count === 0) {
+                        maxStateOn = 0;
+                    }
+                    if (building === buildings.GasMining && !resources.Helium_3.isUseful()) {
+                        maxStateOn = Math.min(maxStateOn, resources.Helium_3.getBusyWorkers("space_gas_mining_title", currentStateOn));
+                    }
+                    if (building === buildings.GasMoonOilExtractor  && !resources.Oil.isUseful()) {
+                        maxStateOn = Math.min(maxStateOn, resources.Oil.getBusyWorkers("space_gas_moon_oil_extractor_title", currentStateOn));
+                    }
                 }
                 // Disable barracks on bioseed run, if enabled
                 if (building === buildings.Barracks && settings.prestigeEnabledBarracks < 100 && !WarManager.isForeignUnlocked() && buildings.GasSpaceDockShipSegment.count < 90 && buildings.DwarfWorldController.count < 1) {
@@ -8227,13 +8241,6 @@
                 // Disable mills with surplus energy
                 if (building === buildings.Mill && building.powered && resources.Food.storageRatio < 0.7 && (jobs.Farmer.count > 0 || jobs.Hunter.count > 0)) {
                     maxStateOn = Math.min(maxStateOn, currentStateOn - ((resources.Power.currentQuantity - 5) / (-building.powered)));
-                }
-                // Disable Belt Space Stations with no workers
-                if (building === buildings.BeltSpaceStation && resources.Power.currentQuantity - ((building.count - currentStateOn) * building.powered) < 20) {
-                    let stationStorage = parseFloat(game.breakdown.c.Elerium[game.loc("space_belt_station_title")] ?? 0);
-                    let extraStations = Math.floor((resources.Elerium.maxQuantity - resources.Elerium.storageRequired) / stationStorage);
-                    let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
-                    maxStateOn = Math.min(maxStateOn, Math.max(currentStateOn - extraStations, Math.ceil(minersNeeded / 3)));
                 }
                 // Disable useless Mine Layers
                 if (building === buildings.ChthonianMineLayer) {
@@ -9803,8 +9810,7 @@
             if (node.id === "popper") {
                 let dataId = node.dataset.id;
                 if (dataId === 'powerStatus') {
-                    let disabled = Object.values(buildings).reduce((net, b) => net + (b === buildings.NeutronCitadel ? getCitadelConsumption(b.count) - getCitadelConsumption(b.stateOnCount) : b.stateOffCount * b.powered), 0);
-                    node.innerHTML += `<p class="modal_bd"><span>Disabled</span><span class="has-text-danger">${getNiceNumber(disabled)}</span></p>`;
+                    node.innerHTML += `<p class="modal_bd"><span>Disabled</span><span class="has-text-danger">${getNiceNumber(resources.Power.maxQuantity)}</span></p>`;
                     return;
                 }
                 let obj = null;
