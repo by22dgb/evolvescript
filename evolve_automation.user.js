@@ -2122,7 +2122,7 @@
           (building) => {
               if (building === buildings.SpirePurifier || building === buildings.SpirePort || building === buildings.SpireBaseCamp || building === buildings.SpireMechBay) {
                   let mechBay = game.global.portal.mechbay;
-                  let newSize = !haveTask("mech") ? settings.mechBuild === "random" ? MechManager.getPreferedSize() : mechBay.blueprint.size : "titan";
+                  let newSize = !haveTask("mech") ? settings.mechBuild === "random" ? MechManager.getPreferredSize() : mechBay.blueprint.size : "titan";
                   let [newGems, newSupply, newSpace] = MechManager.getMechCost({size: newSize});
                   if (newSpace <= mechBay.max - mechBay.bay && newSupply <= resources.Supply.maxQuantity && newGems <= resources.Soul_Gem.currentQuantity) {
                       return true;
@@ -3760,7 +3760,7 @@
             return mod;
         },
 
-        getPreferedSize() {
+        getPreferredSize() {
             let mechBay = game.global.portal.mechbay;
             if (settings.mechFillBay && mechBay.bay % 2 !== mechBay.max % 2 && mechBay.max % 1 === 0) {
                 return 'collector'; // One collector to fill odd bay
@@ -6275,7 +6275,7 @@
         minSoldiers = minSoldiers ?? m.getSoldiersForAdvantage(settings.foreignMinAdvantage, requiredTactic, currentTarget.id);
         maxSoldiers = maxSoldiers ?? m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, requiredTactic, currentTarget.id);
 
-        // Max soldiers advantage should be above our max. Let's tune it down to stay in prefered range, if we can
+        // Max soldiers advantage should be above our max. Let's tune it down to stay in preferred range, if we can
         if (maxSoldiers > minSoldiers) {
             maxSoldiers--;
         }
@@ -9092,7 +9092,7 @@
 
         let newMech = {};
         if (settings.mechBuild === "random") {
-            newMech = m.getRandomMech(m.getPreferedSize());
+            newMech = m.getRandomMech(m.getPreferredSize());
         } else if (settings.mechBuild === "user") {
             newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
         } else { // mechBuild === "none"
@@ -11576,18 +11576,18 @@
         addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be build. Infernal mechs won't ever be build.", buildOptions);
 
         let sizeOptions = [{val: "auto", label: "Most efficient", hint: "Select mech with best power per size for current floor, based on current amount of Soul Gems, and Supplies storage cap"}, ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
-        addSettingsSelect(currentNode, "mechSize", "Prefered mech size", "Size of random mechs", sizeOptions);
-        addSettingsSelect(currentNode, "mechSizeGravity", "Gravity mech size", "Override prefered size with this on floors with high gravity", sizeOptions);
+        addSettingsSelect(currentNode, "mechSize", "Preferred mech size", "Size of random mechs", sizeOptions);
+        addSettingsSelect(currentNode, "mechSizeGravity", "Gravity mech size", "Override preferred size with this on floors with high gravity", sizeOptions);
 
         let specialOptions = [{val: "always", label: "Always", hint: "Add special equipment to all mechs"},
-                              {val: "prefered", label: "Prefered", hint: "Add special equipment when it doesn't reduce efficiency for current floor"},
+                              {val: "prefered", label: "Preferred", hint: "Add special equipment when it doesn't reduce efficiency for current floor"},
                               {val: "random", label: "Random", hint: "Special equipment will have same chance to be added as all others"},
                               {val: "never", label: "Never", hint: "Never add special equipment"}];
         addSettingsSelect(currentNode, "mechSpecial", "Special mechs", "Configures special equip", specialOptions);
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
         addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
-        addSettingsToggle(currentNode, "mechFillBay", "Build smaller mechs when preferred not available", "Build smaller mechs when prefered size can't be used due to low remaining bay space, or supplies cap");
+        addSettingsToggle(currentNode, "mechFillBay", "Build smaller mechs when preferred not available", "Build smaller mechs when preferred size can't be used due to low remaining bay space, or supplies cap");
         addSettingsToggle(currentNode, "buildingMechsFirst", "Build spire buildings only with full bay", "Fill mech bays up to current limit before spending resources on additional spire buildings");
         addSettingsToggle(currentNode, "mechBaysFirst", "Scrap mechs only after building maximum bays", "Scrap old mechs only when no new bays and purifiers can be builded");
 
@@ -12897,7 +12897,7 @@
         currentNode.empty().off("*");
 
         addSettingsToggle(currentNode, "arpaScaleWeighting", "Scale weighting with progress", "Projects weighting scales  with current progress, making script more eager to spend resources on finishing nearly constructed projects.");
-        addSettingsNumber(currentNode, "arpaStep", "Prefered progress step", "Projects will be weighted and build in this steps. Increasing number can speed up constructing. Step will be adjusted down when preferred step above remaining amount, or surpass storage caps. Weightings below will be multiplied by current step. Projects builded by triggers will always have maximum possible step.");
+        addSettingsNumber(currentNode, "arpaStep", "Preferred progress step", "Projects will be weighted and build in this steps. Increasing number can speed up constructing. Step will be adjusted down when preferred step above remaining amount, or surpass storage caps. Weightings below will be multiplied by current step. Projects builded by triggers will always have maximum possible step.");
 
         currentNode.append(`
           <table style="width:100%">
