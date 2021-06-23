@@ -2192,17 +2192,17 @@
       ],[
           () => buildings.SpireWaygate.isUnlocked() && haveTech("waygate", 2),
           (building) => building === buildings.SpireWaygate,
-          () => "Not avaiable",
+          () => "Not available",
           () => 0 // We can't limit waygate using gameMax, as max here doesn't constant. It's start with 10, but after building count reduces down to 1
       ],[
           () => buildings.SpireSphinx.isUnlocked() && haveTech("hell_spire", 8),
           (building) => building === buildings.SpireSphinx,
-          () => "Not avaiable",
+          () => "Not available",
           () => 0 // Sphinx not usable after solving
       ],[
           () => buildings.RuinsAncientPillars.isUnlocked() && (game.global.tech.pillars !== 1 || game.global.race.universe === 'micro'),
           (building) => building === buildings.RuinsAncientPillars,
-          () => "Not avaiable",
+          () => "Not available",
           () => 0 // Pillars can't be activated in micro, and without tech.
       ],[
           () => buildings.GorddonEmbassy.count === 0 && resources.Knowledge.maxQuantity < settings.fleetEmbassyKnowledge,
@@ -3357,6 +3357,10 @@
             return this.maxSoldiers - this.hellSoldiers;
         },
 
+        get availableGarrison() {
+            return this.currentCityGarrison - this.wounded;
+        },
+
         get hellGarrison()  {
             return this.hellSoldiers - this.hellPatrolSize * this.hellPatrols - this.hellReservedSoldiers;
         },
@@ -4508,6 +4512,7 @@
         settings.foreignMinAdvantage = 40;
         settings.foreignMaxAdvantage = 50;
         settings.foreignMaxSiegeBattalion = 10;
+        settings.foreignProtectSoldiers = false;
 
         settings.foreignPacifist = false;
         settings.foreignUnification = true;
@@ -5471,7 +5476,8 @@
         addSetting("foreignHireMercDeadSoldiers", 1);
         addSetting("foreignMinAdvantage", 40);
         addSetting("foreignMaxAdvantage", 50);
-        addSetting("foreignMaxSiegeBattalion", 15);
+        addSetting("foreignMaxSiegeBattalion", 10);
+        addSetting("foreignProtectSoldiers", false);
 
         addSetting("foreignPacifist", false);
         addSetting("foreignUnification", true);
@@ -6232,16 +6238,24 @@
             return;
         }
 
-        let bestAttackRating = game.armyRating(m.currentCityGarrison - m.wounded, "army");
+        // Calculating safe size of battalions, if needed
+        let armor = ((game.global.race.scales ? 2 : 0) + (game.global.tech.armor ?? 0)) * (game.global.race.armored ? 4 : 1);
+        let maxBattalion = settings.foreignProtectSoldiers ? [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap + (game.global.race.frail ? 1 : 0) ? m.maxCityGarrison : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0) - (game.global.race.frail ? 1 : 0)) * 5 - tactic))) : new Array(5).fill(m.maxCityGarrison);
+
+        let requiredBattalion = settings.foreignProtectSoldiers ? 0 : m.maxCityGarrison;
         let requiredTactic = 0;
 
         // Check if there's something that we want and can occupy, and switch to that target if found
         for (let i = 0; i < activeForeigns.length; i++) {
             let foreign = activeForeigns[i];
-            if (foreign.policy === "Occupy" && !foreign.gov.occ && m.getAdvantage(bestAttackRating, 4, foreign.id) >= settings.foreignMinAdvantage) {
-                currentTarget = foreign;
-                requiredTactic = 4;
-                break;
+            if (foreign.policy === "Occupy" && !foreign.gov.occ) {
+                let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, foreign.id);
+                if (soldiersMin <= m.maxCityGarrison) {
+                    currentTarget = foreign;
+                    requiredBattalion = Math.max(soldiersMin, Math.min(m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, foreign.id) - 1));
+                    requiredTactic = 4;
+                    break;
+                }
             }
         }
 
@@ -6250,36 +6264,29 @@
             return;
         }
 
-        let minSoldiers = null;
-        let maxSoldiers = null;
-
-        // Check if we can siege for loot
         if (requiredTactic !== 4) {
-            let minSiegeSoldiers = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, currentTarget.id);
-            if (minSiegeSoldiers <= settings.foreignMaxSiegeBattalion && minSiegeSoldiers <= m.currentCityGarrison) {
-                minSoldiers = minSiegeSoldiers;
-                maxSoldiers = Math.min(m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, currentTarget.id), settings.foreignMaxSiegeBattalion + 1);
+            // Check if we can siege for loot
+            let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, currentTarget.id);
+            if (soldiersMin <= maxBattalion[4] && soldiersMin <= settings.foreignMaxSiegeBattalion) {
+                requiredBattalion = Math.max(soldiersMin, Math.min(maxBattalion[4], settings.foreignMaxSiegeBattalion, m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, currentTarget.id) - 1));
                 requiredTactic = 4;
-            }
-        }
-        // If we aren't going to siege our target, then let's find best tactic for plundering
-        if (requiredTactic !== 4) {
-            for (let i = 3; i > 0; i--) {
-                if (m.getAdvantage(bestAttackRating, i, currentTarget.id) >= settings.foreignMinAdvantage) {
-                    requiredTactic = i;
-                    break;
+            } else {
+                // If we aren't going to siege our target, then let's find best tactic for plundering
+                for (let i = 3; i >= 0; i--) {
+                    soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, i, currentTarget.id);
+                    if (soldiersMin <= maxBattalion[i]) {
+                        requiredBattalion = Math.max(soldiersMin, Math.min(maxBattalion[i], m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, i, currentTarget.id) - 1));
+                        requiredTactic = i;
+                        break;
+                    }
                 }
             }
         }
 
-        minSoldiers = minSoldiers ?? m.getSoldiersForAdvantage(settings.foreignMinAdvantage, requiredTactic, currentTarget.id);
-        maxSoldiers = maxSoldiers ?? m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, requiredTactic, currentTarget.id);
-
-        // Max soldiers advantage should be above our max. Let's tune it down to stay in preferred range, if we can
-        if (maxSoldiers > minSoldiers) {
-            maxSoldiers--;
+        // Not enough healthy soldiers, keep resting
+        if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
+            return;
         }
-        maxSoldiers = Math.min(maxSoldiers, m.currentCityGarrison - m.wounded);
 
         // Occupy can pull soldiers from ships, let's make sure it won't happen
         if (currentTarget.gov.anx || currentTarget.gov.buy || currentTarget.gov.occ) {
@@ -6287,7 +6294,7 @@
             m.launchCampaign(currentTarget.id);
         } else if (requiredTactic === 4 && m.crew > 0) {
             let occCost = game.global.civic.govern.type === "federation" ? 15 : 20;
-            let missingSoldiers = occCost - (m.currentCityGarrison - m.wounded - maxSoldiers);
+            let missingSoldiers = occCost - (m.availableGarrison - requiredBattalion);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
                 if (!settings.autoHell || !m.initHell() || m.hellSoldiers - m.hellReservedSoldiers < missingSoldiers) {
@@ -6305,7 +6312,7 @@
         m.setTactic(requiredTactic);
 
         // Now adjust our battalion size to fit between our campaign attack rating ranges
-        let deltaBattalion = maxSoldiers - m.raid;
+        let deltaBattalion = requiredBattalion - m.raid;
         if (deltaBattalion > 0) {
             m.addBattalion(deltaBattalion);
         }
@@ -7851,13 +7858,15 @@
 
         let estimatedTime = {};
         let affordableCache = {};
+        const isAffordable = (building) => (affordableCache[building._vueBinding] ?? (affordableCache[building._vueBinding] = building.isAffordable()));
+
         // Loop through the auto build list and try to buy them
         buildingsLoop:
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
 
             // Only go further if it's affordable building, and not current target
-            if (ignoredList.includes(building) || !(affordableCache[building._vueBinding] ?? (affordableCache[building._vueBinding] = building.isAffordable()))) {
+            if (ignoredList.includes(building) || !isAffordable(building)) {
                 continue;
             }
 
@@ -7880,8 +7889,8 @@
                     }
                     // And we don't want to process clickable buildings - all buildings with highter weighting should already been proccessed.
                     // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                    // x10 weight for building to be checked against
-                    if (weightDiffRatio < 10 && (affordableCache[other._vueBinding] ?? (affordableCache[other._vueBinding] = other.isAffordable()))){
+                    // Unless that thing have x10 weight, and we absolutely don't want to waste its resources
+                    if (weightDiffRatio < 10 && isAffordable(other)){
                         continue;
                     }
 
@@ -7956,7 +7965,10 @@
                 if (building.consumption.length > 0) { // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
                     return;
                 }
-                affordableCache = {}; // Clear cache after spending resources, and recheck buildings again
+                // Mark all processed building as unaffordable for remaining loop, so they won't appear as conflicting
+                for (let key in affordableCache) {
+                    affordableCache[key] = false;
+                }
             }
         }
     }
@@ -10670,7 +10682,7 @@
 
         let governmentOptions = Object.keys(GovernmentManager.Types).filter(id => id !== "anarchy").map(id => ({val: id, label: game.loc(`govern_${id}`), hint: game.loc(`govern_${id}_desc`)}));
         addSettingsSelect(currentNode, "govInterim", "Interim Government", "Temporary low tier government until you research other governments", governmentOptions);
-        addSettingsSelect(currentNode, "govFinal", "Second Government", "Second government choice, chosen once becomes avaiable. Can be the same as above", governmentOptions);
+        addSettingsSelect(currentNode, "govFinal", "Second Government", "Second government choice, chosen once becomes available. Can be the same as above", governmentOptions);
         addSettingsSelect(currentNode, "govSpace", "Space Government", "Government for bioseed+. Chosen once you researched Quantum Manufacturing. Can be the same as above", governmentOptions);
 
         let governorsOptions = [{val: "none", label: "None", hint: ""}, ...governors.map(id => ({val: id, label: game.loc(`governor_${id}`), hint: game.loc(`governor_${id}_desc`)}))];
@@ -11397,7 +11409,8 @@
 
         addSettingsNumber(currentNode, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes");
         addSettingsNumber(currentNode, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down this advantage, reducing potential loses");
-        addSettingsNumber(currentNode, "foreignMaxSiegeBattalion", "Maximum siege battalion", "Maximum battalion for siege campaign. Only try to siege if it's possible with up to given amount of soldiers. Siege is expensive, if you'll be doing it with too big battalion it might be less profitable than other combat campaigns. This option does not applied for unification, it's only for regular looting.");
+        addSettingsNumber(currentNode, "foreignMaxSiegeBattalion", "Maximum siege battalion", "Maximum battalion for siege campaign. Only try to siege if it's possible with up to given amount of soldiers. Siege is expensive, if you'll be doing it with too big battalion it might be less profitable than other combat campaigns. This option does not applied to unifying sieges, it affect only looting.");
+        addSettingsToggle(currentNode, "foreignProtectSoldiers", "Protect soldiers", "Limit battalions to sizes which will neven suffer any casualties in successful fights. You still will lose soldiers after failures, increasing minimum advantage can improve winning odds. This option designed to use with armored races favoring frequent attacks, with no approppriate build it may prevent any attacks from happening. This option does not applied to unifying sieges, it affect only looting.");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
