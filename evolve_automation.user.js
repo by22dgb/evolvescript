@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.69
+// @version      3.3.1.70
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -895,7 +895,7 @@
                 // Adjust fuel
                 let consumptionRate = this.consumption[j].rate;
                 if (this._tab === "space" && (resource === resources.Oil || resource === resources.Helium_3)) {
-                    consumptionRate = game.fuel_adjust(consumptionRate);
+                    consumptionRate = game.fuel_adjust(consumptionRate, true);
                 }
                 if (this._tab === "interstellar" && (resource === resources.Deuterium || resource === resources.Helium_3) && this !== buildings.AlphaFusion) {
                     consumptionRate = game.int_fuel_adjust(consumptionRate);
@@ -4607,9 +4607,7 @@
         settings.evolutionQueueEnabled = false;
         settings.evolutionQueueRepeat = false;
         settings.evolutionBackup = false;
-        for (let i = 0; i < challenges.length; i++) {
-            settings["challenge_" + challenges[i][0].id] = false;
-        }
+        challenges.forEach(set => settings["challenge_" + set[0].id] = false);
     }
 
     function resetResearchSettings() {
@@ -4683,10 +4681,6 @@
         }
     }
 
-    function resetMinorTraitSettings() {
-        // None currently
-    }
-
     function resetJobSettings() {
         settings.jobSetDefault = true;
         settings.jobLumberWeighting = 50;
@@ -4696,9 +4690,7 @@
         settings.jobDisableMiners = true;
         settings.jobDisableCraftsmans = true;
 
-        for (let i = 0; i < JobManager.priorityList.length; i++){
-            JobManager.priorityList[i].autoJobEnabled = true;
-        }
+        JobManager.priorityList.forEach(job => job.autoJobEnabled = true);
     }
 
     function resetJobState() {
@@ -5132,9 +5124,6 @@
         RitualManager.Productions.Farmer.weighting = 1;
     }
 
-    function resetTriggerSettings() {
-    }
-
     function resetTriggerState() {
         TriggerManager.priorityList = [];
     }
@@ -5150,7 +5139,6 @@
     function updateStateFromSettings() {
         updateStandAloneSettings();
 
-        settings.triggers = settings.triggers ?? [];
         TriggerManager.priorityList = [];
         settings.triggers.forEach(trigger => TriggerManager.AddTriggerFromSetting(trigger));
 
@@ -5374,6 +5362,7 @@
     function updateStandAloneSettings() {
         settings['scriptName'] = "TMVictor";
 
+        addSetting("triggers", []);
         addSetting("evolutionQueue", []);
         addSetting("evolutionQueueEnabled", false);
         addSetting("evolutionQueueRepeat", false);
@@ -5589,8 +5578,7 @@
         extraList.forEach(id => addSetting("extra_w_" + id, 0));
 
         // Convert old setings
-
-        settings.triggers?.forEach(t => {
+        settings.triggers.forEach(t => {
             if (techIds["tech-" + t.actionId]) { t.actionId = "tech-" + t.actionId; }
             if (techIds["tech-" + t.requirementId]) { t.requirementId = "tech-" + t.requirementId; }
         });
@@ -6114,9 +6102,9 @@
                 currentTarget.policy = "Sabotage";
             }
 
-            // Set last foreign to sabbotage only, and then switch to occupy once we're ready to unify
+            // Set last foreign to sabotage only, and then switch to occupy once we're ready to unify
             if (settings.foreignOccupyLast && !haveTech('world_control')) {
-                let lastTarget = ["Ocuupy", "Sabbotage"].includes(settings.foreignPolicySuperior) ? Math.max(...unlockedForeigns) : currentTarget.id;
+                let lastTarget = ["Occupy", "Sabotage"].includes(settings.foreignPolicySuperior) ? Math.max(...unlockedForeigns) : currentTarget.id;
                 activeForeigns.find(foreign => foreign.id === lastTarget).policy = readyToUnify ? "Occupy" : "Sabotage";
             }
 
@@ -6736,6 +6724,10 @@
                     if (!resources.Cement.isUseful()) {
                         jobsToAssign = Math.min(jobsToAssign, resources.Cement.getBusyWorkers("city_cement_plant_bd", jobs.CementWorker.count));
                     }
+                }
+
+                if (job === jobs.Surveyor && game.global.portal.fortress.threat > 9000 && resources.Population.storageRatio < 1) {
+                    jobsToAssign = 0;
                 }
 
                 jobsToAssign = Math.max(0, jobsToAssign);
@@ -8062,6 +8054,7 @@
             let itemId = items[i].id;
             if (isTechAllowed(itemId) && !getCostConflict(techIds[itemId]) && techIds[itemId].click()) {
                 BuildingManager.updateBuildings(); // Cache cost if we just unlocked some building
+                ProjectManager.updateProjects();
                 return;
             }
         }
@@ -8102,7 +8095,7 @@
                 // Fuel adjust
                 let consumptionRate = resourceType.rate;
                 if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    consumptionRate = game.fuel_adjust(consumptionRate);
+                    consumptionRate = game.fuel_adjust(consumptionRate, true);
                 }
                 if ((building._tab === "interstellar" || building._tab === "galaxy") && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== buildings.AlphaFusion) {
                     consumptionRate = game.int_fuel_adjust(consumptionRate);
@@ -8297,7 +8290,7 @@
                 // Fuel adjust
                 let consumptionRate = resourceType.rate;
                 if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    consumptionRate = game.fuel_adjust(consumptionRate);
+                    consumptionRate = game.fuel_adjust(consumptionRate, true);
                 }
                 if ((building._tab === "interstellar" || building._tab === "galaxy") && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== buildings.AlphaFusion) {
                     consumptionRate = game.int_fuel_adjust(consumptionRate);
@@ -10140,6 +10133,7 @@
             }
 
             /* Fixes for game styles */
+            .main .resources .resource :first-child { white-space: nowrap; }
             #popTimer { margin-bottom: 0.1rem }
             #powerStatus { white-space: nowrap; } // TODO: Remove in 1.2
             .barracks { white-space: nowrap; }
@@ -10888,12 +10882,11 @@
             try {
                 let queuedEvolution = JSON.parse(this.value);
                 settings.evolutionQueue[id] = queuedEvolution;
+                updateSettingsFromState();
+                updateEvolutionSettingsContent();
             } catch (error) {
-                alert(error);
-                settings.evolutionQueue.splice(id, 1);
+                queueNode.find('td:eq(0)').html(`<span class="has-text-danger">${error}</span>`);
             }
-            updateSettingsFromState();
-            updateEvolutionSettingsContent();
 
             let content = document.querySelector('#script_evolutionSettings .script-content');
             content.style.height = null;
@@ -11001,15 +10994,9 @@
     }
 
     function resetPlanetSettings() {
-        for (let i = 0; i < biomeList.length; i++) {
-            settings["biome_w_" + biomeList[i]] = 0;
-        }
-        for (let i = 0; i < traitList.length; i++) {
-            settings["trait_w_" + traitList[i]] = 0;
-        }
-        for (let i = 0; i < extraList.length; i++) {
-            settings["extra_w_" + extraList[i]] = 0;
-        }
+        biomeList.forEach(biome => settings["biome_w_" + biome] = 0);
+        traitList.forEach(trait => settings["trait_w_" + trait] = 0);
+        extraList.forEach(extra => settings["extra_w_" + extra] = 0);
     }
 
     function buildTriggerSettings() {
@@ -11017,7 +11004,6 @@
         let sectionName = "Trigger";
 
         let resetFunction = function() {
-            resetTriggerSettings();
             resetTriggerState();
             updateSettingsFromState();
             updateTriggerSettingsContent();
@@ -11548,9 +11534,7 @@
     }
 
     function resetFleetSettings() {
-        for (let i = 0; i < galaxyRegions.length; i++) {
-            settings["fleet_pr_" + galaxyRegions[i]] = i;
-        }
+        galaxyRegions.forEach((id, index) => settings["fleet_pr_" + id] = index);
         settings.fleetMaxCover = true;
         settings.fleetEmbassyKnowledge = 6000000;
         settings.fleetAlienGiftKnowledge = 6500000;
@@ -12046,7 +12030,6 @@
 
         let resetFunction = function() {
             resetMinorTraitState();
-            resetMinorTraitSettings();
             updateSettingsFromState();
             updateMinorTraitSettingsContent();
         };
