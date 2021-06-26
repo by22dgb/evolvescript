@@ -1724,6 +1724,7 @@
         Red_Support: new Support("Red Support", "srspc_red", "space", "spc_red"),
         Sun_Support: new Support("Sun Support", "srspc_sun", "space", "spc_sun"),
         Belt_Support: new BeltSupport("Belt Support", "srspc_belt", "space", "spc_belt"),
+        //Titan_Support: new Support("Titan Support", "srspc_titan", "space", "spc_titan"),
         Alpha_Support: new Support("Alpha Support", "srint_alpha", "interstellar", "int_alpha"),
         Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
         Gateway_Support: new Support("Gateway Support", "gxy_gateway", "galaxy", "gxy_gateway"),
@@ -1827,21 +1828,18 @@
         CompostHeap: new Action("Compost Heap", "city", "compost", ""),
         Pylon: new Action("Pylon", "city", "pylon", ""),
 
-        // Space
         SpaceTestLaunch: new Action("Space Test Launch", "space", "test_launch", "spc_home"),
         SpaceSatellite: new Action("Space Satellite", "space", "satellite", "spc_home", {knowledge: true}),
         SpaceGps: new Action("Space Gps", "space", "gps", "spc_home"),
         SpacePropellantDepot: new Action("Space Propellant Depot", "space", "propellant_depot", "spc_home"),
         SpaceNavBeacon: new Action("Space Navigation Beacon", "space", "nav_beacon", "spc_home"),
 
-        // Moon
         MoonMission: new Action("Moon Mission", "space", "moon_mission", "spc_moon"),
         MoonBase: new Action("Moon Base", "space", "moon_base", "spc_moon"),
         MoonIridiumMine: new Action("Moon Iridium Mine", "space", "iridium_mine", "spc_moon"),
         MoonHeliumMine: new Action("Moon Helium-3 Mine", "space", "helium_mine", "spc_moon"),
         MoonObservatory: new Action("Moon Observatory", "space", "observatory", "spc_moon", {knowledge: true}),
 
-        // Red
         RedMission: new Action("Red Mission", "space", "red_mission", "spc_red"),
         RedSpaceport: new Action("Red Spaceport", "space", "spaceport", "spc_red"),
         RedTower: new Action("Red Space Control", "space", "red_tower", "spc_red"),
@@ -1857,18 +1855,15 @@
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
         RedForgeHorseshoe: new Action("Red Horseshoe (Cataclysm only)", "space", "horseshoe", "spc_red"),
 
-        // Hell
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
         HellSpaceCasino: new Action("Hell Space Casino", "space", "spc_casino", "spc_hell"),
         HellSwarmPlant: new Action("Hell Swarm Plant", "space", "swarm_plant", "spc_hell"),
 
-        // Sun
         SunMission: new Action("Sun Mission", "space", "sun_mission", "spc_sun"),
         SunSwarmControl: new Action("Sun Control Station", "space", "swarm_control", "spc_sun"),
         SunSwarmSatellite: new Action("Sun Swarm Satellite", "space", "swarm_satellite", "spc_sun"),
 
-        // Gas
         GasMission: new Action("Gas Mission", "space", "gas_mission", "spc_gas"),
         GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas", {smart: true}),
         GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", "spc_gas"),
@@ -1878,26 +1873,27 @@
         GasSpaceDockPrepForLaunch: new ModalAction("Gas Prep Ship", "starDock", "prep_ship", "", "starDock"),
         GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "starDock", "launch_ship", "", "starDock"),
 
-        // Gas moon
         GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon"),
         GasMoonOutpost: new Action("Gas Moon Mining Outpost", "space", "outpost", "spc_gas_moon"),
         GasMoonDrone: new Action("Gas Moon Mining Drone", "space", "drone", "spc_gas_moon"),
         GasMoonOilExtractor: new Action("Gas Moon Oil Extractor", "space", "oil_extractor", "spc_gas_moon", {smart: true}),
 
-        // Belt
         BeltMission: new Action("Belt Mission", "space", "belt_mission", "spc_belt"),
         BeltSpaceStation: new Action("Belt Space Station", "space", "space_station", "spc_belt", {smart: true}),
         BeltEleriumShip: new Action("Belt Elerium Mining Ship", "space", "elerium_ship", "spc_belt", {smart: true}),
         BeltIridiumShip: new Action("Belt Iridium Mining Ship", "space", "iridium_ship", "spc_belt", {smart: true}),
         BeltIronShip: new Action("Belt Iron Mining Ship", "space", "iron_ship", "spc_belt", {smart: true}),
 
-        // Dwarf
         DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", "spc_dwarf"),
         DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", "spc_dwarf"),
         DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", "spc_dwarf"),
         DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
         DwarfWorldController: new Action("Dwarf World Collider (Complete)", "space", "world_controller", "spc_dwarf", {knowledge: true}),
-
+        /*
+        TitanMission: new Action("Titan Mission", "space", "titan_mission", "spc_titan"),
+        TitanSpaceport: new Action("Titan Spaceport", "space", "titan_spaceport", "spc_titan"),
+        EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
+        */
         AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
         AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
         AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
@@ -5684,8 +5680,8 @@
                     for (let j = 0; j < raceGroup.length; j++) {
                         let race = raceGroup[j];
 
-                        // Ignore Valdi if we're not going for 4star
-                        if (race === races.junker && achievementLevel < 5) {
+                        // Ignore Valdi if we're not going for 4star MAD
+                        if (race === races.junker && (achievementLevel < 5 || settings.prestigeType === 'bioseed')) {
                             continue;
                         }
 
@@ -6228,8 +6224,14 @@
         }
 
         // Calculating safe size of battalions, if needed
-        let armor = ((game.global.race.scales ? 2 : 0) + (game.global.tech.armor ?? 0)) * (game.global.race.armored ? 4 : 1);
-        let maxBattalion = settings.foreignProtectSoldiers ? [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap + (game.global.race.frail ? 1 : 0) ? m.maxCityGarrison : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0) - (game.global.race.frail ? 1 : 0)) * 5 - tactic))) : new Array(5).fill(m.maxCityGarrison);
+
+        let maxBattalion = new Array(5).fill(m.maxCityGarrison);
+        if (settings.foreignProtectSoldiers) {
+            let armor = ((game.global.race.scales ? 2 : 0) + (game.global.tech.armor ?? 0)) * (game.global.race.armored ? 4 : 1) - (game.global.race.frail ? 1 : 0);
+            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0)) * 5 - tactic)));
+            maxBattalion = maxBattalion.map((garrison, tactic) => Math.min(garrison, protectedBattalion[tactic]));
+        }
+        maxBattalion[4] = Math.min(maxBattalion[4], settings.foreignMaxSiegeBattalion);
 
         let requiredBattalion = settings.foreignProtectSoldiers ? 0 : m.maxCityGarrison;
         let requiredTactic = 0;
@@ -6254,20 +6256,13 @@
         }
 
         if (requiredTactic !== 4) {
-            // Check if we can siege for loot
-            let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, currentTarget.id);
-            if (soldiersMin <= maxBattalion[4] && soldiersMin <= settings.foreignMaxSiegeBattalion) {
-                requiredBattalion = Math.max(soldiersMin, Math.min(maxBattalion[4], settings.foreignMaxSiegeBattalion, m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, currentTarget.id) - 1));
-                requiredTactic = 4;
-            } else {
-                // If we aren't going to siege our target, then let's find best tactic for plundering
-                for (let i = 3; i >= 0; i--) {
-                    soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, i, currentTarget.id);
-                    if (soldiersMin <= maxBattalion[i]) {
-                        requiredBattalion = Math.max(soldiersMin, Math.min(maxBattalion[i], m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, i, currentTarget.id) - 1));
-                        requiredTactic = i;
-                        break;
-                    }
+            // If we don't need to occupy our target, then let's find best tactic for plundering
+            for (let i = 4; i >= 0; i--) {
+                let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, i, currentTarget.id);
+                if (soldiersMin <= maxBattalion[i]) {
+                    requiredBattalion = Math.max(soldiersMin, Math.min(maxBattalion[i], m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, i, currentTarget.id) - 1));
+                    requiredTactic = i;
+                    break;
                 }
             }
         }
@@ -13417,8 +13412,11 @@
     }
 
     function createMarketToggle(resource) {
+        let marketElement = $('#market-' + resource.id);
+        if (!marketElement.length) {
+            return;
+        }
         let marketRow = $('<span class="ea-market-toggle" style="margin-left: auto; margin-right: 0.2rem; float:right;"></span>');
-        $('#market-' + resource.id).append(marketRow);
 
         if (!game.global.race['no_trade']) {
             let toggleBuy = $(`<label id="script_buy1_${resource.id}" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch"><input type="checkbox"${resource.autoBuyEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`);
@@ -13437,6 +13435,8 @@
 
         toggleTradeFor.on('change', {entity: resource, property: "autoTradeBuyEnabled", sync: "script_tbuy2_" + resource.id}, toggleCallback);
         toggleTradeAway.on('change', {entity: resource, property: "autoTradeSellEnabled", sync: "script_tsell2_" + resource.id}, toggleCallback);
+
+        marketElement.append(marketRow);
     }
 
     function createMarketToggles() {
@@ -13459,12 +13459,7 @@
                                   </span>
                                 </div>`);
 
-        for (let i = 0; i < MarketManager.priorityList.length; i++) {
-            let resource = MarketManager.priorityList[i];
-            if (resource.isUnlocked()) {
-                createMarketToggle(resource);
-            }
-        }
+        MarketManager.priorityList.forEach(res => createMarketToggle(res));
     }
 
     function removeMarketToggles() {
