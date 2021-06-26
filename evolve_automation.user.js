@@ -7830,11 +7830,8 @@
         // Check for active build triggers, and click if possible
         for (let i = 0; i < state.triggerTargets.length; i++) {
             let building = state.triggerTargets[i];
-            if (building instanceof Action && building.isClickable()) {
-                building.click();
-                if (building.consumption.length > 0) {
-                    return;
-                }
+            if (building instanceof Action && building.click() && building.consumption.length > 0) {
+                return;
             }
         }
 
@@ -7961,7 +7958,9 @@
         }
     }
 
-    function isTechAllowed(itemId) {
+    function isTechAllowed(tech) {
+        let itemId = tech.id;
+
         // Skip ignored techs
         if (settings.researchIgnore.includes(itemId)) {
             return false;
@@ -8039,15 +8038,16 @@
         // Check for active triggers, and click if possible
         for (let i = 0; i < state.triggerTargets.length; i++) {
             let tech = state.triggerTargets[i];
-            if (tech instanceof Technology && tech.isClickable()) {
-                tech.click();
+            if (tech instanceof Technology && tech.click()) {
+                BuildingManager.updateBuildings();
+                ProjectManager.updateProjects();
                 return;
             }
         }
 
         for (let i = 0; i < items.length; i++) {
-            let itemId = items[i].id;
-            if (isTechAllowed(itemId) && !getCostConflict(techIds[itemId]) && techIds[itemId].click()) {
+            let tech = techIds[items[i].id];
+            if (isTechAllowed(tech) && !getCostConflict(tech) && tech.click()) {
                 BuildingManager.updateBuildings(); // Cache cost if we just unlocked some building
                 ProjectManager.updateProjects();
                 return;
@@ -9271,12 +9271,12 @@
         // Get list of all unlocked techs, and find biggest numbers for each resource
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
         $("#tech .action").each(function() {
-            if (!isTechAllowed(this.id)) {
+            let tech = techIds[this.id];
+            if (!isTechAllowed(tech) && !state.triggerTargets.includes(tech)) {
                 return;
             }
-            let research = techIds[this.id];
-            research.updateResourceRequirements();
-            research.resourceRequirements.forEach(requirement => {
+            tech.updateResourceRequirements();
+            tech.resourceRequirements.forEach(requirement => {
                 requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
             });
         });
@@ -9343,10 +9343,10 @@
         // Unlocked and affordable techs, and but only if we don't have anything more important
         if (prioritizedTasks.length === 0 && (haveTech("mad") ? settings.researchRequestSpace : settings.researchRequest)) {
             $("#tech .action:not(.cnam)").each(function() {
-                if (!isTechAllowed(this.id)) {
-                    return;
+                let tech = techIds[this.id];
+                if (isTechAllowed(tech)) {
+                    prioritizedTasks.push(tech);
                 }
-                prioritizedTasks.push(techIds[this.id]);
             });
         }
 
