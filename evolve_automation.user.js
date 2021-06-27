@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.70
+// @version      3.3.1.71
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -7959,7 +7959,7 @@
     }
 
     function isTechAllowed(tech) {
-        let itemId = tech.id;
+        let itemId = tech._vueBinding;
 
         // Skip ignored techs
         if (settings.researchIgnore.includes(itemId)) {
