@@ -5917,7 +5917,7 @@
             }
             if (planetBiomeGenus[planet.biome]) {
                 for (let id in races) {
-                    if (races[id].genus === planetBiomeGenus[planet.biome] && !isAchievementUnlocked("extinct_" + races[id], alevel)) {
+                    if (races[id].genus === planetBiomeGenus[planet.biome] && !isAchievementUnlocked("extinct_" + id, alevel)) {
                         planet.achieve++;
                     }
                 }
@@ -7968,7 +7968,7 @@
 
         // Save soul gems for reset
         if (settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole") {
-            let gemsCost = resourceCost(techIds[itemId], resources.Soul_Gem);
+            let gemsCost = resourceCost(tech, resources.Soul_Gem);
             if (gemsCost > 0 && resources.Soul_Gem.currentQuantity - gemsCost < 10) {
                 return false;
             }
