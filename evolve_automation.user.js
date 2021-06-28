@@ -5569,9 +5569,10 @@
         addSetting("mechBaysFirst", true);
         addSetting("mechWaygatePotential", 0.4);
 
-        biomeList.forEach(id => addSetting("biome_w_" + id, 0));
-        traitList.forEach(id => addSetting("trait_w_" + id, 0));
-        extraList.forEach(id => addSetting("extra_w_" + id, 0));
+        biomeList.forEach(biome => addSetting("biome_w_" + biome, (planetBiomes.length - planetBiomes.indexOf(biome)) * 10));
+        traitList.forEach(trait => addSetting("trait_w_" + trait, (planetTraits.length - planetTraits.indexOf(trait)) * 10));
+        addSetting("extra_w_Achievement", 1000);
+        extraList.forEach(extra => addSetting("extra_w_" + extra, 0));
 
         // Convert old setings
         settings.triggers.forEach(t => {
@@ -6225,6 +6226,7 @@
 
         // Calculating safe size of battalions, if needed
 
+        // TODO: Configurable max
         let maxBattalion = new Array(5).fill(m.maxCityGarrison);
         if (settings.foreignProtectSoldiers) {
             let armor = ((game.global.race.scales ? 2 : 0) + (game.global.tech.armor ?? 0)) * (game.global.race.armored ? 4 : 1) - (game.global.race.frail ? 1 : 0);
@@ -9272,10 +9274,10 @@
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
         $("#tech .action").each(function() {
             let tech = techIds[this.id];
+            tech.updateResourceRequirements();
             if (!isTechAllowed(tech) && !state.triggerTargets.includes(tech)) {
                 return;
             }
-            tech.updateResourceRequirements();
             tech.resourceRequirements.forEach(requirement => {
                 requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
             });
@@ -9424,8 +9426,6 @@
                 let id = game.global.r_queue.queue[i].id;
                 let obj = techIds[id];
                 if (obj) {
-                    // TODO: Duplicate update. Refactor me.
-                    obj.updateResourceRequirements();
                     obj.resourceRequirements.forEach(requirement => {
                         requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
                     });
@@ -10989,9 +10989,10 @@
     }
 
     function resetPlanetSettings() {
-        biomeList.forEach(biome => settings["biome_w_" + biome] = 0);
-        traitList.forEach(trait => settings["trait_w_" + trait] = 0);
+        biomeList.forEach(biome => settings["biome_w_" + biome] = (planetBiomes.length - planetBiomes.indexOf(biome)) * 10);
+        traitList.forEach(trait => settings["trait_w_" + trait] = (planetTraits.length - planetTraits.indexOf(trait)) * 10);
         extraList.forEach(extra => settings["extra_w_" + extra] = 0);
+        settings.extra_w_Achievement = 1000;
     }
 
     function buildTriggerSettings() {
