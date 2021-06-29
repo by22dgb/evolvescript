@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.71
+// @version      3.3.1.72
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -8712,7 +8712,7 @@
         // Check demanded resources
         for (let id in resources) {
             let resource = resources[id];
-            if (resource.isDemanded() && resource.isUnlocked() && resource.isTradable()) {
+            if (resource.isDemanded() && resource.isUnlocked() && resource.isTradable() && resource.storageRatio < 0.98) {
                 // Calculate amount of routes we need
                 let routes = Math.ceil((resource.requestedQuantity - resource.currentQuantity) / resource.tradeRouteQuantity);
 
