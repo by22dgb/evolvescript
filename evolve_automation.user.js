@@ -309,7 +309,7 @@
             }
 
             // Exclude ejected resources, so we can reuse it
-            if (settings.prestigeWhiteholeEjectEnabled && this.isEjectable() && buildings.BlackholeMassEjector.count > 0) {
+            if ((settings.prestigeWhiteholeEjectEnabled || haveTask("trash")) && this.isEjectable() && buildings.BlackholeMassEjector.count > 0) {
                 this.currentEject = game.global.interstellar.mass_ejector[this._id];
                 this.rateOfChange += this.currentEject;
             } else {
@@ -1009,6 +1009,12 @@
                 }
                 return true;
             }
+        }
+    }
+
+    class ForgeHorseshoe extends Action {
+        get count() {
+            return resources.Horseshoe.currentQuantity;
         }
     }
 
@@ -1856,7 +1862,7 @@
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
-        RedForgeHorseshoe: new Action("Red Horseshoe (Cataclysm only)", "space", "horseshoe", "spc_red"),
+        RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm only)", "space", "horseshoe", "spc_red"),
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
@@ -2385,7 +2391,7 @@
           () => "Need more fuel",
           () => settings.buildingWeightingMissingFuel
       ],[
-          () => game.global.race.hooved && resources.Horseshoe.usefulRatio >= 1,
+          () => game.global.race.hooved && resources.Horseshoe.spareQuantity >= resources.Horseshoe.storageRequired,
           (building) => building === buildings.ForgeHorseshoe || building === buildings.RedForgeHorseshoe,
           () => "No more Horseshoes needed",
           () => settings.buildingWeightingHorseshoeUseless
@@ -7385,7 +7391,7 @@
     // TODO: Add option how to handle each resource: eject when capped, or when excess
     function autoMassEjector() {
         let enabledEjectors = buildings.BlackholeMassEjector.stateOnCount;
-        if (enabledEjectors < 1) {
+        if (enabledEjectors < 1 || haveTask("trash")) {
             return;
         }
 
