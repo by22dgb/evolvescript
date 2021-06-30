@@ -1770,7 +1770,7 @@
         Stone: new Action("Stone", "city", "stone", ""),
         Chrysotile: new Action("Chrysotile", "city", "chrysotile", ""),
         Slaughter: new Action("Slaughter", "city", "slaughter", ""),
-        ForgeHorseshoe: new ForgeHorseshoe("Horseshoe", "city", "horseshoe", ""),
+        ForgeHorseshoe: new ForgeHorseshoe("Horseshoe", "city", "horseshoe", "", {housing: true, garrison: true}),
         SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
         MeditationChamber: new Action("Meditation Chamber", "city", "meditation", ""),
 
@@ -1849,7 +1849,7 @@
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
-        RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm only)", "space", "horseshoe", "spc_red"),
+        RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm only)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}),
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
