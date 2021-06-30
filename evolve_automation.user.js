@@ -1062,27 +1062,14 @@
     }
 
     class ModalAction extends Action {
-        constructor(name, tab, id, location, modalTab) {
-            super(name, tab, id, location);
+        constructor(...args) {
+            super(...args);
 
-            this._modalTab = modalTab;
             this._vue = undefined;
         }
 
         get vue() {
             return this._vue;
-        }
-
-        get definition() {
-            if (this._location !== "") {
-                return game.actions[this._modalTab][this._location][this._id];
-            } else {
-                return game.actions[this._modalTab][this._id];
-            }
-        }
-
-        get instance() {
-            return game.global[this._modalTab][this._id];
         }
 
         isOptionsCached() {
@@ -1783,7 +1770,7 @@
         Stone: new Action("Stone", "city", "stone", ""),
         Chrysotile: new Action("Chrysotile", "city", "chrysotile", ""),
         Slaughter: new Action("Slaughter", "city", "slaughter", ""),
-        ForgeHorseshoe: new Action("Horseshoe", "city", "horseshoe", ""),
+        ForgeHorseshoe: new ForgeHorseshoe("Horseshoe", "city", "horseshoe", ""),
         SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
         MeditationChamber: new Action("Meditation Chamber", "city", "meditation", ""),
 
@@ -1877,10 +1864,10 @@
         GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas", {smart: true}),
         GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", "spc_gas"),
         GasSpaceDock: new SpaceDock("Gas Space Dock", "space", "star_dock", "spc_gas"),
-        GasSpaceDockProbe: new ModalAction("Gas Space Probe", "starDock", "probes", "", "starDock"),
-        GasSpaceDockShipSegment: new ModalAction("Gas Bioseeder Ship Segment", "starDock", "seeder", "", "starDock"),
-        GasSpaceDockPrepForLaunch: new ModalAction("Gas Prep Ship", "starDock", "prep_ship", "", "starDock"),
-        GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "starDock", "launch_ship", "", "starDock"),
+        GasSpaceDockProbe: new ModalAction("Gas Space Probe", "starDock", "probes", ""),
+        GasSpaceDockShipSegment: new ModalAction("Gas Bioseeder Ship Segment", "starDock", "seeder", ""),
+        GasSpaceDockPrepForLaunch: new ModalAction("Gas Prep Ship", "starDock", "prep_ship", ""),
+        GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "starDock", "launch_ship", ""),
 
         GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon"),
         GasMoonOutpost: new Action("Gas Moon Mining Outpost", "space", "outpost", "spc_gas_moon"),
