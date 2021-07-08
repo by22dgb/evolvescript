@@ -6207,8 +6207,8 @@
         }
 
         // If we are not fully ready then return
-        if (m.wounded > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison ||
-            m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison) {
+        if ((m.wounded > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison && !game.global.race['rage'] ) ||
+            (m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison && (!settings.foreignProtectSoldiers || settings.foreignMinAdvantage < 75))) {
             return;
         }
 
@@ -6218,7 +6218,7 @@
         let maxBattalion = new Array(5).fill(m.maxCityGarrison);
         if (settings.foreignProtectSoldiers) {
             let armor = ((game.global.race.scales ? 2 : 0) + (game.global.tech.armor ?? 0)) * (game.global.race.armored ? 4 : 1) - (game.global.race.frail ? 1 : 0);
-            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0)) * 5 - tactic)));
+            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0)) * (5 - tactic))));
             maxBattalion = maxBattalion.map((garrison, tactic) => Math.min(garrison, protectedBattalion[tactic]));
         }
         maxBattalion[4] = Math.min(maxBattalion[4], settings.foreignMaxSiegeBattalion);
@@ -6258,8 +6258,8 @@
         }
 
         // Not enough healthy soldiers, keep resting
-        if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
-            return;
+        if (!requiredBattalion || (game.global.race['rage'] ? requiredBattalion > m.maxSoldiers - m.wounded : requiredBattalion > m.availableGarrison)) {
+          return;
         }
 
         // Occupy can pull soldiers from ships, let's make sure it won't happen
