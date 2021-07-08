@@ -2313,7 +2313,7 @@
           () => 0
       ],[
           () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isAffordable(true) && techIds['tech-mad'].resourceRequirements.every(req => req.resource.isUnlocked()))),
-          (building) => !building.is.housing && !building.is.garrison && resourceCost(building, resources.Knowledge) <= 0,
+          (building) => !building.is.housing && !building.is.garrison && resourceCost(building, resources.Knowledge) <= 0 && (building !== buildings.OilWell || !game.global.race.terrifying), // Terrifying can't buy oil, keep building rigs
           () => "Awaiting MAD prestige",
           () => settings.buildingWeightingMADUseless
       ],[
@@ -9663,7 +9663,8 @@
         // Init lookup table for buildings
         for (let building of Object.values(buildings)){
             buildingIds[building._vueBinding] = building;
-            if (building.isMission()) {
+            // Don't force building Jump Ship and Pit Assault, they're prety expensive at the moment when unlocked.
+            if (building.isMission() && building !== buildings.BlackholeJumpShip && building !== buildings.PitAssaultForge) {
                 state.missionBuildingList.push(building);
             }
         }
