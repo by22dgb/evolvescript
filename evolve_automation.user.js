@@ -3345,7 +3345,7 @@
         },
 
         get availableGarrison() {
-            return this.currentCityGarrison - this.wounded;
+            return game.global.race['rage'] ? Math.min(this.maxCityGarrison, this.maxSoldiers - this.wounded) : this.currentCityGarrison - this.wounded;
         },
 
         get hellGarrison()  {
@@ -3353,6 +3353,15 @@
         },
 
         launchCampaign(govIndex) {
+            this._garrisonVue.campaign(govIndex);
+        },
+
+        release(govIndex) {
+            if (game.global.civic.foreign["gov" + govIndex].occ) {
+                let occSoldiers = getOccCosts();
+                this.workers += occSoldiers;
+                this.max += occSoldiers;
+            }
             this._garrisonVue.campaign(govIndex);
         },
 
@@ -6194,7 +6203,8 @@
             if ((foreign.gov.anx && foreign.policy !== "Annex") ||
                 (foreign.gov.buy && foreign.policy !== "Purchase") ||
                 (foreign.gov.occ && foreign.policy !== "Occupy")){
-                getVueById("garrison")?.campaign(foreign.id);
+                WarManager.release(foreign.id);
+                foreign.released = true;
             } else if (!foreign.gov.anx && !foreign.gov.buy && !foreign.gov.occ) {
                 SpyManager.performEspionage(foreign.id, espionageMission.id, foreign !== currentTarget);
             }
@@ -6259,17 +6269,17 @@
         }
 
         // Not enough healthy soldiers, keep resting
-        if (!requiredBattalion || (game.global.race['rage'] ? requiredBattalion > m.maxSoldiers - m.wounded : requiredBattalion > m.availableGarrison)) {
+        if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
           return;
         }
 
         // Occupy can pull soldiers from ships, let's make sure it won't happen
-        if (currentTarget.gov.anx || currentTarget.gov.buy || currentTarget.gov.occ) {
+        if (!currentTarget.released && (currentTarget.gov.anx || currentTarget.gov.buy || currentTarget.gov.occ)) {
             // If it occupied currently - we'll get enough soldiers just by unoccupying it
-            m.launchCampaign(currentTarget.id);
-        } else if (requiredTactic === 4 && m.crew > 0) {
-            let occCost = game.global.civic.govern.type === "federation" ? 15 : 20;
-            let missingSoldiers = occCost - (m.availableGarrison - requiredBattalion);
+            m.release(currentTarget.id);
+        }
+        if (requiredTactic === 4 && (m.crew > 0 || currentTarget.policy === "Occupy")) {
+            let missingSoldiers = getOccCosts() - (m.currentCityGarrison - requiredBattalion);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
                 if (!settings.autoHell || !m.initHell() || m.hellSoldiers - m.hellReservedSoldiers < missingSoldiers) {
@@ -13730,6 +13740,10 @@
 
     function resourceCost(obj, resource) {
         return obj.resourceRequirements.find(requirement => requirement.resource === resource)?.quantity ?? 0;
+    }
+
+    function getOccCosts() {
+        return game.global.civic.govern.type === "federation" ? 15 : 20;
     }
 
     function getGovName(govIndex) {
