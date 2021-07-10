@@ -2283,6 +2283,7 @@
           () => true,
           (building) => building._tab !== "city" && building.stateOffCount > 0
             && (building !== buildings.SpireMechBay || !buildings.SpireMechBay.isSmartManaged())
+            && (building !== buildings.RuinsGuardPost || !buildings.RuinsGuardPost.isSmartManaged() || isHellSupressUseful())
             && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()),
           () => "Still have some non operating buildings",
           () => settings.buildingWeightingNonOperating
@@ -8047,6 +8048,10 @@
         return (30 + (amount - 1) * 2.5) * amount * (game.global.race['emfield'] ? 1.5 : 1);
     }
 
+    function isHellSupressUseful() {
+        return jobs.Archaeologist.count > 0 || jobs.Scarletite.count > 0 || buildings.RuinsArcology.stateOnCount > 0 || buildings.GateInferniteMine.stateOnCount > 0;
+    }
+
     function autoPower() {
         // Only start doing this once power becomes available. Isn't useful before then
         if (!resources.Power.isUnlocked()) {
@@ -8185,13 +8190,17 @@
                         maxStateOn = Math.min(maxStateOn, currentStateOn + Math.ceil(mineAdjust));
                     }
                 }
-                // Disable uselss Guard Post
+                // Disable useless Guard Post
                 if (building === buildings.RuinsGuardPost) {
-                    let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
-                    // 1 extra to workaround rounding errors
-                    let postAdjust = Math.max((5001 - poly.hellSupression("ruins").rating) / postRating, (7501 - poly.hellSupression("gate").rating) / postRating);
-                    // We're reserving just one soldier for Guard Posts, so let's increase them by 1
-                    maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
+                    if (isHellSupressUseful()) {
+                        let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
+                        // 1 extra to workaround rounding errors
+                        let postAdjust = Math.max((5001 - poly.hellSupression("ruins").rating) / postRating, (7501 - poly.hellSupression("gate").rating) / postRating);
+                        // We're reserving just one soldier for Guard Posts, so let's increase them by 1
+                        maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
+                    } else {
+                        maxStateOn = 0;
+                    }
                 }
                 // Disable Waygate once it cleared, or if we're going to use bomb, or current potential is too hight
                 if (building === buildings.SpireWaygate && (settings.prestigeDemonicBomb || haveTech("waygate", 3) || (settings.autoMech && MechManager.mechsPotential > settings.mechWaygatePotential))) {
