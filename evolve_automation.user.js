@@ -1931,7 +1931,7 @@
         SiriusSpaceElevator: new Action("Sirius Space Elevator", "interstellar", "space_elevator", "int_sirius"),
         SiriusGravityDome: new Action("Sirius Gravity Dome", "interstellar", "gravity_dome", "int_sirius"),
         SiriusAscensionMachine: new Action("Sirius Ascension Machine", "interstellar", "ascension_machine", "int_sirius"),
-        SiriusAscensionTrigger: new Action("Sirius Ascension Machine (Complete)", "interstellar", "ascension_trigger", "int_sirius"),
+        SiriusAscensionTrigger: new Action("Sirius Ascension Machine (Complete)", "interstellar", "ascension_trigger", "int_sirius", {smart: true}),
         SiriusAscend: new Action("Sirius Ascend", "interstellar", "ascend", "int_sirius"),
         SiriusThermalCollector: new Action("Sirius Thermal Collector", "interstellar", "thermal_collector", "int_sirius"),
 
@@ -2308,8 +2308,8 @@
           () => "Not needed for Vacuum Collapse prestige",
           () => 0
       ],[
-          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension" && (!settings.prestigeAscensionPillar || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel()),
-          (building) => building === buildings.PitMission || building === buildings.RuinsMission,
+          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension",
+          (building) => building === buildings.GateMission || ((building === buildings.PitMission || building === buildings.RuinsMission) && isPillarFinished()),
           () => "Not needed for Ascension prestige",
           () => 0
       ],[
@@ -3345,7 +3345,7 @@
         },
 
         get availableGarrison() {
-            return game.global.race['rage'] ? Math.min(this.maxCityGarrison, this.maxSoldiers - this.wounded) : this.currentCityGarrison - this.wounded;
+            return game.global.race['rage'] ? Math.min(this.maxCityGarrison, this.currentSoldiers - this.wounded) : this.currentCityGarrison - this.wounded;
         },
 
         get hellGarrison()  {
@@ -7553,11 +7553,15 @@
     }
 
     function isAscensionPrestigeAvailable() {
-        return settings.prestigeAscensionSkipCustom && buildings.SiriusAscend.isUnlocked() && (!settings.prestigeAscensionPillar || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel());
+        return settings.prestigeAscensionSkipCustom && buildings.SiriusAscend.isUnlocked() && isPillarFinished();
     }
 
     function isDemonicPrestigeAvailable() {
         return buildings.SpireTower.count > settings.prestigeDemonicFloor && haveTech("waygate", 3) && (!settings.autoMech || MechManager.mechsPotential <= settings.prestigeDemonicPotential) && techIds["tech-demonic_infusion"].isUnlocked();
+    }
+
+    function isPillarFinished() {
+        return !settings.prestigeAscensionPillar || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel();
     }
 
     function getBlackholeMass() {
@@ -8168,6 +8172,10 @@
                         maxStateOn = Math.min(maxStateOn, resources.Oil.getBusyWorkers("space_gas_moon_oil_extractor_title", currentStateOn));
                     }
                 }
+                // Do not enable Ascension Machine whire we're waiting for pillar
+                if (building === buildings.SiriusAscensionTrigger && !isPillarFinished()) {
+                    maxStateOn = 0;
+                }
                 // Disable barracks on bioseed run, if enabled
                 if (building === buildings.Barracks && settings.prestigeEnabledBarracks < 100 && !WarManager.isForeignUnlocked() && buildings.GasSpaceDockShipSegment.count < 90 && buildings.DwarfWorldController.count < 1) {
                     maxStateOn = Math.ceil(maxStateOn * settings.prestigeEnabledBarracks / 100);
@@ -8205,7 +8213,10 @@
                     if (isHellSupressUseful()) {
                         let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
                         // 1 extra to workaround rounding errors
-                        let postAdjust = Math.max((5001 - poly.hellSupression("ruins").rating) / postRating, (7501 - poly.hellSupression("gate").rating) / postRating);
+                        let postAdjust = (5001 - poly.hellSupression("ruins").rating) / postRating;
+                        if (haveTech('hell_gate')) {
+                            postAdjust = Math.max(postAdjust, (7501 - poly.hellSupression("gate").rating) / postRating);
+                        }
                         // We're reserving just one soldier for Guard Posts, so let's increase them by 1
                         maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
                     } else {
@@ -9787,7 +9798,7 @@
             notes.push(`Currrent team potential: ${getNiceNumber(MechManager.mechsPotential)}`);
         }
 
-        if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargets.includes(obj)) {
+        if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargets.includes(obj) && !state.triggerTargets.includes(obj)) {
             let conflict = getCostConflict(obj);
             if (conflict) {
                 notes.push(`Conflicts with ${conflict.target.title} for ${conflict.res.name} (${conflict.cause})`);
