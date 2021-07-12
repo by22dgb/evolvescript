@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.73
+// @version      3.3.1.74
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3766,6 +3766,13 @@
                 return 'collector'; // One collector to fill odd bay
             }
 
+            if (game.global.portal.transport.cargo.used >= game.global.portal.transport.cargo.max && resources.Supply.rateOfChange < settings.mechMinSupply) {
+                let collectorsCount = this.activeMechs.filter(mech => mech.size === 'collector').length;
+                if (collectorsCount / mechBay.max < settings.mechMaxCollectors) {
+                    return 'collector'; // Bootstrap income
+                }
+            }
+
             if ((this.lastScouts * 2) / mechBay.max < settings.mechScouts) {
                 return 'small'; // Build scouts up to configured ratio
             }
@@ -5561,6 +5568,8 @@
         addSetting("mechSizeGravity", "auto");
         addSetting("mechFillBay", true);
         addSetting("mechScouts", 0.05);
+        addSetting("mechMinSupply", 1000);
+        addSetting("mechMaxCollectors", 0.5);
         addSetting("mechSpecial", "prefered");
         addSetting("mechSaveSupply", true);
         addSetting("buildingMechsFirst", true);
@@ -6270,7 +6279,7 @@
 
         // Not enough healthy soldiers, keep resting
         if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
-          return;
+            return;
         }
 
         // Occupy can pull soldiers from ships, let's make sure it won't happen
@@ -7403,7 +7412,7 @@
             }
 
             let keepRatio = enabledEjectors >= settings.prestigeWhiteholeEjectAllCount ? 0.05 : 0.985;
-            if (resource === resources.Food && !game.global.race['ravenous']) {
+            if (resource === resources.Food && !isHungryRace()) {
                 keepRatio = Math.max(keepRatio, 0.25);
             }
             keepRatio = Math.max(keepRatio, resource.requestedQuantity / resource.maxQuantity + 0.01);
@@ -8192,7 +8201,7 @@
                     maxStateOn = Math.min(maxStateOn, attractorAdjust);
                 }
                 // Disable tourist center with full money
-                if (building === buildings.TouristCenter && !game.global.race['ravenous'] && resources.Food.storageRatio < 0.7 && !resources.Money.isUseful()) {
+                if (building === buildings.TouristCenter && !isHungryRace() && resources.Food.storageRatio < 0.7 && !resources.Money.isUseful()) {
                     maxStateOn = Math.min(maxStateOn, resources.Money.getBusyWorkers("tech_tourism", currentStateOn));
                 }
                 // Disable mills with surplus energy
@@ -8275,7 +8284,7 @@
 
                     if (resourceType.resource === resources.Food) {
                         // Wendigo doesn't store food. Let's assume it's always available.
-                        if (resourceType.resource.storageRatio > 0.05 || game.global.race['ravenous']) {
+                        if (resourceType.resource.storageRatio > 0.05 || isHungryRace()) {
                             continue;
                         }
                     } else if (!(resourceType.resource instanceof Support) && resourceType.resource.storageRatio > 0.01) {
@@ -8351,7 +8360,7 @@
             let buildAllowed = (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) > buildings.SpireMechBay.count);
             const spireBuildable = (building) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money);
             let mechBuildable = spireBuildable(buildings.SpireMechBay);
-            let puriBuildable = spireBuildable(buildings.SpirePurifier);
+            let puriBuildable = spireBuildable(buildings.SpirePurifier) && buildings.SpirePurifier.stateOffCount === 0;
             let portBuildable = spireBuildable(buildings.SpirePort);
             let campBuildable = spireBuildable(buildings.SpireBaseCamp);
 
@@ -8363,7 +8372,7 @@
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
+            let canBuild = (bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost) && buildings.LakeTransport.stateOnCount > 0 && buildings.LakeBireme.stateOnCount > 0;
 
             for (let targetMech = Math.min(buildings.SpireMechBay.count, spireSupport); targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
@@ -9231,7 +9240,7 @@
         }
 
         // Try to squeeze smaller mech, if we can't fit preferred one
-        if (settings.mechFillBay && !canExpandBay && (baySpace < newSpace || resources.Supply.maxQuantity < newSupply)) {
+        if (settings.mechFillBay && ((!canExpandBay && baySpace < newSpace) || resources.Supply.maxQuantity < newSupply)) {
             for (let i = m.Size.indexOf(newMech.size) - 1; i >= 0; i--) {
                 [newGems, newSupply, newSpace] = m.getMechCost({size: m.Size[i]});
                 if (newSpace <= baySpace && newSupply <= resources.Supply.maxQuantity) {
@@ -11630,6 +11639,8 @@
                               {val: "never", label: "Never", hint: "Never add special equipment"}];
         addSettingsSelect(currentNode, "mechSpecial", "Special mechs", "Configures special equip", specialOptions);
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
+        addSettingsNumber(currentNode, "mechMinSupply", "Minimum supply income", "Build collectors if current supply income above given number");
+        addSettingsNumber(currentNode, "mechMaxCollectors", "Maximum collectors ratio", "Limiter for above option, maximum space used by collectors");
         addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
         addSettingsToggle(currentNode, "mechFillBay", "Build smaller mechs when preferred not available", "Build smaller mechs when preferred size can't be used due to low remaining bay space, or supplies cap");
@@ -11711,6 +11722,8 @@
         settings.mechSizeGravity = "auto";
         settings.mechFillBay = true;
         settings.mechScouts = 0.05;
+        settings.mechMinSupply = 1000;
+        settings.mechMaxCollectors = 0.5;
         settings.mechSpecial = "prefered";
         settings.mechSaveSupply = true;
         settings.buildingMechsFirst = true;
@@ -13735,6 +13748,10 @@
 
     function haveTech(research, level = 1) {
         return game.global.tech[research] && game.global.tech[research] >= level;
+    }
+
+    function isHungryRace() {
+        return game.global.race['carnivore'] || game.global.race['ravenous'];
     }
 
     function isHunterRace() {
