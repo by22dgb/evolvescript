@@ -9165,7 +9165,7 @@
             }
         }
 
-        let canExpandBay = settings.mechBaysFirst && buildings.SpireMechBay.isAutoBuildable() && (buildings.SpireMechBay.isAffordable(true) || (buildings.SpirePurifier.isAutoBuildable() && buildings.SpirePurifier.isAffordable(true)));
+        let canExpandBay = settings.mechBaysFirst && buildings.SpireMechBay.isAutoBuildable() && (buildings.SpireMechBay.isAffordable(true) || (buildings.SpirePurifier.isAutoBuildable() && buildings.SpirePurifier.isAffordable(true) && buildings.SpirePurifier.stateOffCount === 0));
         let mechScrap = settings.mechScrap;
         if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity) {
             // We can build purifier or bay once we'll have enough resources, do not rebuild old mechs
@@ -9224,8 +9224,8 @@
             if (trashMechs.length > 0 && powerLost / spaceGained < newMech.efficiency && baySpace + spaceGained >= newSpace && resources.Supply.spareQuantity + supplyGained >= newSupply && resources.Soul_Gem.spareQuantity + gemsGained >= newGems) {
                 trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
                 if (trashMechs.length > 1) {
-                    let average = trashMechs.map(mech => mech.power / m.bestMech[mech.size].power);
-                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${trashMechs.length} mechs (~${Math.round(average * 100)}%) has been scrapped.`);
+                    let rating = average(trashMechs.map(mech => mech.power / m.bestMech[mech.size].power));
+                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${trashMechs.length} mechs (~${Math.round(rating * 100)}%) has been scrapped.`);
                 } else {
                     GameLog.logSuccess(GameLog.Types.mech_scrap, `${m.mechDesc(trashMechs[0])} mech has been scrapped.`);
                 }
