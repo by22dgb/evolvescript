@@ -1576,7 +1576,7 @@
     const governors = ["soldier", "criminal", "entrepreneur", "educator", "spiritual", "bluecollar", "noble", "media", "sports", "bureaucrat"];
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...challenges.map(c => "challenge_" + c[0].id)];
     const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", ascension: "Ascension", demonic: "Infusion"};
-    const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market"];
+    const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech"];
     const unlimitedJobs = ["unemployed", "hunter", "farmer", "lumberjack", "quarry_worker", "crystal_miner", "scavenger", "forager"]; // this.definition.max holds zero at evolution stage, and that can mess with settings gui
@@ -3579,12 +3579,13 @@
         _listVueBinding: "mechList",
         _listVue: undefined,
 
-        collectorValue: 150000, // Collector power mod. Higher number - more often they'll be scrapped
+        collectorValue: 20000, // Collector power mod. Higher number - more often they'll be scrapped
 
         activeMechs: [],
         inactiveMechs: [],
         mechsPower: 0,
         mechsPotential: 0,
+        isActive: false,
 
         lastLevel: -1,
         lastPrepared: -1,
@@ -3689,6 +3690,7 @@
                 this.lastWrath = game.global.blood.wrath;
                 this.lastScouts = currentScouts;
                 this.lastSpecial = settings.mechSpecial;
+                this.isActive = true;
 
                 this.updateBestWeapon();
                 this.Size.forEach(size => {
@@ -3766,7 +3768,7 @@
                 return 'collector'; // One collector to fill odd bay
             }
 
-            if (game.global.portal.transport.cargo.used >= game.global.portal.transport.cargo.max && resources.Supply.rateOfChange < settings.mechMinSupply) {
+            if (resources.Supply.storageRatio < 0.9 && resources.Supply.rateOfChange < settings.mechMinSupply) {
                 let collectorsCount = this.activeMechs.filter(mech => mech.size === 'collector').length;
                 if (collectorsCount / mechBay.max < settings.mechMaxCollectors) {
                     return 'collector'; // Bootstrap income
@@ -7566,7 +7568,7 @@
     }
 
     function isDemonicPrestigeAvailable() {
-        return buildings.SpireTower.count > settings.prestigeDemonicFloor && haveTech("waygate", 3) && (!settings.autoMech || MechManager.mechsPotential <= settings.prestigeDemonicPotential) && techIds["tech-demonic_infusion"].isUnlocked();
+        return buildings.SpireTower.count > settings.prestigeDemonicFloor && haveTech("waygate", 3) && (!settings.autoMech || (!MechManager.isActive && MechManager.mechsPotential <= settings.prestigeDemonicPotential)) && techIds["tech-demonic_infusion"].isUnlocked();
     }
 
     function isPillarFinished() {
@@ -8372,7 +8374,8 @@
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            let canBuild = (bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost) && buildings.LakeTransport.stateOnCount > 0 && buildings.LakeBireme.stateOnCount > 0;
+            // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
+            let canBuild = (bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost) && game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0 && (!settings.autoMech || !MechManager.isActive);
 
             for (let targetMech = Math.min(buildings.SpireMechBay.count, spireSupport); targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
@@ -9114,6 +9117,8 @@
             return;
         }
         let mechBay = game.global.portal.mechbay;
+        let prolongActive = m.isActive;
+        m.isActive = false;
 
         // Rearrange mechs for best efficiency if some of the bays are disabled
         if (m.inactiveMechs.length > 0) {
@@ -9153,11 +9158,11 @@
         let baySpace = mechBay.max - mechBay.bay;
         let lastFloor = settings.prestigeType === "demonic" && buildings.SpireTower.count >= settings.prestigeDemonicFloor && haveTech("waygate", 3);
 
-        // Save up supply for next floor
-        if (settings.mechSaveSupply && !lastFloor) {
+        // Save up supply for next floor when, unless our supply income only from collectors, thet aren't built yet
+        if (settings.mechSaveSupply && !lastFloor && !m.isActive && ((game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
             let missingSupplies = resources.Supply.maxQuantity - resources.Supply.currentQuantity;
-            if (baySpace < newSpace) { // Not always accurate as we can't really predict what we're going to build\scrap, but better than nothing
-                missingSupplies -= m.getMechRefund(newMech)[1];
+            if (baySpace < newSpace) {
+                missingSupplies -= m.getMechRefund({size: "titan"})[1];
             }
             let timeToFullSupplies = missingSupplies / resources.Supply.rateOfChange;
             if (m.getTimeToClear() <= timeToFullSupplies) {
@@ -9167,7 +9172,7 @@
 
         let canExpandBay = settings.mechBaysFirst && buildings.SpireMechBay.isAutoBuildable() && (buildings.SpireMechBay.isAffordable(true) || (buildings.SpirePurifier.isAutoBuildable() && buildings.SpirePurifier.isAffordable(true) && buildings.SpirePurifier.stateOffCount === 0));
         let mechScrap = settings.mechScrap;
-        if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity) {
+        if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity && !m.isActive) {
             // We can build purifier or bay once we'll have enough resources, do not rebuild old mechs
             mechScrap = "none";
         } else if (settings.mechScrap === "mixed") {
@@ -9233,6 +9238,7 @@
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
                 resources.Soul_Gem.currentQuantity += gemsGained;
                 // TODO: Workaround for scrap vue bug - it doesn't update used space in callback. Remove when fixed.
+                baySpace += spaceGained;
                 m._assemblyVue.m.bay -= spaceGained;
             } else if (baySpace + spaceGained >= newSpace) {
                 return; // We have scrapable mechs, but don't want to scrap them right now. Waiting for more supplies for instant replace.
@@ -9258,6 +9264,7 @@
             m.buildMech(newMech);
             resources.Supply.currentQuantity -= newSupply;
             resources.Soul_Gem.currentQuantity -= newGems;
+            m.isActive = prolongActive;
             return;
         }
     }
