@@ -2004,10 +2004,10 @@
         GateInferniteMine: new Action("Gate Infernite Mine", "portal", "infernite_mine", "prtl_gate"),
 
         LakeMission: new Action("Lake Mission", "portal", "lake_mission", "prtl_lake"),
-        LakeHarbour: new Action("Lake Harbour", "portal", "harbour", "prtl_lake"),
-        LakeCoolingTower: new Action("Lake Cooling Tower", "portal", "cooling_tower", "prtl_lake"),
-        LakeBireme: new Action("Lake Bireme Warship", "portal", "bireme", "prtl_lake", {ship: true, smart: true}),
-        LakeTransport: new Action("Lake Transport", "portal", "transport", "prtl_lake", {ship: true, smart: true}),
+        LakeHarbour: new Action("Lake Harbour", "portal", "harbour", "prtl_lake", {smart: true}),
+        LakeCoolingTower: new Action("Lake Cooling Tower", "portal", "cooling_tower", "prtl_lake", {smart: true}),
+        LakeBireme: new Action("Lake Bireme Warship", "portal", "bireme", "prtl_lake", {smart: true}),
+        LakeTransport: new Action("Lake Transport", "portal", "transport", "prtl_lake", {smart: true}),
 
         SpireMission: new Action("Spire Mission", "portal", "spire_mission", "prtl_spire"),
         SpirePurifier: new Action("Spire Purifier", "portal", "purifier", "prtl_spire"),
@@ -3579,7 +3579,7 @@
         _listVueBinding: "mechList",
         _listVue: undefined,
 
-        collectorValue: 20000, // Collector power mod. Higher number - more often they'll be scrapped
+        collectorValue: 20000, // Collectors power mod. Higher number - more often they'll be scrapped. Current value derieved from scout: collectorValue = collectorPower / (scoutPower / scoutSize), to equalize relative values of collectors and combat mechs with same efficiency.
 
         activeMechs: [],
         inactiveMechs: [],
@@ -8182,6 +8182,14 @@
                     if (building === buildings.GasMoonOilExtractor  && !resources.Oil.isUseful()) {
                         maxStateOn = Math.min(maxStateOn, resources.Oil.getBusyWorkers("space_gas_moon_oil_extractor_title", currentStateOn));
                     }
+                    // Enable cooling towers only if we can power at least two harbours
+                    if (building === buildings.LakeCoolingTower && availablePower < (building.powered * maxStateOn + ((500 * 0.92 ** maxStateOn) * (game.global.race['emfield'] ? 1.5 : 1)).toFixed(2) * Math.min(2, buildings.LakeHarbour.count))) {
+                        maxStateOn = 0;
+                    }
+                    // Don't bother powering harbour if we have power for only one
+                    if (building === buildings.LakeHarbour && maxStateOn === 1 && building.count > 1) {
+                        maxStateOn = 0;
+                    }
                 }
                 // Do not enable Ascension Machine whire we're waiting for pillar
                 if (building === buildings.SiriusAscensionTrigger && !isPillarFinished()) {
@@ -8396,8 +8404,10 @@
         for (let i = 0; i < warnBuildings.length; i++) {
             let building = buildingIds[warnBuildings[i].parentNode.id];
             if (building && building.autoStateEnabled && !building.is.ship) {
-                if ((building === buildings.BeltEleriumShip || building === buildings.BeltIridiumShip || building === buildings.BeltIronShip) &&
-                    (buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount) <= resources.Belt_Support.maxQuantity) {
+                if (((building === buildings.BeltEleriumShip || building === buildings.BeltIridiumShip || building === buildings.BeltIronShip) &&
+                     (buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount) <= resources.Belt_Support.maxQuantity) ||
+                    ((building === buildings.LakeBireme || building === buildings.LakeTransport) &&
+                     (buildings.LakeBireme.stateOnCount + buildings.LakeTransport.stateOnCount) <= resources.Lake_Support.maxQuantity)) {
                       continue;
                 }
                 building.tryAdjustState(-1);
