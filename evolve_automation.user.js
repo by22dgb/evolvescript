@@ -3700,7 +3700,6 @@
                 this.bestSize = Object.values(this.bestMech).filter(m => m.size !== 'collector').sort((a, b) => b.efficiency - a.efficiency).map(m => m.size);
 
                 // Redraw added label of Mech Lab after change of floor
-                removeMechInfo();
                 createMechInfo();
             }
 
@@ -5086,7 +5085,7 @@
     function resetProductionSettings() {
         settings.productionChrysotileWeight = 2;
         settings.productionFoundryWeighting = "demanded";
-        settings.productionWaitMana = true;
+        settings.productionRitualManaUse = 0.5;
         settings.productionSmelting = "storage";
         settings.productionFactoryMinIngredients = 0.01;
     }
@@ -5379,7 +5378,7 @@
 
         addSetting("productionChrysotileWeight", 2);
         addSetting("productionFoundryWeighting", "demanded");
-        addSetting("productionWaitMana", true);
+        addSetting("productionRitualManaUse", 0.5);
         addSetting("productionSmelting", "storage");
         addSetting("productionFactoryMinIngredients", 0.01);
 
@@ -5593,7 +5592,7 @@
         }
         settings.challenge_plasmid = settings.challenge_mastery || settings.challenge_plasmid; // Merge challenge settings
         // Remove old settings
-        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower"].forEach(id => delete settings[id]);
+        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana"].forEach(id => delete settings[id]);
         ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settings[id + index]));
         Object.values(resources).forEach(resource => delete settings['res_storage_w_' + resource.id]);
         Object.values(projects).forEach(project => delete settings['arpa_ignore_money_' + project.id]);
@@ -6906,23 +6905,25 @@
             pylonAdjustments[spell.id] = 0;
             resources.Mana.rateOfChange += RitualManager.manaCost(RitualManager.currentSpells(spell));
         }
+        let manaToUse = resources.Mana.rateOfChange * (resources.Mana.storageRatio > 0.99 ? 1 : settings.productionRitualManaUse);
 
-        if (!settings.productionWaitMana || resources.Mana.isCapped()) {
-            let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
-            let remainingSpells = spells.slice();
-            while(remainingSpells.length > 0) {
-                let spell = remainingSpells.sort(spellSorter)[0];
-                let amount = pylonAdjustments[spell.id];
-                let cost = RitualManager.manaCost(amount + 1) - RitualManager.manaCost(amount);
+        let usableMana = manaToUse;
 
-                if (cost <= resources.Mana.rateOfChange) {
-                    pylonAdjustments[spell.id] = amount + 1;
-                    resources.Mana.rateOfChange -= cost;
-                } else {
-                    remainingSpells.shift();
-                }
+        let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
+        let remainingSpells = spells.slice();
+        while(remainingSpells.length > 0) {
+            let spell = remainingSpells.sort(spellSorter)[0];
+            let amount = pylonAdjustments[spell.id];
+            let cost = RitualManager.manaCost(amount + 1) - RitualManager.manaCost(amount);
+
+            if (cost <= manaToUse) {
+                pylonAdjustments[spell.id] = amount + 1;
+                manaToUse -= cost;
+            } else {
+                remainingSpells.shift();
             }
         }
+        resources.Mana.rateOfChange - (usableMana - manaToUse);
 
         let pylonDeltas = spells.map((spell) => pylonAdjustments[spell.id] - RitualManager.currentSpells(spell));
 
@@ -8389,6 +8390,7 @@
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
+            // TODO: Build camp\base with with max bays powered, when possible
             let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
             for (let targetMech = Math.min(buildings.SpireMechBay.count, spireSupport); targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
@@ -9217,7 +9219,11 @@
             let powerLost = 0;
 
             // Get list of inefficient mech
-            let scrapEfficiency = lastFloor ? Math.min(settings.mechScrapEfficiency, 1) : settings.mechScrapEfficiency;
+            let scrapEfficiency =
+              baySpace === 0 && resources.Supply.storageRatio > 0.9 ? 0 :
+              lastFloor ? Math.min(settings.mechScrapEfficiency, 1) :
+              settings.mechScrapEfficiency;
+
             let badMechList = m.activeMechs.filter(mech => {
                 if (mech.infernal || mech.power >= m.bestMech[mech.size].power) {
                     return false;
@@ -12419,7 +12425,7 @@
 
     function updateProductionTablePylon(currentNode) {
         addStandardHeading(currentNode, "Pylon");
-        addSettingsToggle(currentNode, "productionWaitMana", "Wait for full mana", "Cast rituals only with full mana");
+        addSettingsNumber(currentNode, "productionRitualManaUse", "Mana income used", "Income portion to use on rituals. Setting to 1 is not recomended, as it will halt mana regeneration. Applied only when mana not capped - with capped mana script will always use all income.");
 
         currentNode.append(`
           <table style="width:100%">
@@ -13382,6 +13388,7 @@
 
     function createMechInfo() {
         if (MechManager.initLab()) {
+            removeMechInfo();
             $('#mechList .mechRow').each(function(index) {
                 let mech = game.global.portal.mechbay.mechs[index];
                 let stats = MechManager.getMechStats(mech);
@@ -13401,8 +13408,8 @@
     function startMechObserver() {
         stopMechObserver();
 
-        MechManager.mechObserver.observe(document.getElementById("mechLab"), {childList: true});
         createMechInfo();
+        MechManager.mechObserver.observe(document.getElementById("mechLab"), {childList: true});
     }
 
     function stopMechObserver() {
