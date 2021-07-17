@@ -2024,7 +2024,7 @@
 
     var linkedBuildings = [
         [buildings.LakeTransport, buildings.LakeBireme],
-        [buildings.SpirePort, buildings.SpireBaseCamp, buildings.SpireMechBay],
+        [buildings.SpirePort, buildings.SpireBaseCamp],
     ]
 
     var projects = {
@@ -2106,7 +2106,7 @@
       ],[
           () => settings.autoMech && settings.mechBuild !== "none" && settings.buildingMechsFirst && buildings.SpireMechBay.count > 0 && buildings.SpireMechBay.stateOffCount === 0,
           (building) => {
-              if (building === buildings.SpirePurifier || building === buildings.SpirePort || building === buildings.SpireBaseCamp || building === buildings.SpireMechBay) {
+              if (resourceCost(building, resources.Supply) > 0) {
                   let mechBay = game.global.portal.mechbay;
                   let newSize = !haveTask("mech") ? settings.mechBuild === "random" ? MechManager.getPreferredSize() : mechBay.blueprint.size : "titan";
                   let [newGems, newSupply, newSpace] = MechManager.getMechCost({size: newSize});
@@ -5031,6 +5031,7 @@
         BuildingManager.addBuildingToPriorityList(buildings.StargateDepot);
         BuildingManager.addBuildingToPriorityList(buildings.DwarfEleriumContainer);
 
+        BuildingManager.addBuildingToPriorityList(buildings.GasMoonOilExtractor);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronMission);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronStellarForge);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronMiner);
@@ -5042,7 +5043,6 @@
         BuildingManager.addBuildingToPriorityList(buildings.RockQuarry);
         BuildingManager.addBuildingToPriorityList(buildings.Sawmill);
         BuildingManager.addBuildingToPriorityList(buildings.GasMining);
-        BuildingManager.addBuildingToPriorityList(buildings.GasMoonOilExtractor);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronCitadel);
         BuildingManager.addBuildingToPriorityList(buildings.Mine);
         BuildingManager.addBuildingToPriorityList(buildings.CoalMine);
@@ -8124,7 +8124,7 @@
         }
 
         let manageTransport = buildings.LakeTransport.isSmartManaged() && buildings.LakeBireme.isSmartManaged();
-        let manageSpire = buildings.SpirePort.isSmartManaged() && buildings.SpireBaseCamp.isSmartManaged() && buildings.SpireMechBay.isSmartManaged();
+        let manageSpire = buildings.SpirePort.isSmartManaged() && buildings.SpireBaseCamp.isSmartManaged();
 
         // Start assigning buildings from the top of our priority list to the bottom
         for (let i = 0; i < buildingList.length; i++) {
@@ -8365,9 +8365,15 @@
         }
 
         if (manageSpire && resources.Spire_Support.rateOfChange > 0) {
-            let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
-            let buildAllowed = (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) > buildings.SpireMechBay.count);
+            // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
+            // And also let autoMech do minimum preparation, so we won't stuck with near zero potential
+            let buildAllowed = buildings.SpireMechBay.isSmartManaged()
+              && (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) > buildings.SpireMechBay.count)
+              && (!settings.autoMech || !MechManager.isActive)
+              && game.global.portal.transport.cargo.used > 0
+              && game.global.portal.transport.cargo.max > 0;
+
             const spireBuildable = (building) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money);
             let mechBuildable = spireBuildable(buildings.SpireMechBay);
             let puriBuildable = spireBuildable(buildings.SpirePurifier) && buildings.SpirePurifier.stateOffCount === 0;
@@ -8379,12 +8385,11 @@
             let maxPorts = portBuildable ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
             let maxCamps = campBuildable ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
 
+            let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
-            let canBuild = (bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost) && game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0 && (!settings.autoMech || !MechManager.isActive);
-
+            let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
             for (let targetMech = Math.min(buildings.SpireMechBay.count, spireSupport); targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
                 if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost || targetPort > buildings.SpirePort.count || targetCamp > buildings.SpireBaseCamp.count) {
