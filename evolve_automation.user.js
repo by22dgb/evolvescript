@@ -910,8 +910,8 @@
         }
 
         getMissingSupport() {
-            // We're going to build Mech Bays with no support, to enable them later
-            if (this === buildings.SpireMechBay && this.autoStateSmart) {
+            // We're going to build Spire things with no support, to enable them later
+            if ((this === buildings.SpirePort || this === buildings.SpireBaseCamp || this === buildings.SpireMechBay) && this.autoStateSmart) {
                 return null;
             }
 
@@ -2282,6 +2282,8 @@
       ],[
           () => true,
           (building) => building._tab !== "city" && building.stateOffCount > 0
+            && (building !== buildings.SpirePort || !buildings.SpirePort.isSmartManaged())
+            && (building !== buildings.SpireBaseCamp || !buildings.SpireBaseCamp.isSmartManaged())
             && (building !== buildings.SpireMechBay || !buildings.SpireMechBay.isSmartManaged())
             && (building !== buildings.RuinsGuardPost || !buildings.RuinsGuardPost.isSmartManaged() || isHellSupressUseful())
             && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()),
@@ -8383,21 +8385,35 @@
 
             let nextMechCost = mechBuildable ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
             let nextPuriCost = puriBuildable && mechBuildable && (portBuildable || campBuildable) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
+            let maxBay = Math.min(buildings.SpireMechBay.count, spireSupport);
             let maxPorts = portBuildable ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
             let maxCamps = campBuildable ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
 
-            let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            // TODO: Build camp\base with with max bays powered, when possible
             let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
-            for (let targetMech = Math.min(buildings.SpireMechBay.count, spireSupport); targetMech >= 0; targetMech--) {
+            for (let targetMech = maxBay; targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
-                if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost || targetPort > buildings.SpirePort.count || targetCamp > buildings.SpireBaseCamp.count) {
-                    buildings.SpireMechBay.tryAdjustState(targetMech - buildings.SpireMechBay.stateOnCount);
-                    buildings.SpirePort.tryAdjustState(targetPort - buildings.SpirePort.stateOnCount);
-                    buildings.SpireBaseCamp.tryAdjustState(targetCamp - buildings.SpireBaseCamp.stateOnCount);
+
+                let storageUpgrade =
+                    targetPort > buildings.SpirePort.count ? buildings.SpirePort :
+                    targetCamp > buildings.SpireBaseCamp.count ? buildings.SpireBaseCamp :
+                    null;
+                if (storageUpgrade) {
+                    let storageCost = resourceCost(storageUpgrade, resources.Supply);
+                    for (let i = maxBay; i >= 0; i--) {
+                        let [storageSupplies, storagePort, storageCamp] = getBestSupplyRatio(spireSupport - i, maxPorts, maxCamps);
+                        if (storageSupplies >= storageCost) {
+                            adjustSpire(i, storagePort, storageCamp);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost) {
+                    adjustSpire(targetMech, targetPort, targetCamp);
                     break;
                 }
             }
@@ -8421,6 +8437,12 @@
                 break;
             }
         }
+    }
+
+    function adjustSpire(mech, port, camp) {
+        buildings.SpireMechBay.tryAdjustState(mech - buildings.SpireMechBay.stateOnCount);
+        buildings.SpirePort.tryAdjustState(port - buildings.SpirePort.stateOnCount);
+        buildings.SpireBaseCamp.tryAdjustState(camp - buildings.SpireBaseCamp.stateOnCount);
     }
 
     function getBestSupplyRatio(support, maxPorts, maxCamps) {
@@ -13356,7 +13378,8 @@
             }
             let timePassed = state.scriptTick - state.soulGemIncomes[0].tick;
             let rate = gems / timePassed * 3600;
-            resources.Soul_Gem.rateOfChange = gems / timePassed;
+            // Apply game speed to sync with other incomes
+            resources.Soul_Gem.rateOfChange = gems / timePassed * gameTicksPerSecond("mid");
             $("#resSoul_Gem span:eq(2)").text(`${getNiceNumber(rate)} /h`);
         }
 
