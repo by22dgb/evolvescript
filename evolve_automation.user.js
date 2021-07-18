@@ -8234,10 +8234,10 @@
                 if (building === buildings.RuinsGuardPost) {
                     if (isHellSupressUseful()) {
                         let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
-                        // 1 extra to workaround rounding errors
-                        let postAdjust = (5001 - poly.hellSupression("ruins").rating) / postRating;
+                        // 1 extra power to compensate rounding errors, 100 extra to compensate heling drinf of rage races
+                        let postAdjust = ((game.global.race['rage'] ? 5100 : 5001) - poly.hellSupression("ruins").rating) / postRating;
                         if (haveTech('hell_gate')) {
-                            postAdjust = Math.max(postAdjust, (7501 - poly.hellSupression("gate").rating) / postRating);
+                            postAdjust = Math.max(postAdjust, ((game.global.race['rage'] ? 7600 : 7501) - poly.hellSupression("gate").rating) / postRating);
                         }
                         // We're reserving just one soldier for Guard Posts, so let's increase them by 1
                         maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
