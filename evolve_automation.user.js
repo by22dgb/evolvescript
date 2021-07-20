@@ -245,7 +245,7 @@
 
             this.storeOverflow = false;
             this.storagePriority = 0;
-            this.storageRequired = 0;
+            this.storageRequired = 1;
             this.autoStorageEnabled = true;
             this._autoCratesMax = -1;
             this._autoContainersMax = -1;
@@ -1880,6 +1880,7 @@
         DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
         DwarfWorldController: new Action("Dwarf World Collider (Complete)", "space", "world_controller", "spc_dwarf", {knowledge: true}),
         /*
+        DwarfShipyard: new Action("Dwarf Ship Yard", "space", "shipyard", "spc_dwarf"),
         TitanMission: new Action("Titan Mission", "space", "titan_mission", "spc_titan"),
         TitanSpaceport: new Action("Titan Spaceport", "space", "titan_spaceport", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
@@ -5057,6 +5058,9 @@
 
         // And Blood Stone
         buildings.SpireWaygate.autoBuildEnabled = false;
+
+        buildings.ForgeHorseshoe._autoMax = 20;
+        buildings.RedForgeHorseshoe._autoMax = 20;
     }
 
     function resetProjectSettings() {
@@ -6270,7 +6274,8 @@
 
         if (requiredTactic !== 4) {
             // If we don't need to occupy our target, then let's find best tactic for plundering
-            for (let i = 4; i >= 0; i--) {
+            // Never try siege if it can mess with unification
+            for (let i = !settings.foreignUnification || settings.foreignOccupyLast ? 4 : 3; i >= 0; i--) {
                 let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, i, currentTarget.id);
                 if (soldiersMin <= maxBattalion[i]) {
                     requiredBattalion = Math.max(soldiersMin, Math.min(maxBattalion[i], m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, i, currentTarget.id) - 1));
