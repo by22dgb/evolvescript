@@ -4065,7 +4065,7 @@
                     project.weighting = 0;
                     project.extraDescription = "AutoBuild disabled<br>";
                 }
-                if (project.count >= project.autoMax) {
+                if (project.count >= project.autoMax && (project !== projects.ManaSyphon || settings.prestigeType !== 'vacuum')) {
                     project.weighting = 0;
                     project.extraDescription = "Maximum amount reached<br>";
                 }
@@ -6120,7 +6120,7 @@
             }
 
             // Do not attack if policy set to influence, or we're ready to unify
-            if (currentTarget.policy === "Influence" || readyToUnify) {
+            if (currentTarget.policy === "Influence" || (readyToUnify && currentTarget.policy !== "Occupy")) {
                 currentTarget = null;
             }
         }
@@ -6295,7 +6295,7 @@
             // If it occupied currently - we'll get enough soldiers just by unoccupying it
             m.release(currentTarget.id);
         }
-        if (requiredTactic === 4 && (m.crew > 0 || currentTarget.policy === "Occupy")) {
+        if (requiredTactic === 4 && m.crew > 0) {
             let missingSoldiers = getOccCosts() - (m.currentCityGarrison - requiredBattalion);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
@@ -8238,7 +8238,7 @@
                 // Disable useless Guard Post
                 if (building === buildings.RuinsGuardPost) {
                     if (isHellSupressUseful()) {
-                        let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
+                        let postRating = game.armyRating(1, "hellArmy", 0) * (game.global.race['holy'] ? 1.25 : 1);
                         // 1 extra power to compensate rounding errors, 100 extra to compensate heling drinf of rage races
                         let postAdjust = ((game.global.race['rage'] ? 5100 : 5001) - poly.hellSupression("ruins").rating) / postRating;
                         if (haveTech('hell_gate')) {
