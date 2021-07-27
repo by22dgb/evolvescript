@@ -10088,6 +10088,16 @@
             return;
         }
 
+        // Make sure we have jQuery UI even if script was injected without *monkey
+        if (!jQuery.ui) {
+            let el = document.createElement("script");
+            el.src = "https://code.jquery.com/ui/1.12.1/jquery-ui.min.js";
+            el.onload = mainAutoEvolveScript;
+            el.onerror = () => alert("Can't load jQuery UI. Check browser console for details.");
+            document.body.appendChild(el);
+            return;
+        }
+
         // Wrappers for firefox, with code to bypass script sandbox. If we're not on firefox - don't use it, call real functions instead
         if (typeof unsafeWindow !== "object" || typeof cloneInto !== "function") {
             poly.adjustCosts = game.adjustCosts;
