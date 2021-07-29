@@ -1615,6 +1615,8 @@
         lastShowRoutes: null,
         lastShowEjector: null,
         lastShowCargo: null,
+        lastHaveCrate: null,
+        lastHaveContainer: null,
         lastPopulationCount: 0,
         lastFarmerCount: 0,
 
@@ -4301,10 +4303,7 @@
         }
         state.lastWasteful = game.global.race.wasteful;
         state.lastLumber = isLumberRace();
-        state.lastShowMarket = game.global.settings.showMarket;
-        state.lastShowRoutes = game.global.city.market.active;
-        state.lastShowEjector = game.global.settings.showEjector;
-        state.lastShowCargo = game.global.settings.showCargo;
+        updateTabs();
 
         // Lets set our crate / container resource requirements
         resources.Crates.resourceRequirements = normalizeProperties([() => isLumberRace() ? {resource: resources.Plywood, quantity: 10} : {resource: resources.Stone, quantity: 200}]);
@@ -8868,7 +8867,14 @@
 
         // Calculate amount of routes per resource
         let resSorter = (a, b) => ((requiredTradeRoutes[a.id] / a.autoTradeWeighting) - (requiredTradeRoutes[b.id] / b.autoTradeWeighting)) || b.autoTradeWeighting - a.autoTradeWeighting;
-        let remainingRoutes = getGovernor() === "entrepreneur" ? tradeRoutesUsed - unmanagedTradeRoutes : maxTradeRoutes;
+        let remainingRoutes, unassignStep;
+        if (getGovernor() === "entrepreneur") {
+            remainingRoutes = tradeRoutesUsed - unmanagedTradeRoutes;
+            unassignStep = 2;
+        } else {
+            remainingRoutes = maxTradeRoutes;
+            unassignStep = 1;
+        }
         outerLoop:
         for (let i = 0; i < priorityList.length && remainingRoutes > 0; i++) {
             let trades = priorityList[i];
@@ -8904,12 +8910,12 @@
                             continue;
                         }
 
-                        if (currentMoneyPerSecond - otherResource.tradeSellPrice - resource.tradeBuyPrice > minimumAllowedMoneyPerSecond && (remainingRoutes > 1 || getGovernor() !== "entrepreneur")) {
+                        if (currentMoneyPerSecond - otherResource.tradeSellPrice - resource.tradeBuyPrice > minimumAllowedMoneyPerSecond && remainingRoutes >= unassignStep) {
                             currentMoneyPerSecond -= otherResource.tradeSellPrice;
                             currentMoneyPerSecond -= resource.tradeBuyPrice;
                             requiredTradeRoutes[otherId]++;
                             requiredTradeRoutes[resource.id]++;
-                            remainingRoutes--;
+                            remainingRoutes -= unassignStep;
                             continue assignLoop;
                         }
                     }
@@ -9669,6 +9675,15 @@
         return true;
     }
 
+    function updateTabs() {
+        state.lastShowMarket = game.global.settings.showMarket;
+        state.lastShowRoutes = game.global.city.market.active;
+        state.lastShowEjector = game.global.settings.showEjector;
+        state.lastShowCargo = game.global.settings.showCargo;
+        state.lastHaveCrate = resources.Crates.isUnlocked();
+        state.lastHaveContainer = resources.Containers.isUnlocked();
+    }
+
     function updateState() {
         if (game.global.race.species === "protoplasm") {
             state.goal = "Evolution";
@@ -9687,7 +9702,7 @@
         }
 
         // TODO:Some object doesn't updates when needed. Forcing page reload when it happens. Remove me once it's fixed in game.
-        if ((state.lastLumber !== isLumberRace() && GalaxyTradeManager.initIndustry()) // Outdated galaxyOffers
+        if ((state.lastLumber !== isLumberRace() && game.global.galaxy.trade) // Outdated galaxyOffers
               || state.lastWasteful !== game.global.race.wasteful) { // Outdated craftCost
             state.goal = "GameOverMan";
             setTimeout(()=> window.location.reload(), 5000);
@@ -9698,11 +9713,10 @@
               || state.lastShowMarket !== game.global.settings.showMarket
               || state.lastShowRoutes !== game.global.city.market.active
               || state.lastShowEjector !== game.global.settings.showEjector
-              || state.lastShowCargo !== game.global.settings.showCargo) {
-            state.lastShowMarket = game.global.settings.showMarket;
-            state.lastShowRoutes = game.global.city.market.active;
-            state.lastShowEjector = game.global.settings.showEjector;
-            state.lastShowCargo = game.global.settings.showCargo;
+              || state.lastShowCargo !== game.global.settings.showCargo
+              || (!state.lastHaveCrate && resources.Crates.isUnlocked())
+              || (!state.lastHaveContainer && resources.Containers.isUnlocked())) {
+            updateTabs();
             let mainVue = $('#mainColumn > div:first-child')[0].__vue__;
             mainVue.s.civTabs = 7;
             $(".settings11").click().click();
@@ -9950,7 +9964,7 @@
                 } else { // "[id]" for buildings and researches
                     obj = buildingIds[dataId] || techIds[dataId];
                 }
-                if (!obj) {
+                if (!obj || (obj instanceof Technology && obj.isResearched())) {
                     return;
                 }
 
