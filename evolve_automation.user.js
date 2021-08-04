@@ -1807,7 +1807,7 @@
         Farm: new Action("Farm", "city", "farm", "", {housing: true}),
         SoulWell: new Action("Soul Well", "city", "soul_well", ""),
         Mill: new Action("Windmill", "city", "mill", "", {smart: true}),
-        Windmill: new Action("Windmill (Evil only)", "city", "windmill", ""),
+        Windmill: new Action("Windmill (Evil)", "city", "windmill", ""),
         Silo: new Action("Grain Silo", "city", "silo", ""),
         Shed: new Action("Shed", "city", "shed", ""),
         LumberYard: new Action("Lumber Yard", "city", "lumber_yard", ""),
@@ -1860,7 +1860,7 @@
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
-        RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm only)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}),
+        RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}),
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
@@ -5993,10 +5993,14 @@
 
             let numShow = game.global.stats.achieve['miners_dream'] ? game.global.stats.achieve['miners_dream'].l >= 4 ? game.global.stats.achieve['miners_dream'].l * 2 - 3 : game.global.stats.achieve['miners_dream'].l : 0;
             for (let id in planet.geology) {
-                if (numShow-- <= 0) {
-                    break;
+                if (planet.geology[id] === 0) {
+                    continue;
                 }
-                planet.weighting += (planet.geology[id] / 0.01) * settings["extra_w_" + id];
+                if (numShow-- > 0) {
+                    planet.weighting += (planet.geology[id] / 0.01) * settings["extra_w_" + id];
+                } else {
+                    planet.weighting += (planet.geology[id] > 0 ? 1 : -1) * settings["extra_w_" + id];
+                }
             }
         }
 
@@ -7167,7 +7171,7 @@
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
         if (priorityGroups["-1"] && priorityList.length > 1) {
             priorityList.splice(priorityList.indexOf(priorityGroups["-1"], 1));
-            priorityList[0] = priorityList[0].concat(priorityGroups["-1"]);
+            priorityList[0].push(...priorityGroups["-1"]);
         }
 
         // Calculate amount of factories per product
@@ -7284,7 +7288,7 @@
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
         if (priorityGroups["-1"] && priorityList.length > 1) {
             priorityList.splice(priorityList.indexOf(priorityGroups["-1"], 1));
-            priorityList[0] = priorityList[0].concat(priorityGroups["-1"]);
+            priorityList[0].push(...priorityGroups["-1"]);
         }
 
         // Calculate amount of factories per product
@@ -7762,7 +7766,7 @@
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
         if (priorityGroups["-1"] && priorityList.length > 1) {
             priorityList.splice(priorityList.indexOf(priorityGroups["-1"], 1));
-            priorityList[0] = priorityList[0].concat(priorityGroups["-1"]);
+            priorityList[0].push(...priorityGroups["-1"]);
         }
 
         // Calculate amount of factories per product
@@ -8295,7 +8299,7 @@
                     }
                 }
                 // Disable Waygate once it cleared, or if we're going to use bomb, or current potential is too hight
-                if (building === buildings.SpireWaygate && (settings.prestigeDemonicBomb || haveTech("waygate", 3) || (settings.autoMech && MechManager.mechsPotential > settings.mechWaygatePotential))) {
+                if (building === buildings.SpireWaygate && (settings.prestigeDemonicBomb || haveTech("waygate", 3) || (settings.autoMech && MechManager.mechsPotential > settings.mechWaygatePotential && (settings.prestigeType !== "demonic" || buildings.SpireTower.count < settings.prestigeDemonicFloor)))) {
                       maxStateOn = 0;
                 }
                 // Once we unlocked Embassy - we don't need scouts and corvettes until we'll have piracy. Let's freeup support for more Bolognium ships
@@ -8862,7 +8866,7 @@
         let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
         if (priorityGroups["-1"] && priorityList.length > 1) {
             priorityList.splice(priorityList.indexOf(priorityGroups["-1"], 1));
-            priorityList[0] = priorityList[0].concat(priorityGroups["-1"]);
+            priorityList[0].push(...priorityGroups["-1"]);
         }
 
         // Calculate amount of routes per resource
@@ -9467,11 +9471,11 @@
         let prioritizedTasks = [];
         // Building and research queues
         if (settings.queueRequest) {
-            prioritizedTasks = prioritizedTasks.concat(state.queuedTargets);
+            prioritizedTasks.push(...state.queuedTargets);
         }
         // Active triggers
         if (settings.triggerRequest) {
-            prioritizedTasks = prioritizedTasks.concat(state.triggerTargets);
+            prioritizedTasks.push(...state.triggerTargets);
         }
         // Unlocked missions
         if (settings.missionRequest) {
