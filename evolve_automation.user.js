@@ -12479,11 +12479,11 @@
             if (resource == resources.Scarletite) {
                 productionElement.append('<span>Managed</span>');
             } else {
-                productionElement.append(buildStandartSettingsInput(resource, "foundry_w_" + resource.id, "weighting"));
+                productionElement.append(buildStandartSettingsInput(resource, "foundry_w_" + resource.id, "craftWeighting"));
             }
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsInput(resource, "foundry_p_" + resource.id, "preserve"));
+            productionElement.append(buildStandartSettingsInput(resource, "foundry_p_" + resource.id, "craftPreserve"));
         }
     }
 
