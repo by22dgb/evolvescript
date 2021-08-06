@@ -2374,14 +2374,9 @@
           () => "Still have some unused ejectors",
           () => settings.buildingWeightingUnusedEjectors
       ],[
-          () => resources.Crates.maxQuantity > 0,
-          (building) => building === buildings.StorageYard,
-          () => "Still have some unused crates",
-          () => settings.buildingWeightingCrateUseless
-      ],[
-          () => resources.Containers.maxQuantity > 0,
-          (building) => building === buildings.Warehouse,
-          () => "Still have some unused containers",
+          () => resources.Crates.maxQuantity > 0 || resources.Containers.maxQuantity > 0,
+          (building) => building === buildings.StorageYard || building === buildings.Warehouse,
+          () => "Still have some unused storage",
           () => settings.buildingWeightingCrateUseless
       ],[
           () => resources.Oil.maxQuantity < resources.Oil.requestedQuantity && buildings.OilWell.count <= 0 && buildings.GasMoonOilExtractor.count <= 0,
@@ -8616,7 +8611,6 @@
         let totalContainers = resources.Containers.currentQuantity;
         let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
         let overMult = 1.02;
-        // TODO: Fix crate rules
         let storageAdjustments = {};
         for (let i = 0; i < storageList.length; i++){
             let resource = storageList[i];
