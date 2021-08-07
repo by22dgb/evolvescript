@@ -9455,8 +9455,9 @@
 
         let canExpandBay = settings.mechBaysFirst && buildings.SpireMechBay.isAutoBuildable() && (buildings.SpireMechBay.isAffordable(true) || (buildings.SpirePurifier.isAutoBuildable() && buildings.SpirePurifier.isAffordable(true) && buildings.SpirePurifier.stateOffCount === 0));
         let mechScrap = settings.mechScrap;
-        if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity && !prolongActive) {
+        if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity && (!prolongActive || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
             // We can build purifier or bay once we'll have enough resources, do not rebuild old mechs
+            // Unless floor just changed, and scrap income fall to low, so we need to rebuild them to fix it
             mechScrap = "none";
         } else if (settings.mechScrap === "mixed") {
             if (buildings.SpireWaygate.stateOnCount === 1) {
