@@ -25,7 +25,7 @@
 //     Resources with 0 priority won't be crafted during normal workflow, unless prioritized(which increases priority).
 //     Resources with 0 weighting won't ever be crafted, regardless of configured priority or prioritization.
 //     autoMarket and autoFactory also have separate global checkboxes per resources, when they disabled(both buying and selling in case of autoMarket) - script won't touch them, leaving with whatever was manually set.
-//   Added numbers in Mech Labs represents: design efficiency, real mech power affected by mech size, and power per used space, respectively. For all three - bigger numbers are better. Collectors show their supply collect rate.
+//   Added numbers in Mech Labs represents: design efficiency, real mech damage affected by most factors, and damage per used space, respectively. For all three - bigger numbers are better. Collectors show their supply collect rate.
 //   Buildings\researches queue, triggers, and available researches prioritize missing resources, overiding other script settings. If you have issues with factories producing not what you want, market buying not what you want, and such - you can disable this feature under general settings.
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
@@ -3805,7 +3805,7 @@
             }
 
             let floorSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
-            if (floorSize !== "auto") {
+            if (floorSize !== "auto" && (!settings.mechFillBay || poly.mechCost(floorSize).c <= resources.Supply.maxQuantity)) {
                 return floorSize; // This floor have configured size
             }
 
@@ -8218,15 +8218,15 @@
                 building.extraDescription = `Missing ${Math.ceil(building.powered - availablePower)} MW to power on<br>${building.extraDescription}`;
             }
 
+            // Spire managed separately
+            if (manageSpire && (building === buildings.SpirePort || building === buildings.SpireBaseCamp || building === buildings.SpireMechBay)) {
+                continue;
+            }
+            // Lake transport managed separately
+            if (manageTransport && (building === buildings.LakeTransport || building === buildings.LakeBireme)) {
+                continue;
+            }
             if (building.is.smart && building.autoStateSmart) {
-                // Spire managed separately
-                if (manageSpire && (building === buildings.SpirePort || building === buildings.SpireBaseCamp || building === buildings.SpireMechBay)) {
-                    continue;
-                }
-                // Lake transport managed separately
-                if (manageTransport && (building === buildings.LakeTransport || building === buildings.LakeBireme)) {
-                    continue;
-                }
                 if (resources.Power.currentQuantity <= resources.Power.maxQuantity) { // Saving power, unless we can afford everything
                     // Disable Belt Space Stations with no workers
                     if (building === buildings.BeltSpaceStation && game.breakdown.c.Elerium) {
@@ -9455,7 +9455,7 @@
 
         let canExpandBay = settings.mechBaysFirst && buildings.SpireMechBay.isAutoBuildable() && (buildings.SpireMechBay.isAffordable(true) || (buildings.SpirePurifier.isAutoBuildable() && buildings.SpirePurifier.isAffordable(true) && buildings.SpirePurifier.stateOffCount === 0));
         let mechScrap = settings.mechScrap;
-        if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity && !m.isActive) {
+        if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity && !prolongActive) {
             // We can build purifier or bay once we'll have enough resources, do not rebuild old mechs
             mechScrap = "none";
         } else if (settings.mechScrap === "mixed") {
@@ -11947,16 +11947,16 @@
         let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
                             {val: "single", label: "Full bay", hint: "Scrap mechs only when mech bay is full, and script need more room to build mechs"},
                             {val: "all", label: "All inefficient", hint: "Scrap all inefficient mechs immediately, using refounded resources to build better ones"},
-                            {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just  enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
+                            {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
         addSettingsSelect(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped. Infernal mechs won't ever be scrapped.", scrapOptions);
-        addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechPower / NewMechPower))' more than given number.&#xA;For the cases when exchanged mechs have same size(1/3 refund) it means that with 1 eff. script allowed to scrap mechs under 33.3%. 1.5 eff. - under 22.2%, 2 eff. - under 16.6%, 0.5 eff. - under 66.6%, 0 eff. - under 100%, etc.&#xA;Efficiency below '1' is not recommended, unless scrap set to 'Full bay', as it's a breakpoint when refunded resources can immidiately compensate lost power, resulting with best power growth rate.&#xA;Efficiency above '1' is useful to save resources for more desperate times, or to compensate low soul gems income.");
+        addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechDamage / NewMechDamage))' more than given number.&#xA;For the cases when exchanged mechs have same size(1/3 refund) it means that with 1 eff. script allowed to scrap mechs under 33.3%. 1.5 eff. - under 22.2%, 2 eff. - under 16.6%, 0.5 eff. - under 66.6%, 0 eff. - under 100%, etc.&#xA;Efficiency below '1' is not recommended, unless scrap set to 'Full bay', as it's a breakpoint when refunded resources can immidiately compensate lost damage, resulting with best damage growth rate.&#xA;Efficiency above '1' is useful to save resources for more desperate times, or to compensate low soul gems income.");
 
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
                             {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
         addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be build. Infernal mechs won't ever be build.", buildOptions);
 
-        let sizeOptions = [{val: "auto", label: "Most efficient", hint: "Select mech with best power per size for current floor, based on current amount of Soul Gems, and Supplies storage cap"}, ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
+        let sizeOptions = [{val: "auto", label: "Most efficient", hint: "Select mech with best damage per size for current floor, based on current amount of Soul Gems, and Supplies storage cap"}, ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
         addSettingsSelect(currentNode, "mechSize", "Preferred mech size", "Size of random mechs", sizeOptions);
         addSettingsSelect(currentNode, "mechSizeGravity", "Gravity mech size", "Override preferred size with this on floors with high gravity", sizeOptions);
 
@@ -12018,7 +12018,7 @@
         let largeFactor = efficient ? 1 : average(Object.values(MechManager.LargeChassisMod).reduce((list, mod) => list.concat(Object.values(mod)), []));
         let weaponFactor = efficient ? 1 : average(Object.values(poly.monsters).reduce((list, mod) => list.concat(Object.values(mod.weapon)), []));
 
-        let rows = [[""], ["Power Per Size"], ["Power Per Supply"], ["Power Per Gems"]];
+        let rows = [[""], ["Damage Per Size"], ["Damage Per Supply"], ["Damage Per Gems"]];
         for (let i = 0; i < MechManager.Size.length - 1; i++) { // Exclude collectors
             let mech = {size: MechManager.Size[i], equip: special ? ['special'] : []};
 
