@@ -10118,6 +10118,13 @@
         }
         if (obj === buildings.SpireMechBay && MechManager.initLab()) {
             notes.push(`Currrent team potential: ${getNiceNumber(MechManager.mechsPotential)}`);
+            let supplyCollected = MechManager.activeMechs
+              .filter(mech => mech.size === 'collector')
+              .reduce((sum, mech) => sum + (mech.power * MechManager.collectorValue), 0);
+            if (supplyCollected > 0) {
+                notes.push(`Supplies collected: ${getNiceNumber(supplyCollected)} /s`);
+            }
+
         }
 
         if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargets.includes(obj) && !state.triggerTargets.includes(obj)) {
