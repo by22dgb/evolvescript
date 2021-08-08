@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.76
+// @version      3.3.1.77
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1579,6 +1579,7 @@
         [{id:"steelen", trait:"steelen"}],
         [{id:"decay", trait:"decay"}],
         [{id:"emfield", trait:"emfield"}],
+        [{id:"inflation", trait:"inflation"}],
         [{id:"junker", trait:"junker"}],
         [{id:"cataclysm", trait:"cataclysm"}],
         [{id:"banana", trait:"banana"}],
