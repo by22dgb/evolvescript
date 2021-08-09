@@ -3606,8 +3606,6 @@
         _listVueBinding: "mechList",
         _listVue: undefined,
 
-        collectorValue: 20000, // Collectors power mod. Higher number - more often they'll be scrapped. Current value derieved from scout: collectorValue = collectorPower / (scoutPower / scoutSize), to equalize relative values of collectors and combat mechs with same efficiency.
-
         activeMechs: [],
         inactiveMechs: [],
         mechsPower: 0,
@@ -3668,6 +3666,11 @@
             chasm: (mech) => !mech.equip.includes('grapple') ? 0.1 : 1,
             dark: (mech) => !mech.equip.includes('infrared') ? mech.equip.includes('flare') ? 0.25 : 0.1 : 1,
             gravity: (mech) => mech.size === 'titan' ? 0.25 : mech.size === 'large' ? 0.45 : mech.size === 'medium' ? 0.8 : 1,
+        },
+
+        get collectorValue() {
+            // Collectors power mod. Higher number - more often they'll be scrapped. Default value derieved from scout: 20000 = collectorBaseIncome / (scoutPower / scoutSize), to equalize relative values of collectors and combat mechs with same efficiency.
+            return 20000 / settings.mechCollectorValue;
         },
 
         mechObserver: new MutationObserver(() => {
@@ -5610,6 +5613,7 @@
 
         addSetting("mechScrap", "mixed");
         addSetting("mechScrapEfficiency", 2);
+        addSetting("mechCollectorValue", 1);
         addSetting("mechBuild", "random");
         addSetting("mechSize", "titan");
         addSetting("mechSizeGravity", "auto");
@@ -11961,6 +11965,7 @@
                             {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
         addSettingsSelect(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped. Infernal mechs won't ever be scrapped.", scrapOptions);
         addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechDamage / NewMechDamage))' more than given number.&#xA;For the cases when exchanged mechs have same size(1/3 refund) it means that with 1 eff. script allowed to scrap mechs under 33.3%. 1.5 eff. - under 22.2%, 2 eff. - under 16.6%, 0.5 eff. - under 66.6%, 0 eff. - under 100%, etc.&#xA;Efficiency below '1' is not recommended, unless scrap set to 'Full bay', as it's a breakpoint when refunded resources can immidiately compensate lost damage, resulting with best damage growth rate.&#xA;Efficiency above '1' is useful to save resources for more desperate times, or to compensate low soul gems income.");
+        addSettingsNumber(currentNode, "mechCollectorValue", "Collector value", "Collectors can't be directly compared with combat mechs, having no firepower. Script will assume that one collector/size is equal to this amount of scout/size. If you feel that script is too reluctant to scrap old collectors - you can decrease this value. Or increase, to make them more persistant. 1 value - 50% collector equial to 50% scout, 0.5 value - 50% collector equial to 25% scout, 2 value - 50% collector equial to 100% scout, etc.");
 
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
@@ -12055,6 +12060,7 @@
     function resetMechSettings() {
         settings.mechScrap = "mixed";
         settings.mechScrapEfficiency = 2;
+        settings.mechCollectorValue = 1;
         settings.mechBuild = "random";
         settings.mechSize = "titan";
         settings.mechSizeGravity = "auto";
