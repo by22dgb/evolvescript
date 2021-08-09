@@ -3790,7 +3790,7 @@
 
         getPreferredSize() {
             let mechBay = game.global.portal.mechbay;
-            if (settings.mechFillBay && mechBay.bay % 2 !== mechBay.max % 2 && mechBay.max % 1 === 0) {
+            if (settings.mechFillBay && mechBay.max % 1 === 0 && (game.global.blood.prepared >= 2 ? mechBay.bay % 2 !== mechBay.max % 2 : mechBay.max - mechBay.bay === 1)) {
                 return 'collector'; // One collector to fill odd bay
             }
 
@@ -9443,7 +9443,7 @@
         let lastFloor = settings.prestigeType === "demonic" && buildings.SpireTower.count >= settings.prestigeDemonicFloor && haveTech("waygate", 3);
 
         // Save up supply for next floor when, unless our supply income only from collectors, thet aren't built yet
-        if (settings.mechSaveSupply && !lastFloor && !m.isActive && ((game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
+        if (settings.mechSaveSupply && !lastFloor && !prolongActive && ((game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
             let missingSupplies = resources.Supply.maxQuantity - resources.Supply.currentQuantity;
             if (baySpace < newSpace) {
                 missingSupplies -= m.getMechRefund({size: "titan"})[1];
@@ -11975,7 +11975,7 @@
                               {val: "never", label: "Never", hint: "Never add special equipment"}];
         addSettingsSelect(currentNode, "mechSpecial", "Special mechs", "Configures special equip", specialOptions);
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
-        addSettingsNumber(currentNode, "mechMinSupply", "Minimum supply income", "Build collectors if current supply income above given number");
+        addSettingsNumber(currentNode, "mechMinSupply", "Minimum supply income", "Build collectors if current supply income below given number");
         addSettingsNumber(currentNode, "mechMaxCollectors", "Maximum collectors ratio", "Limiter for above option, maximum space used by collectors");
         addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
