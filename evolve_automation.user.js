@@ -2128,7 +2128,7 @@
           (building) => {
               if (resourceCost(building, resources.Supply) > 0) {
                   let mechBay = game.global.portal.mechbay;
-                  let newSize = !haveTask("mech") ? settings.mechBuild === "random" ? MechManager.getPreferredSize() : mechBay.blueprint.size : "titan";
+                  let newSize = !haveTask("mech") ? settings.mechBuild === "random" ? MechManager.getPreferredSize()[0] : mechBay.blueprint.size : "titan";
                   let [newGems, newSupply, newSpace] = MechManager.getMechCost({size: newSize});
                   if (newSpace <= mechBay.max - mechBay.bay && newSupply <= resources.Supply.maxQuantity && newGems <= resources.Soul_Gem.currentQuantity) {
                       return true;
@@ -3791,34 +3791,34 @@
         getPreferredSize() {
             let mechBay = game.global.portal.mechbay;
             if (settings.mechFillBay && mechBay.max % 1 === 0 && (game.global.blood.prepared >= 2 ? mechBay.bay % 2 !== mechBay.max % 2 : mechBay.max - mechBay.bay === 1)) {
-                return 'collector'; // One collector to fill odd bay
+                return ['collector', false]; // One collector to fill odd bay
             }
 
             if (resources.Supply.storageRatio < 0.9 && resources.Supply.rateOfChange < settings.mechMinSupply) {
                 let collectorsCount = this.activeMechs.filter(mech => mech.size === 'collector').length;
                 if (collectorsCount / mechBay.max < settings.mechMaxCollectors) {
-                    return 'collector'; // Bootstrap income
+                    return ['collector', true]; // Bootstrap income
                 }
             }
 
             if ((this.lastScouts * 2) / mechBay.max < settings.mechScouts) {
-                return 'small'; // Build scouts up to configured ratio
+                return ['small', true]; // Build scouts up to configured ratio
             }
 
             let floorSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
             if (floorSize !== "auto" && (!settings.mechFillBay || poly.mechCost(floorSize).c <= resources.Supply.maxQuantity)) {
-                return floorSize; // This floor have configured size
+                return [floorSize, false]; // This floor have configured size
             }
 
             for (let i = 0; i < this.bestSize.length; i++) {
                 let mechSize = this.bestSize[i];
                 let {s, c} = poly.mechCost(mechSize);
                 if (resources.Soul_Gem.spareQuantity >= s && resources.Supply.maxQuantity >= c) {
-                    return mechSize; // Affordable mech for auto size
+                    return [mechSize, false]; // Affordable mech for auto size
                 }
             }
 
-            return 'titan'; // Just a stub, if auto size couldn't pick anything
+            return ['titan', false]; // Just a stub, if auto size couldn't pick anything
         },
 
         getMechStats(mech) {
@@ -9426,8 +9426,10 @@
         }
 
         let newMech = {};
+        let newSize, forceBuild;
         if (settings.mechBuild === "random") {
-            newMech = m.getRandomMech(m.getPreferredSize());
+            [newSize, forceBuild] = m.getPreferredSize();
+            newMech = m.getRandomMech(newSize);
         } else if (settings.mechBuild === "user") {
             newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
         } else { // mechBuild === "none"
@@ -9515,7 +9517,7 @@
             }
 
             // Now go scrapping, if possible and benefical
-            if (trashMechs.length > 0 && powerLost / spaceGained < newMech.efficiency && baySpace + spaceGained >= newSpace && resources.Supply.spareQuantity + supplyGained >= newSupply && resources.Soul_Gem.spareQuantity + gemsGained >= newGems) {
+            if (trashMechs.length > 0 && (forceBuild || powerLost / spaceGained < newMech.efficiency) && baySpace + spaceGained >= newSpace && resources.Supply.spareQuantity + supplyGained >= newSupply && resources.Soul_Gem.spareQuantity + gemsGained >= newGems) {
                 trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
                 if (trashMechs.length > 1) {
                     let rating = average(trashMechs.map(mech => mech.power / m.bestMech[mech.size].power));
