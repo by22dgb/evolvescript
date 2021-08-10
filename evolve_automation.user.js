@@ -3618,6 +3618,8 @@
         lastScouts: -1,
         lastSpecial: "",
         bestSize: [],
+        bestGems: [],
+        bestSupply: [],
         bestMech: {},
         bestBody: {},
         bestWeapon: [],
@@ -3727,7 +3729,14 @@
                     this.updateBestBody(size);
                     this.bestMech[size] = this.getRandomMech(size);
                 });
-                this.bestSize = Object.values(this.bestMech).filter(m => m.size !== 'collector').sort((a, b) => b.efficiency - a.efficiency).map(m => m.size);
+                let sortBy = (prop) => Object.values(this.bestMech)
+                  .filter(m => m.size !== 'collector')
+                  .sort((a, b) => b[prop] - a[prop])
+                  .map(m => m.size);
+
+                this.bestSize = sortBy('efficiency');
+                this.bestGems = sortBy('gems_eff');
+                this.bestSupply = sortBy('supply_eff');
 
                 // Redraw added label of Mech Lab after change of floor
                 createMechInfo();
@@ -3809,12 +3818,15 @@
             }
 
             let floorSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
-            if (floorSize !== "auto" && (!settings.mechFillBay || poly.mechCost(floorSize).c <= resources.Supply.maxQuantity)) {
+            if (this.Size.includes(floorSize) && (!settings.mechFillBay || poly.mechCost(floorSize).c <= resources.Supply.maxQuantity)) {
                 return [floorSize, false]; // This floor have configured size
             }
+            let mechPriority = floorSize === "gems" ? this.bestGems :
+                               floorSize === "supply" ? this.bestSupply :
+                               this.bestSize;
 
-            for (let i = 0; i < this.bestSize.length; i++) {
-                let mechSize = this.bestSize[i];
+            for (let i = 0; i < mechPriority.length; i++) {
+                let mechSize = mechPriority[i];
                 let {s, c} = poly.mechCost(mechSize);
                 if (resources.Soul_Gem.spareQuantity >= s && resources.Supply.maxQuantity >= c) {
                     return [mechSize, false]; // Affordable mech for auto size
@@ -3830,8 +3842,8 @@
                 rating *= this.getWeaponMod(mech);
             }
             let power = rating * this.getSizeMod(mech) * (mech.infernal ? 1.25 : 1);
-            let efficiency = power / this.getMechSpace(mech);
-            return {power: power, efficiency: efficiency};
+            let [gem, supply, space] = this.getMechCost(mech);
+            return {power: power, efficiency: power / space, gems_eff: power / gem, supply_eff: power / supply};
         },
 
         getTimeToClear() {
@@ -11972,7 +11984,10 @@
                             {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
         addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be build. Infernal mechs won't ever be build.", buildOptions);
 
-        let sizeOptions = [{val: "auto", label: "Most efficient", hint: "Select mech with best damage per size for current floor, based on current amount of Soul Gems, and Supplies storage cap"}, ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
+        let sizeOptions = [{val: "auto", label: "Damage Per Size", hint: "Select affordable mech with most damage per size on current floor"},
+                           {val: "gems", label: "Damage Per Gems", hint: "Select affordable mech with most damage per gems on current floor"},
+                           {val: "supply", label: "Damage Per Supply", hint: "Select affordable mech with most damage per supply on current floor"},
+                            ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
         addSettingsSelect(currentNode, "mechSize", "Preferred mech size", "Size of random mechs", sizeOptions);
         addSettingsSelect(currentNode, "mechSizeGravity", "Gravity mech size", "Override preferred size with this on floors with high gravity", sizeOptions);
 
@@ -12371,7 +12386,7 @@
         addSettingsToggle(currentNode, "storageLimitPreMad", "Limit Pre-MAD Storage", "Saves resources and shortens run time by limiting storage pre-MAD");
         addSettingsToggle(currentNode, "storageSafeReassign", "Reassign only empty storages", "Wait until storage is empty before reassigning containers to another resource, to prevent overflowing and wasting resources");
         addSettingsToggle(currentNode, "storageAssignExtra", "Assign buffer storage", "Assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\\eject\\switch production, etc.");
-        addSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign per buildings", "Assign storage based of individual costs of each enabled buildings, instead of going for maximums. Allows to prioritize storages for queue and trigger, and skip assigning for unaffrdable expensive buildings. Experimental feature.");
+        addSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign per buildings", "Assign storage based on individual costs of each enabled buildings, instead of going for maximums. Allows to prioritize storages for queue and trigger, and skip assigning for unaffordable expensive buildings. Experimental feature.");
 
         currentNode.append(`
           <table style="width:100%">
