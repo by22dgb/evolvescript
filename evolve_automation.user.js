@@ -3843,7 +3843,8 @@
             }
             let power = rating * this.getSizeMod(mech) * (mech.infernal ? 1.25 : 1);
             let [gem, supply, space] = this.getMechCost(mech);
-            return {power: power, efficiency: power / space, gems_eff: power / gem, supply_eff: power / supply};
+            let [gemRef, supplyRef] = this.getMechRefund(mech);
+            return {power: power, efficiency: power / space, gems_eff: power / (gem - gemRef), supply_eff: power / (supply - supplyRef)};
         },
 
         getTimeToClear() {
@@ -12049,7 +12050,7 @@
         let largeFactor = efficient ? 1 : average(Object.values(MechManager.LargeChassisMod).reduce((list, mod) => list.concat(Object.values(mod)), []));
         let weaponFactor = efficient ? 1 : average(Object.values(poly.monsters).reduce((list, mod) => list.concat(Object.values(mod.weapon)), []));
 
-        let rows = [[""], ["Damage Per Size"], ["Damage Per Supply"], ["Damage Per Gems"]];
+        let rows = [[""], ["Damage Per Size"], ["Damage Per Supply (New)"], ["Damage Per Gems (New)"], ["Damage Per Supply (Rebuild)"], ["Damage Per Gems (Rebuild)"]];
         for (let i = 0; i < MechManager.Size.length - 1; i++) { // Exclude collectors
             let mech = {size: MechManager.Size[i], equip: special ? ['special'] : []};
 
@@ -12060,10 +12061,14 @@
             let power = basePower * statusMod * terrainMod * weaponMod;
 
             let [gems, cost, space] = MechManager.getMechCost(mech);
+            let [gemsRef, costRef] = MechManager.getMechRefund(mech);
+
             rows[0].push(game.loc("portal_mech_size_" + mech.size));
             rows[1].push((power / space * 100).toFixed(4));
             rows[2].push((power / (cost / 100000) * 100).toFixed(4));
-            rows[3].push((power / gems  * 100).toFixed(4));
+            rows[3].push((power / gems * 100).toFixed(4));
+            rows[4].push((power / ((cost - costRef) / 100000) * 100).toFixed(4));
+            rows[5].push((power / (gems - gemsRef) * 100).toFixed(4));
         }
         rows.forEach((line, index, arr) => content += "<tr>" + (index === 0 ? cellWarn : cellAdv) + line.join("&nbsp;" + cellEnd + (index === 0 ? cellAdv : cellInfo)) + cellEnd + "</tr>");
         $("#script_mechStatsTable").html(content);
