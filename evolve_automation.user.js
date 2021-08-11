@@ -2030,7 +2030,7 @@
         LakeTransport: new Action("Lake Transport", "portal", "transport", "prtl_lake", {smart: true}),
 
         SpireMission: new Action("Spire Mission", "portal", "spire_mission", "prtl_spire"),
-        SpirePurifier: new Action("Spire Purifier", "portal", "purifier", "prtl_spire"),
+        SpirePurifier: new Action("Spire Purifier", "portal", "purifier", "prtl_spire", {smart: true}),
         SpirePort: new Action("Spire Port", "portal", "port", "prtl_spire", {smart: true}),
         SpireBaseCamp: new Action("Spire Base Camp", "portal", "base_camp", "prtl_spire", {smart: true}),
         SpireBridge: new Action("Spire Bridge", "portal", "bridge", "prtl_spire"),
@@ -5116,6 +5116,9 @@
 
         buildings.ForgeHorseshoe._autoMax = 20;
         buildings.RedForgeHorseshoe._autoMax = 20;
+
+        buildings.SpirePurifier.autoStateSmart = false;
+        buildings.SpireMechBay.autoStateSmart = false;
     }
 
     function resetProjectSettings() {
@@ -8454,20 +8457,21 @@
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
             // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
             // And also let autoMech do minimum preparation, so we won't stuck with near zero potential
-            let buildAllowed = buildings.SpireMechBay.isSmartManaged()
-              && (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) > buildings.SpireMechBay.count)
+            let buildAllowed = (settings.prestigeType !== "demonic" || settings.prestigeDemonicFloor - buildings.SpireTower.count > buildings.SpireMechBay.count)
               && (!settings.autoMech || !MechManager.isActive)
               && game.global.portal.transport.cargo.used > 0
               && game.global.portal.transport.cargo.max > 0;
 
+            // Check is we allowed to build specific building, and have money for it
             const spireBuildable = (building) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money);
             let mechBuildable = spireBuildable(buildings.SpireMechBay);
             let puriBuildable = spireBuildable(buildings.SpirePurifier) && buildings.SpirePurifier.stateOffCount === 0;
             let portBuildable = spireBuildable(buildings.SpirePort);
             let campBuildable = spireBuildable(buildings.SpireBaseCamp);
 
-            let nextMechCost = mechBuildable ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let nextPuriCost = puriBuildable && mechBuildable && (portBuildable || campBuildable) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextMechCost = mechBuildable && buildings.SpireMechBay.isSmartManaged() ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextPuriCost = puriBuildable && mechBuildable && buildings.SpirePurifier.isSmartManaged() && (portBuildable || campBuildable || buildings.SpirePort.stateOffCount > 0 || buildings.SpireBaseCamp.stateOffCount > 0) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextCost = Math.min(nextMechCost, nextPuriCost);
             let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             let maxBay = Math.min(buildings.SpireMechBay.count, spireSupport);
             let maxPorts = portBuildable ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
@@ -8476,7 +8480,6 @@
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
             for (let targetMech = maxBay; targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
 
@@ -8495,7 +8498,7 @@
                     }
                     break;
                 }
-                if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost) {
+                if (bestSupplies < nextCost || targetSupplies >= nextCost) {
                     adjustSpire(targetMech, targetPort, targetCamp);
                     break;
                 }
@@ -11985,6 +11988,7 @@
                             {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
         addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be build. Infernal mechs won't ever be build.", buildOptions);
 
+        //TODO: Make auto truly auto - some way to pick best "per x", depends on current bottleneck
         let sizeOptions = [{val: "auto", label: "Damage Per Size", hint: "Select affordable mech with most damage per size on current floor"},
                            {val: "gems", label: "Damage Per Gems", hint: "Select affordable mech with most damage per gems on current floor"},
                            {val: "supply", label: "Damage Per Supply", hint: "Select affordable mech with most damage per supply on current floor"},
