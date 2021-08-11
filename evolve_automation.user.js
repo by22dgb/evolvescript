@@ -5116,9 +5116,6 @@
 
         buildings.ForgeHorseshoe._autoMax = 20;
         buildings.RedForgeHorseshoe._autoMax = 20;
-
-        buildings.SpirePurifier.autoStateSmart = false;
-        buildings.SpireMechBay.autoStateSmart = false;
     }
 
     function resetProjectSettings() {
@@ -8457,29 +8454,24 @@
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
             // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
             // And also let autoMech do minimum preparation, so we won't stuck with near zero potential
-            let buildAllowed = (settings.prestigeType !== "demonic" || settings.prestigeDemonicFloor - buildings.SpireTower.count > buildings.SpireMechBay.count)
-              && (!settings.autoMech || !MechManager.isActive)
-              && game.global.portal.transport.cargo.used > 0
-              && game.global.portal.transport.cargo.max > 0;
+            let buildAllowed = (!settings.autoMech || !MechManager.isActive)
+              && (settings.prestigeType !== "demonic" || settings.prestigeDemonicFloor - buildings.SpireTower.count > buildings.SpireMechBay.count);
 
             // Check is we allowed to build specific building, and have money for it
-            const spireBuildable = (building) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money);
-            let mechBuildable = spireBuildable(buildings.SpireMechBay);
-            let puriBuildable = spireBuildable(buildings.SpirePurifier) && buildings.SpirePurifier.stateOffCount === 0;
-            let portBuildable = spireBuildable(buildings.SpirePort);
-            let campBuildable = spireBuildable(buildings.SpireBaseCamp);
+            const canBuild = (building, checkSmart) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money) && (!checkSmart || building.isSmartManaged());
 
-            let nextMechCost = mechBuildable && buildings.SpireMechBay.isSmartManaged() ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let nextPuriCost = puriBuildable && mechBuildable && buildings.SpirePurifier.isSmartManaged() && (portBuildable || campBuildable || buildings.SpirePort.stateOffCount > 0 || buildings.SpireBaseCamp.stateOffCount > 0) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let nextCost = Math.min(nextMechCost, nextPuriCost);
             let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             let maxBay = Math.min(buildings.SpireMechBay.count, spireSupport);
-            let maxPorts = portBuildable ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
-            let maxCamps = campBuildable ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
+            let maxPorts = canBuild(buildings.SpirePort) ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
+            let maxCamps = canBuild(buildings.SpireBaseCamp) ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
+            let nextMechCost = canBuild(buildings.SpireMechBay, true) ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextPuriCost = canBuild(buildings.SpirePurifier, true) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextCost = Math.min(nextMechCost, nextPuriCost);
 
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
+            let overCappedSupplies = false;
             for (let targetMech = maxBay; targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
 
@@ -8498,7 +8490,11 @@
                     }
                     break;
                 }
-                if (bestSupplies < nextCost || targetSupplies >= nextCost) {
+
+                if (targetMech === maxBay && resources.Supply.currentQuantity >= targetSupplies) {
+                    overCappedSupplies = true;
+                }
+                if (!overCappedSupplies || bestSupplies < nextCost || targetSupplies >= nextCost) {
                     adjustSpire(targetMech, targetPort, targetCamp);
                     break;
                 }
@@ -8544,7 +8540,7 @@
             bestPort = Math.min(support - i, maxPorts);
             bestBaseCamp = Math.min(i, maxCamps);
         }
-        return [bestSupplies * 10000 + 100, bestPort, bestBaseCamp];
+        return [Math.round(bestSupplies * 10000 + 100), bestPort, bestBaseCamp];
     }
 
     function expandStorage(storageToBuild) {
@@ -9465,7 +9461,7 @@
         let lastFloor = settings.prestigeType === "demonic" && buildings.SpireTower.count >= settings.prestigeDemonicFloor && haveTech("waygate", 3);
 
         // Save up supply for next floor when, unless our supply income only from collectors, thet aren't built yet
-        if (settings.mechSaveSupply && !lastFloor && !prolongActive && ((game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
+        if (settings.mechSaveSupply && !lastFloor && !prolongActive && ((buildings.LakeBireme.stateOnCount > 0 && buildings.LakeTransport.stateOnCount > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
             let missingSupplies = resources.Supply.maxQuantity - resources.Supply.currentQuantity;
             if (baySpace < newSpace) {
                 missingSupplies -= m.getMechRefund({size: "titan"})[1];
