@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.78
+// @version      3.3.1.79
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4298,7 +4298,7 @@
                 return;
             }
 
-            game.messageQueue(text, "success", false, tags);
+            poly.messageQueue(text, "success", false, tags);
         },
 
         logWarning(loggingType, text, tags) {
@@ -4306,7 +4306,7 @@
                 return;
             }
 
-            game.messageQueue(text, "warning", false, tags);
+            poly.messageQueue(text, "warning", false, tags);
         },
     }
 
@@ -5196,7 +5196,6 @@
     function resetLoggingSettings() {
         settings.logEnabled = true;
         Object.values(GameLog.Types).forEach(log => settings[log.settingKey] = true);
-        settings[GameLog.Types.arpa.settingKey] = false;
 
         settings.logFilter = "";
     }
@@ -10373,6 +10372,7 @@
         if (typeof unsafeWindow !== "object" || typeof cloneInto !== "function") {
             poly.adjustCosts = game.adjustCosts;
             poly.loc = game.loc;
+            poly.messageQueue = game.messageQueue;
         }
 
         addScriptStyle();
@@ -10522,6 +10522,13 @@
                 -webkit-user-select: text !important;
                 -ms-user-select: text !important;
                 user-select: text !important;
+            }
+
+            .ea-craft-toggle {
+                max-width:75px;
+                margin-top:4px;
+                float:right;
+                left:50%;
             }
 
             /* Fixes for game styles */
@@ -13767,10 +13774,10 @@
 
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
-            let craftableElement = $('#res' + craftable.id);
+            let craftableElement = $('#res' + craftable.id + ' h3');
             if (craftableElement.length) {
-                let toggle = $(`<label id="script_craft1_${craftable.id}" tabindex="0" class="switch ea-craft-toggle" style="position:absolute; max-width:75px;margin-top: 4px;left:30%;"><input type="checkbox"${craftable.autoCraftEnabled ? " checked" : ""}/> <span class="check" style="height:5px;"></span></label>`);
-                craftableElement.append(toggle);
+                let toggle = $(`<label id="script_craft1_${craftable.id}" tabindex="0" class="switch ea-craft-toggle"><input type="checkbox"${craftable.autoCraftEnabled ? " checked" : ""}/> <span class="check" style="height:5px;"></span></label>`);
+                craftableElement.prepend(toggle);
                 toggle.on('change', {entity: craftable, property: "autoCraftEnabled", sync: "script_craft2_" + craftable.id}, toggleCallback);
             }
         }
@@ -14244,6 +14251,7 @@
     // Firefox compatibility:
         adjustCosts: (cost, wiki) => game.adjustCosts(cloneInto(cost, unsafeWindow, {cloneFunctions: true}), wiki),
         loc: (key, variables) => game.loc(key, cloneInto(variables, unsafeWindow)),
+        messageQueue: (msg, color, dnr, tags) => game.messageQueue(msg, color, dnr, cloneInto(tags, unsafeWindow)),
     };
 
     $().ready(mainAutoEvolveScript);
