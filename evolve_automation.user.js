@@ -1626,6 +1626,7 @@
 
         // We need to keep them separated, as we *don't* want to click on queue targets. Game will handle that. We're just managing resources for them.
         queuedTargets: [],
+        queuedTargetsAll: [],
         triggerTargets: [],
         techTargets: [],
         otherTargets: [],
@@ -8014,7 +8015,7 @@
                         let resource = thisRequirement.resource;
 
                         // Ignore locked and capped resources
-                        if (!resource.isUnlocked() || resource.isCapped()){
+                        if (!resource.isUnlocked() || resource.storageRatio > 0.99){
                             continue;
                         }
 
@@ -8618,7 +8619,7 @@
             buildingsList.push(...Object.values(resGroups).flat());
         }
 
-        addList(state.queuedTargets);
+        addList(state.queuedTargetsAll);
         addList(state.triggerTargets);
         addList(state.techTargets);
         addList(ProjectManager.priorityList.filter(b => b.isUnlocked() && b.autoBuildEnabled));
@@ -9627,17 +9628,23 @@
         MarketManager.updateData();
     }
 
-    function calculateRequiredStorages() {
+    function requiestStorageFor(list) {
         let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
+        for (let i = 0; i < list.length; i++) {
+            let obj = list[i];
+            let unaffordableReq = obj.resourceRequirements.find(req => req.resource.maxQuantity < req.quantity && !req.resource.hasStorage());
+            if (!unaffordableReq) {
+                obj.resourceRequirements.forEach(requirement => {
+                    requirement.resource.storageRequired = Math.max(requirement.quantity * bufferMult, requirement.resource.storageRequired);
+                });
+            }
+        }
+    }
 
+    function calculateRequiredStorages() {
         // Get list of all unlocked techs, and find biggest numbers for each resource
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
-        for (let i = 0; i < state.techTargets.length; i++) {
-            let tech = state.techTargets[i];
-            tech.resourceRequirements.forEach(requirement => {
-                requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-            });
-        }
+        requiestStorageFor(state.techTargets);
 
         // We need to preserve amount of knowledge required by techs only, while amount still not polluted
         // by buildings - wardenclyffe, labs, etc. This way we can determine what's our real demand is.
@@ -9645,26 +9652,10 @@
         // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
         state.knowledgeRequiredByTechs = resources.Knowledge.storageRequired;
 
-        // Now we're checking costs of buildings
-        BuildingManager.priorityList.forEach(building => {
-            if (building.isUnlocked() && building.autoBuildEnabled){
-                let unaffordableReq = building.resourceRequirements.find(req => req.resource.maxQuantity < req.quantity && !req.resource.hasStorage());
-                if (!unaffordableReq) {
-                    building.resourceRequirements.forEach(requirement => {
-                        requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-                    });
-                }
-            }
-        });
-
-        // Same for projects
-        ProjectManager.priorityList.forEach(project => {
-            if (project.isUnlocked() && project.autoBuildEnabled) {
-                project.resourceRequirements.forEach(requirement => {
-                    requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-                });
-            }
-        });
+        // Now we can do same for other things
+        requiestStorageFor(state.queuedTargetsAll);
+        requiestStorageFor(BuildingManager.priorityList.filter((b) => b.isUnlocked() && b.autoBuildEnabled));
+        requiestStorageFor(ProjectManager.priorityList.filter((p) => p.isUnlocked() && p.autoBuildEnabled));
 
         // Increase storage for sellable resources, to make sure we'll have required amount before they'll be sold
         if (!game.global.race['no_trade'] && settings.autoMarket) {
@@ -9751,23 +9742,18 @@
 
     function updatePriorityTargets() {
         state.queuedTargets = [];
+        state.queuedTargetsAll = [];
         state.triggerTargets = [];
         state.techTargets = [];
         state.otherTargets = [];
 
         // Buildings queue
-        let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
         if (game.global.queue.display) {
             for (let i = 0; i < game.global.queue.queue.length; i++) {
                 let id = game.global.queue.queue[i].id;
                 let obj = buildingIds[id] || arpaIds[id];
                 if (obj) {
-                    obj.resourceRequirements.forEach(requirement => {
-                        requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-                    });
-                    if (obj.isAffordable(true)) {
-                        state.queuedTargets.push(obj);
-                    }
+                    state.queuedTargetsAll.push(obj);
                 }
                 if (!game.global.settings.qAny) {
                     break;
@@ -9780,12 +9766,7 @@
                 let id = game.global.r_queue.queue[i].id;
                 let obj = techIds[id];
                 if (obj) {
-                    obj.resourceRequirements.forEach(requirement => {
-                        requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-                    });
-                    if (obj.isAffordable(true)) {
-                        state.queuedTargets.push(obj);
-                    }
+                    state.queuedTargetsAll.push(obj);
                 }
                 if (!game.global.settings.qAny_res) {
                     break;
@@ -9793,9 +9774,11 @@
             }
         }
 
+        state.queuedTarget = state.queuedTargetsAll.filter(obj => obj.isAffordable(true));
         TriggerManager.resetTargetTriggers();
 
         // Active triggers
+        // TODO: Make list of unaffordable triggers, and try to request storage
         for (let i = 0; i < TriggerManager.targetTriggers.length; i++) {
             let trigger = TriggerManager.targetTriggers[i];
             if (trigger.actionType === "research" && techIds[trigger.actionId]) {
