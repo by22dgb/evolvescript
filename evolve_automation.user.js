@@ -5196,6 +5196,8 @@
     function resetLoggingSettings() {
         settings.logEnabled = true;
         Object.values(GameLog.Types).forEach(log => settings[log.settingKey] = true);
+        settings[GameLog.Types.arpa.settingKey] = false;
+        settings[GameLog.Types.mercenary.settingKey] = false;
 
         settings.logFilter = "";
     }
@@ -9774,7 +9776,7 @@
             }
         }
 
-        state.queuedTarget = state.queuedTargetsAll.filter(obj => obj.isAffordable(true));
+        state.queuedTargets = state.queuedTargetsAll.filter(obj => obj.isAffordable(true));
         TriggerManager.resetTargetTriggers();
 
         // Active triggers
@@ -10530,6 +10532,15 @@
                 float:right;
                 left:50%;
             }
+
+            /* Reduce message log clutterness */
+            .main #msgQueueFilters span:not(:last-child) {
+                !important; margin-right: 0.25rem;
+            }
+            #msgQueueFilter-building_queue { display: none }
+            #msgQueueFilter-research_queue { display: none }
+            #msgQueueFilter-major_events { display: none }
+            #msgQueueFilter-minor_events { display: none }
 
             /* Fixes for game styles */
             .main .resources .resource :first-child { white-space: nowrap; }
