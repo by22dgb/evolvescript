@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.77
+// @version      3.3.1.78
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -861,9 +861,9 @@
             // Don't log evolution actions and gathering actions
             if (game.global.race.species !== "protoplasm" && !logIgnore.includes(this.id)) {
                 if (this.gameMax < Number.MAX_SAFE_INTEGER && this.count + 1 < this.gameMax) {
-                    GameLog.logSuccess(GameLog.Types.multi_construction, poly.loc('build_success', [`${this.title} (${this.count + 1})`]));
+                    GameLog.logSuccess(GameLog.Types.multi_construction, poly.loc('build_success', [`${this.title} (${this.count + 1})`]), ['queue', 'building_queue']);
                 } else {
-                    GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]));
+                    GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
                 }
             }
 
@@ -1163,9 +1163,9 @@
             );
 
             if (this.progress + this.currentStep < 100) {
-                GameLog.logSuccess(GameLog.Types.arpa, poly.loc('build_success', [`${this.title} (${this.progress + this.currentStep}%)`]));
+                GameLog.logSuccess(GameLog.Types.arpa, poly.loc('build_success', [`${this.title} (${this.progress + this.currentStep}%)`]), ['queue', 'building_queue']);
             } else {
-                GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]));
+                GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
             }
 
             resetMultiplier();
@@ -1225,7 +1225,7 @@
             );
 
             getVueById(this._vueBinding).action();
-            GameLog.logSuccess(GameLog.Types.research, poly.loc('research_success', [techIds[this.definition.id].title]));
+            GameLog.logSuccess(GameLog.Types.research, poly.loc('research_success', [techIds[this.definition.id].title]), ['queue', 'research_queue']);
             return true;
         }
 
@@ -2381,6 +2381,7 @@
           () => "Still have some unused storage",
           () => settings.buildingWeightingCrateUseless
       ],[
+      // TODO: Fuel rules probably broken, fix me
           () => resources.Oil.maxQuantity < resources.Oil.requestedQuantity && buildings.OilWell.count <= 0 && buildings.GasMoonOilExtractor.count <= 0,
           (building) => building === buildings.OilWell || building === buildings.GasMoonOilExtractor,
           () => "Need more fuel",
@@ -2980,7 +2981,7 @@
             let optionsNode = document.querySelector("#govType button");
             let title = game.loc('civics_government_type');
             WindowManager.openModalWindowWithCallback(optionsNode, title, () => {
-                GameLog.logSuccess(GameLog.Types.special, `Revolution! Government changed to ${game.loc("govern_" + government)}.`);
+                GameLog.logSuccess(GameLog.Types.special, `Revolution! Government changed to ${game.loc("govern_" + government)}.`, ['events', 'major_events']);
                 getVueById('govModal')?.setGov(government);
             });
         },
@@ -3263,7 +3264,7 @@
                 }
                 let title = game.loc('civics_espionage_actions');
                 WindowManager.openModalWindowWithCallback(optionsNode, title, () => {
-                    GameLog.logSuccess(GameLog.Types.spying, `Performing "${game.loc("civics_spy_" + espionageToPerform)}" covert operation against ${getGovName(govIndex)}.`);
+                    GameLog.logSuccess(GameLog.Types.spying, `Performing "${game.loc("civics_spy_" + espionageToPerform)}" covert operation against ${getGovName(govIndex)}.`, ['spy']);
                     getVueById('espModal')?.[espionageToPerform]?.(govIndex);
                 });
             }
@@ -3948,7 +3949,7 @@
                 this._assemblyVue.setEquip(mech.equip[i], i);
             }
             this._assemblyVue.build();
-            GameLog.logSuccess(GameLog.Types.mech_build, `${this.mechDesc(mech)} mech has been assembled.`);
+            GameLog.logSuccess(GameLog.Types.mech_build, `${this.mechDesc(mech)} mech has been assembled.`, ['hell']);
         },
 
         scrapMech(mech) {
@@ -4292,20 +4293,20 @@
             mech_scrap: {name: "Mech Scrap", settingKey: "log_mech_scrap"},
         },
 
-        logSuccess(loggingType, text) {
+        logSuccess(loggingType, text, tags) {
             if (!settings.logEnabled || !settings[loggingType.settingKey]) {
                 return;
             }
 
-            game.messageQueue(text, "success");
+            game.messageQueue(text, "success", false, tags);
         },
 
-        logWarning(loggingType, text) {
+        logWarning(loggingType, text, tags) {
             if (!settings.logEnabled || !settings[loggingType.settingKey]) {
                 return;
             }
 
-            game.messageQueue(text, "warning");
+            game.messageQueue(text, "warning", false, tags);
         },
     }
 
@@ -5824,7 +5825,7 @@
             if (state.evolutionTarget === null) {
                 state.evolutionTarget = races.antid;
             }
-            GameLog.logSuccess(GameLog.Types.special, `Attempting evolution of ${state.evolutionTarget.name}.`);
+            GameLog.logSuccess(GameLog.Types.special, `Attempting evolution of ${state.evolutionTarget.name}.`, ['progress']);
         }
 
         // Apply challenges
@@ -6221,9 +6222,9 @@
 
             // Log the interaction
             if (mercenariesHired === 1) {
-                GameLog.logSuccess(GameLog.Types.mercenary, `Hired a mercenary to join the garrison.`);
+                GameLog.logSuccess(GameLog.Types.mercenary, `Hired a mercenary to join the garrison.`, ['combat']);
             } else if (mercenariesHired > 1) {
-                GameLog.logSuccess(GameLog.Types.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`);
+                GameLog.logSuccess(GameLog.Types.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`, ['combat']);
             }
         }
     }
@@ -6259,7 +6260,7 @@
                     continue;
                 }
 
-                GameLog.logSuccess(GameLog.Types.spying, `Training a spy to send against ${getGovName(foreign.id)}.`);
+                GameLog.logSuccess(GameLog.Types.spying, `Training a spy to send against ${getGovName(foreign.id)}.`, ['spy']);
                 foreignVue.spy(foreign.id);
             }
         }
@@ -6393,7 +6394,7 @@
         let campaignTitle = m.getCampaignTitle(requiredTactic);
         let battalionRating = game.armyRating(m.raid, "army");
         let advantagePercent = m.getAdvantage(battalionRating, requiredTactic, currentTarget.id).toFixed(1);
-        GameLog.logSuccess(GameLog.Types.attack, `Launching ${campaignTitle} campaign against ${getGovName(currentTarget.id)} with ${currentTarget.gov.spy < 1 ? "~" : ""}${advantagePercent}% advantage.`);
+        GameLog.logSuccess(GameLog.Types.attack, `Launching ${campaignTitle} campaign against ${getGovName(currentTarget.id)} with ${currentTarget.gov.spy < 1 ? "~" : ""}${advantagePercent}% advantage.`, ['combat']);
 
         m.launchCampaign(currentTarget.id);
     }
@@ -9538,9 +9539,9 @@
                 trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
                 if (trashMechs.length > 1) {
                     let rating = average(trashMechs.map(mech => mech.power / m.bestMech[mech.size].power));
-                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${trashMechs.length} mechs (~${Math.round(rating * 100)}%) has been scrapped.`);
+                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${trashMechs.length} mechs (~${Math.round(rating * 100)}%) has been scrapped.`, ['hell']);
                 } else {
-                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${m.mechDesc(trashMechs[0])} mech has been scrapped.`);
+                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${m.mechDesc(trashMechs[0])} mech has been scrapped.`, ['hell']);
                 }
                 trashMechs.forEach(mech => m.scrapMech(mech));
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
@@ -9813,13 +9814,13 @@
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isPillarUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} pillar already infused, soft resetting and trying again.`);
+                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} pillar already infused, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available pillars already infused. Continuing with current race.`);
+                        GameLog.logWarning(GameLog.Types.special, `All currently available pillars already infused. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
@@ -9827,13 +9828,13 @@
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isGreatnessAchievementUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`);
+                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available greatness achievements already earned. Continuing with current race.`);
+                        GameLog.logWarning(GameLog.Types.special, `All currently available greatness achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
@@ -9841,18 +9842,18 @@
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isMadAchievementUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`);
+                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available extinction achievements already earned. Continuing with current race.`);
+                        GameLog.logWarning(GameLog.Types.special, `All currently available extinction achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
             } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
-                GameLog.logWarning(GameLog.Types.special, `Wrong race, soft resetting and trying again.`);
+                GameLog.logWarning(GameLog.Types.special, `Wrong race, soft resetting and trying again.`, ['progress']);
                 needReset = true;
             }
 
@@ -10076,7 +10077,7 @@
 
         // Log filtering
         buildFilterRegExp();
-        new MutationObserver(filterLog).observe(document.getElementById("msgQueue"), {childList: true});
+        new MutationObserver(filterLog).observe(document.getElementById("msgQueueLog"), {childList: true});
     }
 
     function buildFilterRegExp() {
