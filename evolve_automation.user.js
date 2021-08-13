@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.79
+// @version      3.3.1.80
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2352,7 +2352,7 @@
           () => settings.buildingWeightingNeedfulPowerPlant
       ],[
           () => resources.Power.isUnlocked() && resources.Power.currentQuantity > resources.Power.maxQuantity,
-          (building) => building !== buildings.Mill && building.powered < 0,
+          (building) => building !== buildings.Mill && (building === buildings.LakeCoolingTower || building.powered < 0),
           () => "No need for more energy",
           () => settings.buildingWeightingUselessPowerPlant
       ],[
@@ -9634,6 +9634,7 @@
     }
 
     function requiestStorageFor(list) {
+        // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
         let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
         for (let i = 0; i < list.length; i++) {
             let obj = list[i];
@@ -9647,17 +9648,14 @@
     }
 
     function calculateRequiredStorages() {
-        // Get list of all unlocked techs, and find biggest numbers for each resource
-        // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
-        requiestStorageFor(state.techTargets);
-
         // We need to preserve amount of knowledge required by techs only, while amount still not polluted
         // by buildings - wardenclyffe, labs, etc. This way we can determine what's our real demand is.
         // Otherwise they might start build up knowledge cap just to afford themselves, increasing required
         // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
-        state.knowledgeRequiredByTechs = resources.Knowledge.storageRequired;
+        state.knowledgeRequiredByTechs = Math.max(0, ...state.techTargets.map(tech => resourceCost(tech, resources.Knowledge)));
 
-        // Now we can do same for other things
+        // Get list of all objects techs, and find biggest numbers for each resource
+        requiestStorageFor(state.techTargets);
         requiestStorageFor(state.queuedTargetsAll);
         requiestStorageFor(BuildingManager.priorityList.filter((b) => b.isUnlocked() && b.autoBuildEnabled));
         requiestStorageFor(ProjectManager.priorityList.filter((p) => p.isUnlocked() && p.autoBuildEnabled));
