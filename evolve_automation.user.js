@@ -5476,6 +5476,7 @@
         addSetting("autoGalaxyMarket", false);
 
         addSetting("logEnabled", true);
+        addSetting(GameLog.Types.mercenary.settingKey, false);
         addSetting(GameLog.Types.arpa.settingKey, false);
         Object.values(GameLog.Types).forEach(log => addSetting(log.settingKey, true));
         addSetting("logFilter", "");
@@ -5628,8 +5629,8 @@
         addSetting("fleetChthonianLoses", "frigate");
 
         addSetting("mechScrap", "mixed");
-        addSetting("mechScrapEfficiency", 2);
-        addSetting("mechCollectorValue", 1);
+        addSetting("mechScrapEfficiency", 1.5);
+        addSetting("mechCollectorValue", 0.5);
         addSetting("mechBuild", "random");
         addSetting("mechSize", "titan");
         addSetting("mechSizeGravity", "auto");
@@ -8053,7 +8054,9 @@
 
             // Build building
             if (building.click()) {
-                if (building.consumption.length > 0) { // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
+                // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
+                // Same for gems when we're saving them
+                if (building.consumption.length > 0 || (settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole" && resourceCost(building, resources.Soul_Gem) > 0)) {
                     return;
                 }
                 // Mark all processed building as unaffordable for remaining loop, so they won't appear as conflicting
@@ -12081,8 +12084,8 @@
 
     function resetMechSettings() {
         settings.mechScrap = "mixed";
-        settings.mechScrapEfficiency = 2;
-        settings.mechCollectorValue = 1;
+        settings.mechScrapEfficiency = 1.5;
+        settings.mechCollectorValue = 0.5;
         settings.mechBuild = "random";
         settings.mechSize = "titan";
         settings.mechSizeGravity = "auto";
