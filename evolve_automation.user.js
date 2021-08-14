@@ -2381,7 +2381,6 @@
           () => "Still have some unused storage",
           () => settings.buildingWeightingCrateUseless
       ],[
-      // TODO: Fuel rules probably broken, fix me
           () => resources.Oil.maxQuantity < resources.Oil.requestedQuantity && buildings.OilWell.count <= 0 && buildings.GasMoonOilExtractor.count <= 0,
           (building) => building === buildings.OilWell || building === buildings.GasMoonOilExtractor,
           () => "Need more fuel",
@@ -3613,6 +3612,7 @@
         mechsPower: 0,
         mechsPotential: 0,
         isActive: false,
+        saveSupply: false,
 
         lastLevel: -1,
         lastPrepared: -1,
@@ -4825,7 +4825,7 @@
         settings.buildingWeightingMADUseless = 0;
         settings.buildingWeightingUnusedEjectors = 0.1;
         settings.buildingWeightingCrateUseless = 0.01;
-        settings.buildingWeightingHorseshoeUseless = 0.01;
+        settings.buildingWeightingHorseshoeUseless = 0.1;
         settings.buildingWeightingZenUseless = 0.01;
         settings.buildingWeightingGateTurret = 0.01;
         settings.buildingWeightingNeedStorage = 1;
@@ -5604,7 +5604,7 @@
         addSetting("buildingWeightingMADUseless", 0);
         addSetting("buildingWeightingUnusedEjectors", 0.1);
         addSetting("buildingWeightingCrateUseless", 0.01);
-        addSetting("buildingWeightingHorseshoeUseless", 0.01);
+        addSetting("buildingWeightingHorseshoeUseless", 0.1);
         addSetting("buildingWeightingZenUseless", 0.01);
         addSetting("buildingWeightingGateTurret", 0.01);
         addSetting("buildingWeightingNeedStorage", 1);
@@ -8472,21 +8472,28 @@
             let maxCamps = canBuild(buildings.SpireBaseCamp) ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
             let nextMechCost = canBuild(buildings.SpireMechBay, true) ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
             let nextPuriCost = canBuild(buildings.SpirePurifier, true) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let nextCost = Math.min(nextMechCost, nextPuriCost);
+            let mechQueued = state.queuedTargetsAll.includes(buildings.SpireMechBay);
+            let puriQueued = state.queuedTargetsAll.includes(buildings.SpirePurifier);
 
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            let overCappedSupplies = false;
+            let nextCost =
+              mechQueued && nextMechCost <= bestSupplies ? nextMechCost :
+              puriQueued && nextPuriCost <= bestSupplies ? nextPuriCost :
+              Math.min(nextMechCost, nextPuriCost);
+            MechManager.saveSupply = nextCost <= bestSupplies;
+
+            let assignStorage = mechQueued || puriQueued;
             for (let targetMech = maxBay; targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
 
-                let storageUpgrade =
+                let missingStorage =
                     targetPort > buildings.SpirePort.count ? buildings.SpirePort :
                     targetCamp > buildings.SpireBaseCamp.count ? buildings.SpireBaseCamp :
                     null;
-                if (storageUpgrade) {
-                    let storageCost = resourceCost(storageUpgrade, resources.Supply);
+                if (missingStorage) {
+                    let storageCost = resourceCost(missingStorage, resources.Supply);
                     for (let i = maxBay; i >= 0; i--) {
                         let [storageSupplies, storagePort, storageCamp] = getBestSupplyRatio(spireSupport - i, maxPorts, maxCamps);
                         if (storageSupplies >= storageCost) {
@@ -8498,9 +8505,10 @@
                 }
 
                 if (targetMech === maxBay && resources.Supply.currentQuantity >= targetSupplies) {
-                    overCappedSupplies = true;
+                    assignStorage = true;
                 }
-                if (!overCappedSupplies || bestSupplies < nextCost || targetSupplies >= nextCost) {
+                if (!assignStorage || bestSupplies < nextCost || targetSupplies >= nextCost) {
+                    // TODO: Assign storage gradually while it fills, instead of dropping directly to target. That'll need better intregration with autoBuild, to make sure it won't spent supplies on wrong building seeing that target still unaffrodable, and not knowing that it's temporaly
                     adjustSpire(targetMech, targetPort, targetCamp);
                     break;
                 }
@@ -9425,6 +9433,8 @@
         let mechBay = game.global.portal.mechbay;
         let prolongActive = m.isActive;
         m.isActive = false;
+        let savingSupply = m.saveSupply;
+        m.saveSupply = false;
 
         // Rearrange mechs for best efficiency if some of the bays are disabled
         if (m.inactiveMechs.length > 0) {
@@ -9512,7 +9522,7 @@
 
             // Get list of inefficient mech
             let scrapEfficiency =
-              baySpace === 0 && resources.Supply.storageRatio > 0.9 ? 0 :
+              (settings.mechFillBay ? baySpace === 0 : baySpace < newSpace) && resources.Supply.storageRatio > 0.9 && !savingSupply ? 0 :
               lastFloor ? Math.min(settings.mechScrapEfficiency, 1) :
               settings.mechScrapEfficiency;
 
@@ -9559,7 +9569,7 @@
         }
 
         // Try to squeeze smaller mech, if we can't fit preferred one
-        if (settings.mechFillBay && ((!canExpandBay && baySpace < newSpace) || resources.Supply.maxQuantity < newSupply)) {
+        if (settings.mechFillBay && !savingSupply &&((!canExpandBay && baySpace < newSpace) || resources.Supply.maxQuantity < newSupply)) {
             for (let i = m.Size.indexOf(newMech.size) - 1; i >= 0; i--) {
                 [newGems, newSupply, newSpace] = m.getMechCost({size: m.Size[i]});
                 if (newSpace <= baySpace && newSupply <= resources.Supply.maxQuantity) {
