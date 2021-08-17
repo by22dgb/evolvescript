@@ -9476,6 +9476,9 @@
 
         let baySpace = mechBay.max - mechBay.bay;
         let lastFloor = settings.prestigeType === "demonic" && buildings.SpireTower.count >= settings.prestigeDemonicFloor && haveTech("waygate", 3);
+        if (lastFloor) {
+            savingSupply = false;
+        }
 
         // Save up supply for next floor when, unless our supply income only from collectors, thet aren't built yet
         if (settings.mechSaveSupply && !lastFloor && !prolongActive && ((buildings.LakeBireme.stateOnCount > 0 && buildings.LakeTransport.stateOnCount > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
@@ -14149,7 +14152,7 @@
     }
 
     function isDemonRace() {
-        return game.global.race['soul_eater'] && game.global.race.species !== 'wendigo';
+        return game.global.race['soul_eater'] && game.global.race['evil'] && game.global.race.species !== 'wendigo';
     }
 
     function isLumberRace() {
