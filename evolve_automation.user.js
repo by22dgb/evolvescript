@@ -6057,6 +6057,8 @@
         if (!resources.Population.isUnlocked()) { return; }
         if (game.global.race['no_craft']) { return; }
 
+        let gameSpeed = gameTicksPerSecond("mid");
+
         craftLoop:
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
@@ -6071,14 +6073,12 @@
 
                 if (craftable.isDemanded()) { // Craftable demanded, get as much as we can
                     afforableAmount = Math.min(afforableAmount, resource.currentQuantity / requirement.quantity);
-                } else if (resource.isDemanded() || resource.usefulRatio < craftable.usefulRatio) { // Don't use demanded resources
-                    continue craftLoop;
-                } else if (craftable.currentQuantity > craftable.storageRequired * 100 && (resource.storageRatio < 0.99 || resource.calculateRateOfChange({all: true}) <= 0)) { // 100x craftables, try to save up resources
+                } else if (resource.isDemanded() || (!resource.isCapped() && resource.usefulRatio < craftable.usefulRatio)) { // Don't use demanded resources
                     continue craftLoop;
                 } else if (craftable.currentQuantity < craftable.storageRequired) { // Craftable is required, use all spare resources
                     afforableAmount = Math.min(afforableAmount, resource.spareQuantity / requirement.quantity);
-                } else if (resource.currentQuantity > resource.storageRequired || resource.isCapped()) { // Resource not required - consume last 10%
-                    afforableAmount = Math.min(afforableAmount, ((resource.storageRatio - 0.9) * resource.maxQuantity));
+                } else if (resource.currentQuantity >= resource.storageRequired || resource.isCapped()) { // Resource not required - consume income
+                    afforableAmount = Math.min(afforableAmount, Math.ceil(resource.rateOfChange * gameSpeed / requirement.quantity));
                 } else { // Resource is required, and craftable not required. Don't craft anything.
                     continue craftLoop;
                 }
@@ -10151,14 +10151,23 @@
 
         }
 
-        if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargets.includes(obj) && !state.triggerTargets.includes(obj)) {
+        if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargetsAll.includes(obj) && !state.triggerTargets.includes(obj)) {
             let conflict = getCostConflict(obj);
             if (conflict) {
                 notes.push(`Conflicts with ${conflict.target.title} for ${conflict.res.name} (${conflict.cause})`);
             }
         }
-        if (obj instanceof Technology && settings.researchIgnore.includes(obj._vueBinding)) {
-            notes.push("Ignored research");
+
+        if (obj instanceof Technology && !state.queuedTargetsAll.includes(obj) && !state.triggerTargets.includes(obj)) {
+            if (settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole") {
+                let gemsCost = resourceCost(obj, resources.Soul_Gem);
+                if (gemsCost > 0 && resources.Soul_Gem.currentQuantity - gemsCost < 10) {
+                    notes.push("Saving up Soul Gems for prestige");
+                }
+            }
+            if (settings.researchIgnore.includes(obj._vueBinding)) {
+                notes.push("Ignored research");
+            }
         }
 
         if (obj.extraDescription) {
