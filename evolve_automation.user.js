@@ -6422,7 +6422,7 @@
         // If threat is lower than the bottom value, turn all attractors on
         // Linear in between
         m.hellAttractorMax = 0;
-        if (buildings.BadlandsAttractor.isSmartManaged() && game.global.portal.fortress.threat < settings.hellAttractorTopThreat && m.hellAssigned > 0) {
+        if (buildings.BadlandsAttractor.isSmartManaged() && game.global.portal.attractor && game.global.portal.fortress.threat < settings.hellAttractorTopThreat && m.hellAssigned > 0) {
             m.hellAttractorMax = game.global.portal.attractor.count;
             if (game.global.portal.fortress.threat > settings.hellAttractorBottomThreat && settings.hellAttractorTopThreat > settings.hellAttractorBottomThreat) {
                 m.hellAttractorMax = Math.floor(m.hellAttractorMax * (settings.hellAttractorTopThreat - game.global.portal.fortress.threat)
@@ -13498,7 +13498,7 @@
         //     let sectionNode = $('#city-dist-outskirts h3');
 
         // Build secondary options buttons if they don't currently exist
-        addOptionUI("s-government-options", "#government ul", "Government", buildGovernmentSettings);
+        addOptionUI("s-government-options", "#government .tabs ul", "Government", buildGovernmentSettings);
         addOptionUI("s-foreign-options", "#garrison div h2", "Foreign Affairs", buildWarSettings);
         addOptionUI("s-foreign-options2", "#c_garrison div h2", "Foreign Affairs", buildWarSettings);
         addOptionUI("s-hell-options", "#gFort div h3", "Hell", buildHellSettings);
