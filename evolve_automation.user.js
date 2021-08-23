@@ -3409,6 +3409,9 @@
             if (game.global.race['brute']){
                 cost *= 0.5;
             }
+            if (game.global.race['inflation']){
+                cost *= 1 + (game.global.race.inflation / 500);
+            }
             return Math.round(cost);
         },
 
