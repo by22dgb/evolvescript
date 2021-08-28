@@ -10639,7 +10639,7 @@
         buildWarSettings(scriptContentNode, "");
         buildHellSettings(scriptContentNode, "");
         buildMechSettings();
-        buildFleetSettings();
+        buildFleetSettings(scriptContentNode, "");
         buildEjectorSettings();
         buildMarketSettings();
         buildStorageSettings();
@@ -11918,23 +11918,23 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function buildFleetSettings() {
+    function buildFleetSettings(parentNode, secondaryPrefix) {
         let sectionId = "fleet";
         let sectionName = "Fleet";
 
         let resetFunction = function() {
             resetFleetSettings();
             updateSettingsFromState();
-            updateFleetSettingsContent();
+            updateFleetSettingsContent(secondaryPrefix);
         };
 
-        buildSettingsSection(sectionId, sectionName, resetFunction, updateFleetSettingsContent);
+        buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateFleetSettingsContent);
     }
 
-    function updateFleetSettingsContent() {
+    function updateFleetSettingsContent(secondaryPrefix) {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let currentNode = $('#script_fleetContent');
+        let currentNode = $(`#script_${secondaryPrefix}fleetContent`);
         currentNode.empty().off("*");
 
         addSettingsToggle(currentNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ships distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is not required: all your dreadnoughts still will be used even without this option.");
@@ -11951,32 +11951,32 @@
         addSettingsSelect(currentNode, "fleetChthonianLoses", "Chthonian Mission", "Assault Chthonian when chosen outcome is achievable. Mixed fleet formed to clear mission with minimum possible wasted ships, e.g. for low causlities it can sacriface 8 scouts, or 2 corvettes and 2 scouts, or frigate, and such. Whatever will be first available. It also takes in account perks and challenges, adjusting fleet accordingly.", assaultOptions);
 
         currentNode.append(`
-          <table style="width:100%">
+          <table style="width:100%; text-align: left">
             <tr>
               <th class="has-text-warning" style="width:95%">Region</th>
               <th style="width:5%"></th>
             </tr>
-            <tbody id="script_fleetTableBody"></tbody>
+            <tbody id="script_${secondaryPrefix}fleetTableBody"></tbody>
           </table>`);
 
-        let tableBodyNode = $('#script_fleetTableBody');
+        let tableBodyNode = $(`#script_${secondaryPrefix}fleetTableBody`);
         let newTableBodyText = "";
 
         let priorityRegions = galaxyRegions.slice().sort((a, b) => settings["fleet_pr_" + a] - settings["fleet_pr_" + b]);
         for (let i = 0; i < priorityRegions.length; i++) {
-            newTableBodyText += `<tr value="${priorityRegions[i]}" class="script-draggable"><td id="script_fleet_${priorityRegions[i]}" style="width:95%"><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
+            newTableBodyText += `<tr value="${priorityRegions[i]}" class="script-draggable"><td id="script_${secondaryPrefix}fleet_${priorityRegions[i]}" style="width:95%"><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < galaxyRegions.length; i++) {
-            let fleetElement = $('#script_fleet_' + galaxyRegions[i]);
+            let fleetElement = $(`#script_${secondaryPrefix}fleet_${galaxyRegions[i]}`);
             let nameRef = galaxyRegions[i] === "gxy_alien1" ? "Alien 1 System" : galaxyRegions[i] === "gxy_alien2" ? "Alien 2 System" : game.actions.galaxy[galaxyRegions[i]].info.name;
 
             fleetElement.append(buildStandartLabel(typeof nameRef === "function" ? nameRef() : nameRef));
         }
 
-        $('#script_fleetTableBody').sortable({
+        $(`#script_${secondaryPrefix}fleetTableBody`).sortable({
             items: "tr:not(.unsortable)",
             helper: function(event, ui){
                 let clone = $(ui).clone();
@@ -11984,12 +11984,15 @@
                 return clone.get(0);
             },
             update: function() {
-                let regionIds = $('#script_fleetTableBody').sortable('toArray', {attribute: 'value'});
+                let regionIds = $(`#script_${secondaryPrefix}fleetTableBody`).sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < regionIds.length; i++) {
                     settings["fleet_pr_" + regionIds[i]] = i;
                 }
 
                 updateSettingsFromState();
+                if (settings.showSettings && secondaryPrefix) {
+                    updateFleetSettingsContent('');
+                }
             },
         });
 
@@ -13530,6 +13533,7 @@
         addOptionUI("s-foreign-options2", "#c_garrison div h2", "Foreign Affairs", buildWarSettings);
         addOptionUI("s-hell-options", "#gFort div h3", "Hell", buildHellSettings);
         addOptionUI("s-hell-options2", "#prtl_fortress div h3", "Hell", buildHellSettings);
+        addOptionUI("s-fleet-options", "#hfleet h3", "Fleet", buildFleetSettings);
     }
 
     function addOptionUI(optionsId, querySelectorText, modalTitle, buildOptionsFunction) {
@@ -13569,7 +13573,7 @@
 
         // Append the script modal to the document
         $(document.body).append(`
-          <div id="scriptModal" class="script-modal">
+          <div id="scriptModal" class="script-modal content">
             <span id="scriptModalClose" class="script-modal-close">&times;</span>
             <div class="script-modal-content">
               <div id="scriptModalHeader" class="script-modal-header has-text-warning">
