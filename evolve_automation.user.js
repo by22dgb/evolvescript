@@ -869,7 +869,7 @@
 
             resetMultiplier();
 
-            // TODO: Priest unlocked upon hovering... Remove once fixed in game.
+            // TODO: Priest unlocked upon hovering... Fixed in 1.2
             if (this === buildings.Temple || this === buildings.RedZiggurat) {
                 this.definition.effect();
             }
@@ -1686,6 +1686,7 @@
         Helium_3: new Resource("Helium-3", "Helium_3"),
 
         // Advanced resources
+        //Water: new Resource("Water", "Water"),
         Deuterium: new Resource("Deuterium", "Deuterium"),
         Neutronium: new Resource("Neutronium", "Neutronium"),
         Adamantite: new Resource("Adamantite", "Adamantite"),
@@ -1903,7 +1904,9 @@
         DwarfShipyard: new Action("Dwarf Ship Yard", "space", "shipyard", "spc_dwarf"),
         TitanMission: new Action("Titan Mission", "space", "titan_mission", "spc_titan"),
         TitanSpaceport: new Action("Titan Spaceport", "space", "titan_spaceport", "spc_titan"),
+        TitanElectrolysis: new Action("Titan Electrolysis", "space", "electrolysis", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
+        EnceladusWaterFreighter: new Action("Enceladus Water Freighter", "space", "water_freighter", "spc_enceladus"),
         */
         AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
         AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
@@ -2376,6 +2379,7 @@
           () => "Still have some unused ejectors",
           () => settings.buildingWeightingUnusedEjectors
       ],[
+      // TODO: Doesn't works well with autoStorageBuildings, as it won't use all storage. Need some fix.
           () => resources.Crates.maxQuantity > 0 || resources.Containers.maxQuantity > 0,
           (building) => building === buildings.StorageYard || building === buildings.Warehouse,
           () => "Still have some unused storage",
@@ -2406,6 +2410,7 @@
           () => "Gate demons fully supressed",
           () => settings.buildingWeightingGateTurret
       ],[
+      // TODO: Doesn't works well with autoStorageBuildings, as it won't use all storage. Need some fix.
           () => resources.Containers.maxQuantity === 0 && resources.Crates.maxQuantity === 0,
           (building) => building === buildings.Shed || building === buildings.RedGarage || building === buildings.AlphaWarehouse || building === buildings.ProximaCargoYard,
           () => "Need more storage",
@@ -6542,6 +6547,7 @@
         if (m.hellPatrols < targetHellPatrols) m.addHellPatrol(targetHellPatrols - m.hellPatrols);
     }
 
+    // TODO: Assign jobs in one loop, so colonists and entertaines could be put above hunters
     function autoJobs() {
         let jobList = JobManager.managedPriorityList();
 
@@ -10085,7 +10091,7 @@
         resourcesByAtomicMass.unshift(resources.Elerium);
 
         // Normal popups
-        new MutationObserver(addTooltip).observe(document.getElementById("main"), {childList: true});
+        new MutationObserver(tooltipObserverCallback).observe(document.getElementById("main"), {childList: true});
 
         // Modals; check script callbacks and add Space Dock tooltips
         new MutationObserver(bodyMutations =>  bodyMutations.forEach(bodyMutation => bodyMutation.addedNodes.forEach(node => {
@@ -10094,7 +10100,7 @@
                     node.style.display = "none"; // Hide splash
                     new MutationObserver(WindowManager.checkCallbacks).observe(document.getElementById("modalBox"), {childList: true});
                 } else {
-                    new MutationObserver(addTooltip).observe(node, {childList: true});
+                    new MutationObserver(tooltipObserverCallback).observe(node, {childList: true});
                 }
             }
         }))).observe(document.querySelector("body"), {childList: true});
@@ -10179,50 +10185,63 @@
         return notes.join("<br>");
     }
 
-    const infusionStep = {"blood-lust": 15, "blood-illuminate": 12, "blood-greed": 16, "blood-hoarder": 14, "blood-artisan": 8, "blood-attract": 4, "blood-wrath": 2};
-    function addTooltip(mutations) {
+    function tooltipObserverCallback(mutations) {
         if (!settings.masterScriptToggle) {
             return;
         }
         mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
             if (node.id === "popper") {
-                let dataId = node.dataset.id;
-                // Tooltips for things with no script objects
-                if (dataId === 'powerStatus') {
-                    node.innerHTML += `<p class="modal_bd"><span>Disabled</span><span class="has-text-danger">${getNiceNumber(resources.Power.maxQuantity)}</span></p>`;
-                    return;
-                } else if (infusionStep[dataId]) {
-                    let BloodStone = game.loc('resource_Blood_Stone_name').replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                    node.innerHTML = node.innerHTML.replace(new RegExp(`${BloodStone}: \\d+`), `$& (+${infusionStep[dataId]})`);
-                    return;
-                }
-
-                let match = null;
-                let obj = null;
-                if (match = dataId.match(/^popArpa([a-z_-]+)\d*$/)) { // "popArpa[id-with-no-tab][quantity]" for projects
-                    obj = arpaIds["arpa" + match[1]];
-                } else if (match = dataId.match(/^q([a-z_-]+)\d*$/)) { // "q[id][order]" for buildings in queue
-                    obj = buildingIds[match[1]] || arpaIds[match[1]];
-                } else { // "[id]" for buildings and researches
-                    obj = buildingIds[dataId] || techIds[dataId];
-                }
-                if (!obj || (obj instanceof Technology && obj.isResearched())) {
-                    return;
-                }
-
-                // Flair, added before other descriptions
-                if (obj === buildings.BlackholeStellarEngine && buildings.BlackholeMassEjector.count > 0 && game.global.interstellar.stellar_engine.exotic < 0.025) {
-                    let massPerSec = (resources.Elerium.atomicMass * game.global.interstellar.mass_ejector.Elerium + resources.Infernite.atomicMass * game.global.interstellar.mass_ejector.Infernite) || -1;
-                    let missingExotics = (0.025 - game.global.interstellar.stellar_engine.exotic) * 1e10;
-                    node.innerHTML += `<div id="popTimer" class="flair has-text-advanced">Contaminated in [${poly.timeFormat(missingExotics / massPerSec)}]</div>`;
-                }
-
-                let description = getTooltipInfo(obj);
-                if (description) {
-                    node.innerHTML += `<div style="border-top: solid .0625rem #999">${description}</div>`;
-                }
+                let popperObserver = new MutationObserver((popperMutations) => {
+                    // Add tooltips once again when popper cleared
+                    if (popperMutations.some(popperMutation => popperMutation.removedNodes.length > 0)) {
+                        popperObserver.disconnect();
+                        addTooltip(node);
+                        popperObserver.observe(node, {childList: true});
+                    }
+                })
+                addTooltip(node);
+                popperObserver.observe(node, {childList: true});
             }
         }));
+    }
+
+    const infusionStep = {"blood-lust": 15, "blood-illuminate": 12, "blood-greed": 16, "blood-hoarder": 14, "blood-artisan": 8, "blood-attract": 4, "blood-wrath": 2};
+    function addTooltip(node) {
+        let dataId = node.dataset.id;
+        // Tooltips for things with no script objects
+        if (dataId === 'powerStatus') {
+            node.innerHTML += `<p class="modal_bd"><span>Disabled</span><span class="has-text-danger">${getNiceNumber(resources.Power.maxQuantity)}</span></p>`;
+            return;
+        } else if (infusionStep[dataId]) {
+            let BloodStone = game.loc('resource_Blood_Stone_name').replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            node.innerHTML = node.innerHTML.replace(new RegExp(`${BloodStone}: \\d+`), `$& (+${infusionStep[dataId]})`);
+            return;
+        }
+
+        let match = null;
+        let obj = null;
+        if (match = dataId.match(/^popArpa([a-z_-]+)\d*$/)) { // "popArpa[id-with-no-tab][quantity]" for projects
+            obj = arpaIds["arpa" + match[1]];
+        } else if (match = dataId.match(/^q([a-z_-]+)\d*$/)) { // "q[id][order]" for buildings in queue
+            obj = buildingIds[match[1]] || arpaIds[match[1]];
+        } else { // "[id]" for buildings and researches
+            obj = buildingIds[dataId] || techIds[dataId];
+        }
+        if (!obj || (obj instanceof Technology && obj.isResearched())) {
+            return;
+        }
+
+        // Flair, added before other descriptions
+        if (obj === buildings.BlackholeStellarEngine && buildings.BlackholeMassEjector.count > 0 && game.global.interstellar.stellar_engine.exotic < 0.025) {
+            let massPerSec = (resources.Elerium.atomicMass * game.global.interstellar.mass_ejector.Elerium + resources.Infernite.atomicMass * game.global.interstellar.mass_ejector.Infernite) || -1;
+            let missingExotics = (0.025 - game.global.interstellar.stellar_engine.exotic) * 1e10;
+            node.innerHTML += `<div id="popTimer" class="flair has-text-advanced">Contaminated in [${poly.timeFormat(missingExotics / massPerSec)}]</div>`;
+        }
+
+        let description = getTooltipInfo(obj);
+        if (description) {
+            node.innerHTML += `<div style="border-top: solid .0625rem #999">${description}</div>`;
+        }
     }
 
     function automate() {
@@ -12881,7 +12900,7 @@
         for (let i = 0; i < JobManager.priorityList.length; i++) {
             const job = JobManager.priorityList[i];
             let classAttribute = (job === jobs.Farmer || job === jobs.Hunter || job === jobs.Unemployed) ? ' class="unsortable"' : ' class="script-draggable"';
-            newTableBodyText += `<tr value="${job._originalId}"${classAttribute}><td id="script_${job._originalId}" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
+            newTableBodyText += `<tr value="${job._originalId}"${classAttribute}><td id="script_${job._originalId}" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12898,6 +12917,11 @@
             jobElement.append(buildJobSettingsInput(job, 2));
             jobElement = jobElement.next();
             jobElement.append(buildJobSettingsInput(job, 3));
+
+            if (i >= 3) {
+                jobElement = jobElement.next();
+                jobElement.append($('<span class="script-lastcolumn"></span>'));
+            }
         }
 
         $('#script_jobTableBody').sortable({
@@ -14256,6 +14280,7 @@
         return object;
     }
 
+    // TODO: adjustCost refactored in 1.2
     var poly = {
     // Taken directly from game code with no functional changes, and minified.
         // export function arpaAdjustCosts(costs) from arpa.js
