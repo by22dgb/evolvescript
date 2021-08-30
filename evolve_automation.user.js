@@ -6243,6 +6243,11 @@
             return;
         }
 
+        // Have no excess money, nor ability to use spies
+        if (!haveTech("spy", 2) && resources.Money.storageRatio < 0.9) {
+            return;
+        }
+
         // Train spies
         if (settings.foreignTrainSpy) {
             let foreignVue = getVueById("foreign");
@@ -6322,7 +6327,7 @@
         let maxBattalion = new Array(5).fill(m.maxCityGarrison);
         if (settings.foreignProtectSoldiers) {
             let armor = ((game.global.race.scales ? 2 : 0) + (game.global.tech.armor ?? 0)) * (game.global.race.armored ? 4 : 1) - (game.global.race.frail ? 1 : 0);
-            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0)) * (5 - tactic))));
+            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((5 - tactic) * (armor + (game.global.city.ptrait === 'rage' ? 1 : 2)) - 1)));
             maxBattalion = maxBattalion.map((garrison, tactic) => Math.min(garrison, protectedBattalion[tactic]));
         }
         maxBattalion[4] = Math.min(maxBattalion[4], settings.foreignMaxSiegeBattalion);
@@ -6949,11 +6954,13 @@
 
         let maxTaxRate = poly.taxCap(false);
         let minTaxRate = poly.taxCap(true);
-        if (resources.Money.storageRatio < 0.9) {
+        if (resources.Money.storageRatio < 0.9 && !game.global.race['banana']) {
             minTaxRate = Math.max(minTaxRate, settings.generalMinimumTaxRate);
         }
 
-        let optimalTax = resources.Money.isDemanded() ? maxTaxRate : Math.round((maxTaxRate - minTaxRate) * Math.max(0, 0.9 - resources.Money.storageRatio)) + minTaxRate;
+        let optimalTax = game.global.race['banana'] ? minTaxRate :
+                         resources.Money.isDemanded() ? maxTaxRate :
+                         Math.round((maxTaxRate - minTaxRate) * Math.max(0, 0.9 - resources.Money.storageRatio)) + minTaxRate;
 
         if (!game.global.race['banana']) {
             if (currentTaxRate < 20) { // Exposed morale cap includes bonus of current low taxes, roll it back
@@ -6968,7 +6975,7 @@
         }
 
         if (currentTaxRate < maxTaxRate && currentMorale >= minMorale + 1 &&
-              (currentTaxRate < optimalTax || currentMorale >= maxMorale + 1 || (realMorale >= currentMorale + 1 && optimalTax >= 20))) {
+              (currentTaxRate < optimalTax || currentMorale >= maxMorale + 1 || (realMorale >= currentMorale + 1 && currentTaxRate >= 20))) {
             resetMultiplier();
             taxVue.add();
         }
