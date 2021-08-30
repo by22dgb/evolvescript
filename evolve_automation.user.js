@@ -380,9 +380,8 @@
             return this.instance?.display ?? false;
         }
 
-        isMarketUnlocked() {
-            let node = document.getElementById(this._marketVueBinding);
-            return node !== null && node.style.display !== "none";
+        isRoutesUnlocked() {
+            return this.isUnlocked() && ((game.global.race['banana'] && this === resources.Food) || (game.global.tech['trade'] && !game.global.race['terrifying']));
         }
 
         isManagedStorage() {
@@ -9033,7 +9032,7 @@
 
     function adjustTradeRoutes() {
         let tradableResources = MarketManager.priorityList
-          .filter(r => r.isMarketUnlocked() && (r.autoTradeBuyEnabled || r.autoTradeSellEnabled))
+          .filter(r => r.isRoutesUnlocked() && (r.autoTradeBuyEnabled || r.autoTradeSellEnabled))
           .sort((a, b) => (b.storageRatio > 0.99 ? b.tradeSellPrice * 1000 : b.usefulRatio) - (a.storageRatio > 0.99 ? a.tradeSellPrice * 1000 : a.usefulRatio));
         let requiredTradeRoutes = {};
         let currentMoneyPerSecond = resources.Money.rateOfChange;
@@ -9909,7 +9908,7 @@
 
     function updateTabs() {
         state.lastShowMarket = game.global.settings.showMarket;
-        state.lastShowRoutes = game.global.city.market.active;
+        state.lastShowRoutes = game.global.tech.trade;
         state.lastShowEjector = game.global.settings.showEjector;
         state.lastShowCargo = game.global.settings.showCargo;
         state.lastHaveCrate = resources.Crates.isUnlocked();
@@ -9943,7 +9942,7 @@
         // Redraw tabs once they unlocked
         if ((game.global.race['smoldering'] && buildings.RockQuarry.count > 0 && $("#iQuarry").length === 0)
               || state.lastShowMarket !== game.global.settings.showMarket
-              || state.lastShowRoutes !== game.global.city.market.active
+              || state.lastShowRoutes !== game.global.tech.trade
               || state.lastShowEjector !== game.global.settings.showEjector
               || state.lastShowCargo !== game.global.settings.showCargo
               || (!state.lastHaveCrate && resources.Crates.isUnlocked())
