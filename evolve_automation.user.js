@@ -18,6 +18,9 @@
 // Most of script options have tooltips, explaining what they do, read them if you have a questions.
 //
 // Here's some tips about non-intuitive features:
+//   Ctrl+Click on almost any script option brings up advanced configurations, which allows to overide setting under certain conditions and set more advanced logic.
+//     Triggers, evolution queue, ignored researches, log filters, smart powering for interlinked buildings(like transport and bireme), prioritirs(draggables), and overrides itself - cannot be overridden.
+//     Overrides affects only script behaviour, GUI(outside of overrides modal) always show and changes default values.
 //   autoMarket, autoGalaxyMarket, autoFactory, and autoMiningDroid use weightings and priorities to determine their tasks. Resources split by groups of same priority, and then resources within group having the best priority distributed according to their weights. If there's still some more unused routes\factories\drones after assigning, script moves to next group with lower priority, etc. In most cases only one group with highest priority is active and working, while other groups serve as fallback for cases when all resources with better priority are either capped, or, in case of factory, unaffordable. There's few special values for finer configuration:
 //     Prioritization(queue, trigger, etc) does temporarily change priority of resource to 100, thus resources with priority above 100 won't be affected by prioritization.
 //       You can also disable prioritization under General Settings, if you can't cope with it.
@@ -42,7 +45,8 @@
 
 (function($) {
     'use strict';
-    var settings = JSON.parse(localStorage.getItem('settings')) ?? {};
+    var settingsRaw = JSON.parse(localStorage.getItem('settings')) ?? {};
+    var settings = {};
     var game = null;
     var win = null;
 
@@ -57,12 +61,11 @@
             this._originalId = id;
             this._originalName = name;
             this._vueBinding = "civ-" + this._originalId;
-
-            this.autoJobEnabled = true;
-            this.priority = 0;
-
-            this.breakpoints = [];
         }
+
+        get autoJobEnabled() { return settings['job_' + this._originalId] }
+        get priority() { return settingsRaw['job_p_' + this._originalId] }
+        getBreakpoint(n) { return settings[`job_b${n+1}_${this._originalId}`] }
 
         get definition() {
             return game.global.civic[this._originalId];
@@ -105,7 +108,7 @@
         }
 
         breakpointEmployees(breakpoint) {
-            let breakpointActual = this.breakpoints[breakpoint];
+            let breakpointActual = this.getBreakpoint(breakpoint);
 
             // -1 equals unlimited up to the maximum available jobs for this job
             if (breakpointActual === -1) {
@@ -228,39 +231,6 @@
         constructor(name, id) {
             this.name = name;
             this._id = id;
-            this.autoCraftEnabled = true;
-
-            this.tradeBuyPrice = 0;
-            this.tradeSellPrice = 0;
-            this.tradeRoutes = 0;
-            this.tradeIncome = 0;
-
-            this.marketPriority = 0;
-            this.autoBuyEnabled = false;
-            this.autoSellEnabled = false;
-            this.autoBuyRatio = 0;
-            this.autoSellRatio = 1;
-            this.autoTradeBuyEnabled = true;
-            this.autoTradeSellEnabled = true;
-            this.autoTradeWeighting = 1;
-            this.autoTradePriority = 1;
-            this.galaxyMarketWeighting = 1;
-            this.galaxyMarketPriority = 1;
-
-            this.ejectEnabled = false;
-            this.supplyEnabled = false;
-
-            this.storeOverflow = false;
-            this.storagePriority = 0;
-            this.storageRequired = 1;
-            this.autoStorageEnabled = true;
-            this._autoCratesMax = -1;
-            this._autoContainersMax = -1;
-
-            this.craftWeighting = 1;
-            this.craftPreserve = 0;
-
-            this.resourceRequirements = [];
 
             this.currentQuantity = 0;
             this.maxQuantity = 0;
@@ -268,8 +238,14 @@
             this.currentEject = 0;
             this.currentSupply = 0;
             this.currentDecay = 0;
+            this.tradeBuyPrice = 0;
+            this.tradeSellPrice = 0;
+            this.tradeRoutes = 0;
+            this.tradeIncome = 0;
 
+            this.storageRequired = 1;
             this.requestedQuantity = 0;
+            this.resourceRequirements = [];
 
             this._vueBinding = "res" + id;
             this._stackVueBinding = "stack-" + id;
@@ -277,6 +253,28 @@
             this._supplyVueBinding = "supply" + id;
             this._marketVueBinding = "market-" + id;
         }
+
+        get ejectEnabled() { return settings['res_eject' + this.id] }
+        get supplyEnabled() { return settings['res_supply' + this.id] }
+        get autoCraftEnabled() { return settings['craft' + this.id] }
+        get craftWeighting() { return settings['foundry_w_' + this.id] }
+        get craftPreserve() { return settings['foundry_p_' + this.id] }
+        get autoStorageEnabled() { return settings['res_storage' + this.id] }
+        get storagePriority() { return settingsRaw['res_storage_p_' + this.id] }
+        get storeOverflow() { return settings['res_storage_o_' + this.id] }
+        get _autoCratesMax() { return settings['res_crates_m_' + this.id] }
+        get _autoContainersMax() { return settings['res_containers_m_' + this.id] }
+        get marketPriority() { return settingsRaw['res_buy_p_' + this.id] }
+        get autoBuyEnabled() { return settings['buy' + this.id] }
+        get autoBuyRatio() { return settings['res_buy_r_' + this.id] }
+        get autoSellEnabled() { return settings['sell' + this.id] }
+        get autoSellRatio() { return settings['res_sell_r_' + this.id] }
+        get autoTradeBuyEnabled() { return settings['res_trade_buy_' + this.id] }
+        get autoTradeSellEnabled() { return settings['res_trade_sell_' + this.id] }
+        get autoTradeWeighting() { return settings['res_trade_w_' + this.id] }
+        get autoTradePriority() { return settings['res_trade_p_' + this.id] }
+        get galaxyMarketWeighting() { return settings['res_galaxy_w_' + this.id] }
+        get galaxyMarketPriority() { return settings['res_galaxy_p_' + this.id] }
 
         get title() {
             return this.instance?.name || this.name;
@@ -307,10 +305,16 @@
             this.currentQuantity = instance.amount;
             this.maxQuantity = instance.max >= 0 ? instance.max : Number.MAX_SAFE_INTEGER;
             this.rateOfChange = instance.diff;
+        }
+
+        finalizeData() {
+            if (!this.isUnlocked() || this.constructor !== Resource) { // Only needed for base resoruces
+                return;
+            }
 
             // When routes are managed - we're excluding trade diff from operational rate of change.
             if (settings.autoMarket && this.isTradable()) {
-                this.tradeRoutes = instance.trade;
+                this.tradeRoutes = this.instance.trade;
                 this.tradeBuyPrice = game.tradeBuyPrice(this._id);
                 this.tradeSellPrice = game.tradeSellPrice(this._id);
                 this.tradeIncome = game.breakdown.p.consume[this._id].Trade || 0;
@@ -714,29 +718,23 @@
             this._id = id;
             this._location = location;
             this.gameMax = Number.MAX_SAFE_INTEGER;
-
             this._vueBinding = this._tab + "-" + this.id;
-
-            this.autoBuildEnabled = true;
-            this.autoStateEnabled = true;
-            this.autoStateSmart = true;
-            this._autoMax = -1;
-
-            this._weighting = 100;
             this.weighting = 0;
             this.extraDescription = "";
-
-            this.priority = 0;
-
             this.consumption = [];
-
             this.resourceRequirements = [];
-
             this.overridePowered = undefined;
 
             // Additional flags
             this.is = normalizeProperties(flags) ?? {};
         }
+
+        get autoBuildEnabled() { return settings['bat' + this._vueBinding] }
+        get autoStateEnabled() { return settings['bld_s_' + this._vueBinding] }
+        get autoStateSmart() { return settings['bld_s2_' + this._vueBinding] }
+        get priority() { return settingsRaw['bld_p_' + this._vueBinding] }
+        get _weighting() { return settings['bld_w_' + this._vueBinding] }
+        get _autoMax() { return settings['bld_m_' + this._vueBinding] }
 
         get definition() {
             if (this._location !== "") {
@@ -860,9 +858,9 @@
             // Don't log evolution actions and gathering actions
             if (game.global.race.species !== "protoplasm" && !logIgnore.includes(this.id)) {
                 if (this.gameMax < Number.MAX_SAFE_INTEGER && this.count + 1 < this.gameMax) {
-                    GameLog.logSuccess(GameLog.Types.multi_construction, poly.loc('build_success', [`${this.title} (${this.count + 1})`]), ['queue', 'building_queue']);
+                    GameLog.logSuccess("multi_construction", poly.loc('build_success', [`${this.title} (${this.count + 1})`]), ['queue', 'building_queue']);
                 } else {
-                    GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
+                    GameLog.logSuccess("construction", poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
                 }
             }
 
@@ -1103,6 +1101,11 @@
             this.currentStep = 1;
         }
 
+        get autoBuildEnabled() { return settings['arpa_' + this._id] }
+        get priority() { return settingsRaw['arpa_p_' + this._id] }
+        get _autoMax() { return settings['arpa_m_' + this._id] }
+        get _weighting() { return settings['arpa_w_' + this._id] }
+
         updateResourceRequirements() {
             if (!this.isUnlocked()) {
                 return;
@@ -1162,9 +1165,9 @@
             );
 
             if (this.progress + this.currentStep < 100) {
-                GameLog.logSuccess(GameLog.Types.arpa, poly.loc('build_success', [`${this.title} (${this.progress + this.currentStep}%)`]), ['queue', 'building_queue']);
+                GameLog.logSuccess("arpa", poly.loc('build_success', [`${this.title} (${this.progress + this.currentStep}%)`]), ['queue', 'building_queue']);
             } else {
-                GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
+                GameLog.logSuccess("construction", poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
             }
 
             resetMultiplier();
@@ -1224,7 +1227,7 @@
             );
 
             getVueById(this._vueBinding).action();
-            GameLog.logSuccess(GameLog.Types.research, poly.loc('research_success', [techIds[this.definition.id].title]), ['queue', 'research_queue']);
+            GameLog.logSuccess("research", poly.loc('research_success', [techIds[this.definition.id].title]), ['queue', 'research_queue']);
             return true;
         }
 
@@ -1505,11 +1508,11 @@
     class MinorTrait {
         constructor(traitName) {
             this.traitName = traitName;
-
-            this.priority = 0;
-            this.enabled = true;
-            this.weighting = 0;
         }
+
+        get enabled() { return settings['mTrait_' + this.traitName] }
+        get priority() { return settingsRaw['mTrait_p_' + this.traitName] }
+        get weighting() { return settings['mTrait_w_' + this.traitName] }
 
         isUnlocked() {
             return game.global.settings.mtorder.includes(this.traitName);
@@ -1604,6 +1607,7 @@
     // State variables
     var state = {
         game: null,
+
         scriptTick: 1,
         multiplierTick: 0,
         buildingToggles: 0,
@@ -1630,7 +1634,7 @@
         techTargets: [],
         otherTargets: [],
 
-        maxSpaceMiners: 0,
+        maxSpaceMiners: Number.MAX_SAFE_INTEGER,
         globalProductionModifier: 1,
         moneyIncomes: new Array(11).fill(0),
         moneyMedian: 0,
@@ -1721,27 +1725,26 @@
 
         // Prestige resources
         Plasmid: new SpecialResource("Plasmid", "Plasmid"),
-        Antiplasmid: new AntiPlasmid("Anti-Plasmid", "AntiPlasmid"),
+        Antiplasmid: new AntiPlasmid("Anti-Plasmid", "Antiplasmid"),
         Phage: new SpecialResource("Phage", "Phage"),
         Dark: new SpecialResource("Dark", "Dark"),
         Harmony: new SpecialResource("Harmony", "Harmony"),
 
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
         Supply: new Supply("Supplies", "Supply"),
-        Power: new Power("Power", "powerMeter"),
+        Power: new Power("Power", "Power"),
         StarPower: new StarPower("Star Power", "StarPower"),
-        Moon_Support: new Support("Moon Support", "srspc_moon", "space", "spc_moon"),
-        Red_Support: new Support("Red Support", "srspc_red", "space", "spc_red"),
-        Sun_Support: new Support("Sun Support", "srspc_sun", "space", "spc_sun"),
-        Belt_Support: new BeltSupport("Belt Support", "srspc_belt", "space", "spc_belt"),
-        //Titan_Support: new Support("Titan Support", "srspc_titan", "space", "spc_titan"),
-        Alpha_Support: new Support("Alpha Support", "srint_alpha", "interstellar", "int_alpha"),
-        Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
-        Gateway_Support: new Support("Gateway Support", "gxy_gateway", "galaxy", "gxy_gateway"),
-        Alien_Support: new Support("Alien Support", "gxy_alien2", "galaxy", "gxy_alien2"),
-        Lake_Support: new Support("Lake Support", "prtl_lake", "portal", "prtl_lake"),
-        Spire_Support: new Support("Spire Support", "prtl_spire", "portal", "prtl_spire"),
-
+        Moon_Support: new Support("Moon Support", "Moon_Support", "space", "spc_moon"),
+        Red_Support: new Support("Red Support", "Red_Support", "space", "spc_red"),
+        Sun_Support: new Support("Sun Support", "Sun_Support", "space", "spc_sun"),
+        Belt_Support: new BeltSupport("Belt Support", "Belt_Support", "space", "spc_belt"),
+        //Titan_Support: new Support("Titan Support", "Titan_Support", "space", "spc_titan"),
+        Alpha_Support: new Support("Alpha Support", "Alpha_Support", "interstellar", "int_alpha"),
+        Nebula_Support: new Support("Nebula Support", "Nebula_Support", "interstellar", "int_nebula"),
+        Gateway_Support: new Support("Gateway Support", "Gateway_Support", "galaxy", "gxy_gateway"),
+        Alien_Support: new Support("Alien Support", "Alien_Support", "galaxy", "gxy_alien2"),
+        Lake_Support: new Support("Lake Support", "Lake_Support", "portal", "prtl_lake"),
+        Spire_Support: new Support("Spire Support", "Spire_Support", "portal", "prtl_spire"),
     }
 
     var jobs = {
@@ -2430,11 +2433,6 @@
             return haveTech("genetics", 3);
         },
 
-        addMinorTraitToPriorityList(minorTrait) {
-            minorTrait.priority = this.priorityList.length;
-            this.priorityList.push(minorTrait);
-        },
-
         sortByPriority() {
             this.priorityList.sort((a, b) => a.priority - b.priority);
         },
@@ -2502,7 +2500,7 @@
         _industryVueBinding: "iPylon",
         _industryVue: undefined,
 
-        Productions: {
+        Productions: addProps({
             Farmer: {id: 'farmer', isUnlocked: () => !game.global.race['carnivore'] && !game.global.race['soul_eater']},
             Miner: {id: 'miner', isUnlocked: () => true},
             Lumberjack: {id: 'lumberjack', isUnlocked: () => isLumberRace() && !game.global.race['evil']},
@@ -2511,7 +2509,7 @@
             Army: {id: 'army', isUnlocked: () => true},
             Hunting: {id: 'hunting', isUnlocked: () => true},
             Crafting: {id: 'crafting', isUnlocked: () => haveTech("magic", 4)},
-        },
+        }, (s) => s.id, [{s: 'spell_w_', p: "weighting"}]),
 
         initIndustry() {
             if (buildings.Pylon.count < 1 || !game.global.race['casting']) {
@@ -2574,13 +2572,13 @@
                     cost: [new ResourceProductionCost(resources.Coal, 0.25, 1.25), new ResourceProductionCost(resources.Iron, 2, 6)]},
         }, [ResourceProductionCost]),
 
-        Fuels: normalizeProperties({
+        Fuels: addProps(normalizeProperties({
             Oil: {id: "Oil", unlocked: () => game.global.resource.Oil.display, cost: [new ResourceProductionCost(resources.Oil, 0.35, 2)]},
             Coal: {id: "Coal", unlocked: () => game.global.resource.Coal.display, cost: [new ResourceProductionCost(resources.Coal, () => !isLumberRace() ? 0.15 : 0.25, 2)]},
             Wood: {id: "Wood", unlocked: () => isLumberRace() || game.global.race['evil'], cost: [new ResourceProductionCost(() => game.global.race['evil'] ? game.global.race['soul_eater'] && game.global.race.species !== 'wendigo' ? resources.Food : resources.Furs : resources.Lumber, () => game.global.race['evil'] && !game.global.race['soul_eater'] || game.global.race.species === 'wendigo' ? 1 : 3, 6)]},
             Star: {id: "Star", unlocked: () => haveTech("star_forge", 2), cost: [new ResourceProductionCost(resources.StarPower, 1, 0)]},
             Inferno: {id: "Inferno", unlocked: () => haveTech("smelting", 8), cost: [new ResourceProductionCost(resources.Coal, 50, 50), new ResourceProductionCost(resources.Oil, 35, 50), new ResourceProductionCost(resources.Infernite, 0.5, 50)]},
-        }, [ResourceProductionCost]),
+        }, [ResourceProductionCost]), (f) => f.id, [{s: "smelter_fuel_p_", p: "priority"}]),
 
         initIndustry() {
             if (buildings.Smelter.count < 1 && !game.global.race['cataclysm']) {
@@ -2663,7 +2661,7 @@
         _industryVueBinding: "iFactory",
         _industryVue: undefined,
 
-        Productions: normalizeProperties({
+        Productions: addProps(normalizeProperties({
             LuxuryGoods:          {id: "Lux", resource: resources.Money, unlocked: () => true,
                                    cost: [new ResourceProductionCost(resources.Furs, () => FactoryManager.f_rate("Lux", "fur"), 5)]},
             Furs:                 {id: "Furs", resource: resources.Furs, unlocked: () => haveTech("synthetic_fur"),
@@ -2683,7 +2681,10 @@
             Stanene:              {id: "Stanene", resource: resources.Stanene, unlocked: () => haveTech("stanene"),
                                    cost: [new ResourceProductionCost(resources.Aluminium, () => FactoryManager.f_rate("Stanene", "aluminium"), 50),
                                           new ResourceProductionCost(resources.Nano_Tube, () => FactoryManager.f_rate("Stanene", "nano"), 5)]},
-        }, [ResourceProductionCost]),
+        }, [ResourceProductionCost]), (p) => p.resource.id,
+          [{s: 'production_', p: "enabled"},
+           {s: 'production_w_', p: "weighting"},
+           {s: 'production_p_', p: "priority"}]),
 
         initIndustry() {
             if (buildings.Factory.count < 1 && buildings.RedFactory.count < 1) {
@@ -2758,12 +2759,14 @@
         _industryVueBinding: "iDroid",
         _industryVue: undefined,
 
-        Productions: {
+        Productions: addProps({
             Adamantite: {id: "adam", resource: resources.Adamantite},
             Uranium: {id: "uran", resource: resources.Uranium},
             Coal: {id: "coal", resource: resources.Coal},
             Aluminium: {id: "alum", resource: resources.Aluminium},
-        },
+        }, (p) => p.resource.id,
+          [{s: 'droid_w_', p: "weighting"},
+           {s: 'droid_pr_', p: "priority"}]),
 
         initIndustry() {
             if (buildings.AlphaMiningDroid.count < 1) {
@@ -2984,7 +2987,7 @@
             let optionsNode = document.querySelector("#govType button");
             let title = game.loc('civics_government_type');
             WindowManager.openModalWindowWithCallback(optionsNode, title, () => {
-                GameLog.logSuccess(GameLog.Types.special, `Revolution! Government changed to ${game.loc("govern_" + government)}.`, ['events', 'major_events']);
+                GameLog.logSuccess("special", `Revolution! Government changed to ${game.loc("govern_" + government)}.`, ['events', 'major_events']);
                 getVueById('govModal')?.setGov(government);
             });
         },
@@ -3267,7 +3270,7 @@
                 }
                 let title = game.loc('civics_espionage_actions');
                 WindowManager.openModalWindowWithCallback(optionsNode, title, () => {
-                    GameLog.logSuccess(GameLog.Types.spying, `Performing "${game.loc("civics_spy_" + espionageToPerform)}" covert operation against ${getGovName(govIndex)}.`, ['spy']);
+                    GameLog.logSuccess("spying", `Performing "${game.loc("civics_spy_" + espionageToPerform)}" covert operation against ${getGovName(govIndex)}.`, ['spy']);
                     getVueById('espModal')?.[espionageToPerform]?.(govIndex);
                 });
             }
@@ -3956,7 +3959,7 @@
                 this._assemblyVue.setEquip(mech.equip[i], i);
             }
             this._assemblyVue.build();
-            GameLog.logSuccess(GameLog.Types.mech_build, `${this.mechDesc(mech)} mech has been assembled.`, ['hell']);
+            GameLog.logSuccess("mech_build", `${this.mechDesc(mech)} mech has been assembled.`, ['hell']);
         },
 
         scrapMech(mech) {
@@ -3978,11 +3981,6 @@
 
         isUnlocked() {
             return jobs.Unemployed.isUnlocked();
-        },
-
-        addJobToPriorityList(job) {
-            job.priority = this.priorityList.length;
-            this.priorityList.push(job);
         },
 
         addCraftingJob(job) {
@@ -4066,15 +4064,6 @@
             }
         },
 
-        addBuildingToPriorityList(building) {
-            building.priority = this.priorityList.length;
-            this.priorityList.push(building);
-
-            if (building.isSwitchable()) {
-                this.statePriorityList.push(building);
-            }
-        },
-
         sortByPriority() {
             this.priorityList.sort((a, b) => a.priority - b.priority);
             this.statePriorityList.sort((a, b) => a.priority - b.priority);
@@ -4138,11 +4127,6 @@
                     project.extraDescription = `AutoARPA weighting: ${getNiceNumber(project.weighting)} (${project.currentStep}%)<br>${project.extraDescription}`;
                 }
             }
-        },
-
-        addProjectToPriorityList(project) {
-            project.priority = this.priorityList.length;
-            this.priorityList.push(project);
         },
 
         sortByPriority() {
@@ -4288,20 +4272,20 @@
 
     var GameLog = {
         Types: {
-            special: {name: "Specials", settingKey: "log_special"},
-            construction: {name: "Construction", settingKey: "log_construction"},
-            multi_construction: {name: "Multi-part Construction", settingKey: "log_multi_construction"},
-            arpa: {name: "A.R.P.A Progress", settingKey: "log_arpa"},
-            research: {name: "Research", settingKey: "log_research"},
-            spying: {name: "Spying", settingKey: "log_spying"},
-            attack: {name: "Attack", settingKey: "log_attack"},
-            mercenary: {name: "Mercenaries", settingKey: "log_mercenary"},
-            mech_build: {name: "Mech Build", settingKey: "log_mech_build"},
-            mech_scrap: {name: "Mech Scrap", settingKey: "log_mech_scrap"},
+            special: "Specials",
+            construction: "Construction",
+            multi_construction: "Multi-part Construction",
+            arpa: "A.R.P.A Progress",
+            research: "Research",
+            spying: "Spying",
+            attack: "Attack",
+            mercenary: "Mercenaries",
+            mech_build: "Mech Build",
+            mech_scrap: "Mech Scrap",
         },
 
         logSuccess(loggingType, text, tags) {
-            if (!settings.logEnabled || !settings[loggingType.settingKey]) {
+            if (!settings.logEnabled || !settings["log_" + loggingType]) {
                 return;
             }
 
@@ -4309,11 +4293,19 @@
         },
 
         logWarning(loggingType, text, tags) {
-            if (!settings.logEnabled || !settings[loggingType.settingKey]) {
+            if (!settings.logEnabled || !settings["log_" + loggingType]) {
                 return;
             }
 
             poly.messageQueue(text, "warning", false, tags);
+        },
+
+        logDanger(loggingType, text, tags) {
+            if (!settings.logEnabled || !settings["log_" + loggingType]) {
+                return;
+            }
+
+            poly.messageQueue(text, "danger", false, tags);
         },
     }
 
@@ -4344,8 +4336,6 @@
         JobManager.addCraftingJob(jobs.Mythril);
         JobManager.addCraftingJob(jobs.Aerogel);
         JobManager.addCraftingJob(jobs.Nanoweave);
-
-        resetJobState();
 
         // Construct city builds list
         //buildings.SacrificialAltar.gameMax = 1; // Although it is technically limited to single altar, we don't care about that, as we're going to click it to make sacrifices
@@ -4491,16 +4481,8 @@
         buildings.SpireBaseCamp.addResourceConsumption(resources.Spire_Support, 1);
         buildings.SpireMechBay.addResourceConsumption(resources.Spire_Support, 1);
 
-        resetMarketState();
-        resetEjectorState();
-        resetStorageState();
-        resetProjectState();
-        resetProductionState();
-        resetBuildingState();
-        resetMinorTraitState();
-
         // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
-        BuildingManager.priorityList.forEach(building => {
+        Object.values(buildings).forEach(building => {
             if (building.powered > 0) {
                 let powerId = (building._location || building._tab) + ":" + building.id;
                 if (game.global.power.indexOf(powerId) === -1) {
@@ -4558,1122 +4540,898 @@
         }
     }
 
-    function resetWarSettings() {
-        settings.foreignAttackLivingSoldiersPercent = 90;
-        settings.foreignAttackHealthySoldiersPercent = 90;
-        settings.foreignHireMercMoneyStoragePercent = 90;
-        settings.foreignHireMercCostLowerThanIncome = 1;
-        settings.foreignHireMercDeadSoldiers = 1;
-        settings.foreignMinAdvantage = 40;
-        settings.foreignMaxAdvantage = 50;
-        settings.foreignMaxSiegeBattalion = 10;
-        settings.foreignProtectSoldiers = false;
+    function initBuildingState() {
+        let priorityList = [];
 
-        settings.foreignPacifist = false;
-        settings.foreignUnification = true;
-        settings.foreignForceSabotage = true;
-        settings.foreignOccupyLast = true;
-        settings.foreignTrainSpy = true;
-        settings.foreignSpyMax = 2;
-        settings.foreignPowerRequired = 75;
-        settings.foreignPolicyInferior = "Annex";
-        settings.foreignPolicySuperior = "Sabotage";
-        settings.foreignPolicyRival = "Sabotage";
+        priorityList.push(buildings.Windmill);
+        priorityList.push(buildings.Mill);
+
+        priorityList.push(buildings.CoalPower);
+        priorityList.push(buildings.OilPower);
+        priorityList.push(buildings.FissionPower);
+
+        priorityList.push(buildings.RuinsHellForge);
+        priorityList.push(buildings.RuinsInfernoPower);
+        priorityList.push(buildings.RuinsArcology);
+        priorityList.push(buildings.Apartment);
+        priorityList.push(buildings.Barracks);
+        priorityList.push(buildings.TouristCenter);
+        priorityList.push(buildings.University);
+        priorityList.push(buildings.Smelter);
+        priorityList.push(buildings.Temple);
+        priorityList.push(buildings.OilWell);
+        priorityList.push(buildings.StorageYard);
+        priorityList.push(buildings.Warehouse);
+        priorityList.push(buildings.Bank);
+        priorityList.push(buildings.Hospital);
+        priorityList.push(buildings.BootCamp);
+        priorityList.push(buildings.House);
+        priorityList.push(buildings.Cottage);
+        priorityList.push(buildings.Farm);
+        priorityList.push(buildings.Silo);
+        priorityList.push(buildings.Shed);
+        priorityList.push(buildings.LumberYard);
+        priorityList.push(buildings.Foundry);
+        priorityList.push(buildings.OilDepot);
+        priorityList.push(buildings.Trade);
+        priorityList.push(buildings.Amphitheatre);
+        priorityList.push(buildings.Library);
+        priorityList.push(buildings.Wharf);
+        priorityList.push(buildings.Lodge); // Carnivore/Detritivore/Soul Eater trait
+        priorityList.push(buildings.Smokehouse); // Carnivore trait
+        priorityList.push(buildings.SoulWell); // Soul Eater trait
+        priorityList.push(buildings.SlavePen); // Slaver trait
+        priorityList.push(buildings.SlaveMarket); // Slaver trait
+        priorityList.push(buildings.Graveyard); // Evil trait
+        priorityList.push(buildings.Shrine); // Magnificent trait
+        priorityList.push(buildings.CompostHeap); // Detritivore trait
+        priorityList.push(buildings.Pylon); // Magic Universe only
+        priorityList.push(buildings.ForgeHorseshoe); // Hooved trait
+        priorityList.push(buildings.RedForgeHorseshoe); // Hooved trait
+        priorityList.push(buildings.SacrificialAltar); // Cannibalize trait
+        priorityList.push(buildings.MeditationChamber); // Calm trait
+
+        priorityList.push(buildings.DwarfMission);
+        priorityList.push(buildings.DwarfEleriumReactor);
+        priorityList.push(buildings.DwarfWorldCollider);
+
+        priorityList.push(buildings.HellMission);
+        priorityList.push(buildings.HellGeothermal);
+        priorityList.push(buildings.HellSwarmPlant);
+
+        priorityList.push(buildings.ProximaTransferStation);
+        priorityList.push(buildings.ProximaMission);
+        priorityList.push(buildings.ProximaCargoYard);
+        priorityList.push(buildings.ProximaCruiser);
+        priorityList.push(buildings.ProximaDyson);
+        priorityList.push(buildings.ProximaDysonSphere);
+        priorityList.push(buildings.ProximaOrichalcumSphere);
+
+        priorityList.push(buildings.AlphaMission);
+        priorityList.push(buildings.AlphaStarport);
+        priorityList.push(buildings.AlphaFusion);
+        priorityList.push(buildings.AlphaHabitat);
+        priorityList.push(buildings.AlphaLuxuryCondo);
+        priorityList.push(buildings.AlphaMiningDroid);
+        priorityList.push(buildings.AlphaProcessing);
+        priorityList.push(buildings.AlphaLaboratory);
+        priorityList.push(buildings.AlphaExoticZoo);
+        priorityList.push(buildings.AlphaExchange);
+        priorityList.push(buildings.AlphaGraphenePlant);
+        priorityList.push(buildings.AlphaWarehouse);
+
+        priorityList.push(buildings.SpaceTestLaunch);
+        priorityList.push(buildings.SpaceSatellite);
+        priorityList.push(buildings.SpaceGps);
+        priorityList.push(buildings.SpacePropellantDepot);
+        priorityList.push(buildings.SpaceNavBeacon);
+
+        priorityList.push(buildings.RedMission);
+        priorityList.push(buildings.RedTower);
+        priorityList.push(buildings.RedSpaceport);
+        priorityList.push(buildings.RedLivingQuarters);
+        priorityList.push(buildings.RedBiodome);
+        priorityList.push(buildings.RedSpaceBarracks);
+        priorityList.push(buildings.RedExoticLab);
+        priorityList.push(buildings.RedFabrication);
+        priorityList.push(buildings.RedMine);
+        priorityList.push(buildings.RedVrCenter);
+        priorityList.push(buildings.RedZiggurat);
+        priorityList.push(buildings.RedGarage);
+
+        priorityList.push(buildings.MoonMission);
+        priorityList.push(buildings.MoonBase);
+        priorityList.push(buildings.MoonObservatory);
+        priorityList.push(buildings.MoonHeliumMine);
+        priorityList.push(buildings.MoonIridiumMine);
+
+        priorityList.push(buildings.SunMission);
+        priorityList.push(buildings.SunSwarmControl);
+        priorityList.push(buildings.SunSwarmSatellite);
+
+        priorityList.push(buildings.GasMission);
+        priorityList.push(buildings.GasStorage);
+        priorityList.push(buildings.GasSpaceDock);
+        priorityList.push(buildings.GasSpaceDockProbe);
+        priorityList.push(buildings.GasSpaceDockShipSegment);
+
+        priorityList.push(buildings.GasMoonMission);
+        priorityList.push(buildings.GasMoonDrone);
+
+        priorityList.push(buildings.Blackhole);
+        priorityList.push(buildings.BlackholeStellarEngine);
+        priorityList.push(buildings.BlackholeJumpShip);
+        priorityList.push(buildings.BlackholeWormholeMission);
+        priorityList.push(buildings.BlackholeStargate);
+
+        priorityList.push(buildings.SiriusMission);
+        priorityList.push(buildings.SiriusAnalysis);
+        priorityList.push(buildings.SiriusSpaceElevator);
+        priorityList.push(buildings.SiriusGravityDome);
+        priorityList.push(buildings.SiriusThermalCollector);
+        priorityList.push(buildings.SiriusAscensionMachine);
+        //priorityList.push(buildings.SiriusAscend); // This is performing the actual ascension. We'll deal with this in prestige automation
+
+        priorityList.push(buildings.BlackholeStargateComplete); // Should be powered before Andromeda
+
+        priorityList.push(buildings.GatewayMission);
+        priorityList.push(buildings.GatewayStarbase);
+        priorityList.push(buildings.GatewayShipDock);
+
+        priorityList.push(buildings.StargateStation);
+        priorityList.push(buildings.StargateTelemetryBeacon);
+
+        priorityList.push(buildings.Dreadnought);
+        priorityList.push(buildings.CruiserShip);
+        priorityList.push(buildings.FrigateShip);
+        priorityList.push(buildings.BologniumShip);
+        priorityList.push(buildings.CorvetteShip);
+        priorityList.push(buildings.ScoutShip);
+
+        priorityList.push(buildings.GorddonMission);
+        priorityList.push(buildings.GorddonEmbassy);
+        priorityList.push(buildings.GorddonDormitory);
+        priorityList.push(buildings.GorddonSymposium);
+        priorityList.push(buildings.GorddonFreighter);
+
+        priorityList.push(buildings.SiriusAscensionTrigger); // This is the 10,000 power one, buildings below this one should be safe to underpower for ascension. Buildings above this either provides, or support population
+        priorityList.push(buildings.BlackholeMassEjector); // Top priority of safe buildings, disable *only* for ascension, otherwise we want to have them on at any cost, to keep pumping black hole
+
+        priorityList.push(buildings.Alien1Consulate);
+        priorityList.push(buildings.Alien1Resort);
+        priorityList.push(buildings.Alien1VitreloyPlant);
+        priorityList.push(buildings.Alien1SuperFreighter);
+
+        //priorityList.push(buildings.Alien2Mission);
+        priorityList.push(buildings.Alien2Foothold);
+        priorityList.push(buildings.Alien2Scavenger);
+        priorityList.push(buildings.Alien2ArmedMiner);
+        priorityList.push(buildings.Alien2OreProcessor);
+
+        //priorityList.push(buildings.ChthonianMission);
+        priorityList.push(buildings.ChthonianMineLayer);
+        priorityList.push(buildings.ChthonianExcavator);
+        priorityList.push(buildings.ChthonianRaider);
+
+        priorityList.push(buildings.Wardenclyffe);
+        priorityList.push(buildings.BioLab);
+        priorityList.push(buildings.DwarfWorldController);
+        priorityList.push(buildings.BlackholeFarReach);
+
+        priorityList.push(buildings.NebulaMission);
+        priorityList.push(buildings.NebulaNexus);
+        priorityList.push(buildings.NebulaHarvestor);
+        priorityList.push(buildings.NebulaEleriumProspector);
+
+        priorityList.push(buildings.BeltMission);
+        priorityList.push(buildings.BeltSpaceStation);
+        priorityList.push(buildings.BeltEleriumShip);
+        priorityList.push(buildings.BeltIridiumShip);
+        priorityList.push(buildings.BeltIronShip);
+
+        priorityList.push(buildings.CementPlant);
+        priorityList.push(buildings.Factory);
+        priorityList.push(buildings.GasMoonOutpost);
+        priorityList.push(buildings.StargateDefensePlatform);
+        priorityList.push(buildings.RedFactory);
+        priorityList.push(buildings.AlphaMegaFactory);
+
+        priorityList.push(buildings.PortalTurret);
+        priorityList.push(buildings.BadlandsSensorDrone);
+        priorityList.push(buildings.PortalWarDroid);
+        priorityList.push(buildings.BadlandsPredatorDrone);
+        priorityList.push(buildings.BadlandsAttractor);
+        priorityList.push(buildings.PortalCarport);
+        priorityList.push(buildings.PitSoulForge);
+        priorityList.push(buildings.PitGunEmplacement);
+        priorityList.push(buildings.PitSoulAttractor);
+        priorityList.push(buildings.PortalRepairDroid);
+        priorityList.push(buildings.PitMission);
+        priorityList.push(buildings.PitAssaultForge);
+        priorityList.push(buildings.RuinsAncientPillars);
+
+        priorityList.push(buildings.RuinsMission);
+        priorityList.push(buildings.RuinsGuardPost);
+        priorityList.push(buildings.RuinsVault);
+        priorityList.push(buildings.RuinsArchaeology);
+
+        priorityList.push(buildings.GateMission);
+        priorityList.push(buildings.GateEastTower);
+        priorityList.push(buildings.GateWestTower);
+        priorityList.push(buildings.GateTurret);
+        priorityList.push(buildings.GateInferniteMine);
+
+        priorityList.push(buildings.SpireMission);
+        priorityList.push(buildings.SpirePurifier);
+        priorityList.push(buildings.SpireMechBay);
+        priorityList.push(buildings.SpireBaseCamp);
+        priorityList.push(buildings.SpirePort);
+        priorityList.push(buildings.SpireBridge);
+        priorityList.push(buildings.SpireSphinx);
+        priorityList.push(buildings.SpireBribeSphinx);
+        priorityList.push(buildings.SpireSurveyTower);
+        priorityList.push(buildings.SpireWaygate);
+
+        priorityList.push(buildings.LakeMission);
+        priorityList.push(buildings.LakeCoolingTower);
+        priorityList.push(buildings.LakeHarbour);
+        priorityList.push(buildings.LakeBireme);
+        priorityList.push(buildings.LakeTransport);
+
+        priorityList.push(buildings.StargateDepot);
+        priorityList.push(buildings.DwarfEleriumContainer);
+
+        priorityList.push(buildings.GasMoonOilExtractor);
+        priorityList.push(buildings.NeutronMission);
+        priorityList.push(buildings.NeutronStellarForge);
+        priorityList.push(buildings.NeutronMiner);
+
+        priorityList.push(buildings.MassDriver);
+        priorityList.push(buildings.MetalRefinery);
+        priorityList.push(buildings.Casino);
+        priorityList.push(buildings.HellSpaceCasino);
+        priorityList.push(buildings.RockQuarry);
+        priorityList.push(buildings.Sawmill);
+        priorityList.push(buildings.GasMining);
+        priorityList.push(buildings.NeutronCitadel);
+        priorityList.push(buildings.Mine);
+        priorityList.push(buildings.CoalMine);
+
+        BuildingManager.priorityList = priorityList;
+        BuildingManager.statePriorityList = priorityList.filter(b => b.isSwitchable());
     }
 
-    function resetHellSettings() {
-        settings.hellTurnOffLogMessages = true;
-        settings.hellHandlePatrolCount = true;
-        settings.hellHomeGarrison = 10;
-        settings.hellMinSoldiers = 20;
-        settings.hellMinSoldiersPercent = 90;
-
-        settings.hellTargetFortressDamage = 100;
-        settings.hellLowWallsMulti = 3;
-
-        settings.hellHandlePatrolSize = true;
-        settings.hellPatrolMinRating = 30;
-        settings.hellPatrolThreatPercent = 8;
-        settings.hellPatrolDroneMod = 5;
-        settings.hellPatrolDroidMod = 5;
-        settings.hellPatrolBootcampMod = 0;
-        settings.hellBolsterPatrolPercentTop = 50;
-        settings.hellBolsterPatrolPercentBottom = 20;
-        settings.hellBolsterPatrolRating = 300;
-
-        settings.hellAttractorTopThreat = 3000;
-        settings.hellAttractorBottomThreat = 1300;
-    }
-
-    function resetGeneralSettings() {
-        settings.triggerRequest = true;
-        settings.queueRequest = true;
-        settings.researchRequest = true;
-        settings.researchRequestSpace = false;
-        settings.missionRequest = true;
-        settings.buildingsConflictQueue = true;
-        settings.buildingsConflictRQueue = true;
-        settings.buildingsConflictPQueue = true;
-        settings.genesAssembleGeneAlways = true;
-        settings.buildingAlwaysClick = false;
-        settings.buildingClickPerTick = 50;
-    }
-
-    function resetPrestigeSettings() {
-        settings.prestigeType = "none";
-
-        settings.prestigeMADIgnoreArpa = true;
-        settings.prestigeMADWait = true;
-        settings.prestigeMADPopulation = 1;
-        settings.prestigeWaitAT = true;
-        settings.prestigeBioseedConstruct = true;
-        settings.prestigeEnabledBarracks = 100;
-        settings.prestigeBioseedProbes = 3;
-        settings.prestigeWhiteholeSaveGems = false;
-        settings.prestigeWhiteholeMinMass = 8;
-        settings.prestigeWhiteholeStabiliseMass = true;
-        settings.prestigeWhiteholeEjectEnabled = true;
-        settings.prestigeWhiteholeEjectExcess = false;
-        settings.prestigeWhiteholeDecayRate = 0.2;
-        settings.prestigeWhiteholeEjectAllCount = 100;
-        settings.prestigeAscensionSkipCustom = false;
-        settings.prestigeAscensionPillar = true;
-        settings.prestigeDemonicFloor = 100;
-        settings.prestigeDemonicPotential = 0.4;
-        settings.prestigeDemonicBomb = false;
-    }
-
-    function resetGovernmentSettings() {
-        settings.generalMinimumTaxRate = 20;
-        settings.generalMinimumMorale = 105;
-        settings.generalMaximumMorale = 500;
-        settings.govManage = false;
-        settings.govInterim = GovernmentManager.Types.democracy.id;
-        settings.govFinal = GovernmentManager.Types.technocracy.id;
-        settings.govSpace = GovernmentManager.Types.corpocracy.id;
-        settings.govGovernor = "none";
-    }
-
-    function resetEvolutionSettings() {
-        settings.userUniverseTargetName = "none";
-        settings.userPlanetTargetName = "none";
-        settings.userEvolutionTarget = "auto";
-        settings.evolutionQueue = [];
-        settings.evolutionQueueEnabled = false;
-        settings.evolutionQueueRepeat = false;
-        settings.evolutionBackup = false;
-        challenges.forEach(set => settings["challenge_" + set[0].id] = false);
-    }
-
-    function resetResearchSettings() {
-        settings.userResearchTheology_1 = "auto";
-        settings.userResearchTheology_2 = "auto";
-        settings.researchIgnore = ["tech-purify"];
-    }
-
-    function resetMarketState() {
-        let defaultState = {autoBuyEnabled: false, autoBuyRatio: 0.5, autoSellEnabled: false, autoSellRatio: 0.9, autoTradeBuyEnabled: true, autoTradeSellEnabled: true, autoTradeWeighting: 1, autoTradePriority: 1};
-
-        let priorityList = Object.values(resources).filter(r => r.isTradable()).reverse();
-        for (let [index, resource] of priorityList.entries()) {
-            Object.assign(resource, defaultState);
-            resource.marketPriority = index;
+    function resetWarSettings(reset) {
+        let def = {
+            foreignAttackLivingSoldiersPercent: 90,
+            foreignAttackHealthySoldiersPercent: 90,
+            foreignHireMercMoneyStoragePercent: 90,
+            foreignHireMercCostLowerThanIncome: 1,
+            foreignHireMercDeadSoldiers: 1,
+            foreignMinAdvantage: 40,
+            foreignMaxAdvantage: 50,
+            foreignMaxSiegeBattalion: 10,
+            foreignProtectSoldiers: false,
+            foreignPacifist: false,
+            foreignUnification: true,
+            foreignForceSabotage: true,
+            foreignOccupyLast: true,
+            foreignTrainSpy: true,
+            foreignSpyMax: 2,
+            foreignPowerRequired: 75,
+            foreignPolicyInferior: "Annex",
+            foreignPolicySuperior: "Sabotage",
+            foreignPolicyRival: "Sabotage",
         }
 
-        resources.Helium_3.autoTradePriority = 2;
-        resources.Iridium.autoTradePriority = 9;
-        resources.Polymer.autoTradePriority = 9;
-        resources.Alloy.autoTradePriority = 9;
-        resources.Titanium.autoTradePriority = 8;
-        resources.Steel.autoTradePriority = 7;
-        resources.Uranium.autoTradePriority = 2;
-        resources.Oil.autoTradePriority = 2;
-        resources.Coal.autoTradePriority = 2;
-        resources.Cement.autoTradePriority = 6;
-        resources.Aluminium.autoTradePriority = 4;
-        resources.Iron.autoTradePriority = 4;
-        resources.Copper.autoTradePriority = 4;
-        resources.Furs.autoTradePriority = 5;
-        resources.Crystal.autoTradePriority = 9;
-        resources.Stone.autoTradePriority = 3;
-        resources.Chrysotile.autoTradePriority = 3;
-        resources.Lumber.autoTradePriority = 3;
-        resources.Food.autoTradePriority = 1;
+        applySettings(def, reset);
+    }
 
-        MarketManager.priorityList = priorityList;
+    function resetHellSettings(reset) {
+        let def = {
+            hellTurnOffLogMessages: true,
+            hellHandlePatrolCount: true,
+            hellHomeGarrison: 10,
+            hellMinSoldiers: 20,
+            hellMinSoldiersPercent: 90,
+            hellTargetFortressDamage: 100,
+            hellLowWallsMulti: 3,
+            hellHandlePatrolSize: true,
+            hellPatrolMinRating: 30,
+            hellPatrolThreatPercent: 8,
+            hellPatrolDroneMod: 5,
+            hellPatrolDroidMod: 5,
+            hellPatrolBootcampMod: 0,
+            hellBolsterPatrolPercentTop: 50,
+            hellBolsterPatrolPercentBottom: 20,
+            hellBolsterPatrolRating: 300,
+            hellAttractorTopThreat: 3000,
+            hellAttractorBottomThreat: 1300,
+        }
+
+        applySettings(def, reset);
+    }
+
+    function resetGeneralSettings(reset) {
+        let def = {
+            triggerRequest: true,
+            queueRequest: true,
+            researchRequest: true,
+            researchRequestSpace: false,
+            missionRequest: true,
+            buildingsConflictQueue: true,
+            buildingsConflictRQueue: true,
+            buildingsConflictPQueue: true,
+            genesAssembleGeneAlways: true,
+            buildingAlwaysClick: false,
+            buildingClickPerTick: 50,
+        }
+
+        applySettings(def, reset);
+    }
+
+    function resetPrestigeSettings(reset) {
+        let def = {
+            prestigeType: "none",
+            prestigeMADIgnoreArpa: true,
+            prestigeMADWait: true,
+            prestigeMADPopulation: 1,
+            prestigeWaitAT: true,
+            prestigeBioseedConstruct: true,
+            prestigeEnabledBarracks: 100,
+            prestigeBioseedProbes: 3,
+            prestigeWhiteholeSaveGems: true,
+            prestigeWhiteholeMinMass: 8,
+            prestigeWhiteholeStabiliseMass: true,
+            prestigeWhiteholeEjectEnabled: true,
+            prestigeWhiteholeEjectExcess: false,
+            prestigeWhiteholeDecayRate: 0.2,
+            prestigeWhiteholeEjectAllCount: 100,
+            prestigeAscensionSkipCustom: false,
+            prestigeAscensionPillar: true,
+            prestigeDemonicFloor: 100,
+            prestigeDemonicPotential: 0.4,
+            prestigeDemonicBomb: false,
+        }
+
+        applySettings(def, reset);
+    }
+
+    function resetGovernmentSettings(reset) {
+        let def = {
+            generalMinimumTaxRate: 20,
+            generalMinimumMorale: 105,
+            generalMaximumMorale: 500,
+            govManage: false,
+            govInterim: GovernmentManager.Types.democracy.id,
+            govFinal: GovernmentManager.Types.technocracy.id,
+            govSpace: GovernmentManager.Types.corpocracy.id,
+            govGovernor: "none",
+        }
+
+        applySettings(def, reset);
+    }
+
+    function resetEvolutionSettings(reset) {
+        let def = {
+            userUniverseTargetName: "none",
+            userPlanetTargetName: "none",
+            userEvolutionTarget: "auto",
+            evolutionQueue: [],
+            evolutionQueueEnabled: false,
+            evolutionQueueRepeat: false,
+            evolutionBackup: false,
+        }
+        challenges.forEach(set => def["challenge_" + set[0].id] = false);
+
+        applySettings(def, reset);
+    }
+
+    function resetResearchSettings(reset) {
+        let def = {
+            userResearchTheology_1: "auto",
+            userResearchTheology_2: "auto",
+            researchIgnore: ["tech-purify"],
+        }
+
+        applySettings(def, reset);
+    }
+
+    function resetMarketSettings(reset) {
+        MarketManager.priorityList = Object.values(resources).filter(r => r.isTradable()).reverse();
+        let def = {
+            tradeRouteMinimumMoneyPerSecond: 500,
+            tradeRouteMinimumMoneyPercentage: 50,
+            tradeRouteSellExcess: true,
+            minimumMoney: 0,
+            minimumMoneyPercentage: 0,
+        }
+
+        for (let i = 0; i < MarketManager.priorityList.length; i++) {
+            let resource = MarketManager.priorityList[i];
+            let id = resource.id;
+
+            def['res_buy_p_' + id] = i; // marketPriority
+            def['buy' + id] = false; // autoBuyEnabled
+            def['res_buy_r_' + id] = 0.5; // autoBuyRatio
+            def['sell' + id] = false; // autoSellEnabled
+            def['res_sell_r_' + id] = 0.9; // autoSellRatio
+            def['res_trade_buy_' + id] = true; // autoTradeBuyEnabled
+            def['res_trade_sell_' + id] = true; // autoTradeSellEnabled
+            def['res_trade_w_' + id] = 1; // autoTradeWeighting
+            def['res_trade_p_' + id] = 1; // autoTradePriority
+        }
+
+        const setTradePriority = (priority, items) =>
+          items.forEach(item => def['res_trade_p_' + resources[item].id] = priority);
+
+        setTradePriority(1, ["Food"]);
+        setTradePriority(2, ["Helium_3", "Uranium", "Oil", "Coal"]);
+        setTradePriority(3, ["Stone", "Chrysotile", "Lumber"]);
+        setTradePriority(4, ["Aluminium", "Iron", "Copper"]);
+        setTradePriority(5, ["Furs"]);
+        setTradePriority(6, ["Cement"]);
+        setTradePriority(7, ["Steel"]);
+        setTradePriority(8, ["Titanium"]);
+        setTradePriority(9, ["Iridium", "Polymer", "Alloy", "Crystal"]);
 
         for (let i = 0; i < poly.galaxyOffers.length; i++) {
             let resource = resources[poly.galaxyOffers[i].buy.res];
-            resource.galaxyMarketWeighting = 1;
-            resource.galaxyMarketPriority = i+1;
+            let id = resource.id;
+
+            def['res_galaxy_w_' + id] = 1; // galaxyMarketWeighting
+            def['res_galaxy_p_' + id] = i+1; // galaxyMarketPriority
         }
+
+        applySettings(def, reset);
+        MarketManager.sortByPriority();
     }
 
-    function resetMarketSettings() {
-        settings.tradeRouteMinimumMoneyPerSecond = 500;
-        settings.tradeRouteMinimumMoneyPercentage = 50;
-        settings.tradeRouteSellExcess = true;
-    }
-
-    function resetStorageState() {
-        let defaultState = {autoStorageEnabled: true, storeOverflow: false, _autoCratesMax: -1, _autoContainersMax: -1};
-
-        let priorityList = Object.values(resources).filter(r => r.hasStorage()).reverse();
-        for (let [index, resource] of priorityList.entries()) {
-            Object.assign(resource, defaultState);
-            resource.storagePriority = index;
+    function resetStorageSettings(reset) {
+        StorageManager.priorityList = Object.values(resources).filter(r => r.hasStorage()).reverse();
+        let def = {
+            storageLimitPreMad: true,
+            storageSafeReassign: true,
+            storageAssignExtra: true,
+            storagePrioritizedOnly: false,
         }
-        resources.Orichalcum.storeOverflow = true;
-        resources.Vitreloy.storeOverflow = true;
-        resources.Bolognium.storeOverflow = true;
 
-        StorageManager.priorityList = priorityList;
-    }
+        for (let i = 0; i < StorageManager.priorityList.length; i++) {
+            let resource = StorageManager.priorityList[i];
+            let id = resource.id;
 
-    function resetStorageSettings() {
-        settings.storageLimitPreMad = true;
-        settings.storageSafeReassign = true;
-        settings.storageAssignExtra = true;
-        settings.storagePrioritizedOnly = false;
-    }
-
-    function resetMinorTraitState() {
-        MinorTraitManager.priorityList = [];
-
-        for (let i = 0; i < minorTraits.length; i++){
-            let trait = new MinorTrait(minorTraits[i]);
-            trait.enabled = true;
-            trait.weighting = 1;
-
-            MinorTraitManager.addMinorTraitToPriorityList(trait);
+            def['res_storage' + id] = true; // autoStorageEnabled
+            def['res_storage_p_' + id] = i; // storagePriority
+            def['res_storage_o_' + id] = false; // storeOverflow
+            def['res_crates_m_' + id] = -1; // _autoCratesMax
+            def['res_containers_m_' + id] = -1; // _autoContainersMax
         }
+
+        // Enable overflow for endgame resources
+        def['res_storage_o_' + resources.Orichalcum.id] = true;
+        def['res_storage_o_' + resources.Vitreloy.id] = true;
+        def['res_storage_o_' + resources.Bolognium.id] = true;
+
+        applySettings(def, reset);
+        StorageManager.sortByPriority();
     }
 
-    function resetJobSettings() {
-        settings.jobSetDefault = true;
-        settings.jobLumberWeighting = 50;
-        settings.jobQuarryWeighting = 50;
-        settings.jobCrystalWeighting = 50;
-        settings.jobScavengerWeighting = 50;
-        settings.jobDisableMiners = true;
-        settings.jobDisableCraftsmans = true;
+    function resetMinorTraitSettings(reset) {
+        MinorTraitManager.priorityList = minorTraits.map(trait => new MinorTrait(trait));
+        let def = {};
 
-        JobManager.priorityList.forEach(job => job.autoJobEnabled = true);
+        for (let i = 0; i < MinorTraitManager.priorityList.length; i++) {
+            let trait = MinorTraitManager.priorityList[i];
+            let id = trait.traitName;
+
+            def['mTrait_' + id] = true; // enabled
+            def['mTrait_p_' + id] = i; // priority
+            def['mTrait_w_' + id] = 1; // weighting
+        }
+
+        applySettings(def, reset);
+        MinorTraitManager.sortByPriority();
     }
 
-    function resetJobState() {
-        JobManager.priorityList = [];
+    function resetJobSettings(reset) {
+        JobManager.priorityList = Object.values(jobs);
+        let def = {
+            jobSetDefault: true,
+            jobLumberWeighting: 50,
+            jobQuarryWeighting: 50,
+            jobCrystalWeighting: 50,
+            jobScavengerWeighting: 50,
+            jobDisableMiners: true,
+            jobDisableCraftsmans: true,
+        }
 
-        JobManager.addJobToPriorityList(jobs.Unemployed);
-        JobManager.addJobToPriorityList(jobs.Hunter);
-        JobManager.addJobToPriorityList(jobs.Farmer);
-        //JobManager.addJobToPriorityList(jobs.Forager);
-        JobManager.addJobToPriorityList(jobs.Lumberjack);
-        JobManager.addJobToPriorityList(jobs.QuarryWorker);
-        JobManager.addJobToPriorityList(jobs.CrystalMiner);
-        JobManager.addJobToPriorityList(jobs.Scavenger);
-        JobManager.addJobToPriorityList(jobs.Entertainer);
-        JobManager.addJobToPriorityList(jobs.Scientist);
-        JobManager.addJobToPriorityList(jobs.Professor);
-        JobManager.addJobToPriorityList(jobs.CementWorker);
-        JobManager.addJobToPriorityList(jobs.Colonist);
-        JobManager.addJobToPriorityList(jobs.HellSurveyor);
-        JobManager.addJobToPriorityList(jobs.SpaceMiner);
-        JobManager.addJobToPriorityList(jobs.Archaeologist);
-        JobManager.addJobToPriorityList(jobs.Miner);
-        JobManager.addJobToPriorityList(jobs.CoalMiner);
-        JobManager.addJobToPriorityList(jobs.Banker);
-        JobManager.addJobToPriorityList(jobs.Priest);
-        JobManager.addJobToPriorityList(jobs.Plywood);
-        JobManager.addJobToPriorityList(jobs.Brick);
-        JobManager.addJobToPriorityList(jobs.WroughtIron);
-        JobManager.addJobToPriorityList(jobs.SheetMetal);
-        JobManager.addJobToPriorityList(jobs.Mythril);
-        JobManager.addJobToPriorityList(jobs.Aerogel);
-        JobManager.addJobToPriorityList(jobs.Nanoweave);
-        JobManager.addJobToPriorityList(jobs.Scarletite);
+        for (let i = 0; i < JobManager.priorityList.length; i++) {
+            let job = JobManager.priorityList[i];
+            let id = job._originalId;
 
-        jobs.Unemployed.breakpoints = [0, 0, 0];
-        jobs.Hunter.breakpoints = [0, 0, 0];
-        jobs.Farmer.breakpoints = [0, 0, 0]; // Farmers are calculated based on food rate of change only, ignoring cap
-        //jobs.Forager.breakpoints = [4, 10, 0];
-        jobs.Lumberjack.breakpoints = [4, 10, 0]; // Basic jobs are special - remaining workers divided between them
-        jobs.QuarryWorker.breakpoints = [4, 10, 0]; // Basic jobs are special - remaining workers divided between them
-        jobs.CrystalMiner.breakpoints = [2, 5, 0]; // Basic jobs are special - remaining workers divided between them
-        jobs.Scavenger.breakpoints = [0, 0, 0]; // Basic jobs are special - remaining workers divided between them
+            def['job_' + id] = true; // autoJobEnabled
+            def['job_p_' + id] = i; // priority
+        }
 
-        jobs.Scientist.breakpoints = [3, 6, -1];
-        jobs.Professor.breakpoints = [6, 10, -1];
-        jobs.Entertainer.breakpoints = [2, 5, -1];
-        jobs.CementWorker.breakpoints = [4, 8, -1]; // Cement works are based on cap and stone rate of change
-        jobs.Colonist.breakpoints = [0, 0, -1];
-        jobs.HellSurveyor.breakpoints = [0, 0, -1];
-        jobs.SpaceMiner.breakpoints = [0, 0, -1];
-        jobs.Archaeologist.breakpoints = [0, 0, -1];
-        jobs.Miner.breakpoints = [3, 5, -1];
-        jobs.CoalMiner.breakpoints = [2, 4, -1];
-        jobs.Banker.breakpoints = [3, 5, -1];
-        jobs.Priest.breakpoints = [0, 0, -1];
+        const setBreakpoints = (job, b1, b2, b3) => { // breakpoins
+            def['job_b1_' + job._originalId] = b1;
+            def['job_b2_' + job._originalId] = b2;
+            def['job_b3_' + job._originalId] = b3;
+        };
+        setBreakpoints(jobs.Unemployed, 0, 0, 0);
+        setBreakpoints(jobs.Hunter, 0, 0, 0);
+        setBreakpoints(jobs.Farmer, 0, 0, 0);
+        //setBreakpoints(jobs.Forager, 4, 10, 0);
+        setBreakpoints(jobs.Lumberjack, 4, 10, 0);
+        setBreakpoints(jobs.QuarryWorker, 4, 10, 0);
+        setBreakpoints(jobs.CrystalMiner, 2, 5, 0);
+        setBreakpoints(jobs.Scavenger, 0, 0, 0);
+
+        setBreakpoints(jobs.Scientist, 3, 6, -1);
+        setBreakpoints(jobs.Professor, 6, 10, -1);
+        setBreakpoints(jobs.Entertainer, 2, 5, -1);
+        setBreakpoints(jobs.CementWorker, 4, 8, -1);
+        setBreakpoints(jobs.Colonist, 0, 0, -1);
+        setBreakpoints(jobs.HellSurveyor, 0, 0, -1);
+        setBreakpoints(jobs.SpaceMiner, 0, 0, -1);
+        setBreakpoints(jobs.Archaeologist, 0, 0, -1);
+        setBreakpoints(jobs.Miner, 3, 5, -1);
+        setBreakpoints(jobs.CoalMiner, 2, 4, -1);
+        setBreakpoints(jobs.Banker, 3, 5, -1);
+        setBreakpoints(jobs.Priest, 0, 0, -1);
+
+        applySettings(def, reset);
+        JobManager.sortByPriority();
     }
 
-    function resetWeightingSettings() {
-        settings.buildingWeightingNew = 3;
-        settings.buildingWeightingUselessPowerPlant = 0.01;
-        settings.buildingWeightingNeedfulPowerPlant = 3;
-        settings.buildingWeightingUnderpowered = 0.8;
-        settings.buildingWeightingUselessKnowledge = 0.01;
-        settings.buildingWeightingNeedfulKnowledge = 5;
-        settings.buildingWeightingMissingFuel = 10;
-        settings.buildingWeightingNonOperatingCity = 0.2;
-        settings.buildingWeightingNonOperating = 0;
-        settings.buildingWeightingMissingSupply = 0;
-        settings.buildingWeightingMissingSupport = 0;
-        settings.buildingWeightingUselessSupport = 0.01;
-        settings.buildingWeightingMADUseless = 0;
-        settings.buildingWeightingUnusedEjectors = 0.1;
-        settings.buildingWeightingCrateUseless = 0.01;
-        settings.buildingWeightingHorseshoeUseless = 0.1;
-        settings.buildingWeightingZenUseless = 0.01;
-        settings.buildingWeightingGateTurret = 0.01;
-        settings.buildingWeightingNeedStorage = 1;
-        settings.buildingWeightingUselessHousing = 1;
+    function resetWeightingSettings(reset) {
+        let def = {
+            buildingWeightingNew: 3,
+            buildingWeightingUselessPowerPlant: 0.01,
+            buildingWeightingNeedfulPowerPlant: 3,
+            buildingWeightingUnderpowered: 0.8,
+            buildingWeightingUselessKnowledge: 0.01,
+            buildingWeightingNeedfulKnowledge: 5,
+            buildingWeightingMissingFuel: 10,
+            buildingWeightingNonOperatingCity: 0.2,
+            buildingWeightingNonOperating: 0,
+            buildingWeightingMissingSupply: 0,
+            buildingWeightingMissingSupport: 0,
+            buildingWeightingUselessSupport: 0.01,
+            buildingWeightingMADUseless: 0,
+            buildingWeightingUnusedEjectors: 0.1,
+            buildingWeightingCrateUseless: 0.01,
+            buildingWeightingHorseshoeUseless: 0.1,
+            buildingWeightingZenUseless: 0.01,
+            buildingWeightingGateTurret: 0.01,
+            buildingWeightingNeedStorage: 1,
+            buildingWeightingUselessHousing: 1,
+        }
+
+        applySettings(def, reset);
     }
 
-    function resetBuildingSettings() {
-        settings.buildingBuildIfStorageFull = false;
-        settings.buildingsIgnoreZeroRate = false;
-        settings.buildingShrineType = "know";
-        settings.buildingTowerSuppression = 100;
+    function resetBuildingSettings(reset) {
+        initBuildingState();
+        let def = {
+            buildingBuildIfStorageFull: false,
+            buildingsIgnoreZeroRate: false,
+            buildingShrineType: "know",
+            buildingTowerSuppression: 100,
+            buildingEnabledAll: true,
+            buildingStateAll: true
+        }
 
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
-            const building = BuildingManager.priorityList[i];
+            let building = BuildingManager.priorityList[i];
+            let id = building._vueBinding;
 
-            building.autoBuildEnabled = true;
-            building.autoStateEnabled = true;
-            building._autoMax = -1;
-            building._weighting = 100;
-        }
-    }
+            def['bat' + id] = true; // autoBuildEnabled
+            def['bld_p_' + id] = i; // priority
+            def['bld_m_' + id] = -1; // _autoMax
+            def['bld_w_' + id] = 100; // _weighting
 
-    function resetBuildingState() {
-        BuildingManager.priorityList = [];
-        BuildingManager.statePriorityList = [];
-
-        BuildingManager.addBuildingToPriorityList(buildings.Windmill);
-        BuildingManager.addBuildingToPriorityList(buildings.Mill);
-
-        BuildingManager.addBuildingToPriorityList(buildings.CoalPower);
-        BuildingManager.addBuildingToPriorityList(buildings.OilPower);
-        BuildingManager.addBuildingToPriorityList(buildings.FissionPower);
-
-        BuildingManager.addBuildingToPriorityList(buildings.RuinsHellForge);
-        BuildingManager.addBuildingToPriorityList(buildings.RuinsInfernoPower);
-        BuildingManager.addBuildingToPriorityList(buildings.RuinsArcology);
-        BuildingManager.addBuildingToPriorityList(buildings.Apartment);
-        BuildingManager.addBuildingToPriorityList(buildings.Barracks);
-        BuildingManager.addBuildingToPriorityList(buildings.TouristCenter);
-        BuildingManager.addBuildingToPriorityList(buildings.University);
-        BuildingManager.addBuildingToPriorityList(buildings.Smelter);
-        BuildingManager.addBuildingToPriorityList(buildings.Temple);
-        BuildingManager.addBuildingToPriorityList(buildings.OilWell);
-        BuildingManager.addBuildingToPriorityList(buildings.StorageYard);
-        BuildingManager.addBuildingToPriorityList(buildings.Warehouse);
-        BuildingManager.addBuildingToPriorityList(buildings.Bank);
-        BuildingManager.addBuildingToPriorityList(buildings.Hospital);
-        BuildingManager.addBuildingToPriorityList(buildings.BootCamp);
-        BuildingManager.addBuildingToPriorityList(buildings.House);
-        BuildingManager.addBuildingToPriorityList(buildings.Cottage);
-        BuildingManager.addBuildingToPriorityList(buildings.Farm);
-        BuildingManager.addBuildingToPriorityList(buildings.Silo);
-        BuildingManager.addBuildingToPriorityList(buildings.Shed);
-        BuildingManager.addBuildingToPriorityList(buildings.LumberYard);
-        BuildingManager.addBuildingToPriorityList(buildings.Foundry);
-        BuildingManager.addBuildingToPriorityList(buildings.OilDepot);
-        BuildingManager.addBuildingToPriorityList(buildings.Trade);
-        BuildingManager.addBuildingToPriorityList(buildings.Amphitheatre);
-        BuildingManager.addBuildingToPriorityList(buildings.Library);
-        BuildingManager.addBuildingToPriorityList(buildings.Wharf);
-        BuildingManager.addBuildingToPriorityList(buildings.Lodge); // Carnivore/Detritivore/Soul Eater trait
-        BuildingManager.addBuildingToPriorityList(buildings.Smokehouse); // Carnivore trait
-        BuildingManager.addBuildingToPriorityList(buildings.SoulWell); // Soul Eater trait
-        BuildingManager.addBuildingToPriorityList(buildings.SlavePen); // Slaver trait
-        BuildingManager.addBuildingToPriorityList(buildings.SlaveMarket); // Slaver trait
-        BuildingManager.addBuildingToPriorityList(buildings.Graveyard); // Evil trait
-        BuildingManager.addBuildingToPriorityList(buildings.Shrine); // Magnificent trait
-        BuildingManager.addBuildingToPriorityList(buildings.CompostHeap); // Detritivore trait
-        BuildingManager.addBuildingToPriorityList(buildings.Pylon); // Magic Universe only
-        BuildingManager.addBuildingToPriorityList(buildings.ForgeHorseshoe); // Hooved trait
-        BuildingManager.addBuildingToPriorityList(buildings.RedForgeHorseshoe); // Hooved trait
-        BuildingManager.addBuildingToPriorityList(buildings.SacrificialAltar); // Cannibalize trait
-        BuildingManager.addBuildingToPriorityList(buildings.MeditationChamber); // Calm trait
-
-        BuildingManager.addBuildingToPriorityList(buildings.DwarfMission);
-        BuildingManager.addBuildingToPriorityList(buildings.DwarfEleriumReactor);
-        BuildingManager.addBuildingToPriorityList(buildings.DwarfWorldCollider);
-
-        BuildingManager.addBuildingToPriorityList(buildings.HellMission);
-        BuildingManager.addBuildingToPriorityList(buildings.HellGeothermal);
-        BuildingManager.addBuildingToPriorityList(buildings.HellSwarmPlant);
-
-        BuildingManager.addBuildingToPriorityList(buildings.ProximaTransferStation);
-        BuildingManager.addBuildingToPriorityList(buildings.ProximaMission);
-        BuildingManager.addBuildingToPriorityList(buildings.ProximaCargoYard);
-        BuildingManager.addBuildingToPriorityList(buildings.ProximaCruiser);
-        BuildingManager.addBuildingToPriorityList(buildings.ProximaDyson);
-        BuildingManager.addBuildingToPriorityList(buildings.ProximaDysonSphere);
-        BuildingManager.addBuildingToPriorityList(buildings.ProximaOrichalcumSphere);
-
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaMission);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaStarport);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaFusion);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaHabitat);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaLuxuryCondo);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaMiningDroid);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaProcessing);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaLaboratory);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaExoticZoo);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaExchange);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaGraphenePlant);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaWarehouse);
-
-        BuildingManager.addBuildingToPriorityList(buildings.SpaceTestLaunch);
-        BuildingManager.addBuildingToPriorityList(buildings.SpaceSatellite);
-        BuildingManager.addBuildingToPriorityList(buildings.SpaceGps);
-        BuildingManager.addBuildingToPriorityList(buildings.SpacePropellantDepot);
-        BuildingManager.addBuildingToPriorityList(buildings.SpaceNavBeacon);
-
-        BuildingManager.addBuildingToPriorityList(buildings.RedMission);
-        BuildingManager.addBuildingToPriorityList(buildings.RedTower);
-        BuildingManager.addBuildingToPriorityList(buildings.RedSpaceport);
-        BuildingManager.addBuildingToPriorityList(buildings.RedLivingQuarters);
-        BuildingManager.addBuildingToPriorityList(buildings.RedBiodome);
-        BuildingManager.addBuildingToPriorityList(buildings.RedSpaceBarracks);
-        BuildingManager.addBuildingToPriorityList(buildings.RedExoticLab);
-        BuildingManager.addBuildingToPriorityList(buildings.RedFabrication);
-        BuildingManager.addBuildingToPriorityList(buildings.RedMine);
-        BuildingManager.addBuildingToPriorityList(buildings.RedVrCenter);
-        BuildingManager.addBuildingToPriorityList(buildings.RedZiggurat);
-        BuildingManager.addBuildingToPriorityList(buildings.RedGarage);
-
-        BuildingManager.addBuildingToPriorityList(buildings.MoonMission);
-        BuildingManager.addBuildingToPriorityList(buildings.MoonBase);
-        BuildingManager.addBuildingToPriorityList(buildings.MoonObservatory);
-        BuildingManager.addBuildingToPriorityList(buildings.MoonHeliumMine);
-        BuildingManager.addBuildingToPriorityList(buildings.MoonIridiumMine);
-
-        BuildingManager.addBuildingToPriorityList(buildings.SunMission);
-        BuildingManager.addBuildingToPriorityList(buildings.SunSwarmControl);
-        BuildingManager.addBuildingToPriorityList(buildings.SunSwarmSatellite);
-
-        BuildingManager.addBuildingToPriorityList(buildings.GasMission);
-        BuildingManager.addBuildingToPriorityList(buildings.GasStorage);
-        BuildingManager.addBuildingToPriorityList(buildings.GasSpaceDock);
-        BuildingManager.addBuildingToPriorityList(buildings.GasSpaceDockProbe);
-        BuildingManager.addBuildingToPriorityList(buildings.GasSpaceDockShipSegment);
-
-        BuildingManager.addBuildingToPriorityList(buildings.GasMoonMission);
-        BuildingManager.addBuildingToPriorityList(buildings.GasMoonDrone);
-
-        BuildingManager.addBuildingToPriorityList(buildings.Blackhole);
-        BuildingManager.addBuildingToPriorityList(buildings.BlackholeStellarEngine);
-        BuildingManager.addBuildingToPriorityList(buildings.BlackholeJumpShip);
-        BuildingManager.addBuildingToPriorityList(buildings.BlackholeWormholeMission);
-        BuildingManager.addBuildingToPriorityList(buildings.BlackholeStargate);
-
-        BuildingManager.addBuildingToPriorityList(buildings.SiriusMission);
-        BuildingManager.addBuildingToPriorityList(buildings.SiriusAnalysis);
-        BuildingManager.addBuildingToPriorityList(buildings.SiriusSpaceElevator);
-        BuildingManager.addBuildingToPriorityList(buildings.SiriusGravityDome);
-        BuildingManager.addBuildingToPriorityList(buildings.SiriusThermalCollector);
-        BuildingManager.addBuildingToPriorityList(buildings.SiriusAscensionMachine);
-        //BuildingManager.addBuildingToPriorityList(buildings.SiriusAscend); // This is performing the actual ascension. We'll deal with this in prestige automation
-
-        BuildingManager.addBuildingToPriorityList(buildings.BlackholeStargateComplete); // Should be powered before Andromeda
-
-        BuildingManager.addBuildingToPriorityList(buildings.GatewayMission);
-        BuildingManager.addBuildingToPriorityList(buildings.GatewayStarbase);
-        BuildingManager.addBuildingToPriorityList(buildings.GatewayShipDock);
-
-        BuildingManager.addBuildingToPriorityList(buildings.StargateStation);
-        BuildingManager.addBuildingToPriorityList(buildings.StargateTelemetryBeacon);
-
-        BuildingManager.addBuildingToPriorityList(buildings.Dreadnought);
-        BuildingManager.addBuildingToPriorityList(buildings.CruiserShip);
-        BuildingManager.addBuildingToPriorityList(buildings.FrigateShip);
-        BuildingManager.addBuildingToPriorityList(buildings.BologniumShip);
-        BuildingManager.addBuildingToPriorityList(buildings.CorvetteShip);
-        BuildingManager.addBuildingToPriorityList(buildings.ScoutShip);
-
-        BuildingManager.addBuildingToPriorityList(buildings.GorddonMission);
-        BuildingManager.addBuildingToPriorityList(buildings.GorddonEmbassy);
-        BuildingManager.addBuildingToPriorityList(buildings.GorddonDormitory);
-        BuildingManager.addBuildingToPriorityList(buildings.GorddonSymposium);
-        BuildingManager.addBuildingToPriorityList(buildings.GorddonFreighter);
-
-        BuildingManager.addBuildingToPriorityList(buildings.SiriusAscensionTrigger); // This is the 10,000 power one, buildings below this one should be safe to underpower for ascension. Buildings above this either provides, or support population
-        BuildingManager.addBuildingToPriorityList(buildings.BlackholeMassEjector); // Top priority of safe buildings, disable *only* for ascension, otherwise we want to have them on at any cost, to keep pumping black hole
-
-        BuildingManager.addBuildingToPriorityList(buildings.Alien1Consulate);
-        BuildingManager.addBuildingToPriorityList(buildings.Alien1Resort);
-        BuildingManager.addBuildingToPriorityList(buildings.Alien1VitreloyPlant);
-        BuildingManager.addBuildingToPriorityList(buildings.Alien1SuperFreighter);
-
-        //BuildingManager.addBuildingToPriorityList(buildings.Alien2Mission);
-        BuildingManager.addBuildingToPriorityList(buildings.Alien2Foothold);
-        BuildingManager.addBuildingToPriorityList(buildings.Alien2Scavenger);
-        BuildingManager.addBuildingToPriorityList(buildings.Alien2ArmedMiner);
-        BuildingManager.addBuildingToPriorityList(buildings.Alien2OreProcessor);
-
-        //BuildingManager.addBuildingToPriorityList(buildings.ChthonianMission);
-        BuildingManager.addBuildingToPriorityList(buildings.ChthonianMineLayer);
-        BuildingManager.addBuildingToPriorityList(buildings.ChthonianExcavator);
-        BuildingManager.addBuildingToPriorityList(buildings.ChthonianRaider);
-
-        BuildingManager.addBuildingToPriorityList(buildings.Wardenclyffe);
-        BuildingManager.addBuildingToPriorityList(buildings.BioLab);
-        BuildingManager.addBuildingToPriorityList(buildings.DwarfWorldController);
-        BuildingManager.addBuildingToPriorityList(buildings.BlackholeFarReach);
-
-        BuildingManager.addBuildingToPriorityList(buildings.NebulaMission);
-        BuildingManager.addBuildingToPriorityList(buildings.NebulaNexus);
-        BuildingManager.addBuildingToPriorityList(buildings.NebulaHarvestor);
-        BuildingManager.addBuildingToPriorityList(buildings.NebulaEleriumProspector);
-
-        BuildingManager.addBuildingToPriorityList(buildings.BeltMission);
-        BuildingManager.addBuildingToPriorityList(buildings.BeltSpaceStation);
-        BuildingManager.addBuildingToPriorityList(buildings.BeltEleriumShip);
-        BuildingManager.addBuildingToPriorityList(buildings.BeltIridiumShip);
-        BuildingManager.addBuildingToPriorityList(buildings.BeltIronShip);
-
-        BuildingManager.addBuildingToPriorityList(buildings.CementPlant);
-        BuildingManager.addBuildingToPriorityList(buildings.Factory);
-        BuildingManager.addBuildingToPriorityList(buildings.GasMoonOutpost);
-        BuildingManager.addBuildingToPriorityList(buildings.StargateDefensePlatform);
-        BuildingManager.addBuildingToPriorityList(buildings.RedFactory);
-        BuildingManager.addBuildingToPriorityList(buildings.AlphaMegaFactory);
-
-        BuildingManager.addBuildingToPriorityList(buildings.PortalTurret);
-        BuildingManager.addBuildingToPriorityList(buildings.BadlandsSensorDrone);
-        BuildingManager.addBuildingToPriorityList(buildings.PortalWarDroid);
-        BuildingManager.addBuildingToPriorityList(buildings.BadlandsPredatorDrone);
-        BuildingManager.addBuildingToPriorityList(buildings.BadlandsAttractor);
-        BuildingManager.addBuildingToPriorityList(buildings.PortalCarport);
-        BuildingManager.addBuildingToPriorityList(buildings.PitSoulForge);
-        BuildingManager.addBuildingToPriorityList(buildings.PitGunEmplacement);
-        BuildingManager.addBuildingToPriorityList(buildings.PitSoulAttractor);
-        BuildingManager.addBuildingToPriorityList(buildings.PortalRepairDroid);
-        BuildingManager.addBuildingToPriorityList(buildings.PitMission);
-        BuildingManager.addBuildingToPriorityList(buildings.PitAssaultForge);
-        BuildingManager.addBuildingToPriorityList(buildings.RuinsAncientPillars);
-
-        BuildingManager.addBuildingToPriorityList(buildings.RuinsMission);
-        BuildingManager.addBuildingToPriorityList(buildings.RuinsGuardPost);
-        BuildingManager.addBuildingToPriorityList(buildings.RuinsVault);
-        BuildingManager.addBuildingToPriorityList(buildings.RuinsArchaeology);
-
-        BuildingManager.addBuildingToPriorityList(buildings.GateMission);
-        BuildingManager.addBuildingToPriorityList(buildings.GateEastTower);
-        BuildingManager.addBuildingToPriorityList(buildings.GateWestTower);
-        BuildingManager.addBuildingToPriorityList(buildings.GateTurret);
-        BuildingManager.addBuildingToPriorityList(buildings.GateInferniteMine);
-
-        BuildingManager.addBuildingToPriorityList(buildings.SpireMission);
-        BuildingManager.addBuildingToPriorityList(buildings.SpirePurifier);
-        BuildingManager.addBuildingToPriorityList(buildings.SpireMechBay);
-        BuildingManager.addBuildingToPriorityList(buildings.SpireBaseCamp);
-        BuildingManager.addBuildingToPriorityList(buildings.SpirePort);
-        BuildingManager.addBuildingToPriorityList(buildings.SpireBridge);
-        BuildingManager.addBuildingToPriorityList(buildings.SpireSphinx);
-        BuildingManager.addBuildingToPriorityList(buildings.SpireBribeSphinx);
-        BuildingManager.addBuildingToPriorityList(buildings.SpireSurveyTower);
-        BuildingManager.addBuildingToPriorityList(buildings.SpireWaygate);
-
-        BuildingManager.addBuildingToPriorityList(buildings.LakeMission);
-        BuildingManager.addBuildingToPriorityList(buildings.LakeCoolingTower);
-        BuildingManager.addBuildingToPriorityList(buildings.LakeHarbour);
-        BuildingManager.addBuildingToPriorityList(buildings.LakeBireme);
-        BuildingManager.addBuildingToPriorityList(buildings.LakeTransport);
-
-        BuildingManager.addBuildingToPriorityList(buildings.StargateDepot);
-        BuildingManager.addBuildingToPriorityList(buildings.DwarfEleriumContainer);
-
-        BuildingManager.addBuildingToPriorityList(buildings.GasMoonOilExtractor);
-        BuildingManager.addBuildingToPriorityList(buildings.NeutronMission);
-        BuildingManager.addBuildingToPriorityList(buildings.NeutronStellarForge);
-        BuildingManager.addBuildingToPriorityList(buildings.NeutronMiner);
-
-        BuildingManager.addBuildingToPriorityList(buildings.MassDriver);
-        BuildingManager.addBuildingToPriorityList(buildings.MetalRefinery);
-        BuildingManager.addBuildingToPriorityList(buildings.Casino);
-        BuildingManager.addBuildingToPriorityList(buildings.HellSpaceCasino);
-        BuildingManager.addBuildingToPriorityList(buildings.RockQuarry);
-        BuildingManager.addBuildingToPriorityList(buildings.Sawmill);
-        BuildingManager.addBuildingToPriorityList(buildings.GasMining);
-        BuildingManager.addBuildingToPriorityList(buildings.NeutronCitadel);
-        BuildingManager.addBuildingToPriorityList(buildings.Mine);
-        BuildingManager.addBuildingToPriorityList(buildings.CoalMine);
-
-        // AutoBuild disabled by default for early(ish) buildings consuming Soul Gems
-        buildings.RedVrCenter.autoBuildEnabled = false;
-        buildings.NeutronCitadel.autoBuildEnabled = false;
-        buildings.PortalWarDroid.autoBuildEnabled = false;
-        buildings.BadlandsPredatorDrone.autoBuildEnabled = false;
-        buildings.PortalRepairDroid.autoBuildEnabled = false;
-
-        // And Blood Stone
-        buildings.SpireWaygate.autoBuildEnabled = false;
-
-        buildings.ForgeHorseshoe._autoMax = 20;
-        buildings.RedForgeHorseshoe._autoMax = 20;
-    }
-
-    function resetProjectSettings() {
-        settings.arpaScaleWeighting = true;
-        settings.arpaStep = 10;
-    }
-
-    function resetProjectState() {
-        ProjectManager.priorityList = [];
-
-        for (let key in projects) {
-            let project = projects[key];
-            project._autoMax = -1;
-            project._weighting = 1;
-            project.autoBuildEnabled = true;
-
-            ProjectManager.addProjectToPriorityList(project);
+            if (building.isSwitchable()) {
+                def['bld_s_' + id] = true; // autoStateEnabled
+            }
+            if (building.is.smart) {
+                def['bld_s2_' + id] = true; // autoStateSmart
+            }
         }
 
-        projects.LaunchFacility._weighting = 100;
-        projects.SuperCollider._weighting = 5;
-        projects.Railway._weighting = 0.1;
-        projects.StockExchange._weighting = 0.5;
-        projects.ManaSyphon._autoMax = 79;
-        projects.ManaSyphon.autoBuildEnabled = false;
+        // AutoBuild disabled by default for early(ish) buildings consuming Soul Gems and Blood Stones
+        ["RedVrCenter", "NeutronCitadel", "PortalWarDroid", "BadlandsPredatorDrone", "PortalRepairDroid", "SpireWaygate"]
+          .forEach(b => def['bat' + buildings[b]._vueBinding] = false);
+
+        // Limit max for belt ships, and horseshoes
+        def['bld_m_' + buildings.ForgeHorseshoe._vueBinding] = 20;
+        def['bld_m_' + buildings.RedForgeHorseshoe._vueBinding] = 20;
+        def['bld_m_' + buildings.BeltEleriumShip._vueBinding] = 15;
+        def['bld_m_' + buildings.BeltIridiumShip._vueBinding] = 15;
+
+        applySettings(def, reset);
+        BuildingManager.sortByPriority();
     }
 
-    function resetProductionSettings() {
-        settings.productionChrysotileWeight = 2;
-        settings.productionFoundryWeighting = "demanded";
-        settings.productionRitualManaUse = 0.5;
-        settings.productionSmelting = "storage";
-        settings.productionFactoryMinIngredients = 0.01;
+    function resetProjectSettings(reset) {
+        ProjectManager.priorityList = Object.values(projects);
+        let def = {
+            arpaScaleWeighting: true,
+            arpaStep: 10,
+        }
+
+        let projectPriority = 0;
+        const setProject = (item, autoBuildEnabled, _autoMax, _weighting) => {
+            let id = projects[item].id;
+            def['arpa_' + id] = autoBuildEnabled;
+            def['arpa_p_' + id] = projectPriority++;
+            def['arpa_m_' + id] = _autoMax;
+            def['arpa_w_' + id] = _weighting;
+        };
+        setProject("LaunchFacility", true, -1, 100);
+        setProject("SuperCollider", true, -1, 5);
+        setProject("StockExchange", true, -1, 0.5);
+        setProject("Monument", true, -1, 1);
+        setProject("Railway", true, -1, 0.1);
+        setProject("Nexus", true, -1, 1);
+        setProject("RoidEject", true, -1, 1);
+        setProject("ManaSyphon", false, 79, 1);
+
+        applySettings(def, reset);
+        ProjectManager.sortByPriority();
     }
 
-    function resetProductionState() {
-        // Smelter settings
-        let smelterPriority = 0;
-        SmelterManager.Fuels.Inferno.priority = smelterPriority++;
-        SmelterManager.Fuels.Oil.priority = smelterPriority++;
-        SmelterManager.Fuels.Star.priority = smelterPriority++;
-        SmelterManager.Fuels.Coal.priority = smelterPriority++;
-        SmelterManager.Fuels.Wood.priority = smelterPriority++;
+    function resetProductionSettings(reset) {
+        let def = {
+            productionChrysotileWeight: 2,
+            productionFoundryWeighting: "demanded",
+            productionRitualManaUse: 0.5,
+            productionSmelting: "storage",
+            productionFactoryMinIngredients: 0.01,
+        }
 
-        // Factory settings
-        Object.assign(FactoryManager.Productions.LuxuryGoods, {enabled: true, weighting: 1, priority: 2});
-        Object.assign(FactoryManager.Productions.Furs, {enabled: true, weighting: 1, priority: 1});
-        Object.assign(FactoryManager.Productions.Alloy, {enabled: true, weighting: 1, priority: 3});
-        Object.assign(FactoryManager.Productions.Polymer, {enabled: true, weighting: 1, priority: 3});
-        Object.assign(FactoryManager.Productions.NanoTube, {enabled: true, weighting: 4, priority: 3});
-        Object.assign(FactoryManager.Productions.Stanene, {enabled: true, weighting: 4, priority: 3});
+        // Foundry
+        const setFoundryProduct = (item, autoCraftEnabled, craftWeighting, craftPreserve) => {
+            let id = resources[item].id;
+            def['craft' + id] = autoCraftEnabled;
+            def['foundry_w_' + id] = craftWeighting;
+            def['foundry_p_' + id] = craftPreserve;
+        };
+        setFoundryProduct("Plywood", true, 1, 0);
+        setFoundryProduct("Brick", true, 1, 0);
+        setFoundryProduct("Wrought_Iron", true, 1, 0);
+        setFoundryProduct("Sheet_Metal", true, 2, 0);
+        setFoundryProduct("Mythril", true, 3, 0);
+        setFoundryProduct("Aerogel", true, 3, 0);
+        setFoundryProduct("Nanoweave", true, 10, 0);
+        setFoundryProduct("Scarletite", true, 1, 0);
 
-        Object.assign(resources.Plywood, {autoCraftEnabled: true, craftWeighting: 1, craftPreserve: 0});
-        Object.assign(resources.Brick, {autoCraftEnabled: true, craftWeighting: 1, craftPreserve: 0});
-        Object.assign(resources.Wrought_Iron, {autoCraftEnabled: true, craftWeighting: 1, craftPreserve: 0});
-        Object.assign(resources.Sheet_Metal, {autoCraftEnabled: true, craftWeighting: 2, craftPreserve: 0});
-        Object.assign(resources.Mythril, {autoCraftEnabled: true, craftWeighting: 3, craftPreserve: 0});
-        Object.assign(resources.Aerogel, {autoCraftEnabled: true, craftWeighting: 3, craftPreserve: 0});
-        Object.assign(resources.Nanoweave, {autoCraftEnabled: true, craftWeighting: 10, craftPreserve: 0});
-        Object.assign(resources.Scarletite, {autoCraftEnabled: true, craftWeighting: 1, craftPreserve: 0});
+        // Pylon
+        for (let spell of Object.values(RitualManager.Productions)) {
+            def['spell_w_' + spell.id] = 100; // weighting
+        }
+        def['spell_w_hunting'] = 10;
+        def['spell_w_farmer'] = 1;
 
-        Object.assign(DroidManager.Productions.Adamantite, {priority: 1, weighting: 10});
-        Object.assign(DroidManager.Productions.Aluminium, {priority: 1, weighting: 1});
-        Object.assign(DroidManager.Productions.Uranium, {priority: -1, weighting: 10});
-        Object.assign(DroidManager.Productions.Coal, {priority: -1, weighting: 10});
+        // Smelter
+        Object.values(SmelterManager.Fuels).forEach((fuel, i) => {
+            def["smelter_fuel_p_" + fuel.id] = i; // priority
+        });
 
-        Object.values(RitualManager.Productions).forEach(spell => spell.weighting = 100);
-        RitualManager.Productions.Hunting.weighting = 10;
-        RitualManager.Productions.Farmer.weighting = 1;
+        // Factory
+        const setFactoryProduct = (item, enabled, weighting, priority) => {
+            let id = FactoryManager.Productions[item].resource.id;
+            def['production_' + id] = enabled;
+            def['production_w_' + id] = weighting;
+            def['production_p_' + id] = priority;
+        };
+        setFactoryProduct("LuxuryGoods", true, 1, 2);
+        setFactoryProduct("Furs", true, 1, 1);
+        setFactoryProduct("Alloy", true, 1, 3);
+        setFactoryProduct("Polymer", true, 1, 3);
+        setFactoryProduct("NanoTube", true, 4, 3);
+        setFactoryProduct("Stanene", true, 4, 3);
+
+        // Mining Droids
+        const setDroidProduct = (item, weighting, priority) => {
+            let id = DroidManager.Productions[item].resource.id;
+            def['droid_w_' + id] = weighting;
+            def['droid_pr_' + id] = priority;
+        };
+        setDroidProduct("Adamantite", 10, 1);
+        setDroidProduct("Aluminium", 1, 1);
+        setDroidProduct("Uranium", 10, -1);
+        setDroidProduct("Coal", 10, -1);
+
+        applySettings(def, reset);
     }
 
     function resetTriggerState() {
         TriggerManager.priorityList = [];
     }
 
-    function resetLoggingSettings() {
-        settings.logEnabled = true;
-        Object.values(GameLog.Types).forEach(log => settings[log.settingKey] = true);
-        settings[GameLog.Types.arpa.settingKey] = false;
-        settings[GameLog.Types.mercenary.settingKey] = false;
+    function resetLoggingSettings(reset) {
+        let def = {
+            logFilter: "",
+            logEnabled: true,
+        }
+        Object.keys(GameLog.Types).forEach(id => def["log_" + id] = true);
+        def["log_mercenary"] = false;
 
-        settings.logFilter = "";
+        applySettings(def, reset);
+    }
+
+    function resetPlanetSettings(reset) {
+        let def = {};
+        biomeList.forEach(biome => def["biome_w_" + biome] = (planetBiomes.length - planetBiomes.indexOf(biome)) * 10);
+        traitList.forEach(trait => def["trait_w_" + trait] = (planetTraits.length - planetTraits.indexOf(trait)) * 10);
+        extraList.forEach(extra => def["extra_w_" + extra] = 0);
+        def["extra_w_Achievement"] = 1000;
+
+        applySettings(def, reset);
+    }
+
+    function resetFleetSettings(reset) {
+        let def = {
+            fleetMaxCover: true,
+            fleetEmbassyKnowledge: 6000000,
+            fleetAlienGiftKnowledge: 6500000,
+            fleetAlien2Knowledge: 9000000,
+            fleetChthonianLoses: "frigate",
+        }
+        galaxyRegions.forEach((id, index) => def["fleet_pr_" + id] = index);
+
+        applySettings(def, reset);
+    }
+
+    function resetMechSettings(reset) {
+        let def = {
+            mechScrap: "mixed",
+            mechScrapEfficiency: 1.5,
+            mechCollectorValue: 0.5,
+            mechBuild: "random",
+            mechSize: "titan",
+            mechSizeGravity: "auto",
+            mechFillBay: true,
+            mechScouts: 0.05,
+            mechMinSupply: 1000,
+            mechMaxCollectors: 0.5,
+            mechSpecial: "prefered",
+            mechSaveSupply: true,
+            buildingMechsFirst: true,
+            mechBaysFirst: true,
+            mechWaygatePotential: 0.4,
+        }
+
+        applySettings(def, reset);
+    }
+
+    function resetEjectorSettings(reset) {
+        let def = {
+            autoSupply: false,
+        }
+
+        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
+            let resource = resourcesByAtomicMass[i];
+            def['res_eject' + resource.id] = resource.isTradable(); // ejectEnabled
+        }
+        for (let i = 0; i < resourcesBySupplyValue.length; i++) {
+            let resource = resourcesBySupplyValue[i];
+            def['res_supply' + resource.id] = resource.isTradable(); // supplyEnabled
+        }
+
+        def['res_eject' + resources.Elerium.id] = true;
+        def['res_eject' + resources.Infernite.id] = true;
+
+        applySettings(def, reset);
     }
 
     function updateStateFromSettings() {
-        updateStandAloneSettings();
-
         TriggerManager.priorityList = [];
-        settings.triggers.forEach(trigger => TriggerManager.AddTriggerFromSetting(trigger));
+        settingsRaw.triggers.forEach(trigger => TriggerManager.AddTriggerFromSetting(trigger));
 
-        for (let i = 0; i < MinorTraitManager.priorityList.length; i++) {
-            let trait = MinorTraitManager.priorityList[i];
-            trait.enabled = settings['mTrait_' + trait.traitName] ?? trait.enabled;
-            trait.weighting = parseFloat(settings['mTrait_w_' + trait.traitName] ?? trait.weighting);
-            trait.priority = parseFloat(settings['mTrait_p_' + trait.traitName] ?? trait.priority);
-        }
-        MinorTraitManager.sortByPriority();
-
-        for (let i = 0; i < state.craftableResourceList.length; i++) {
-            let resource = state.craftableResourceList[i];
-            resource.autoCraftEnabled = settings['craft' + resource.id] ?? resource.autoCraftEnabled;
-            resource.craftWeighting = parseFloat(settings['foundry_w_' + resource.id] ?? resource.craftWeighting);
-            resource.craftPreserve = parseFloat(settings['foundry_p_' + resource.id] ?? resource.craftPreserve);
-        }
-
-        for (let i = 0; i < BuildingManager.priorityList.length; i++) {
-            let building = BuildingManager.priorityList[i];
-            building.autoBuildEnabled = settings['bat' + building._vueBinding] ?? building.autoBuildEnabled;
-            building.priority = parseInt(settings['bld_p_' + building._vueBinding] ?? building.priority);
-            building._autoMax = parseInt(settings['bld_m_' + building._vueBinding] ?? building._autoMax);
-            building._weighting = parseFloat(settings['bld_w_' + building._vueBinding] ?? building._weighting);
-            if (building.isSwitchable()) {
-                building.autoStateEnabled = settings['bld_s_' + building._vueBinding] ?? building.autoStateEnabled;
-            }
-            if (building.is.smart) {
-                building.autoStateSmart = settings['bld_s2_' + building._vueBinding] ?? building.autoStateSmart;
-            }
-        }
-        BuildingManager.sortByPriority();
-
-        for (let i = 0; i < JobManager.priorityList.length; i++) {
-            let job = JobManager.priorityList[i];
-            job.autoJobEnabled = settings['job_' + job._originalId] ?? job.autoJobEnabled;
-            job.priority = parseInt(settings['job_p_' + job._originalId] ?? job.priority);
-            job.breakpoints[0] = settings['job_b1_' + job._originalId] ?? job.breakpoints[0];
-            job.breakpoints[1] = settings['job_b2_' + job._originalId] ?? job.breakpoints[1];
-            job.breakpoints[2] = settings['job_b3_' + job._originalId] ?? job.breakpoints[2];
-        }
-        JobManager.sortByPriority();
-
-        settings.arpa = settings.arpa ?? {};
-        for (let i = 0; i < ProjectManager.priorityList.length; i++) {
-            let project = ProjectManager.priorityList[i];
-            project.autoBuildEnabled = settings.arpa[project.id] ?? project.autoBuildEnabled;
-            project.priority = parseInt(settings['arpa_p_' + project.id] ?? project.priority);
-            project._autoMax = parseInt(settings['arpa_m_' + project.id] ?? project._autoMax);
-            project._weighting = parseFloat(settings['arpa_w_' + project.id] ?? project._weighting);
-        }
-        ProjectManager.sortByPriority();
-
-        for (let spell of Object.values(RitualManager.Productions)) {
-            spell.weighting = parseFloat(settings['spell_w_' + spell.id] ?? spell.weighting);
-        }
-
-        for (let production of Object.values(FactoryManager.Productions)) {
-            production.enabled = settings['production_' + production.resource.id] ?? production.enabled;
-            production.weighting = parseFloat(settings['production_w_' + production.resource.id] ?? production.weighting);
-            production.priority = parseFloat(settings['production_p_' + production.resource.id] ?? production.priority);
-        }
-
-        for (let fuel of Object.values(SmelterManager.Fuels)) {
-            fuel.priority = parseInt(settings['smelter_fuel_p_' + fuel.id] ?? fuel.priority);
-        }
-
-        for (let production of Object.values(DroidManager.Productions)) {
-            production.weighting = parseFloat(settings['droid_w_' + production.resource.id] ?? production.weighting);
-            production.priority = parseFloat(settings['droid_pr_' + production.resource.id] ?? production.priority);
-        }
-
-        for (let resource of Object.values(resources)) {
-            if (resource.isEjectable()) {
-                resource.ejectEnabled = settings['res_eject' + resource.id] ?? resource.ejectEnabled;
-            }
-            if (resource.isSupply()) {
-                resource.supplyEnabled = settings['res_supply' + resource.id] ?? resource.supplyEnabled;
-            }
-            if (resource.hasStorage()) {
-                resource.autoStorageEnabled = settings['res_storage' + resource.id] ?? resource.autoStorageEnabled;
-                resource.storeOverflow = settings['res_storage_o_' + resource.id] ?? resource.storeOverflow;
-                resource.storagePriority = parseFloat(settings['res_storage_p_' + resource.id] ?? resource.storagePriority);
-                resource._autoCratesMax = parseInt(settings['res_crates_m_' + resource.id] ?? resource._autoCratesMax);
-                resource._autoContainersMax = parseInt(settings['res_containers_m_' + resource.id] ?? resource._autoContainersMax);
-            }
-            if (resource.isTradable()) {
-                resource.marketPriority = parseInt(settings['res_buy_p_' + resource.id] ?? resource.marketPriority);
-                resource.autoBuyEnabled = settings['buy' + resource.id] ?? resource.autoBuyEnabled;
-                resource.autoBuyRatio = parseFloat(settings['res_buy_r_' + resource.id] ?? resource.autoBuyRatio);
-                resource.autoSellEnabled = settings['sell' + resource.id] ?? resource.autoSellEnabled;
-                resource.autoSellRatio = parseFloat(settings['res_sell_r_' + resource.id] ?? resource.autoSellRatio);
-                resource.autoTradeBuyEnabled = settings['res_trade_buy_' + resource.id] ?? resource.autoTradeBuyEnabled;
-                resource.autoTradeSellEnabled = settings['res_trade_sell_' + resource.id] ?? resource.autoTradeSellEnabled;
-                resource.autoTradeWeighting = settings['res_trade_w_' + resource.id] ?? resource.autoTradeWeighting;
-                resource.autoTradePriority = settings['res_trade_p_' + resource.id] ?? resource.autoTradePriority;
-            }
-        }
-        StorageManager.sortByPriority();
-        MarketManager.sortByPriority();
-
-        for (let i = 0; i < poly.galaxyOffers.length; i++) {
-            let resource = resources[poly.galaxyOffers[i].buy.res];
-            resource.galaxyMarketWeighting = parseFloat(settings['res_galaxy_w_' + resource.id] ?? resource.galaxyMarketWeighting);
-            resource.galaxyMarketPriority = parseFloat(settings['res_galaxy_p_' + resource.id] ?? resource.galaxyMarketPriority);
-        }
     }
 
     function updateSettingsFromState() {
-        updateStandAloneSettings();
+        settingsRaw.triggers = JSON.parse(JSON.stringify(TriggerManager.priorityList));
 
-        settings.triggers = JSON.parse(JSON.stringify(TriggerManager.priorityList));
-
-        for (let i = 0; i < BuildingManager.priorityList.length; i++) {
-            const building = BuildingManager.priorityList[i];
-            settings['bat' + building._vueBinding] = building.autoBuildEnabled;
-            settings['bld_p_' + building._vueBinding] = building.priority;
-            settings['bld_m_' + building._vueBinding] = building._autoMax;
-            settings['bld_w_' + building._vueBinding] = building._weighting;
-            if (building.isSwitchable()) {
-                settings['bld_s_' + building._vueBinding] = building.autoStateEnabled;
-            }
-            if (building.is.smart) {
-                settings['bld_s2_' + building._vueBinding] = building.autoStateSmart;
-            }
-        }
-
-        for (let i = 0; i < state.craftableResourceList.length; i++) {
-            const resource = state.craftableResourceList[i];
-            settings['craft' + resource.id] = resource.autoCraftEnabled;
-            settings["foundry_w_" + resource.id] = resource.craftWeighting;
-            settings["foundry_p_" + resource.id] = resource.craftPreserve;
-        }
-
-        for (let i = 0; i < JobManager.priorityList.length; i++) {
-            const job = JobManager.priorityList[i];
-            settings['job_' + job._originalId] = job.autoJobEnabled;
-            settings['job_p_' + job._originalId] = job.priority;
-            settings['job_b1_' + job._originalId] = job.breakpoints[0];
-            settings['job_b2_' + job._originalId] = job.breakpoints[1];
-            settings['job_b3_' + job._originalId] = job.breakpoints[2];
-        }
-
-        for (let i = 0; i < MinorTraitManager.priorityList.length; i++) {
-            const trait = MinorTraitManager.priorityList[i];
-            settings['mTrait_' + trait.traitName] = trait.enabled;
-            settings['mTrait_w_' + trait.traitName] = trait.weighting;
-            settings['mTrait_p_' + trait.traitName] = trait.priority;
-        }
-
-        settings.arpa = settings.arpa ?? {};
-        for (let i = 0; i < ProjectManager.priorityList.length; i++) {
-            const project = ProjectManager.priorityList[i];
-            settings.arpa[project.id] = project.autoBuildEnabled;
-            settings['arpa_p_' + project.id] = project.priority;
-            settings['arpa_m_' + project.id] = project._autoMax;
-            settings['arpa_w_' + project.id] = project._weighting;
-        }
-
-        for (let spell of Object.values(RitualManager.Productions)) {
-            settings['spell_w_' + spell.id] = spell.weighting;
-        }
-
-        for (let production of Object.values(FactoryManager.Productions)) {
-            settings["production_" + production.resource.id] = production.enabled;
-            settings["production_w_" + production.resource.id] = production.weighting;
-            settings["production_p_" + production.resource.id] = production.priority;
-        }
-
-        for (let fuel of Object.values(SmelterManager.Fuels)) {
-            settings["smelter_fuel_p_" + fuel.id] = fuel.priority;
-        }
-
-        for (let production of Object.values(DroidManager.Productions)) {
-            settings["droid_w_" + production.resource.id] = production.weighting;
-            settings["droid_pr_" + production.resource.id] = production.priority;
-        }
-
-        for (let resource of Object.values(resources)) {
-            if (resource.isEjectable()) {
-                settings['res_eject' + resource.id] = resource.ejectEnabled;
-            }
-            if (resource.isSupply()) {
-                settings['res_supply' + resource.id] = resource.supplyEnabled;
-            }
-            if (resource.hasStorage()) {
-                settings['res_storage' + resource.id] = resource.autoStorageEnabled;
-                settings['res_storage_o_' + resource.id] = resource.storeOverflow;
-                settings['res_storage_p_' + resource.id] = resource.storagePriority;
-                settings['res_crates_m_' + resource.id] = resource._autoCratesMax;
-                settings['res_containers_m_' + resource.id] = resource._autoContainersMax;
-            }
-            if (resource.isTradable()) {
-                settings['res_buy_p_' + resource.id] = resource.marketPriority;
-                settings['buy' + resource.id] = resource.autoBuyEnabled;
-                settings['res_buy_r_' + resource.id] = resource.autoBuyRatio;
-                settings['sell' + resource.id] = resource.autoSellEnabled;
-                settings['res_sell_r_' + resource.id] = resource.autoSellRatio;
-                settings['res_trade_buy_' + resource.id] = resource.autoTradeBuyEnabled;
-                settings['res_trade_sell_' + resource.id] = resource.autoTradeSellEnabled;
-                settings['res_trade_w_' + resource.id] = resource.autoTradeWeighting;
-                settings['res_trade_p_' + resource.id] = resource.autoTradePriority;
-            }
-        }
-
-        for (let i = 0; i < poly.galaxyOffers.length; i++) {
-            let resource = resources[poly.galaxyOffers[i].buy.res];
-            settings['res_galaxy_w_' + resource.id] = resource.galaxyMarketWeighting;
-            settings['res_galaxy_p_' + resource.id] = resource.galaxyMarketPriority;
-        }
-
-        localStorage.setItem('settings', JSON.stringify(settings));
+        localStorage.setItem('settings', JSON.stringify(settingsRaw));
     }
 
-    function addSetting(settingName, defaultValue) {
-        if (!settings.hasOwnProperty(settingName)) {
-            settings[settingName] = defaultValue;
+    function applySettings(def, reset) {
+        if (reset) {
+            // There's no default overrides, just wipe them all on reset
+            for (let key in def) {
+                delete settingsRaw.overrides[key];
+            }
+            Object.assign(settingsRaw, def);
+        } else {
+            for (let key in def) {
+                if (!settingsRaw.hasOwnProperty(key)) {
+                    settingsRaw[key] = def[key];
+                }
+            }
         }
     }
 
     function updateStandAloneSettings() {
-        settings['scriptName'] = "TMVictor";
+        let def = {
+            scriptName: "TMVictor",
+            overrides: {},
+            triggers: [],
 
-        addSetting("triggers", []);
-        addSetting("evolutionQueue", []);
-        addSetting("evolutionQueueEnabled", false);
-        addSetting("evolutionQueueRepeat", false);
-
-        addSetting("storageLimitPreMad", true);
-        addSetting("storageSafeReassign", true);
-        addSetting("storageAssignExtra", true);
-        addSetting("storagePrioritizedOnly", false);
-        addSetting("arpaScaleWeighting", true);
-        addSetting("arpaStep", 10);
-
-        addSetting("productionChrysotileWeight", 2);
-        addSetting("productionFoundryWeighting", "demanded");
-        addSetting("productionRitualManaUse", 0.5);
-        addSetting("productionSmelting", "storage");
-        addSetting("productionFactoryMinIngredients", 0.01);
-
-        addSetting("jobSetDefault", true);
-        addSetting("jobLumberWeighting", 50);
-        addSetting("jobQuarryWeighting", 50);
-        addSetting("jobCrystalWeighting", 50);
-        addSetting("jobScavengerWeighting", 50);
-        addSetting("jobDisableMiners", true);
-        addSetting("jobDisableCraftsmans", true);
-
-        addSetting("masterScriptToggle", true);
-        addSetting("showSettings", true);
-        addSetting("autoEvolution", false);
-        addSetting("autoMarket", false);
-        addSetting("autoFight", false);
-        addSetting("autoCraft", false);
-        addSetting("autoARPA", false);
-        addSetting("autoBuild", false);
-        addSetting("autoResearch", false);
-        addSetting("autoJobs", false);
-        addSetting("autoTax", false);
-        addSetting("autoCraftsmen", false);
-        addSetting("autoPower", false);
-        addSetting("autoStorage", false);
-        addSetting("autoMinorTrait", false);
-        addSetting("autoHell", false);
-        addSetting("autoMech", false);
-        addSetting("autoFleet", false);
-        addSetting("autoSupply", false);
-        addSetting("autoGalaxyMarket", false);
-
-        addSetting("logEnabled", true);
-        addSetting(GameLog.Types.mercenary.settingKey, false);
-        addSetting(GameLog.Types.arpa.settingKey, false);
-        Object.values(GameLog.Types).forEach(log => addSetting(log.settingKey, true));
-        addSetting("logFilter", "");
-
-        addSetting("autoPylon", false);
-        addSetting("autoQuarry", false);
-        addSetting("autoSmelter", false);
-        addSetting("autoFactory", false);
-        addSetting("autoMiningDroid", false);
-        addSetting("autoGraphenePlant", false);
-        addSetting("prestigeType", "none");
-        addSetting("prestigeMADIgnoreArpa", true);
-        addSetting("prestigeMADWait", true);
-        addSetting("prestigeMADPopulation", 1);
-        addSetting("prestigeWaitAT", true);
-        addSetting("prestigeBioseedConstruct", true);
-        addSetting("prestigeEnabledBarracks", 100);
-        addSetting("prestigeBioseedProbes", 3);
-        addSetting("prestigeWhiteholeSaveGems", false);
-        addSetting("prestigeWhiteholeMinMass", 8);
-        addSetting("prestigeWhiteholeStabiliseMass", true);
-        addSetting("prestigeWhiteholeEjectEnabled", true);
-        addSetting("prestigeWhiteholeEjectExcess", false);
-        addSetting("prestigeWhiteholeDecayRate", 0.2);
-        addSetting("prestigeWhiteholeEjectAllCount", 100);
-        addSetting("prestigeAscensionSkipCustom", false);
-        addSetting("prestigeAscensionPillar", true);
-        addSetting("prestigeDemonicFloor", 100);
-        addSetting("prestigeDemonicPotential", 0.4);
-        addSetting("prestigeDemonicBomb", false);
-
-        addSetting("autoAssembleGene", false);
-        addSetting("genesAssembleGeneAlways", true);
-
-        addSetting("minimumMoney", 0);
-        addSetting("minimumMoneyPercentage", 0);
-        addSetting("tradeRouteMinimumMoneyPerSecond", 500);
-        addSetting("tradeRouteMinimumMoneyPercentage", 50);
-        addSetting("tradeRouteSellExcess", true);
-        addSetting("generalMinimumTaxRate", 20);
-        addSetting("generalMinimumMorale", 105);
-        addSetting("generalMaximumMorale", 500);
-        addSetting("govManage", false);
-        addSetting("govInterim", GovernmentManager.Types.democracy.id);
-        addSetting("govFinal", GovernmentManager.Types.technocracy.id);
-        addSetting("govSpace", GovernmentManager.Types.corpocracy.id);
-        addSetting("govGovernor", "none");
-
-        addSetting("foreignAttackLivingSoldiersPercent", 90);
-        addSetting("foreignAttackHealthySoldiersPercent", 90);
-        addSetting("foreignHireMercMoneyStoragePercent", 90);
-        addSetting("foreignHireMercCostLowerThanIncome", 1);
-        addSetting("foreignHireMercDeadSoldiers", 1);
-        addSetting("foreignMinAdvantage", 40);
-        addSetting("foreignMaxAdvantage", 50);
-        addSetting("foreignMaxSiegeBattalion", 10);
-        addSetting("foreignProtectSoldiers", false);
-
-        addSetting("foreignPacifist", false);
-        addSetting("foreignUnification", true);
-        addSetting("foreignForceSabotage", true);
-        addSetting("foreignOccupyLast", true);
-        addSetting("foreignTrainSpy", true);
-        addSetting("foreignSpyMax", 2);
-        addSetting("foreignPowerRequired", 75);
-        addSetting("foreignPolicyInferior", "Annex");
-        addSetting("foreignPolicySuperior", "Sabotage");
-        addSetting("foreignPolicyRival", "Sabotage");
-
-        addSetting("hellTurnOffLogMessages", true);
-        addSetting("hellHandlePatrolCount", true);
-        addSetting("hellHomeGarrison", 10);
-        addSetting("hellMinSoldiers", 20);
-        addSetting("hellMinSoldiersPercent", 90);
-
-        addSetting("hellTargetFortressDamage", 100);
-        addSetting("hellLowWallsMulti", 3);
-
-        addSetting("hellHandlePatrolSize", true);
-        addSetting("hellPatrolMinRating", 30);
-        addSetting("hellPatrolThreatPercent", 8);
-        addSetting("hellPatrolDroneMod", 5);
-        addSetting("hellPatrolDroidMod", 5);
-        addSetting("hellPatrolBootcampMod", 0);
-        addSetting("hellBolsterPatrolPercentTop", 50);
-        addSetting("hellBolsterPatrolPercentBottom", 20);
-        addSetting("hellBolsterPatrolRating", 300);
-
-        addSetting("hellAttractorTopThreat", 3000);
-        addSetting("hellAttractorBottomThreat", 1300);
-
-        addSetting("userUniverseTargetName", "none");
-        addSetting("userPlanetTargetName", "none");
-        addSetting("userEvolutionTarget", "auto");
-
-        for (let i = 0; i < challenges.length; i++) {
-            addSetting("challenge_" + challenges[i][0].id, false)
+            masterScriptToggle: true,
+            showSettings: true,
+            autoEvolution: false,
+            autoFight: false,
+            autoHell: false,
+            autoMech: false,
+            autoFleet: false,
+            autoTax: false,
+            autoCraft: false,
+            autoBuild: false,
+            autoPower: false,
+            autoStorage: false,
+            autoMarket: false,
+            autoGalaxyMarket: false,
+            autoResearch: false,
+            autoARPA: false,
+            autoJobs: false,
+            autoCraftsmen: false,
+            autoPylon: false,
+            autoQuarry: false,
+            autoSmelter: false,
+            autoFactory: false,
+            autoMiningDroid: false,
+            autoGraphenePlant: false,
+            autoAssembleGene: false,
+            autoMinorTrait: false,
         }
+        settingsSections.forEach(id => def[id + "SettingsCollapsed"] = true);
+        applySettings(def, false);
 
-        addSetting("userResearchTheology_1", "auto");
-        addSetting("userResearchTheology_2", "auto");
-        addSetting("researchIgnore", ["tech-purify"]);
-
-        addSetting("buildingBuildIfStorageFull", false);
-        addSetting("buildingsIgnoreZeroRate", false);
-        addSetting("buildingsConflictQueue", true);
-        addSetting("buildingsConflictRQueue", true);
-        addSetting("buildingsConflictPQueue", true);
-        addSetting("buildingShrineType", "know");
-        addSetting("buildingTowerSuppression", 100);
-        addSetting("buildingAlwaysClick", false);
-        addSetting("buildingClickPerTick", 50);
-        addSetting("buildingWeightingNew", 3);
-        addSetting("buildingWeightingUselessPowerPlant", 0.01);
-        addSetting("buildingWeightingNeedfulPowerPlant", 3);
-        addSetting("buildingWeightingUnderpowered", 0.8);
-        addSetting("buildingWeightingUselessKnowledge", 0.01);
-        addSetting("buildingWeightingNeedfulKnowledge", 5);
-        addSetting("buildingWeightingMissingFuel", 10);
-        addSetting("buildingWeightingNonOperatingCity", 0.2);
-        addSetting("buildingWeightingNonOperating", 0);
-        addSetting("buildingWeightingMissingSupply", 0);
-        addSetting("buildingWeightingMissingSupport", 0);
-        addSetting("buildingWeightingUselessSupport", 0.01);
-        addSetting("buildingWeightingMADUseless", 0);
-        addSetting("buildingWeightingUnusedEjectors", 0.1);
-        addSetting("buildingWeightingCrateUseless", 0.01);
-        addSetting("buildingWeightingHorseshoeUseless", 0.1);
-        addSetting("buildingWeightingZenUseless", 0.01);
-        addSetting("buildingWeightingGateTurret", 0.01);
-        addSetting("buildingWeightingNeedStorage", 1);
-        addSetting("buildingWeightingUselessHousing", 1);
-
-        addSetting("buildingEnabledAll", true);
-        addSetting("buildingStateAll", true);
-
-        addSetting("triggerRequest", true);
-        addSetting("queueRequest", true);
-        addSetting("researchRequest", true);
-        addSetting("researchRequestSpace", false);
-        addSetting("missionRequest", true);
-
-        settingsSections.forEach(id => addSetting(id + "SettingsCollapsed", true));
-        galaxyRegions.forEach((id, index) => addSetting("fleet_pr_" + id, index));
-
-        addSetting("fleetMaxCover", true);
-        addSetting("fleetEmbassyKnowledge", 6000000);
-        addSetting("fleetAlienGiftKnowledge", 6500000);
-        addSetting("fleetAlien2Knowledge", 9000000);
-        addSetting("fleetChthonianLoses", "frigate");
-
-        addSetting("mechScrap", "mixed");
-        addSetting("mechScrapEfficiency", 1.5);
-        addSetting("mechCollectorValue", 0.5);
-        addSetting("mechBuild", "random");
-        addSetting("mechSize", "titan");
-        addSetting("mechSizeGravity", "auto");
-        addSetting("mechFillBay", true);
-        addSetting("mechScouts", 0.05);
-        addSetting("mechMinSupply", 1000);
-        addSetting("mechMaxCollectors", 0.5);
-        addSetting("mechSpecial", "prefered");
-        addSetting("mechSaveSupply", true);
-        addSetting("buildingMechsFirst", true);
-        addSetting("mechBaysFirst", true);
-        addSetting("mechWaygatePotential", 0.4);
-
-        biomeList.forEach(biome => addSetting("biome_w_" + biome, (planetBiomes.length - planetBiomes.indexOf(biome)) * 10));
-        traitList.forEach(trait => addSetting("trait_w_" + trait, (planetTraits.length - planetTraits.indexOf(trait)) * 10));
-        addSetting("extra_w_Achievement", 1000);
-        extraList.forEach(extra => addSetting("extra_w_" + extra, 0));
+        resetEvolutionSettings(false);
+        resetWarSettings(false);
+        resetHellSettings(false);
+        resetMechSettings(false);
+        resetFleetSettings(false);
+        resetGovernmentSettings(false);
+        resetBuildingSettings(false);
+        resetWeightingSettings(false);
+        resetMarketSettings(false);
+        resetResearchSettings(false);
+        resetProjectSettings(false);
+        resetJobSettings(false);
+        resetProductionSettings(false);
+        resetStorageSettings(false);
+        resetGeneralSettings(false);
+        resetPrestigeSettings(false);
+        resetEjectorSettings(false);
+        resetPlanetSettings(false);
+        resetLoggingSettings(false);
+        resetMinorTraitSettings(false);
 
         // Convert old setings
-        settings.triggers.forEach(t => {
+        settingsRaw.triggers.forEach(t => {
             if (techIds["tech-" + t.actionId]) { t.actionId = "tech-" + t.actionId; }
             if (techIds["tech-" + t.requirementId]) { t.requirementId = "tech-" + t.requirementId; }
         });
-        if (settings.hasOwnProperty("productionPrioritizeDemanded")) {
-            settings.productionFoundryWeighting = settings.productionPrioritizeDemanded ? "demanded" : "none";
+        if (settingsRaw.hasOwnProperty("productionPrioritizeDemanded")) {
+            settingsRaw.productionFoundryWeighting = settingsRaw.productionPrioritizeDemanded ? "demanded" : "none";
         }
-        settings.challenge_plasmid = settings.challenge_mastery || settings.challenge_plasmid; // Merge challenge settings
-        if (settings.hasOwnProperty("res_trade_buy_mtr_Food")) {
+        settingsRaw.challenge_plasmid = settingsRaw.challenge_mastery || settingsRaw.challenge_plasmid; // Merge challenge settings
+        if (settingsRaw.hasOwnProperty("res_trade_buy_mtr_Food")) {
             MarketManager.priorityList.forEach(res => res.autoTradeBuyEnabled = true);
         }
+        if (settingsRaw.hasOwnProperty("arpa")) {
+            Object.entries(settingsRaw.arpa).forEach(([id, enabled]) => settingsRaw["arpa_" + id] = enabled);
+        }
         // Remove old settings
-        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana"].forEach(id => delete settings[id]);
-        ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settings[id + index]));
-        ["res_storage_w_", "res_trade_buy_mtr_", "res_trade_sell_mps_"].forEach(id => Object.values(resources).forEach(resource => delete settings[id + resource.id]));
-        Object.values(projects).forEach(project => delete settings['arpa_ignore_money_' + project.id]);
-        Object.values(buildings).filter(building => !building.isSwitchable()).forEach(building => delete settings['bld_s_' + building._vueBinding]);
+        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana", "arpa"].forEach(id => delete settingsRaw[id]);
+        ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settingsRaw[id + index]));
+        ["res_storage_w_", "res_trade_buy_mtr_", "res_trade_sell_mps_"].forEach(id => Object.values(resources).forEach(resource => delete settingsRaw[id + resource.id]));
+        Object.values(projects).forEach(project => delete settingsRaw['arpa_ignore_money_' + project.id]);
+        Object.values(buildings).filter(building => !building.isSwitchable()).forEach(building => delete settingsRaw['bld_s_' + building._vueBinding]);
     }
 
     function getAchievementLevel(context) {
@@ -5708,18 +5466,18 @@
     }
 
     function loadQueuedSettings() {
-        if (settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
+        if (settings.evolutionQueueEnabled && settingsRaw.evolutionQueue.length > 0) {
             state.evolutionAttempts++;
-            let queuedEvolution = settings.evolutionQueue.shift();
+            let queuedEvolution = settingsRaw.evolutionQueue.shift();
             for (let [settingName, settingValue] of Object.entries(queuedEvolution)) {
-                if (typeof settings[settingName] === typeof settingValue) {
-                    settings[settingName] = settingValue;
+                if (typeof settingsRaw[settingName] === typeof settingValue) {
+                    settingsRaw[settingName] = settingValue;
                 } else {
-                    console.log(`Type mismatch during loading queued settings: settings.${settingName} type: ${typeof settings[settingName]}, value: ${settings[settingName]}; queuedEvolution.${settingName} type: ${typeof settingValue}, value: ${settingValue};`);
+                    console.log(`Type mismatch during loading queued settings: settingsRaw.${settingName} type: ${typeof settingsRaw[settingName]}, value: ${settingsRaw[settingName]}; queuedEvolution.${settingName} type: ${typeof settingValue}, value: ${settingValue};`);
                 }
             }
             if (settings.evolutionQueueRepeat) {
-                settings.evolutionQueue.push(queuedEvolution);
+                settingsRaw.evolutionQueue.push(queuedEvolution);
             }
             updateStateFromSettings();
             updateSettingsFromState();
@@ -5826,7 +5584,7 @@
             }
 
             // Try to pull next race from queue
-            if (state.evolutionTarget === null && settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0 && (!settings.evolutionQueueRepeat || state.evolutionAttempts < settings.evolutionQueue.length)) {
+            if (state.evolutionTarget === null && settings.evolutionQueueEnabled && settingsRaw.evolutionQueue.length > 0 && (!settings.evolutionQueueRepeat || state.evolutionAttempts < settingsRaw.evolutionQueue.length)) {
                 return;
             }
 
@@ -5834,7 +5592,7 @@
             if (state.evolutionTarget === null) {
                 state.evolutionTarget = races.antid;
             }
-            GameLog.logSuccess(GameLog.Types.special, `Attempting evolution of ${state.evolutionTarget.name}.`, ['progress']);
+            GameLog.logSuccess("special", `Attempting evolution of ${state.evolutionTarget.name}.`, ['progress']);
         }
 
         // Apply challenges
@@ -6231,9 +5989,9 @@
 
             // Log the interaction
             if (mercenariesHired === 1) {
-                GameLog.logSuccess(GameLog.Types.mercenary, `Hired a mercenary to join the garrison.`, ['combat']);
+                GameLog.logSuccess("mercenary", `Hired a mercenary to join the garrison.`, ['combat']);
             } else if (mercenariesHired > 1) {
-                GameLog.logSuccess(GameLog.Types.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`, ['combat']);
+                GameLog.logSuccess("mercenary", `Hired ${mercenariesHired} mercenaries to join the garrison.`, ['combat']);
             }
         }
     }
@@ -6274,7 +6032,7 @@
                     continue;
                 }
 
-                GameLog.logSuccess(GameLog.Types.spying, `Training a spy to send against ${getGovName(foreign.id)}.`, ['spy']);
+                GameLog.logSuccess("spying", `Training a spy to send against ${getGovName(foreign.id)}.`, ['spy']);
                 foreignVue.spy(foreign.id);
             }
         }
@@ -6408,7 +6166,7 @@
         let campaignTitle = m.getCampaignTitle(requiredTactic);
         let battalionRating = game.armyRating(m.raid, "army");
         let advantagePercent = m.getAdvantage(battalionRating, requiredTactic, currentTarget.id).toFixed(1);
-        GameLog.logSuccess(GameLog.Types.attack, `Launching ${campaignTitle} campaign against ${getGovName(currentTarget.id)} with ${currentTarget.gov.spy < 1 ? "~" : ""}${advantagePercent}% advantage.`, ['combat']);
+        GameLog.logSuccess("attack", `Launching ${campaignTitle} campaign against ${getGovName(currentTarget.id)} with ${currentTarget.gov.spy < 1 ? "~" : ""}${advantagePercent}% advantage.`, ['combat']);
 
         m.launchCampaign(currentTarget.id);
     }
@@ -6752,6 +6510,7 @@
             availableEmployees--;
         }
 
+        state.maxSpaceMiners = 0;
         // And deal with the rest now
         for (let i = 0; i < 3; i++) {
             for (let j = 0; j < jobList.length; j++) {
@@ -6777,7 +6536,8 @@
                 log("autoJobs", "job " + job._originalId + " currentBreakpoint " + currentBreakpoint + " availableEmployees " + availableEmployees);
 
                 if (job === jobs.SpaceMiner) {
-                    state.maxSpaceMiners = Math.max(state.maxSpaceMiners, Math.min(availableEmployees, job.breakpoints[i] < 0 ? Number.MAX_SAFE_INTEGER : job.breakpoints[i]));
+                    let maxBreakpoint = job.getBreakpoint(i);
+                    state.maxSpaceMiners = Math.max(state.maxSpaceMiners, Math.min(availableEmployees, maxBreakpoint < 0 ? Number.MAX_SAFE_INTEGER : maxBreakpoint));
                     let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
                     jobsToAssign = Math.min(jobsToAssign, minersNeeded);
                 }
@@ -6989,18 +6749,19 @@
     }
 
     function autoPylon() {
+        let m = RitualManager;
         // If not unlocked then nothing to do
-        if (!RitualManager.initIndustry()) {
+        if (!m.initIndustry()) {
             return;
         }
 
-        let spells = Object.values(RitualManager.Productions).filter(spell => spell.isUnlocked() && spell.weighting > 0);
+        let spells = Object.values(m.Productions).filter(spell => spell.isUnlocked() && spell.weighting > 0);
 
         // Init adjustment, and sort groups by priorities
         let pylonAdjustments = {};
         for (let spell of spells) {
             pylonAdjustments[spell.id] = 0;
-            resources.Mana.rateOfChange += RitualManager.manaCost(RitualManager.currentSpells(spell));
+            resources.Mana.rateOfChange += m.manaCost(m.currentSpells(spell));
         }
         let manaToUse = resources.Mana.rateOfChange * (resources.Mana.storageRatio > 0.99 ? 1 : settings.productionRitualManaUse);
 
@@ -7011,7 +6772,7 @@
         while(remainingSpells.length > 0) {
             let spell = remainingSpells.sort(spellSorter)[0];
             let amount = pylonAdjustments[spell.id];
-            let cost = RitualManager.manaCost(amount + 1) - RitualManager.manaCost(amount);
+            let cost = m.manaCost(amount + 1) - m.manaCost(amount);
 
             if (cost <= manaToUse) {
                 pylonAdjustments[spell.id] = amount + 1;
@@ -7022,10 +6783,10 @@
         }
         resources.Mana.rateOfChange - (usableMana - manaToUse);
 
-        let pylonDeltas = spells.map((spell) => pylonAdjustments[spell.id] - RitualManager.currentSpells(spell));
+        let pylonDeltas = spells.map((spell) => pylonAdjustments[spell.id] - m.currentSpells(spell));
 
-        spells.forEach((spell, index) => pylonDeltas[index] < 0 && RitualManager.decreaseRitual(spell, pylonDeltas[index] * -1));
-        spells.forEach((spell, index) => pylonDeltas[index] > 0 && RitualManager.increaseRitual(spell, pylonDeltas[index]));
+        spells.forEach((spell, index) => pylonDeltas[index] < 0 && m.decreaseRitual(spell, pylonDeltas[index] * -1));
+        spells.forEach((spell, index) => pylonDeltas[index] > 0 && m.increaseRitual(spell, pylonDeltas[index]));
     }
 
     function autoQuarry() {
@@ -7490,7 +7251,6 @@
         transportDeltas.forEach(item => item.delta > 0 && item.res.increaseSupply(item.delta));
     }
 
-    // TODO: Add option how to handle each resource: eject when capped, or when excess
     function autoMassEjector() {
         let enabledEjectors = buildings.BlackholeMassEjector.stateOnCount;
         if (enabledEjectors < 1 || haveTask("trash")) {
@@ -8186,10 +7946,6 @@
         if (!resources.Power.isUnlocked()) {
             return;
         }
-        // TODO: Belt support is messy on first tick, due to empty maxSpaceMiners. That's a monkey patch to work it around. Fix me properly.
-        if (state.scriptTick < 3) {
-            resources.Belt_Support.updateData();
-        }
 
         let buildingList = BuildingManager.managedStatePriorityList();
 
@@ -8751,8 +8507,8 @@
 
         for (let id in storageAdjustments) {
             let resource = resources[id];
-            if (resource.storeOverflow && resource.currentQuantity * overMult > storageAdjustments[id].amount) {
-                let missingStorage = resource.currentQuantity * overMult - storageAdjustments[id].amount;
+            if (resource.storeOverflow && Math.max(1, resource.currentQuantity) * overMult > storageAdjustments[id].amount) {
+                let missingStorage = Math.max(1, resource.currentQuantity) * overMult - storageAdjustments[id].amount;
                 if (totalCrates > 0) {
                     let assignCrates = Math.min(Math.ceil(missingStorage / crateVolume), totalCrates, resource.autoCratesMax);
                     totalCrates -= assignCrates;
@@ -9244,7 +9000,6 @@
         }
     }
 
-    // TODO: Quick options in Andromeda tab
     function autoFleet() {
         if (!FleetManager.initFleet()) {
             return;
@@ -9572,9 +9327,9 @@
                 trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
                 if (trashMechs.length > 1) {
                     let rating = average(trashMechs.map(mech => mech.power / m.bestMech[mech.size].power));
-                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${trashMechs.length} mechs (~${Math.round(rating * 100)}%) has been scrapped.`, ['hell']);
+                    GameLog.logSuccess("mech_scrap", `${trashMechs.length} mechs (~${Math.round(rating * 100)}%) has been scrapped.`, ['hell']);
                 } else {
-                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${m.mechDesc(trashMechs[0])} mech has been scrapped.`, ['hell']);
+                    GameLog.logSuccess("mech_scrap", `${m.mechDesc(trashMechs[0])} mech has been scrapped.`, ['hell']);
                 }
                 trashMechs.forEach(mech => m.scrapMech(mech));
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
@@ -9615,7 +9370,20 @@
         for (let id in resources) {
             resources[id].updateData();
         }
+        WarManager.updateData();
+        MarketManager.updateData();
 
+        // Parse global production modifiers
+        state.globalProductionModifier = 1;
+        for (let mod of Object.values(game.breakdown.p.Global)) {
+            state.globalProductionModifier *= 1 + (parseFloat(mod) || 0) / 100;
+        }
+    }
+
+    function finalizeScriptData() {
+        for (let id in resources) {
+            resources[id].finalizeData();
+        }
         // Money is special. They aren't defined as tradable, but still affected by trades
         if (settings.autoMarket) {
             let moneyDiff = game.breakdown.p.consume["Money"];
@@ -9623,13 +9391,6 @@
                 resources.Money.tradeIncome = moneyDiff.Trade;
                 resources.Money.rateOfChange -= moneyDiff.Trade;
             }
-        }
-
-        state.maxSpaceMiners = 0;
-        // Parse global production modifiers
-        state.globalProductionModifier = 1;
-        for (let mod of Object.values(game.breakdown.p.Global)) {
-            state.globalProductionModifier *= 1 + (parseFloat(mod) || 0) / 100;
         }
 
         // Add clicking to rate of change, so we can sell or eject it.
@@ -9657,9 +9418,6 @@
                 }
             }
         }
-
-        WarManager.updateData();
-        MarketManager.updateData();
     }
 
     function requiestStorageFor(list) {
@@ -9831,7 +9589,7 @@
 
         $("#tech .action").each(function() {
             let tech = techIds[this.id];
-            if (isTechAllowed(tech) || state.triggerTargets.includes(tech)) {
+            if (isTechAllowed(tech) || state.triggerTargets.includes(tech) || state.queuedTargetsAll.includes(tech)) {
                 tech.updateResourceRequirements();
                 state.techTargets.push(tech);
             }
@@ -9850,13 +9608,13 @@
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isPillarUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} pillar already infused, soft resetting and trying again.`, ['progress', 'achievements']);
+                            GameLog.logWarning("special", `${newRace.name} pillar already infused, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available pillars already infused. Continuing with current race.`, ['progress', 'achievements']);
+                        GameLog.logWarning("special", `All currently available pillars already infused. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
@@ -9864,13 +9622,13 @@
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isGreatnessAchievementUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
+                            GameLog.logWarning("special", `${newRace.name} greatness achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available greatness achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
+                        GameLog.logWarning("special", `All currently available greatness achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
@@ -9878,18 +9636,18 @@
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isMadAchievementUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
+                            GameLog.logWarning("special", `${newRace.name} extinction achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available extinction achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
+                        GameLog.logWarning("special", `All currently available extinction achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
             } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
-                GameLog.logWarning(GameLog.Types.special, `Wrong race, soft resetting and trying again.`, ['progress']);
+                GameLog.logDanger("special", `Wrong race, soft resetting and trying again.`, ['progress']);
                 needReset = true;
             }
 
@@ -9897,9 +9655,9 @@
                 // Let's double check it's actually *soft* reset
                 let resetButton = document.querySelector(".reset .button:not(.right)");
                 if (resetButton.innerText === game.loc("reset_soft")) {
-                    if (settings.evolutionQueueEnabled && settings.evolutionQueue.length > 0) {
+                    if (settings.evolutionQueueEnabled && settingsRaw.evolutionQueue.length > 0) {
                         addEvolutionSetting();
-                        settings.evolutionQueue.unshift(settings.evolutionQueue.pop());
+                        settingsRaw.evolutionQueue.unshift(settingsRaw.evolutionQueue.pop());
                     }
                     updateSettingsFromState();
 
@@ -9931,11 +9689,8 @@
                 return;
             }
             state.goal = "Standard";
-            if (settings.triggers.length > 0) { // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
+            if (settingsRaw.triggers.length > 0) { // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
                 updateTriggerSettingsContent();
-            }
-            if (settings.evolutionQueue.length > 0) { // Update star icons, we didn't had them in evolution, and used placeholder
-                updateEvolutionSettingsContent();
             }
         }
 
@@ -9960,8 +9715,6 @@
             $(".settings11").click().click();
             mainVue.s.civTabs = game.global.settings.civTabs;
         }
-
-        updateScriptData(); // Sync exposed data with script variables
 
         // Reset required storage and prioritized resources
         for (let id in resources) {
@@ -10065,6 +9818,7 @@
             arpaIds[project._vueBinding] = project;
         }
 
+        updateStandAloneSettings();
         updateStateFromSettings();
         updateSettingsFromState();
 
@@ -10119,7 +9873,7 @@
     function buildFilterRegExp() {
         let regexps = [];
         let validIds = [];
-        let strings = settings.logFilter.split(/[^0-9a-z_]/g).filter(Boolean);
+        let strings = settingsRaw.logFilter.split(/[^0-9a-z_]/g).filter(Boolean);
         for (let i = 0; i < strings.length; i++) {
             let id = strings[i];
             // Loot message built from multiple strings without tokens, let's fake one for regexp below
@@ -10132,10 +9886,10 @@
         }
         if (regexps.length > 0) {
             state.filterRegExp = new RegExp("^(" + regexps.join("|") + ")$");
-            settings.logFilter = validIds.join(", ");
+            settingsRaw.logFilter = validIds.join(", ");
         } else {
             state.filterRegExp = null;
-            settings.logFilter = "";
+            settingsRaw.logFilter = "";
         }
     }
 
@@ -10183,6 +9937,7 @@
             if (settings.researchIgnore.includes(obj._vueBinding)) {
                 notes.push("Ignored research");
             }
+            // TODO: Other disabled techs
         }
 
         if (obj.extraDescription) {
@@ -10250,8 +10005,37 @@
         }
     }
 
+    function updateOverrides() {
+        let overrides = {};
+        for (let key in settingsRaw.overrides) {
+            let conditions = settingsRaw.overrides[key];
+            for (let i = 0; i < conditions.length; i++) {
+                try {
+                    let check = conditions[i];
+                    let var1 = checkTypes[check.type1].fn(check.arg1);
+                    let var2 = checkTypes[check.type2].fn(check.arg2);
+                    if (checkCompare[check.cmp](var1, var2)) {
+                        overrides[key] = check.ret;
+                        break;
+                    }
+                } catch (error) {
+                    if (!WindowManager.isOpen()) { // Don't spam with errors during configuring
+                        GameLog.logDanger("special", `Condition ${i+1} for setting ${key} invalid! Fix or remove it. (${error})`, ['events', 'major_events']);
+                    }
+                    continue; // Some argument not valid, skip condition
+                }
+            }
+        }
+        Object.assign(settings, settingsRaw, overrides);
+    }
+
     function automate() {
-        if (state.goal === "GameOverMan") { return; }
+        if (state.goal === "GameOverMan") {
+            return;
+        }
+        updateScriptData(); // Sync exposed data with script variables
+        updateOverrides();  // Apply settings overrides as soon as possible
+        finalizeScriptData(); // Second part of updating data, applying settings
 
         // Game doesn't expose anything during custom creation, let's check it separately
         let createCustom = document.querySelector("#celestialLab .create button");
@@ -10563,6 +10347,7 @@
                 top: 0;
                 left: 0;
                 cursor: default;
+                z-index: 10000 !important;
             }
             .ui-helper-hidden-accessible {
                 border: 0;
@@ -10662,7 +10447,7 @@
                 this.classList.toggle("script-contentactive");
                 let content = this.nextElementSibling;
                 if (content.style.display === "block") {
-                    settings[collapsibles[i].id] = true;
+                    settingsRaw[collapsibles[i].id] = true;
                     content.style.display = "none";
 
                     let search = content.getElementsByClassName("script-searchsettings");
@@ -10671,7 +10456,7 @@
                         filterBuildingSettingsTable();
                     }
                 } else {
-                    settings[collapsibles[i].id] = false;
+                    settingsRaw[collapsibles[i].id] = false;
                     content.style.display = "block";
                     content.style.height = null;
                     content.style.height = content.offsetHeight + "px";
@@ -10702,15 +10487,9 @@
                 let saveState = JSON.parse($('#importExport').val());
                 if (saveState && typeof saveState === "object" && (saveState.scriptName === "TMVictor" || $.isEmptyObject(saveState))) {
                     console.log("Importing script settings");
-                    settings = saveState;
+                    settingsRaw = saveState;
                     resetTriggerState();
-                    resetJobState();
-                    resetMarketState();
-                    resetStorageState();
-                    resetProjectState();
-                    resetProductionState();
-                    resetBuildingState();
-                    resetMinorTraitState();
+                    updateStandAloneSettings();
                     updateStateFromSettings();
                     updateSettingsFromState();
                     removeScriptSettings();
@@ -10734,7 +10513,7 @@
         $('#script_settingsExport').on("click", function() {
             //$('#importExport').val(LZString.compressToBase64(JSON.stringify(global)));
             console.log("Exporting script settings");
-            $('#importExport').val(JSON.stringify(settings));
+            $('#importExport').val(JSON.stringify(settingsRaw));
             $('#importExport').select();
             document.execCommand('copy');
         });
@@ -10752,7 +10531,7 @@
 
         updateSettingsContentFunction();
 
-        if (!settings[sectionId + "SettingsCollapsed"]) {
+        if (!settingsRaw[sectionId + "SettingsCollapsed"]) {
             let element = document.getElementById(sectionId + "SettingsCollapsed");
             element.classList.toggle("script-contentactive");
             element.nextElementSibling.style.display = "block";
@@ -10774,7 +10553,7 @@
                 </div>
               </div>`);
 
-            if (!settings[sectionId + "SettingsCollapsed"]) {
+            if (!settingsRaw[sectionId + "SettingsCollapsed"]) {
                 let element = document.getElementById(sectionId + "SettingsCollapsed");
                 element.classList.toggle("script-contentactive");
                 element.nextElementSibling.style.display = "block";
@@ -10804,19 +10583,323 @@
         node.append(`<div style="margin: 2px; width: 90%; display: inline-block; text-align: left;"><span class="has-text-caution">${headerText}</span></div>`);
     }
 
+    var checkCompare = {
+        "==": (a, b) => a == b,
+        "!=": (a, b) => a != b,
+        ">": (a, b) => a > b,
+        "<": (a, b) => a < b,
+        ">=": (a, b) => a >= b,
+        "<=": (a, b) => a <= b,
+        "===": (a, b) => a === b,
+        "!==": (a, b) => a !== b,
+        "AND": (a, b) => a && b,
+        "OR": (a, b) => a || b,
+        "NOR": (a, b) => !(a || b),
+        "NAND": (a, b) => !(a && b),
+        "XOR": (a, b) => !a != !b,
+        "XNOR": (a, b) => !a == !b,
+    }
+
+    var checkTypes = {
+        String: { fn: (v) => v, arg: "string", def: "none", desc: "Returns string" },
+        Number: { fn: (v) => v, arg: "number", def: 0, desc: "Returns number" },
+        Boolean: { fn: (v) => v, arg: "boolean", def: false, desc: "Returns boolean" },
+        SettingDefault: { fn: (s) => settingsRaw[s], arg: "string", def: "masterScriptToggle", desc: "Returns default value of setting, types varies" },
+        SettingCurrent: { fn: (s) => settings[s], arg: "string", def: "masterScriptToggle", desc: "Returns current value of setting, types varies" },
+        Eval: { fn: (s) => eval(s), arg: "string", def: "Math.PI", desc: "Returns result of evaluating code" },
+        BuildingUnlocked: { fn: (b) => buildingIds[b].isUnlocked(), arg: "building", def: "city-farm", desc: "Return true when building is unlocked" },
+        BuildingCount: { fn: (b) => buildingIds[b].count, arg: "building", def: "city-farm", desc: "Returns count of buildings as number" },
+        ResearchUnlocked:  { fn: (r) => techIds[r].isUnlocked(), arg: "research", def: "tech-club", desc: "Returns true when research is unlocked" },
+        ResearchComplete:  { fn: (r) => techIds[r].isResearched(), arg: "research", def: "tech-club", desc: "Returns true when research is complete" },
+        ResourceUnlocked: { fn: (r) => resources[r].isUnlocked(), arg: "resource", def: "Food", desc: "Returns true when resource or support is unlocked" },
+        ResourceQuantity: { fn: (r) => resources[r].currentQuantity, arg: "resource", def: "Food", desc: "Returns current amount of resource or support as number" },
+        ResourceStorage: { fn: (r) => resources[r].maxQuantity, arg: "resource", def: "Food", desc: "Returns maximum amount of resource or support as number" },
+        ResourceIncome: { fn: (r) => resources[r].rateOfChange, arg: "resource", def: "Food", desc: "Returns current income of resource as number" }, // rateOfChange holds full diff of resource at the moment when overrides checked
+        ResourceRatio: { fn: (r) => resources[r].storageRatio, arg: "resource", def: "Food", desc: "Returns storage of resource as number, e.g. 50% filled storage will return 0.5" },
+        ResetType: { fn: (r) => settings.prestigeType === r, arg: "reset", def: "mad", desc: "Returns true when selected reset is active" },
+        HaveTrait: { fn: (t) => game.global.race[t] ? true : false, arg: "trait", def: "kindling_kindred", desc: "Returns true when current race have selected trait" },
+        RaceCurrent: { fn: (r) => game.global.race.species === r, arg: "race", def: "junker", desc: "Returns true when playing selected race" },
+        RaceFanaticism: { fn: (r) => game.global.race.gods === r, arg: "race", def: "junker", desc: "Returns true when playing selected race" },
+        RaceDeify: { fn: (r) => game.global.race.old_gods === r, arg: "race", def: "junker", desc: "Returns true when playing selected race" },
+    }
+
+    function openOverrideModal(event) {
+        if (event.ctrlKey) {
+            event.preventDefault();
+            openOptionsModal(event.data.label, function(modal) {
+                modal.append(`<div style="margin-top: 10px; margin-bottom: 10px;" id="script_${event.data.name}Modal"></div>`);
+                buildOverrideSettings(event.data.name, event.data.type, event.data.options);
+            });
+        }
+    }
+
+    function buildOverrideSettings(settingName, type, options) {
+        const rebuild = () => buildOverrideSettings(settingName, type, options);
+        let overrides = settingsRaw.overrides[settingName] ?? [];
+
+        let currentNode = $(`#script_${settingName}Modal`);
+        currentNode.empty().off("*");
+
+        currentNode.append(`
+          <table style="width:100%; text-align: left">
+            <tr>
+              <th class="has-text-warning" colspan="2">Variable 1</th>
+              <th class="has-text-warning" colspan="1">Check</th>
+              <th class="has-text-warning" colspan="2">Variable 2</th>
+              <th class="has-text-warning" colspan="3">Result</th>
+            </tr>
+            <tr>
+              <th class="has-text-warning" style="width:18%">Type</th>
+              <th class="has-text-warning" style="width:16%">Value</th>
+              <th class="has-text-warning" style="width:7%"></th>
+              <th class="has-text-warning" style="width:18%">Type</th>
+              <th class="has-text-warning" style="width:16%">Value</th>
+              <th class="has-text-warning" style="width:15%"></th>
+              <th style="width:5%"></th>
+              <th style="width:5%"></th>
+            </tr>
+            <tbody id="script_${settingName}ModalTable"></tbody>
+          </table>`);
+
+        let tableBodyNode = $(`#script_${settingName}ModalTable`);
+
+        let newTableBodyText = "";
+        for (let i = 0; i < overrides.length; i++) {
+            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:18%"></td><td style="width:18%"></td><td style="width:7%"></td><td style="width:18%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
+        }
+        newTableBodyText += `
+          <tr id="script_${settingName}_d" class="unsortable">
+            <td style="width:75%" colspan="5">Default value, applied when all checks above are falsy</td>
+            <td style="width:15%"></td>
+            <td style="width:5%"><a class="button is-dark is-small"><span>+</span></a></td>
+            <td style="width:5%"></td>
+          </tr>`;
+        tableBodyNode.append($(newTableBodyText));
+
+        $(`#script_${settingName}_d td:eq(1)`)
+          .append(buildInputNode(type, options, settingsRaw[settingName], function(result) {
+              settingsRaw[settingName] = result;
+              updateSettingsFromState();
+
+              let retType = typeof result === "boolean" ? "checked" : "value";
+              $(".script_" + settingName).prop(retType, settingsRaw[settingName]);
+          }));
+
+        $(`#script_${settingName}_d a`).on('click', function() {
+            settingsRaw.overrides[settingName] = settingsRaw.overrides[settingName] ?? [];
+            settingsRaw.overrides[settingName].push({type1: "Boolean", arg1: true, type2: "Boolean", arg2: false, cmp: "==", ret: settingsRaw[settingName]})
+            updateSettingsFromState();
+            rebuild();
+        });
+
+        for (let i = 0; i < overrides.length; i++) {
+            let override = overrides[i];
+            let tableElement = $(`#script_${settingName}_o${i}`).children().eq(0);
+
+            tableElement.append(buildConditionType(override, 1, rebuild));
+            tableElement = tableElement.next();
+            tableElement.append(buildConditionArg(override, 1));
+            tableElement = tableElement.next();
+            tableElement.append(buildConditionComparator(override));
+            tableElement = tableElement.next();
+            tableElement.append(buildConditionType(override, 2, rebuild));
+            tableElement = tableElement.next();
+            tableElement.append(buildConditionArg(override, 2));
+            tableElement = tableElement.next();
+            tableElement.append(buildConditionRet(override, type, options));
+            tableElement = tableElement.next();
+            tableElement.append(buildConditionRemove(settingName, i, rebuild));
+        }
+
+        tableBodyNode.sortable({
+            items: "tr:not(.unsortable)",
+            helper: sorterHelper,
+            update: function() {
+                let newOrder = tableBodyNode.sortable('toArray', {attribute: 'value'});
+                settingsRaw.overrides[settingName] = newOrder.map((i) => overrides[parseInt(i)]);
+
+                updateSettingsFromState();
+                rebuild();
+            },
+        });
+    }
+
+    function buildInputNode(type, options, value, callback) {
+        switch (type) {
+            case "string":
+                return $(`
+                  <input type="text" class="input is-small" style="height: 22px; width:100%"/>`)
+                .val(value)
+                .on('change', function() {
+                    callback(this.value);
+                });
+            case "number":
+                return $(`
+                  <input type="text" class="input is-small" style="height: 22px; width:100%"/>`)
+                .val(value)
+                .on('change', function() {
+                    this.value = getRealNumber(this.value) || 0;
+                    callback(this.value);
+                })
+            case "boolean":
+                return $(`
+                  <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;">
+                    <input type="checkbox">
+                    <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span>
+                  </label>`)
+                .find('input')
+                  .prop('checked', value)
+                  .on('change', function() {
+                      callback(this.checked);
+                  })
+                .end();
+            case "select":
+               return $(`
+                 <select style="width: 100%">${options}</select>`)
+               .val(value)
+               .on('change', function() {
+                  callback(this.value);
+               });
+            case "building":
+                return buildObjectListInput(buildingIds, "_vueBinding", value, callback);
+            case "research":
+                return buildObjectListInput(techIds, "_vueBinding", value, callback);
+            case "resource":
+                return buildObjectListInput(resources, "_id", value, callback);
+            case "race":
+                return buildObjectListInput(races, "id", value, callback);
+            case "reset":
+               return $(`
+                 <select style="width: 100%">${prestigeOptions}</select>`)
+               .val(value)
+               .on('change', function() {
+                  callback(this.value);
+               });
+            case "trait":
+                let traits = Object.fromEntries(Object.values(game.races)
+                  .flatMap(r => Object.keys(r.traits))
+                  .filter((trait, index, arr) => arr.indexOf(trait) === index)
+                  .map(trait => [trait, {name: game.loc(`trait_${trait}_name`), id: trait}]));
+                return buildObjectListInput(traits, "id", value, callback);
+            default:
+                return "";
+        }
+    }
+
+    function buildConditionType(override, num, rebuild) {
+        let types = Object.entries(checkTypes).map(([id, type]) => `<option value="${id}" title="${type.desc}">${id}</option>`).join();
+        return $(`<select style="width: 100%">${types}</select>`)
+        .val(override["type" + num])
+        .on('change', function() {
+            override["type" + num] = this.value;
+            override["arg" + num] = checkTypes[this.value].def;
+            updateSettingsFromState();
+            rebuild();
+        });
+    }
+
+    function buildConditionArg(override, num) {
+        let varType = checkTypes[override["type" + num]]?.arg ?? "";
+        return buildInputNode(varType, null, override["arg" + num], function(result){
+            override["arg" + num] = result;
+            updateSettingsFromState();
+        });
+    }
+
+    function buildConditionComparator(override) {
+        let types = Object.keys(checkCompare).map(type => `<option value="${type}">${type}</option>`).join();
+        return $(`<select style="width: 100%">${types}</select>`)
+        .val(override.cmp)
+        .on('change', function() {
+            override.cmp = this.value;
+            updateSettingsFromState();
+        });
+    }
+
+    function buildConditionRemove(settingName, id, rebuild) {
+        return $(`<a class="button is-dark is-small"><span>-</span></a>`)
+        .on('click', function() {
+            settingsRaw.overrides[settingName].splice(id, 1);
+            if (settingsRaw.overrides[settingName].length === 0) {
+                delete settingsRaw.overrides[settingName];
+            }
+            updateSettingsFromState();
+            rebuild();
+        });
+    }
+
+    function buildConditionRet(override, type, options) {
+        return buildInputNode(type, options, override.ret, function(result) {
+            override.ret = result;
+            updateSettingsFromState();
+        });
+    }
+
+    function buildObjectListInput(list, id, value, callback) {
+        let listNode = $(`<input type="text" style="width:100%"></input>`);
+
+        // Event handler
+        let onChange = function(event, ui) {
+            event.preventDefault();
+
+            // If it wasn't selected from list
+            if(ui.item === null){
+                let typedName = Object.values(list).find(obj => obj.name === this.value);
+                if (typedName !== undefined){
+                    ui.item = {label: this.value, value: typedName[id]};
+                }
+            }
+
+            if (ui.item !== null && list.hasOwnProperty(ui.item.value)) {
+                // We have an item to switch
+                this.value = ui.item.label;
+                callback(ui.item.value);
+            } else if (list.hasOwnProperty(value)) {
+                // Or try to restore old valid value
+                this.value = list[value].name;
+                callback(value);
+            } else {
+                // No luck, set it empty
+                this.value = "";
+                callback(null);
+            }
+        };
+
+        listNode.autocomplete({
+            minLength: 2,
+            delay: 0,
+            source: function(request, response) {
+                let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i");
+                response(Object.values(list)
+                  .filter(item => matcher.test(item.name))
+                  .map(item => ({label: item.name, value: item[id]})));
+            },
+            select: onChange, // Dropdown list click
+            focus: onChange, // Arrow keys press
+            change: onChange // Keyboard type
+        });
+
+        if (list.hasOwnProperty(value)) {
+            listNode.val(list[value].name);
+        }
+
+        return listNode;
+    }
+
     function addSettingsToggle(node, settingName, labelText, hintText) {
         $(`<div style="margin-top: 5px; width: 90%; display: inline-block; text-align: left;">
              <label title="${hintText}" tabindex="0" class="switch">
-               <input class="script_${settingName}" type="checkbox" ${settings[settingName] ? " checked" : ""}><span class="check"></span>
+               <input class="script_${settingName}" type="checkbox" ${settingsRaw[settingName] ? " checked" : ""}><span class="check"></span>
                <span style="margin-left: 10px;">${labelText}</span>
              </label>
            </div>`)
-        .on('change', 'input', function(event) {
-            settings[settingName] = event.currentTarget.checked;
+        .on('change', 'input', function() {
+            settingsRaw[settingName] = this.checked;
             updateSettingsFromState();
 
-            $(".script_" + settingName).prop('checked', settings[settingName]);
+            $(".script_" + settingName).prop('checked', settingsRaw[settingName]);
         })
+        .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "boolean"}, openOverrideModal)
         .appendTo(node);
     }
 
@@ -10824,22 +10907,23 @@
         $(`<div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
              <label title="${hintText}" tabindex="0">
                <span>${labelText}</span>
-               <input class="script_${settingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;" value="${settings[settingName]}"></input>
+               <input class="script_${settingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;" value="${settingsRaw[settingName]}"></input>
              </label>
            </div>`)
         .on('change', 'input', function() {
             let parsedValue = getRealNumber(this.value);
             if (!isNaN(parsedValue)) {
-                settings[settingName] = parsedValue;
+                settingsRaw[settingName] = parsedValue;
                 updateSettingsFromState();
             }
-            $(".script_" + settingName).val(settings[settingName]);
+            $(".script_" + settingName).val(settingsRaw[settingName]);
         })
+        .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "number"}, openOverrideModal)
         .appendTo(node);
     }
 
     function addSettingsSelect(node, settingName, labelText, hintText, optionsList) {
-        let options = optionsList.map(item => `<option value="${item.val}" title="${item.hint}" ${item.val === settings[settingName] ? "selected" : ""}>${item.label}</option>`).join();
+        let options = optionsList.map(item => `<option value="${item.val}" title="${item.hint}" ${item.val === settingsRaw[settingName] ? "selected" : ""}>${item.label}</option>`).join();
         return $(`
            <div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
              <label title="${hintText}" tabindex="0">
@@ -10849,12 +10933,16 @@
                </select>
              </label>
            </div>`)
-        .on('change', 'select', function() {
-            settings[settingName] = this.value;
+        .find('select')
+          .val(settingsRaw[settingName])
+          .on('change', function() {
+            settingsRaw[settingName] = this.value;
             updateSettingsFromState();
 
-            $(".script_" + settingName).val(settings[settingName]);
-        })
+            $(".script_" + settingName).val(settingsRaw[settingName]);
+          })
+        .end()
+        .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "select", options: options}, openOverrideModal)
         .appendTo(node);
     }
 
@@ -10875,7 +10963,7 @@
         let selectedItem = "";
 
         let updateList = function() {
-            let techsString = settings[settingName].map(id => Object.values(list).find(obj => obj._vueBinding === id).name).join(', ');
+            let techsString = settingsRaw[settingName].map(id => Object.values(list).find(obj => obj._vueBinding === id).name).join(', ');
             $(".script_" + settingName).val(techsString);
         }
 
@@ -10915,18 +11003,18 @@
         });
 
         listBlock.on('click', 'button:eq(1)', function() {
-            if (selectedItem && !settings[settingName].includes(selectedItem)) {
-                settings[settingName].push(selectedItem);
-                settings[settingName].sort();
+            if (selectedItem && !settingsRaw[settingName].includes(selectedItem)) {
+                settingsRaw[settingName].push(selectedItem);
+                settingsRaw[settingName].sort();
                 updateSettingsFromState();
                 updateList();
             }
         });
 
         listBlock.on('click', 'button:eq(0)', function() {
-            if (selectedItem && settings[settingName].includes(selectedItem)) {
-                settings[settingName].splice(settings[settingName].indexOf(selectedItem), 1);
-                settings[settingName].sort();
+            if (selectedItem && settingsRaw[settingName].includes(selectedItem)) {
+                settingsRaw[settingName].splice(settingsRaw[settingName].indexOf(selectedItem), 1);
+                settingsRaw[settingName].sort();
                 updateSettingsFromState();
                 updateList();
             }
@@ -10935,43 +11023,45 @@
         updateList();
     }
 
-    function buildStandartSettingsInput(object, settingKey, property) {
-        let textBox = $('<input type="text" class="input is-small" style="height: 25px; width:100%"/>');
-        textBox.val(settings[settingKey]);
-
-        textBox.on('change', function() {
-            let parsedValue = getRealNumber(textBox.val());
+    function addInputCallbacks(node, settingKey) {
+        node.on('change', function() {
+            let parsedValue = getRealNumber(this.value);
             if (!isNaN(parsedValue)) {
-                object[property] = parsedValue;
+                settingsRaw[settingKey] = parsedValue;
                 updateSettingsFromState();
             }
-            textBox.val(settings[settingKey]);
-        });
-
-        return textBox;
+            $(".script_" + settingKey).val(settingsRaw[settingKey]);
+        })
+        node.on('click', {label: `Number (${settingKey})`, name: settingKey, type: "number"}, openOverrideModal);
+        return node;
     }
 
-    function buildStandartSettingsToggle(entity, property, toggleId, syncToggleId) {
-        let checked = entity[property] ? " checked" : "";
-        let toggle = $('<label id="' + toggleId + '" tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', {entity: entity, property: property, sync: syncToggleId}, toggleCallback);
-
-        return toggle;
+    function buildTableInput(settingKey) {
+        return addInputCallbacks($(`<input class="script_${settingKey}" type="text" class="input is-small" style="height: 25px; width:100%" value="${settingsRaw[settingKey]}"/>`), settingKey);
     }
 
-    function toggleCallback(event) {
-        event.data.entity[event.data.property] = event.currentTarget.children[0].checked;
+    function addToggleCallbacks(node, settingKey) {
+        return node
+        .on('change', 'input', function() {
+            settingsRaw[settingKey] = this.checked;
+            updateSettingsFromState();
 
-        let otherCheckbox = document.querySelector(`#${event.data.sync} input`);
-        if (otherCheckbox !== null) {
-            otherCheckbox.checked = event.data.entity[event.data.property];
-        }
-        updateSettingsFromState();
+            $(".script_" + settingKey).prop('checked', settingsRaw[settingKey]);
+        })
+        .on('click', {label: `Toggle (${settingKey})`, name: settingKey, type: "boolean"}, openOverrideModal);
     }
 
-    function buildStandartLabel(note, color = "has-text-info") {
-        return $(`<span class="${color}">${note}</span>`);
+    function buildTableToggle(settingKey) {
+        return addToggleCallbacks($(`
+          <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;">
+            <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}>
+            <span class="check" style="height:5px; max-width:15px"></span>
+            <span style="margin-left: 20px;"></span>
+          </label>`), settingKey);
+    }
+
+    function buildTableLabel(note, title = "", color = "has-text-info") {
+        return $(`<span class="${color}" title="${title}" >${note}</span>`);
     }
 
     function buildGeneralSettings() {
@@ -10979,7 +11069,7 @@
         let sectionName = "General";
 
         let resetFunction = function() {
-            resetGeneralSettings();
+            resetGeneralSettings(true);
             updateSettingsFromState();
             updateGeneralSettingsContent();
         };
@@ -11018,7 +11108,7 @@
         let sectionName = "Prestige";
 
         let resetFunction = function() {
-            resetPrestigeSettings();
+            resetPrestigeSettings(true);
             updateSettingsFromState();
             updatePrestigeSettingsContent(secondaryPrefix);
         };
@@ -11053,7 +11143,7 @@
           </div>`);
 
         currentNode.find('.script_prestigeType')
-          .val(settings.prestigeType)
+          .val(settingsRaw.prestigeType)
           .on('change', function() {
             // Special processing for prestige options. If they are ready to prestige then warn the user about enabling them.
             let confirmationText = "";
@@ -11073,12 +11163,13 @@
             if (confirmationText !== "" && !confirm(confirmationText)) {
                 this.value = "none";
             }
-            settings.prestigeType = this.value;
-            $(".script_prestigeType").val(settings.prestigeType);
+            settingsRaw.prestigeType = this.value;
+            $(".script_prestigeType").val(settingsRaw.prestigeType);
 
             state.goal = "Standard";
             updateSettingsFromState();
-        });
+        })
+        .on('click', {label: "Prestige Type (prestigeType)", name: "prestigeType", type: "select", options: prestigeOptions}, openOverrideModal);
 
         addSettingsToggle(currentNode, "prestigeWaitAT", "Use all Accelerated Time", "Delay reset until all accelerated time will be used");
         addSettingsToggle(currentNode, "prestigeBioseedConstruct", "Ignore useless buildings", "Space Dock, Bioseeder Ship and Probes will be constructed only when Bioseed prestige enabled. World Collider won't be constructed during Bioseed. Jump Ship won't be constructed during Whitehole. Stellar Engine won't be constucted during Vacuum Collapse.");
@@ -11123,7 +11214,7 @@
         let sectionName = "Government";
 
         let resetFunction = function() {
-            resetGovernmentSettings();
+            resetGovernmentSettings(true);
             updateSettingsFromState();
             updateGovernmentSettingsContent(secondaryPrefix);
         };
@@ -11159,7 +11250,7 @@
         let sectionName = "Evolution";
 
         let resetFunction = function() {
-            resetEvolutionSettings();
+            resetEvolutionSettings(true);
             updateSettingsFromState();
             updateEvolutionSettingsContent();
         };
@@ -11168,7 +11259,7 @@
     }
 
     function updateRaceWarning() {
-        let race = races[settings.userEvolutionTarget];
+        let race = races[settingsRaw.userEvolutionTarget];
         if (race && race.getCondition() !== '') {
             let suited = race.getHabitability();
             if (suited === 1) {
@@ -11256,26 +11347,17 @@
           </table>`);
 
         let tableBodyNode = $('#script_evolutionQueueTable');
-        for (let i = 0; i < settings.evolutionQueue.length; i++) {
+        for (let i = 0; i < settingsRaw.evolutionQueue.length; i++) {
             tableBodyNode.append(buildEvolutionQueueItem(i));
         }
 
-        $('#script_evolutionQueueTable').sortable( {
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let evolutionIds = $('#script_evolutionQueueTable').sortable('toArray', {attribute: 'value'});
+                let newOrder = tableBodyNode.sortable('toArray', {attribute: 'value'});
+                settingsRaw.evolutionQueue = newOrder.map((i) => overrides[parseInt(i)]);
 
-                let sortedQueue = [];
-                for (let i = 0; i < evolutionIds.length; i++) {
-                    let id = parseInt(evolutionIds[i]);
-                    sortedQueue.push(settings.evolutionQueue[id]);
-                }
-                settings.evolutionQueue = sortedQueue;
                 updateSettingsFromState();
                 updateEvolutionSettingsContent();
             },
@@ -11285,7 +11367,7 @@
     }
 
     function buildEvolutionQueueItem(id) {
-        let queuedEvolution = settings.evolutionQueue[id];
+        let queuedEvolution = settingsRaw.evolutionQueue[id];
 
         let raceName = "";
         let raceClass = "";
@@ -11336,7 +11418,7 @@
 
         // Delete button
         queueNode.find(".button").on('click', function() {
-            settings.evolutionQueue.splice(id, 1);
+            settingsRaw.evolutionQueue.splice(id, 1);
             updateSettingsFromState();
             updateEvolutionSettingsContent();
 
@@ -11350,7 +11432,7 @@
         queueNode.find(".textarea").on('change', function() {
             try {
                 let queuedEvolution = JSON.parse(this.value);
-                settings.evolutionQueue[id] = queuedEvolution;
+                settingsRaw.evolutionQueue[id] = queuedEvolution;
                 updateSettingsFromState();
                 updateEvolutionSettingsContent();
             } catch (error) {
@@ -11369,7 +11451,7 @@
         let queuedEvolution = {};
         for (let i = 0; i < evolutionSettingsToStore.length; i++){
             let settingName = evolutionSettingsToStore[i];
-            let settingValue = settings[settingName];
+            let settingValue = settingsRaw[settingName];
             queuedEvolution[settingName] = settingValue;
         }
 
@@ -11378,7 +11460,7 @@
             queuedEvolution.prestigeType = overridePrestige;
         }
 
-        let queueLength = settings.evolutionQueue.push(queuedEvolution);
+        let queueLength = settingsRaw.evolutionQueue.push(queuedEvolution);
         updateSettingsFromState();
 
         let tableBodyNode = $('#script_evolutionQueueTable');
@@ -11394,7 +11476,7 @@
         let sectionName = "Planet Weighting";
 
         let resetFunction = function() {
-            resetPlanetSettings();
+            resetPlanetSettings(true);
             updateSettingsFromState();
             updatePlanetSettingsContent();
         };
@@ -11435,38 +11517,31 @@
             let tableElement = $('#script_planet_' + i);
 
             if (i < biomeList.length) {
-                tableElement.append(buildStandartLabel(game.loc("biome_" +  biomeList[i] + "_name")));
+                tableElement.append(buildTableLabel(game.loc("biome_" +  biomeList[i] + "_name")));
                 tableElement = tableElement.next();
-                tableElement.append(buildStandartSettingsInput(settings, "biome_w_" + biomeList[i], "biome_w_" + biomeList[i]));
+                tableElement.append(buildTableInput("biome_w_" + biomeList[i]));
             } else {
                 tableElement = tableElement.next();
             }
             tableElement = tableElement.next();
 
             if (i < traitList.length) {
-                tableElement.append(buildStandartLabel(i == 0 ? "None" : game.loc("planet_" + traitList[i])));
+                tableElement.append(buildTableLabel(i == 0 ? "None" : game.loc("planet_" + traitList[i])));
                 tableElement = tableElement.next();
-                tableElement.append(buildStandartSettingsInput(settings, "trait_w_" + traitList[i], "trait_w_" + traitList[i]));
+                tableElement.append(buildTableInput("trait_w_" + traitList[i]));
             } else {
                 tableElement = tableElement.next();
             }
             tableElement = tableElement.next();
 
             if (i < extraList.length) {
-                tableElement.append(buildStandartLabel(extraList[i]));
+                tableElement.append(buildTableLabel(extraList[i]));
                 tableElement = tableElement.next();
-                tableElement.append(buildStandartSettingsInput(settings, "extra_w_" + extraList[i], "extra_w_" + extraList[i]));
+                tableElement.append(buildTableInput("extra_w_" + extraList[i]));
             }
         }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function resetPlanetSettings() {
-        biomeList.forEach(biome => settings["biome_w_" + biome] = (planetBiomes.length - planetBiomes.indexOf(biome)) * 10);
-        traitList.forEach(trait => settings["trait_w_" + trait] = (planetTraits.length - planetTraits.indexOf(trait)) * 10);
-        extraList.forEach(extra => settings["extra_w_" + extra] = 0);
-        settings.extra_w_Achievement = 1000;
     }
 
     function buildTriggerSettings() {
@@ -11533,20 +11608,13 @@
             buildTriggerSettingsColumn(trigger);
         }
 
-        $('#script_triggerTableBody').sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let triggerIds = $('#script_triggerTableBody').sortable('toArray', {attribute: 'value'});
-
+                let triggerIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < triggerIds.length; i++) {
-                    const seq = parseInt(triggerIds[i]);
-                    // Trigger has been dragged... Update all trigger priorities
-                    TriggerManager.getTrigger(seq).priority = i;
+                    TriggerManager.getTrigger(parseInt(triggerIds[i])).priority = i;
                 }
 
                 TriggerManager.sortByPriority();
@@ -11620,6 +11688,7 @@
 
         if (trigger.requirementType === "researched" || trigger.requirementType === "unlocked") {
             triggerElement.append(buildTriggerListInput(techIds, trigger, "requirementId"));
+            // TODO: buildObjectListInput(techIds, "_vueBinding", trigger.requirementId, (ret) => trigger.requirementId = ret)
         }
         if (trigger.requirementType === "built") {
             triggerElement.append(buildTriggerListInput(buildingIds, trigger, "requirementId"));
@@ -11784,7 +11853,7 @@
         let sectionName = "Research";
 
         let resetFunction = function() {
-            resetResearchSettings();
+            resetResearchSettings(true);
             updateSettingsFromState();
             updateResearchSettingsContent();
         };
@@ -11820,7 +11889,7 @@
         let sectionName = "Foreign Affairs";
 
         let resetFunction = function() {
-            resetWarSettings();
+            resetWarSettings(true);
             updateSettingsFromState();
             updateWarSettingsContent(secondaryPrefix);
         };
@@ -11877,7 +11946,7 @@
         let sectionName = "Hell";
 
         let resetFunction = function() {
-            resetHellSettings();
+            resetHellSettings(true);
             updateSettingsFromState();
             updateHellSettingsContent(secondaryPrefix);
         };
@@ -11929,7 +11998,7 @@
         let sectionName = "Fleet";
 
         let resetFunction = function() {
-            resetFleetSettings();
+            resetFleetSettings(true);
             updateSettingsFromState();
             updateFleetSettingsContent(secondaryPrefix);
         };
@@ -11968,7 +12037,7 @@
         let tableBodyNode = $(`#script_${secondaryPrefix}fleetTableBody`);
         let newTableBodyText = "";
 
-        let priorityRegions = galaxyRegions.slice().sort((a, b) => settings["fleet_pr_" + a] - settings["fleet_pr_" + b]);
+        let priorityRegions = galaxyRegions.slice().sort((a, b) => settingsRaw["fleet_pr_" + a] - settingsRaw["fleet_pr_" + b]);
         for (let i = 0; i < priorityRegions.length; i++) {
             newTableBodyText += `<tr value="${priorityRegions[i]}" class="script-draggable"><td id="script_${secondaryPrefix}fleet_${priorityRegions[i]}" style="width:95%"><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
@@ -11979,20 +12048,16 @@
             let fleetElement = $(`#script_${secondaryPrefix}fleet_${galaxyRegions[i]}`);
             let nameRef = galaxyRegions[i] === "gxy_alien1" ? "Alien 1 System" : galaxyRegions[i] === "gxy_alien2" ? "Alien 2 System" : game.actions.galaxy[galaxyRegions[i]].info.name;
 
-            fleetElement.append(buildStandartLabel(typeof nameRef === "function" ? nameRef() : nameRef));
+            fleetElement.append(buildTableLabel(typeof nameRef === "function" ? nameRef() : nameRef));
         }
 
-        $(`#script_${secondaryPrefix}fleetTableBody`).sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let regionIds = $(`#script_${secondaryPrefix}fleetTableBody`).sortable('toArray', {attribute: 'value'});
+                let regionIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < regionIds.length; i++) {
-                    settings["fleet_pr_" + regionIds[i]] = i;
+                    settingsRaw["fleet_pr_" + regionIds[i]] = i;
                 }
 
                 updateSettingsFromState();
@@ -12005,21 +12070,12 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function resetFleetSettings() {
-        galaxyRegions.forEach((id, index) => settings["fleet_pr_" + id] = index);
-        settings.fleetMaxCover = true;
-        settings.fleetEmbassyKnowledge = 6000000;
-        settings.fleetAlienGiftKnowledge = 6500000;
-        settings.fleetAlien2Knowledge = 9000000;
-        settings.fleetChthonianLoses = "frigate";
-    }
-
     function buildMechSettings() {
         let sectionId = "mech";
         let sectionName = "Mech & Spire";
 
         let resetFunction = function() {
-            resetMechSettings();
+            resetMechSettings(true);
             updateSettingsFromState();
             updateMechSettingsContent();
         };
@@ -12139,31 +12195,12 @@
         if (realPrepared) { game.global.blood.prepared = realPrepared; }
     }
 
-    function resetMechSettings() {
-        settings.mechScrap = "mixed";
-        settings.mechScrapEfficiency = 1.5;
-        settings.mechCollectorValue = 0.5;
-        settings.mechBuild = "random";
-        settings.mechSize = "titan";
-        settings.mechSizeGravity = "auto";
-        settings.mechFillBay = true;
-        settings.mechScouts = 0.05;
-        settings.mechMinSupply = 1000;
-        settings.mechMaxCollectors = 0.5;
-        settings.mechSpecial = "prefered";
-        settings.mechSaveSupply = true;
-        settings.buildingMechsFirst = true;
-        settings.mechBaysFirst = true;
-        settings.mechWaygatePotential = 0.4;
-    }
-
     function buildEjectorSettings() {
         let sectionId = "ejector";
         let sectionName = "Ejector & Supply";
 
         let resetFunction = function() {
-            resetEjectorState();
-            resetEjectorSettings();
+            resetEjectorSettings(true);
             updateSettingsFromState();
             updateEjectorSettingsContent();
 
@@ -12217,14 +12254,19 @@
             let resource = tabResources[i];
             let ejectElement = $('#script_eject_' + resource.id);
 
-            ejectElement.append(buildEjectorLabel(resource));
+            let color = (resource === resources.Elerium || resource === resources.Infernite) ? "has-text-caution" :
+                resource.isCraftable() ? "has-text-danger" :
+                !resource.isTradable() ? "has-text-advanced" :
+                "has-text-info";
+
+            ejectElement.append(buildTableLabel(resource.name, "", color));
 
             if (resource.isEjectable()) {
                 ejectElement = ejectElement.next();
                 ejectElement.append(`<span class="mass"><span class="has-text-warning">${resource.atomicMass}</span> kt</span>`);
 
                 ejectElement = ejectElement.next();
-                ejectElement.append(buildStandartSettingsToggle(resource, "ejectEnabled", "script_eject2_" + resource.id, "script_eject1_" + resource.id));
+                ejectElement.append(buildTableToggle("res_eject" + resource.id));
             } else {
                 ejectElement = ejectElement.next().next();
             }
@@ -12234,36 +12276,11 @@
                 ejectElement.append(`<span class="mass">Export <span class="has-text-caution">${resource.supplyVolume}</span>, Gain <span class="has-text-success">${resource.supplyValue}</span></span>`);
 
                 ejectElement = ejectElement.next();
-                ejectElement.append(buildStandartSettingsToggle(resource, "supplyEnabled", "script_supply2_" + resource.id, "script_supply1_" + resource.id));
+                ejectElement.append(buildTableToggle("res_supply" + resource.id));
             }
         }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function buildEjectorLabel(resource) {
-        let color = "has-text-info";
-        if (resource === resources.Elerium || resource === resources.Infernite) {
-            color = "has-text-caution";
-        } else if (resource.isCraftable()) {
-            color = "has-text-danger";
-        } else if (!resource.isTradable()) {
-            color = "has-text-advanced";
-        }
-
-        return $(`<span class="${color}">${resource.name}</span>`);
-    }
-
-    function resetEjectorState() {
-        resourcesByAtomicMass.forEach(resource => resource.ejectEnabled = resource.isTradable());
-        resourcesBySupplyValue.forEach(resource => resource.supplyEnabled = resource.isTradable());
-
-        resources.Elerium.ejectEnabled = true;
-        resources.Infernite.ejectEnabled = true;
-    }
-
-    function resetEjectorSettings() {
-        settings.autoSupply = false;
     }
 
     function buildMarketSettings() {
@@ -12271,8 +12288,7 @@
         let sectionName = "Market";
 
         let resetFunction = function() {
-            resetMarketState();
-            resetMarketSettings();
+            resetMarketSettings(true);
             updateSettingsFromState();
             updateMarketSettingsContent();
 
@@ -12323,7 +12339,7 @@
 
         for (let i = 0; i < MarketManager.priorityList.length; i++) {
             const resource = MarketManager.priorityList[i];
-            newTableBodyText += `<tr value="${resource.id}" class="script-draggable"><td id="script_market_${resource.id}" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"></td></tr>`;
+            newTableBodyText += `<tr value="${resource.id}" class="script-draggable"><td id="script_market_${resource.id}" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -12332,49 +12348,40 @@
             const resource = MarketManager.priorityList[i];
             let marketElement = $('#script_market_' + resource.id);
 
-            marketElement.append(buildStandartLabel(resource.name));
+            marketElement.append(buildTableLabel(resource.name));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsToggle(resource, "autoBuyEnabled", "script_buy2_" + resource.id, "script_buy1_" + resource.id));
+            marketElement.append(buildTableToggle("buy" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsInput(resource, "res_buy_r_" + resource.id, "autoBuyRatio"));
+            marketElement.append(buildTableInput("res_buy_r_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsToggle(resource, "autoSellEnabled", "script_sell2_" + resource.id, "script_sell1_" + resource.id));
+            marketElement.append(buildTableToggle("sell" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsInput(resource, "res_sell_r_" + resource.id, "autoSellRatio"));
+            marketElement.append(buildTableInput("res_sell_r_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsToggle(resource, "autoTradeBuyEnabled", "script_tbuy2_" + resource.id, "script_tbuy1_" + resource.id));
+            marketElement.append(buildTableToggle("res_trade_buy_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsToggle(resource, "autoTradeSellEnabled", "script_tsell2_" + resource.id, "script_tsell1_" + resource.id));
+            marketElement.append(buildTableToggle("res_trade_sell_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsInput(resource, "res_trade_w_" + resource.id, "autoTradeWeighting"));
+            marketElement.append(buildTableInput("res_trade_w_" + resource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsInput(resource, "res_trade_p_" + resource.id, "autoTradePriority"));
-
-            marketElement = marketElement.next();
-            marketElement.append($('<span class="script-lastcolumn"></span>'));
+            marketElement.append(buildTableInput("res_trade_p_" + resource.id));
         }
 
-        $('#script_marketTableBody').sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let marketIds = $('#script_marketTableBody').sortable('toArray', {attribute: 'value'});
-
+                let marketIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < marketIds.length; i++) {
-                    // Market has been dragged... Update all market priorities
-                    MarketManager.priorityList.find(resource => resource.id === marketIds[i]).marketPriority = i;
+                    settingsRaw["res_buy_p_" + marketIds[i]] = i;
                 }
 
                 MarketManager.sortByPriority();
@@ -12410,16 +12417,16 @@
             let sellResource = resources[trade.sell.res];
             let marketElement = $('#script_market_galaxy_' + i);
 
-            marketElement.append(buildStandartLabel(buyResource.name, "has-text-success"));
+            marketElement.append(buildTableLabel(buyResource.name, "has-text-success"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartLabel(sellResource.name, "has-text-danger"));
+            marketElement.append(buildTableLabel(sellResource.name, "has-text-danger"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsInput(buyResource, "res_galaxy_w_" + buyResource.id, "galaxyMarketWeighting"));
+            marketElement.append(buildTableInput("res_galaxy_w_" + buyResource.id));
 
             marketElement = marketElement.next();
-            marketElement.append(buildStandartSettingsInput(buyResource, "res_galaxy_p_" + buyResource.id, "galaxyMarketPriority"));
+            marketElement.append(buildTableInput("res_galaxy_p_" + buyResource.id));
        }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -12430,8 +12437,7 @@
         let sectionName = "Storage";
 
         let resetFunction = function() {
-            resetStorageState();
-            resetStorageSettings();
+            resetStorageSettings(true);
             updateSettingsFromState();
             updateStorageSettingsContent();
 
@@ -12482,34 +12488,28 @@
             const resource = StorageManager.priorityList[i];
             let storageElement = $('#script_storage_' + resource.id);
 
-            storageElement.append(buildStandartLabel(resource.name));
+            storageElement.append(buildTableLabel(resource.name));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStandartSettingsToggle(resource, "autoStorageEnabled", "script_res_storage2_" + resource.id, "script_res_storage1_" + resource.id));
+            storageElement.append(buildTableToggle("res_storage" + resource.id));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStandartSettingsToggle(resource, "storeOverflow", "script_res_overflow2_" + resource.id, "script_res_overflow1_" + resource.id));
+            storageElement.append(buildTableToggle("res_storage_o_" + resource.id));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStandartSettingsInput(resource, "res_crates_m_" + resource.id, "_autoCratesMax"));
+            storageElement.append(buildTableInput("res_crates_m_" + resource.id));
 
             storageElement = storageElement.next();
-            storageElement.append(buildStandartSettingsInput(resource, "res_containers_m_" + resource.id, "_autoContainersMax"));
+            storageElement.append(buildTableInput("res_containers_m_" + resource.id));
         }
 
-        $('#script_storageTableBody').sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let storageIds = $('#script_storageTableBody').sortable('toArray', {attribute: 'value'});
-
+                let storageIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < storageIds.length; i++) {
-                    // Storage has been dragged... Update all storage priorities
-                    StorageManager.priorityList.find(resource => resource.id === storageIds[i]).storagePriority = i;
+                    settingsRaw['res_storage_p_' + storageIds[i]] = i;
                 }
 
                 StorageManager.sortByPriority();
@@ -12525,7 +12525,7 @@
         let sectionName = "Minor Trait";
 
         let resetFunction = function() {
-            resetMinorTraitState();
+            resetMinorTraitSettings(true);
             updateSettingsFromState();
             updateMinorTraitSettingsContent();
         };
@@ -12564,29 +12564,22 @@
             const trait = MinorTraitManager.priorityList[i];
             let minorTraitElement = $('#script_minorTrait_' + trait.traitName);
 
-            let toggle = $(`<span title="${game.loc("trait_"+trait.traitName)}" class="has-text-info" style="margin-left: 20px;">${game.loc("trait_"+trait.traitName+"_name")}</span>`);
-            minorTraitElement.append(toggle);
+            minorTraitElement.append(buildTableLabel(game.loc("trait_" + trait.traitName + "_name"), game.loc("trait_" + trait.traitName)));
 
             minorTraitElement = minorTraitElement.next();
-            minorTraitElement.append(buildStandartSettingsToggle(trait, "enabled", "script_mTrait_" + trait.traitName));
+            minorTraitElement.append(buildTableToggle("mTrait_" + trait.traitName));
 
             minorTraitElement = minorTraitElement.next();
-            minorTraitElement.append(buildStandartSettingsInput(trait, "mTrait_w_" + trait.traitName, "weighting"));
+            minorTraitElement.append(buildTableInput("mTrait_w_" + trait.traitName));
         }
 
-        $('#script_minorTraitTableBody').sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let minorTraitNames = $('#script_minorTraitTableBody').sortable('toArray', {attribute: 'value'});
-
+                let minorTraitNames = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < minorTraitNames.length; i++) {
-                    // MinorTrait has been dragged... Update all minorTrait priorities
-                    MinorTraitManager.priorityList.find(trait => trait.traitName === minorTraitNames[i]).priority = i;
+                    settingsRaw['mTrait_p_' + minorTraitNames[i]] = i;
                 }
 
                 MinorTraitManager.sortByPriority();
@@ -12602,8 +12595,7 @@
         let sectionName = "Production";
 
         let resetFunction = function() {
-            resetProductionState();
-            resetProductionSettings();
+            resetProductionSettings(true);
             updateSettingsFromState();
             updateProductionSettingsContent();
 
@@ -12667,22 +12659,16 @@
             let fuel = smelterFuels[i];
             let productionElement = $('#script_smelter_' + fuel.id);
 
-            productionElement.append(buildStandartLabel(fuel.id));
+            productionElement.append(buildTableLabel(fuel.id));
         }
 
-        $('#script_productionTableBodySmelter').sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let fuelIds = $('#script_productionTableBodySmelter').sortable('toArray', {attribute: 'value'});
-
-                let smelterFuels = Object.values(SmelterManager.Fuels);
+                let fuelIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < fuelIds.length; i++) {
-                    smelterFuels.find(fuel => fuel.id === fuelIds[i]).priority = i;
+                    settingsRaw["smelter_fuel_p_" + fuelIds[i]] = i;
                 }
 
                 updateSettingsFromState();
@@ -12722,16 +12708,16 @@
             let production = productionSettings[i];
             let productionElement = $('#script_factory_' + production.resource.id);
 
-            productionElement.append(buildStandartLabel(production.resource.name));
+            productionElement.append(buildTableLabel(production.resource.name));
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsToggle(production, "enabled", "script_factory_" + production.resource.id));
+            productionElement.append(buildTableToggle("production_" + production.resource.id));
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsInput(production, "production_w_" + production.resource.id, "weighting"));
+            productionElement.append(buildTableInput("production_w_" + production.resource.id));
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsInput(production, "production_p_" + production.resource.id, "priority"));
+            productionElement.append(buildTableInput("production_p_" + production.resource.id));
         }
     }
 
@@ -12768,20 +12754,20 @@
             let resource = state.craftableResourceList[i];
             let productionElement = $('#script_foundry_' + resource.id);
 
-            productionElement.append(buildStandartLabel(resource.name));
+            productionElement.append(buildTableLabel(resource.name));
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsToggle(resource, "autoCraftEnabled", "script_craft2_" + resource.id, "script_craft1_" + resource.id));
+            productionElement.append(buildTableToggle("craft" + resource.id));
 
             productionElement = productionElement.next();
             if (resource == resources.Scarletite) {
                 productionElement.append('<span>Managed</span>');
             } else {
-                productionElement.append(buildStandartSettingsInput(resource, "foundry_w_" + resource.id, "craftWeighting"));
+                productionElement.append(buildTableInput("foundry_w_" + resource.id));
             }
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsInput(resource, "foundry_p_" + resource.id, "craftPreserve"));
+            productionElement.append(buildTableInput("foundry_p_" + resource.id));
         }
     }
 
@@ -12816,13 +12802,13 @@
             let production = droidProducts[i];
             let productionElement = $('#script_droid_' + production.resource.id);
 
-            productionElement.append(buildStandartLabel(production.resource.name));
+            productionElement.append(buildTableLabel(production.resource.name));
 
             productionElement = productionElement.next().next();
-            productionElement.append(buildStandartSettingsInput(production, "droid_w_" + production.resource.id, "weighting"));
+            productionElement.append(buildTableInput("droid_w_" + production.resource.id));
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsInput(production, "droid_pr_" + production.resource.id, "priority"));
+            productionElement.append(buildTableInput("droid_pr_" + production.resource.id));
         }
     }
 
@@ -12856,10 +12842,10 @@
             let production = pylonProducts[i];
             let productionElement = $('#script_pylon_' + production.id);
 
-            productionElement.append(buildStandartLabel(game.loc(`modal_pylon_spell_${production.id}`)));
+            productionElement.append(buildTableLabel(game.loc(`modal_pylon_spell_${production.id}`)));
 
             productionElement = productionElement.next();
-            productionElement.append(buildStandartSettingsInput(production, "spell_w_" + production.id, "weighting"));
+            productionElement.append(buildTableInput("spell_w_" + production.id));
         }
     }
 
@@ -12868,8 +12854,7 @@
         let sectionName = "Job";
 
         let resetFunction = function() {
-            resetJobSettings();
-            resetJobState();
+            resetJobSettings(true);
             updateSettingsFromState();
             updateJobSettingsContent();
         };
@@ -12933,19 +12918,13 @@
             }
         }
 
-        $('#script_jobTableBody').sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let jobIds = $('#script_jobTableBody').sortable('toArray', {attribute: 'value'});
-
+                let jobIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < jobIds.length; i++) {
-                    // Job has been dragged... Update all job priorities
-                    JobManager.priorityList.find(job => job._originalId === jobIds[i]).priority = i + 3; // farmers, hunters, and unemployed is always on top
+                    settingsRaw['job_p_' + jobIds[i]] = i + 3; // farmers, hunters, and unemployed are always on top
                 }
 
                 JobManager.sortByPriority();
@@ -12957,40 +12936,22 @@
     }
 
     function buildJobSettingsToggle(job) {
-        let checked = job.autoJobEnabled ? " checked" : "";
+        let settingKey = "job_" + job._originalId;
         let color = job === jobs.Unemployed ? 'warning' : job instanceof CraftingJob ? 'danger' : job.isUnlimited() ? 'info' : 'advanced';
-        let toggle = $('<label tabindex="0" class="switch" style="margin-top: 4px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span class="has-text-' + color + '" style="margin-left: 20px;">' + job._originalName + '</span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            job.autoJobEnabled = input.checked;
-            updateSettingsFromState();
-            //console.log(job._originalName + " changed state to " + state);
-        });
-
-        return toggle;
+        return addToggleCallbacks($(`
+          <label tabindex="0" class="switch" style="margin-top:4px; margin-left:10px;">
+            <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}>
+            <span class="check" style="height:5px; max-width:15px"></span>
+            <span class="has-text-${color}" style="margin-left: 20px;">${job._originalName}</span>
+          </label>`), settingKey);
     }
 
     function buildJobSettingsInput(job, breakpoint) {
         if (job === jobs.Farmer || job === jobs.Hunter || job instanceof CraftingJob || (job !== jobs.Unemployed && breakpoint === 3 && job.isUnlimited())) {
-            let span = $('<span>Managed</span>');
-            return span;
+            return $(`<span>Managed</span>`);
         }
-
-        let jobBreakpointTextbox = $('<input type="text" class="input is-small" style="height: 25px; width:100%;"/>');
-        jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job._originalId]);
-
-        jobBreakpointTextbox.on('change', function() {
-            let employees = getRealNumber(jobBreakpointTextbox.val());
-            if (!isNaN(employees)) {
-                //console.log('Setting job breakpoint ' + breakpoint + ' for job ' + job._originalName + ' to be ' + employees);
-                job.breakpoints[breakpoint - 1] = employees;
-                updateSettingsFromState();
-            }
-            jobBreakpointTextbox.val(settings["job_b" + breakpoint + "_" + job._originalId]);
-        });
-
-        return jobBreakpointTextbox;
+        let settingKey = "job_b" + breakpoint + "_" + job._originalId;
+        return buildTableInput(settingKey);
     }
 
     function buildWeightingSettings() {
@@ -12998,7 +12959,7 @@
         let sectionName = "AutoBuild Weighting";
 
         let resetFunction = function() {
-            resetWeightingSettings();
+            resetWeightingSettings(true);
             updateSettingsFromState();
             updateWeightingSettingsContent();
         };
@@ -13049,24 +13010,14 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function addWeightingRule(table, targetName, conditionDesc, settingName){
+    function addWeightingRule(table, targetName, conditionDesc, settingKey){
         let ruleNode = $(`
           <tr>
             <td style="width:30%"><span class="has-text-info">${targetName}</span></td>
             <td style="width:60%"><span class="has-text-info">${conditionDesc}</span></td>
-            <td style="width:10%"><input type="text" class="input is-small" style="height: 25px; width:100%;"/></td>
+            <td style="width:10%"></td>
           </tr>`);
-
-        let weightInput = ruleNode.find('input');
-        weightInput.val(settings[settingName]);
-        weightInput.on('change', function() {
-            let parsedValue = getRealNumber(this.value);
-            if (!isNaN(parsedValue)) {
-                settings[settingName] = parsedValue;
-                updateSettingsFromState();
-            }
-            weightInput.val(settings[settingName]);
-        });
+        ruleNode.find('td:eq(2)').append(buildTableInput(settingKey));
 
         table.append(ruleNode);
     }
@@ -13076,8 +13027,7 @@
         let sectionName = "Building";
 
         let resetFunction = function() {
-            resetBuildingSettings();
-            resetBuildingState();
+            resetBuildingSettings(true);
             updateSettingsFromState();
             updateBuildingSettingsContent();
         };
@@ -13135,47 +13085,45 @@
 
         // enabled column
         buildingElement = buildingElement.next();
-        buildingElement.append(buildAllBuildingEnabledSettingsToggle(BuildingManager.priorityList));
+        buildingElement.append(buildAllBuildingEnabledSettingsToggle());
 
         // state column
         buildingElement = buildingElement.next().next().next();
-        buildingElement.append(buildAllBuildingStateSettingsToggle(BuildingManager.priorityList));
+        buildingElement.append(buildAllBuildingStateSettingsToggle());
 
         // Build all other buildings settings rows
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
             let building = BuildingManager.priorityList[i];
             let buildingElement = $('#script_' + building._vueBinding);
 
-            buildingElement.append(buildBuildingLabel(building));
+            let color = (building._tab === "space" || building._tab === "starDock") ? "has-text-danger" :
+                        building._tab === "galaxy" ? "has-text-advanced" :
+                        building._tab === "interstellar" ? "has-text-special" :
+                        building._tab === "portal" ? "has-text-warning" :
+                        "has-text-info";
+
+            buildingElement.append(buildTableLabel(building.name, "", color));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildStandartSettingsToggle(building, "autoBuildEnabled", "script_bat2_" + building._vueBinding, "script_bat1_" + building._vueBinding));
+            buildingElement.append(buildTableToggle("bat" + building._vueBinding));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildStandartSettingsInput(building, "bld_m_" + building._vueBinding, "_autoMax"));
+            buildingElement.append(buildTableInput("bld_m_" + building._vueBinding));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildStandartSettingsInput(building, "bld_w_" + building._vueBinding, "_weighting"));
+            buildingElement.append(buildTableInput("bld_w_" + building._vueBinding));
 
             buildingElement = buildingElement.next();
             buildingElement.append(buildBuildingStateSettingsToggle(building));
         }
 
-        $('#script_buildingTableBody').sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let buildingElements = $('#script_buildingTableBody').sortable('toArray', {attribute: 'value'});
-
+                let buildingElements = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < buildingElements.length; i++) {
-                    // Building has been dragged... Update all building priorities
-                    if (buildingElements[i] !== "All") {
-                        BuildingManager.priorityList.find(building => building._vueBinding === buildingElements[i]).priority = i - 1;
-                    }
+                    settingsRaw['bld_p_' + buildingElements[i]] = i;
                 }
 
                 BuildingManager.sortByPriority();
@@ -13236,8 +13184,7 @@
                     testValue = getRealNumber(reg[3].trim());
                     break;
             }
-            filterChecker = (building) => eval(`${buildingValue(building)} ${reg[2]} ${testValue}`);
-
+            filterChecker = (building) => checkCompare[reg[2]](buildingValue(building), testValue);
         }
 
         // Loop through all table rows, and hide those who don't match the search query
@@ -13264,114 +13211,85 @@
         content.style.height = content.offsetHeight + "px"
     }
 
-    function buildBuildingLabel(building) {
-        let color = "has-text-info";
-        if (building._tab === "space" || building._tab === "starDock") {
-            color = "has-text-danger";
-        } else if (building._tab === "galaxy") {
-            color = "has-text-advanced";
-        } else if (building._tab === "interstellar") {
-            color = "has-text-special";
-        } else if (building._tab === "portal") {
-            color = "has-text-warning";
-        }
-
-        return $(`<span class="${color}">${building.name}</span>`);
-    }
-
-    function buildAllBuildingEnabledSettingsToggle(buildings) {
-        let checked = settings.buildingEnabledAll ? " checked" : "";
-        let toggle = $('<label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-
-            settings.buildingEnabledAll = state;
-
-            for (let i = 0; i < buildings.length; i++) {
-                buildings[i].autoBuildEnabled = state;
+    function buildAllBuildingEnabledSettingsToggle() {
+        return $(`
+          <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;">
+            <input class="script_buildingEnabledAll" type="checkbox"${settingsRaw.buildingEnabledAll ? " checked" : ""}>
+            <span class="check" style="height:5px; max-width:15px"></span>
+            <span style="margin-left: 20px;"></span>
+          </label>`)
+        .on('change', 'input', function() {
+            settingsRaw.buildingEnabledAll = this.checked;
+            for (let i = 0; i < BuildingManager.priorityList.length; i++) {
+                let id = BuildingManager.priorityList[i]._vueBinding;
+                settingsRaw['bat' + id] = this.checked;
             }
-
-            let toggles = document.querySelectorAll('[id^="script_bat"] input');
-
-            for (let i = 0; i < toggles.length; i++) {
-                toggles[i].checked = state;
-            }
+            $('[class^="script_bat"]').prop('checked', this.checked);
 
             updateSettingsFromState();
-            //console.log(building.name + " changed enabled to " + state);
         });
-
-        return toggle;
     }
 
     function buildBuildingStateSettingsToggle(building) {
-        let stateElement = $('<div></div>');
+        let stateElement = $(`<div></div>`);
 
         if (building.isSwitchable()) {
-            $(`<label id=script_bld_s_${building._vueBinding} tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;">
-                 <input type="checkbox" ${building.autoStateEnabled ? "checked" : ""}>
-                 <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span>
-               </label>`)
-            .on('change', 'input', function(event) {
-                building.autoStateEnabled = event.currentTarget.checked;
-                updateSettingsFromState();
-            }).appendTo(stateElement);
+            let stateKey = 'bld_s_' + building._vueBinding;
+            addToggleCallbacks($(`
+              <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;">
+                <input class="script_${stateKey}" type="checkbox"${settingsRaw[stateKey] ? " checked" : ""}>
+                <span class="check" style="height:5px; max-width:15px"></span>
+                <span style="margin-left: 20px;"></span>
+              </label>`), stateKey)
+            .appendTo(stateElement);
         }
 
         if (building.is.smart) {
-            $(`<label id=script_bld_s2_${building._vueBinding} tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 35px;">
-                 <input type="checkbox" ${building.autoStateSmart ? "checked" : ""}>
-                 <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span>
-               </label>`)
-            .on('change', 'input', function(event) {
-                let state = event.currentTarget.checked;
+            let smartKey = 'bld_s2_' + building._vueBinding;
+            let smartNode = $(`
+              <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 35px;">
+                <input class="script_${smartKey}" type="checkbox"${settingsRaw[smartKey] ? " checked" : ""}>
+                <span class="check" style="height:5px; max-width:15px"></span>
+                <span style="margin-left: 20px;"></span>
+              </label>`);
 
-                let set = linkedBuildings.find(set => set.includes(building));
-                if (set) {
+            let set = linkedBuildings.find(set => set.includes(building));
+            if (set) {
+                smartNode.on('change', 'input', function() {
                     set.forEach(building => {
-                        building.autoStateSmart = state;
-                        document.querySelector(`#script_bld_s2_${building._vueBinding} input`).checked = state;
+                        let linkedId = 'bld_s2_' + building._vueBinding;
+                        settingsRaw[linkedId] = this.checked;
+                        $(".script_" + linkedId).prop('checked', this.checked);
                     });
-                } else {
-                    building.autoStateSmart = state;
-                }
-
-                updateSettingsFromState();
-            }).appendTo(stateElement);
+                    updateSettingsFromState();
+                });
+            } else {
+                addToggleCallbacks(smartNode, smartKey);
+            }
+            stateElement.append(smartNode);
         }
 
-        stateElement.append($(`<span class="script-lastcolumn"></span>`));
-
+        stateElement.append(`<span class="script-lastcolumn"></span>`);
         return stateElement;
     }
 
-    function buildAllBuildingStateSettingsToggle(buildings) {
-        let checked = settings.buildingStateAll ? " checked" : "";
-        let toggle = $('<label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;"><input type="checkbox"' + checked + '> <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span></label>');
-
-        toggle.on('change', function(e) {
-            let input = e.currentTarget.children[0];
-            let state = input.checked;
-
-            settings.buildingStateAll = state;
-
-            for (let i = 0; i < buildings.length; i++) {
-                buildings[i].autoStateEnabled = state;
+    function buildAllBuildingStateSettingsToggle() {
+        return $(`
+          <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;">
+            <input class="script_buildingStateAll" type="checkbox"${settingsRaw.buildingStateAll ? " checked" : ""}>
+            <span class="check" style="height:5px; max-width:15px"></span>
+            <span style="margin-left: 20px;"></span>
+          </label>`)
+        .on('change', 'input', function(e) {
+            settingsRaw.buildingStateAll = this.checked;
+            for (let i = 0; i < BuildingManager.priorityList.length; i++) {
+                let id = BuildingManager.priorityList[i]._vueBinding;
+                settingsRaw['bld_s_' + id] = this.checked;
             }
-
-            let toggles = document.querySelectorAll('[id^="script_bld_s_"] input');
-
-            for (let i = 0; i < toggles.length; i++) {
-                toggles[i].checked = state;
-            }
+            $('[class^="script_bld_s_"]').prop('checked', this.checked);
 
             updateSettingsFromState();
-            //console.log(building.name + " changed state to " + state);
         });
-
-        return toggle;
     }
 
     function buildProjectSettings() {
@@ -13379,8 +13297,7 @@
         let sectionName = "A.R.P.A.";
 
         let resetFunction = function() {
-            resetProjectSettings();
-            resetProjectState();
+            resetProjectSettings(true);
             updateSettingsFromState();
             updateProjectSettingsContent();
         };
@@ -13422,32 +13339,26 @@
             const project = ProjectManager.priorityList[i];
             let projectElement = $('#script_' + project.id);
 
-            projectElement.append(buildStandartLabel(project.name));
+            projectElement.append(buildTableLabel(project.name));
 
             projectElement = projectElement.next();
-            projectElement.append(buildStandartSettingsToggle(project, "autoBuildEnabled", "script_arpa2_" + project.id, "script_arpa1_" + project.id));
+            projectElement.append(buildTableToggle("arpa_" + project.id));
 
             projectElement = projectElement.next();
-            projectElement.append(buildStandartSettingsInput(project, "arpa_m_" + project.id, "_autoMax"));
+            projectElement.append(buildTableInput("arpa_m_" + project.id));
 
             projectElement = projectElement.next();
-            projectElement.append(buildStandartSettingsInput(project, "arpa_w_" + project.id, "_weighting"));
+            projectElement.append(buildTableInput("arpa_w_" + project.id));
 
         }
 
-        $('#script_projectTableBody').sortable({
+        tableBodyNode.sortable({
             items: "tr:not(.unsortable)",
-            helper: function(event, ui){
-                let clone = $(ui).clone();
-                clone.css('position','absolute');
-                return clone.get(0);
-            },
+            helper: sorterHelper,
             update: function() {
-                let projectIds = $('#script_projectTableBody').sortable('toArray', {attribute: 'value'});
-
+                let projectIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
                 for (let i = 0; i < projectIds.length; i++) {
-                    // Project has been dragged... Update all project priorities
-                    ProjectManager.priorityList.find(project => project.id === projectIds[i]).priority = i;
+                    settingsRaw["arpa_p_" + projectIds[i]] = i;
                 }
 
                 ProjectManager.sortByPriority();
@@ -13463,9 +13374,10 @@
         let sectionName = "Logging";
 
         let resetFunction = function() {
-            resetLoggingSettings();
+            resetLoggingSettings(true);
             updateSettingsFromState();
             updateLoggingSettingsContent(secondaryPrefix);
+            buildFilterRegExp();
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateLoggingSettingsContent);
@@ -13479,21 +13391,21 @@
 
         addSettingsHeader1(currentNode, "Script Messages");
         addSettingsToggle(currentNode, "logEnabled", "Enable logging", "Master switch to enable logging of script actions in the game message queue");
-        Object.values(GameLog.Types).forEach(log => addSettingsToggle(currentNode, log.settingKey, log.name, `If logging is enabled then logs ${log.name} actions`));
+        Object.entries(GameLog.Types).forEach(([id, label]) => addSettingsToggle(currentNode, "log_" + id, label, `If logging is enabled then logs ${label} actions`));
 
         addSettingsHeader1(currentNode, "Game Messages");
         let stringsUrl = `strings/strings${game.global.settings.locale === "en-US" ? "" : "." + game.global.settings.locale}.json`
         currentNode.append(`
           <div>
             <span>List of message IDs to filter, all game messages can be found <a href="${stringsUrl}" target="_blank">here</a>.</span><br>
-            <textarea id="script_logFilter" class="textarea" style="margin-top: 4px;">${settings.logFilter}</textarea>
+            <textarea id="script_logFilter" class="textarea" style="margin-top: 4px;">${settingsRaw.logFilter}</textarea>
           </div>`);
 
         // Settings textarea
         $("#script_logFilter").on('change', function() {
-            settings.logFilter = this.value;
+            settingsRaw.logFilter = this.value;
             buildFilterRegExp();
-            this.value = settings.logFilter;
+            this.value = settingsRaw.logFilter;
             updateSettingsFromState();
         });
 
@@ -13505,34 +13417,38 @@
         node.append(optionsDiv);
 
         addOptionUI(optionsElementId + "_btn", `#${optionsElementId}`, optionsDisplayName, buildOptionsFunction);
-        addOptionUiClickHandler(optionsDiv, optionsDisplayName, buildOptionsFunction);
-    }
-
-    function createSettingToggle(node, name, title, enabledCallBack, disabledCallBack) {
-        let toggle = $(`<label id="${name}" tabindex="0" class="switch" title="${title}"><input type="checkbox"${settings[name] ? " checked" : ""}/> <span class="check"></span><span>${name}</span></label></br>`);
-        node.append(toggle);
-
-        if (settings[name] && enabledCallBack) {
-            enabledCallBack();
-        }
-
-        toggle.on('change', function(e) {
-            settings[name] = e.currentTarget.children[0].checked;
-            updateSettingsFromState();
-            if (settings[name] && enabledCallBack) {
-                enabledCallBack();
-            }
-            if (!settings[name] && disabledCallBack) {
-                disabledCallBack();
-            }
+        optionsDiv.on('click', function() {
+            openOptionsModal(optionsDisplayName, buildOptionsFunction);
         });
     }
 
-    function updateOptionsUI() {
-        // City district outskirts
-        // if (document.getElementById("s-city-dist-outskirts-options") === null) {
-        //     let sectionNode = $('#city-dist-outskirts h3');
+    function createSettingToggle(node, settingKey, title, enabledCallBack, disabledCallBack) {
+        let toggle = $(`
+          <label tabindex="0" class="switch" title="${title}">
+            <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}/>
+            <span class="check"></span><span>${settingKey}</span>
+          </label><br>`);
 
+        if (settingsRaw[settingKey] && enabledCallBack) {
+            enabledCallBack();
+        }
+
+        toggle.on('change', 'input', function() {
+            settingsRaw[settingKey] = this.checked;
+            updateSettingsFromState();
+            if (settingsRaw[settingKey] && enabledCallBack) {
+                enabledCallBack();
+            }
+            if (!settingsRaw[settingKey] && disabledCallBack) {
+                disabledCallBack();
+            }
+        });
+        toggle.on('click', {label: `Toggle (${settingKey})`, name: settingKey, type: "boolean"}, openOverrideModal);
+
+        node.append(toggle);
+    }
+
+    function updateOptionsUI() {
         // Build secondary options buttons if they don't currently exist
         addOptionUI("s-government-options", "#government .tabs ul", "Government", buildGovernmentSettings);
         addOptionUI("s-foreign-options", "#garrison div h2", "Foreign Affairs", buildWarSettings);
@@ -13551,25 +13467,25 @@
 
         let newOptionNode = $(`<span id="${optionsId}" class="s-options-button has-text-success" style="margin-right:0px">+</span>`);
         sectionNode.prepend(newOptionNode);
-        addOptionUiClickHandler(newOptionNode, modalTitle, buildOptionsFunction);
+        newOptionNode.on('click', function() {
+            openOptionsModal(modalTitle, buildOptionsFunction);
+        });
     }
 
-    function addOptionUiClickHandler(optionNode, modalTitle, buildOptionsFunction) {
-        optionNode.on('click', function() {
-            // Build content
-            let modalHeader = $('#scriptModalHeader');
-            modalHeader.empty().off("*");
-            modalHeader.append(`<span>${modalTitle}</span>`);
+    function openOptionsModal(modalTitle, buildOptionsFunction) {
+        // Build content
+        let modalHeader = $('#scriptModalHeader');
+        modalHeader.empty().off("*");
+        modalHeader.append(`<span>${modalTitle}</span>`);
 
-            let modalBody = $('#scriptModalBody');
-            modalBody.empty().off("*");
-            buildOptionsFunction(modalBody, "c_");
+        let modalBody = $('#scriptModalBody');
+        modalBody.empty().off("*");
+        buildOptionsFunction(modalBody, "c_");
 
-            // Show modal
-            let modal = document.getElementById("scriptModal");
-            $("html").css('overflow', 'hidden');
-            modal.style.display = "block";
-        });
+        // Show modal
+        let modal = document.getElementById("scriptModal");
+        $("html").css('overflow', 'hidden');
+        modal.style.display = "block";
     }
 
     function createOptionsModal() {
@@ -13674,6 +13590,7 @@
             $("#bulk-sell").on('mouseup', function() {
                 game.updateDebugData();
                 updateScriptData();
+                finalizeScriptData();
                 autoMarket(true, true);
             });
 
@@ -13684,22 +13601,22 @@
                 <a class="button is-dark is-small" id="set-min-money"><span>Set</span></a>
                 <a class="button is-dark is-small" id="set-min-percent" title="eg. 10 equals 10%"><span>Set %</span></a>
               </div>`);
-            let minimumMoneyValue = settings.minimumMoney > 0 ? settings.minimumMoney : settings.minimumMoneyPercentage;
+            let minimumMoneyValue = settingsRaw.minimumMoney > 0 ? settingsRaw.minimumMoney : settingsRaw.minimumMoneyPercentage;
             $("#ea-settings > input").val(minimumMoneyValue);
 
             $("#set-min-money").on('click', function() {
                 let minMoney = getRealNumber($("#ea-settings > input").val());
                 if (!isNaN(minMoney)) {
-                    settings.minimumMoney = minMoney;
-                    settings.minimumMoneyPercentage = 0;
+                    settingsRaw.minimumMoney = minMoney;
+                    settingsRaw.minimumMoneyPercentage = 0;
                     updateSettingsFromState();
                 }
             });
             $("#set-min-percent").on('click', function() {
                 let minMoneyPercent = getRealNumber($("#ea-settings > input").val());
                 if (!isNaN(minMoneyPercent)) {
-                    settings.minimumMoneyPercentage = minMoneyPercent;
-                    settings.minimumMoney = 0;
+                    settingsRaw.minimumMoneyPercentage = minMoneyPercent;
+                    settingsRaw.minimumMoney = 0;
                     updateSettingsFromState();
                 }
             });
@@ -13710,34 +13627,34 @@
             scriptNode.parent().append(scriptNode);
         }
 
-        if (settings.showSettings && $("#script_settings").length === 0) {
+        if (settingsRaw.showSettings && $("#script_settings").length === 0) {
             buildScriptSettings();
         }
-        if (settings.autoCraft && $('#resources .ea-craft-toggle').length === 0) {
+        if (settingsRaw.autoCraft && $('#resources .ea-craft-toggle').length === 0) {
             createCraftToggles();
         }
         // Building toggles added to different tabs, game can redraw just one tab, destroying toggles there, and we still have total number of toggles above zero; we'll remember amount of toggle, and redraw it when number differ from what we have in game
         let currentBuildingToggles = $('#mTabCivil .ea-building-toggle').length;
-        if (settings.autoBuild && (currentBuildingToggles === 0 || currentBuildingToggles !== state.buildingToggles)) {
+        if (settingsRaw.autoBuild && (currentBuildingToggles === 0 || currentBuildingToggles !== state.buildingToggles)) {
             createBuildingToggles();
         }
-        if (settings.autoStorage && game.global.settings.showStorage && $('#resStorage .ea-storage-toggle').length === 0) {
+        if (settingsRaw.autoStorage && game.global.settings.showStorage && $('#resStorage .ea-storage-toggle').length === 0) {
             createStorageToggles();
         }
-        if (settings.autoMarket && game.global.settings.showMarket && $('#market .ea-market-toggle').length === 0) {
+        if (settingsRaw.autoMarket && game.global.settings.showMarket && $('#market .ea-market-toggle').length === 0) {
             createMarketToggles();
         }
-        if (settings.prestigeWhiteholeEjectEnabled && game.global.settings.showEjector && $('#resEjector .ea-eject-toggle').length === 0) {
+        if (settingsRaw.prestigeWhiteholeEjectEnabled && game.global.settings.showEjector && $('#resEjector .ea-eject-toggle').length === 0) {
             createEjectToggles();
         }
-        if (settings.autoSupply && game.global.settings.showCargo && $('#resCargo .ea-supply-toggle').length === 0) {
+        if (settingsRaw.autoSupply && game.global.settings.showCargo && $('#resCargo .ea-supply-toggle').length === 0) {
             createSupplyToggles();
         }
-        if (settings.autoARPA && game.global.settings.showGenetics && $('#arpaPhysics .ea-arpa-toggle').length === 0) {
+        if (settingsRaw.autoARPA && game.global.settings.showGenetics && $('#arpaPhysics .ea-arpa-toggle').length === 0) {
             createArpaToggles();
         }
 
-        if (settings.autoMech && game.global.settings.showMechLab && $('#mechList .ea-mech-info').length === 0) {
+        if (settingsRaw.autoMech && game.global.settings.showMechLab && $('#mechList .ea-mech-info').length === 0) {
             startMechObserver();
         }
 
@@ -13834,9 +13751,12 @@
             let project = ProjectManager.priorityList[i];
             let projectElement = $('#arpa' + project.id + ' .head');
             if (projectElement.length) {
-                let toggle = $(`<label id="script_arpa1_${project.id}" tabindex="0" class="switch ea-arpa-toggle" style="position:relative; max-width:75px;margin-top: -36px;left:59%;float:left;"><input type="checkbox"${project.autoBuildEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span></label>`);
-                projectElement.append(toggle);
-                toggle.on('change', {entity: project, property: "autoBuildEnabled", sync: "script_arpa2_" + project.id}, toggleCallback);
+                let settingKey = "arpa_" + project.id;
+                projectElement.append(addToggleCallbacks($(`
+                  <label tabindex="0" class="switch ea-arpa-toggle" style="position:relative; max-width:75px; margin-top:-36px; left:59%; float:left;">
+                    <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}>
+                    <span class="check" style="height:5px;"></span>
+                  </label>`), settingKey));
             }
         }
     }
@@ -13852,9 +13772,12 @@
             let craftable = state.craftableResourceList[i];
             let craftableElement = $('#res' + craftable.id + ' h3');
             if (craftableElement.length) {
-                let toggle = $(`<label id="script_craft1_${craftable.id}" tabindex="0" class="switch ea-craft-toggle"><input type="checkbox"${craftable.autoCraftEnabled ? " checked" : ""}/> <span class="check" style="height:5px;"></span></label>`);
-                craftableElement.prepend(toggle);
-                toggle.on('change', {entity: craftable, property: "autoCraftEnabled", sync: "script_craft2_" + craftable.id}, toggleCallback);
+                let settingKey = "craft" + craftable.id;
+                craftableElement.prepend(addToggleCallbacks($(`
+                  <label tabindex="0" class="switch ea-craft-toggle">
+                    <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}/>
+                    <span class="check" style="height:5px;"></span>
+                  </label>`), settingKey));
             }
         }
     }
@@ -13870,9 +13793,12 @@
             let building = BuildingManager.priorityList[i];
             let buildingElement = $('#' + building._vueBinding);
             if (buildingElement.length) {
-                let toggle = $(`<label id="script_bat1_${building._vueBinding}" tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px;left:10%;"><input type="checkbox"${building.autoBuildEnabled ? " checked" : ""}/> <span class="check" style="height:5px; max-width:15px"></span></label>`);
-                buildingElement.append(toggle);
-                toggle.on('change', {entity: building, property: "autoBuildEnabled", sync: "script_bat2_" + building._vueBinding}, toggleCallback);
+                let settingKey = "bat" + building._vueBinding;
+                buildingElement.append(addToggleCallbacks($(`
+                  <label tabindex="0" class="switch ea-building-toggle" style="position:absolute; margin-top: 24px; left:10%;">
+                    <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}/>
+                    <span class="check" style="height:5px; max-width:15px"></span>
+                  </label>`), settingKey));
                 state.buildingToggles++;
             }
         }
@@ -13891,9 +13817,13 @@
             let resource = resourcesByAtomicMass[i];
             let ejectElement = $('#eject' + resource.id);
             if (ejectElement.length) {
-                let toggle = $(`<label id="script_eject1_${resource.id}" tabindex="0" title="Enable ejecting of this resource. When to eject is set in the Prestige Settings tab."  class="switch ea-eject-toggle" style="margin-left: auto; margin-right: 0.2rem;"><input type="checkbox"${resource.ejectEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`);
-                ejectElement.append(toggle);
-                toggle.on('change', {entity: resource, property: "ejectEnabled", sync: "script_eject2_" + resource.id}, toggleCallback);
+                let settingKey = 'res_eject' + resource.id;
+                ejectElement.append(addToggleCallbacks($(`
+                  <label tabindex="0" title="Enable ejecting of this resource. When to eject is set in the Prestige Settings tab." class="switch ea-eject-toggle" style="margin-left:auto; margin-right:0.2rem;">
+                    <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}>
+                    <span class="check" style="height:5px;"></span>
+                    <span class="state"></span>
+                  </label>`), settingKey));
             }
         }
     }
@@ -13911,9 +13841,13 @@
             let resource = resourcesBySupplyValue[i];
             let supplyElement = $('#supply' + resource.id);
             if (supplyElement.length) {
-                let toggle = $(`<label id="script_supply1_${resource.id}" tabindex="0" title="Enable supply of this resource."  class="switch ea-supply-toggle" style="margin-left: auto; margin-right: 0.2rem;"><input type="checkbox"${resource.supplyEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`);
-                supplyElement.append(toggle);
-                toggle.on('change', {entity: resource, property: "supplyEnabled", sync: "script_supply2_" + resource.id}, toggleCallback);
+                let settingKey = 'res_supply' + resource.id;
+                supplyElement.append(addToggleCallbacks($(`
+                  <label tabindex="0" title="Enable supply of this resource."  class="switch ea-supply-toggle" style="margin-left:auto; margin-right:0.2rem;">
+                    <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}>
+                    <span class="check" style="height:5px;"></span>
+                    <span class="state"></span>
+                  </label>`), settingKey));
             }
         }
     }
@@ -13951,18 +13885,18 @@
                 let marketRow = $('<span class="ea-market-toggle" style="margin-left: auto; margin-right: 0.2rem; float:right;"></span>');
 
                 if (!game.global.race['no_trade']) {
+                    let buyKey = 'buy' + resource.id;
+                    let sellKey = 'sell' + resource.id;
                     marketRow.append(
-                      $(`<label id="script_buy1_${resource.id}" tabindex="0" title="Enable buying of this resource."  class="switch"><input type="checkbox"${resource.autoBuyEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`)
-                        .on('change', {entity: resource, property: "autoBuyEnabled", sync: "script_buy2_" + resource.id}, toggleCallback),
-                      $(`<label id="script_sell1_${resource.id}" tabindex="0" title="Enable selling of this resource."  class="switch"><input type="checkbox"${resource.autoSellEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`)
-                        .on('change', {entity: resource, property: "autoSellEnabled", sync: "script_sell2_" + resource.id}, toggleCallback));
+                      addToggleCallbacks($(`<label tabindex="0" title="Enable buying of this resource." class="switch"><input class="script_${buyKey}" type="checkbox"${settingsRaw[buyKey] ? " checked" : ""}><span class="check" style="height:5px;"></span><span class="state"></span></label>`), buyKey),
+                      addToggleCallbacks($(`<label tabindex="0" title="Enable selling of this resource." class="switch"><input class="script_${sellKey}" type="checkbox"${settingsRaw[sellKey] ? " checked" : ""}><span class="check" style="height:5px;"></span><span class="state"></span></label>`), sellKey));
                 }
 
+                let tradeBuyKey = 'res_trade_buy_' + resource.id;
+                let tradeSellKey = 'res_trade_sell_' + resource.id;
                 marketRow.append(
-                  $(`<label id="script_tbuy1_${resource.id}" tabindex="0" title="Enable trading for this resource." class="switch"><input type="checkbox"${resource.autoTradeBuyEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`)
-                    .on('change', {entity: resource, property: "autoTradeBuyEnabled", sync: "script_tbuy2_" + resource.id}, toggleCallback),
-                  $(`<label id="script_tsell1_${resource.id}" tabindex="0" title="Enable trading this resource away." class="switch"><input type="checkbox"${resource.autoTradeSellEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`)
-                    .on('change', {entity: resource, property: "autoTradeSellEnabled", sync: "script_tsell2_" + resource.id}, toggleCallback));
+                  addToggleCallbacks($(`<label tabindex="0" title="Enable trading for this resource." class="switch"><input class="script_${tradeBuyKey}" type="checkbox"${settingsRaw[tradeBuyKey] ? " checked" : ""}><span class="check" style="height:5px;"></span><span class="state"></span></label>`), tradeBuyKey),
+                  addToggleCallbacks($(`<label tabindex="0" title="Enable trading this resource away." class="switch"><input class="script_${tradeSellKey}" type="checkbox"${settingsRaw[tradeSellKey] ? " checked" : ""}><span class="check" style="height:5px;"></span><span class="state"></span></label>`), tradeSellKey));
 
                 marketRow.appendTo(marketElement);
             }
@@ -13996,12 +13930,12 @@
         for (let resource of StorageManager.priorityList) {
             let storageElement = $('#stack-' + resource.id);
             if (storageElement.length > 0) {
-                $('<span class="ea-storage-toggle" style="margin-left: auto; margin-right: 0.2rem; float:right;"></span>')
+                let storeKey = "res_storage" + resource.id;
+                let overKey = "res_storage_o_" + resource.id;
+                $(`<span class="ea-storage-toggle" style="margin-left: auto; margin-right: 0.2rem; float:right;"></span>`)
                   .append(
-                    $(`<label id="script_res_storage1_${resource.id}" tabindex="0" title="Enable storing of this resource." class="switch"><input type="checkbox"${resource.autoStorageEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`)
-                      .on('change', {entity: resource, property: "autoStorageEnabled", sync: "script_res_storage2_" + resource.id}, toggleCallback),
-                    $(`<label id="script_res_overflow1_${resource.id}" tabindex="0" title="Enable storing overflow of this resource." class="switch"><input type="checkbox"${resource.storeOverflow ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`)
-                      .on('change', {entity: resource, property: "storeOverflow", sync: "script_res_overflow2_" + resource.id}, toggleCallback))
+                    addToggleCallbacks($(`<label tabindex="0" title="Enable storing of this resource." class="switch"><input class="script_${storeKey}" type="checkbox"${settingsRaw[storeKey] ? " checked" : ""}><span class="check" style="height:5px;"></span><span class="state"></span></label>`), storeKey),
+                    addToggleCallbacks($(`<label tabindex="0" title="Enable storing overflow of this resource." class="switch"><input class="script_${overKey}" type="checkbox"${settingsRaw[overKey] ? " checked" : ""}><span class="check" style="height:5px;"></span><span class="state"></span></label>`), overKey))
                   .appendTo(storageElement);
             }
         }
@@ -14010,6 +13944,12 @@
     function removeStorageToggles() {
         $('#resStorage .ea-storage-toggle').remove();
         $("#script_storage_top_row").remove();
+    }
+
+    function sorterHelper(event, ui) {
+        let clone = $(ui).clone();
+        clone.css('position','absolute');
+        return clone.get(0);
     }
 
     // Util functions
@@ -14288,6 +14228,18 @@
             }
         }
         return object;
+    }
+
+    // Add getters for setting properties
+    function addProps(list, id, props) {
+        for (let item of Object.values(list)) {
+            for (let i = 0; i < props.length; i++) {
+                let settingKey = props[i].s + id(item);
+                let propertyKey = props[i].p;
+                Object.defineProperty(item, propertyKey, {configurable: true, enumerable: true, get: () => settingsRaw[settingKey]});
+            }
+        }
+        return list;
     }
 
     // TODO: adjustCost refactored in 1.2
