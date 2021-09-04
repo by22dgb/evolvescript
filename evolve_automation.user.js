@@ -5116,6 +5116,7 @@
         let def = {
             buildingBuildIfStorageFull: false,
             buildingsIgnoreZeroRate: false,
+            buildingsLimitPowered: false,
             buildingShrineType: "know",
             buildingTowerSuppression: 100,
             buildingEnabledAll: true,
@@ -7992,6 +7993,9 @@
             let maxStateOn = building.count;
             let currentStateOn = building.stateOnCount;
 
+            if (settings.buildingsLimitPowered) {
+                maxStateOn = Math.min(maxStateOn, building.autoMax);
+            }
             // Max powered amount
             if (building === buildings.NeutronCitadel) {
                 while (maxStateOn > 0) {
@@ -10600,6 +10604,7 @@
         "XNOR": (a, b) => !a == !b,
     }
 
+    // TODO: Worker counts, challenges and scenarious, arpa level, governors, government
     var checkTypes = {
         String: { fn: (v) => v, arg: "string", def: "none", desc: "Returns string" },
         Number: { fn: (v) => v, arg: "number", def: 0, desc: "Returns number" },
@@ -12985,7 +12990,6 @@
 
         let tableBodyNode = $('#script_weightingTableBody');
 
-        // TODO: Make rules fully customizable? Like, eval() user's conditions, or configure them in some fancy gui.
         addWeightingRule(tableBodyNode, "Any", "New building", "buildingWeightingNew");
         addWeightingRule(tableBodyNode, "Powered building", "Low available energy", "buildingWeightingUnderpowered");
         addWeightingRule(tableBodyNode, "Power plant", "Low available energy", "buildingWeightingNeedfulPowerPlant");
@@ -13043,6 +13047,7 @@
 
         addSettingsToggle(currentNode, "buildingBuildIfStorageFull", "Ignore weighting and build if storage is full", "Ignore weighting and immediately construct building if it uses any capped resource, preventing wasting them by overflowing. Weight still need to be positive(above zero) for this to happen.");
         addSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings.");
+        addSettingsToggle(currentNode, "buildingsLimitPowered", "Limit amount of powered buildings", "With this option enabled Max Build will prevent powering extra building. Can be useful to disable buildigns with overrided settings.");
         addSettingsNumber(currentNode, "buildingTowerSuppression", "Minimum suppression for Towers", "East Tower and West Tower won't be built until minimum suppression is reached");
 
         let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
