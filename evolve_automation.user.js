@@ -10753,8 +10753,9 @@
                   <input type="text" class="input is-small" style="height: 22px; width:100%"/>`)
                 .val(value)
                 .on('change', function() {
-                    this.value = getRealNumber(this.value) || 0;
-                    callback(this.value);
+                    let parsedValue = getRealNumber(this.value) || value;
+                    this.value = parsedValue;
+                    callback(parsedValue);
                 })
             case "boolean":
                 return $(`
@@ -14129,6 +14130,7 @@
     }
 
     function getNiceNumber(amountValue) {
+        amountValue = Number(amountValue);
         return parseFloat(amountValue < 1 ? amountValue.toPrecision(2) : amountValue.toFixed(2));
     }
 
