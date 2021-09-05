@@ -1598,6 +1598,7 @@
     var techIds = {};
     var buildingIds = {};
     var arpaIds = {};
+    var jobIds = {};
     var evolutions = {};
     var races = {};
     var resourcesByAtomicMass = [];
@@ -9811,12 +9812,10 @@
     }
 
     function initialiseScript() {
-        // Init researches
+        // Init objects and lookup tables
         for (let [key, action] of Object.entries(game.actions.tech)) {
             techIds[action.id] = new Technology(key);
         }
-
-        // Init lookup table for buildings
         for (let building of Object.values(buildings)){
             buildingIds[building._vueBinding] = building;
             // Don't force building Jump Ship and Pit Assault, they're prety expensive at the moment when unlocked.
@@ -9824,10 +9823,11 @@
                 state.missionBuildingList.push(building);
             }
         }
-
-        // ...and projects
         for (let project of Object.values(projects)){
             arpaIds[project._vueBinding] = project;
+        }
+        for (let job of Object.values(jobs)){
+            jobIds[job._originalId] = job;
         }
 
         updateStandAloneSettings();
@@ -10598,7 +10598,17 @@
         node.append(`<div style="margin: 2px; width: 90%; display: inline-block; text-align: left;"><span class="has-text-caution">${headerText}</span></div>`);
     }
 
-    var checkCompare = {
+    const prestigeOptions = buildSelectOptions([
+        {val: "none", label: "None", hint: "Endless game"},
+        {val: "mad", label: "Mutual Assured Destruction", hint: "MAD prestige once MAD has been researched and all soldiers are home"},
+        {val: "bioseed", label: "Bioseed", hint: "Launches the bioseeder ship to perform prestige when required probes have been constructed"},
+        {val: "cataclysm", label: "Cataclysm", hint: "Perform cataclysm reset by researching Dial It To 11 once available"},
+        {val: "whitehole", label: "Whitehole", hint: "Infuses the blackhole with exotic materials to perform prestige"},
+        {val: "vacuum", label: "Vacuum Collapse", hint: "Build Mana Syphons until the end"},
+        {val: "ascension", label: "Ascension", hint: "Allows research of Incorporeal Existence and Ascension. Ascension Machine managed by autoPower. User input still required to trigger reset, and create custom race."},
+        {val: "demonic", label: "Demonic Infusion", hint: "Sacrifice your entire civilization to absorb the essence of a greater demon lord"}]);
+
+    const checkCompare = {
         "==": (a, b) => a == b,
         "!=": (a, b) => a != b,
         ">": (a, b) => a > b,
@@ -10615,28 +10625,46 @@
         "XNOR": (a, b) => !a == !b,
     }
 
-    // TODO: Worker counts, challenges and scenarious, arpa level, governors, government, universe, planet
-    var checkTypes = {
+    const argType = {
+        building: {arg: "list", options: {list: buildingIds, name: "name", id: "_vueBinding"}, def: "city-farm"},
+        project: {arg: "list", options: {list: arpaIds, name: "name", id: "_vueBinding"}, def: "arpalaunch_facility"},
+        research: {arg: "list", options: {list: techIds, name: "name", id: "_vueBinding"}, def: "tech-mad"},
+        resource: {arg: "list", options: {list: resources, name: "name", id: "_id"}, def: "Food"},
+        race: {arg: "list", options: {list: races, name: "name", id: "id"}, def: "junker"},
+        job: {arg: "list", options: {list: jobIds, name: "_originalName", id: "_originalId"}, def: "unemployed"},
+    }
+    // TODO: planet biome\trait\geology, queue length, minor traits, protoplasm
+    const checkTypes = {
         String: { fn: (v) => v, arg: "string", def: "none", desc: "Returns string" },
         Number: { fn: (v) => v, arg: "number", def: 0, desc: "Returns number" },
         Boolean: { fn: (v) => v, arg: "boolean", def: false, desc: "Returns boolean" },
         SettingDefault: { fn: (s) => settingsRaw[s], arg: "string", def: "masterScriptToggle", desc: "Returns default value of setting, types varies" },
         SettingCurrent: { fn: (s) => settings[s], arg: "string", def: "masterScriptToggle", desc: "Returns current value of setting, types varies" },
         Eval: { fn: (s) => eval(s), arg: "string", def: "Math.PI", desc: "Returns result of evaluating code" },
-        BuildingUnlocked: { fn: (b) => buildingIds[b].isUnlocked(), arg: "building", def: "city-farm", desc: "Return true when building is unlocked" },
-        BuildingCount: { fn: (b) => buildingIds[b].count, arg: "building", def: "city-farm", desc: "Returns count of buildings as number" },
-        ResearchUnlocked:  { fn: (r) => techIds[r].isUnlocked(), arg: "research", def: "tech-club", desc: "Returns true when research is unlocked" },
-        ResearchComplete:  { fn: (r) => techIds[r].isResearched(), arg: "research", def: "tech-club", desc: "Returns true when research is complete" },
-        ResourceUnlocked: { fn: (r) => resources[r].isUnlocked(), arg: "resource", def: "Food", desc: "Returns true when resource or support is unlocked" },
-        ResourceQuantity: { fn: (r) => resources[r].currentQuantity, arg: "resource", def: "Food", desc: "Returns current amount of resource or support as number" },
-        ResourceStorage: { fn: (r) => resources[r].maxQuantity, arg: "resource", def: "Food", desc: "Returns maximum amount of resource or support as number" },
-        ResourceIncome: { fn: (r) => resources[r].rateOfChange, arg: "resource", def: "Food", desc: "Returns current income of resource as number" }, // rateOfChange holds full diff of resource at the moment when overrides checked
-        ResourceRatio: { fn: (r) => resources[r].storageRatio, arg: "resource", def: "Food", desc: "Returns storage of resource as number, e.g. 50% filled storage will return 0.5" },
-        ResetType: { fn: (r) => settings.prestigeType === r, arg: "reset", def: "mad", desc: "Returns true when selected reset is active" },
+        BuildingUnlocked: { fn: (b) => buildingIds[b].isUnlocked(), ...argType.building, desc: "Return true when building is unlocked" },
+        BuildingCount: { fn: (b) => buildingIds[b].count, ...argType.building, desc: "Returns count of buildings as number" },
+        ProjectUnlocked: { fn: (p) => arpaIds[p].isUnlocked(), ...argType.project, desc: "Return true when project is unlocked" },
+        ProjectCount: { fn: (p) => arpaIds[p].count, ...argType.project, desc: "Returns count of projects as number" },
+        ProjectProgress: { fn: (p) => arpaIds[p].progress, ...argType.project, desc: "Returns progress of projects as number" },
+        JobUnlocked: { fn: (j) => jobIds[j].isUnlocked(), ...argType.job, desc: "Returns true when job is unlocked" },
+        JobCount: { fn: (j) => jobIds[j].count, ...argType.job, desc: "Returns current amount of assigned workers as number" },
+        JobMax: { fn: (j) => jobIds[j].max, ...argType.job, desc: "Returns maximum amount of assigned workers as number" },
+        ResearchUnlocked:  { fn: (r) => techIds[r].isUnlocked(), ...argType.research, desc: "Returns true when research is unlocked" },
+        ResearchComplete:  { fn: (r) => techIds[r].isResearched(), ...argType.research, desc: "Returns true when research is complete" },
+        ResourceUnlocked: { fn: (r) => resources[r].isUnlocked(), ...argType.resource, desc: "Returns true when resource or support is unlocked" },
+        ResourceQuantity: { fn: (r) => resources[r].currentQuantity, ...argType.resource, desc: "Returns current amount of resource or support as number" },
+        ResourceStorage: { fn: (r) => resources[r].maxQuantity, ...argType.resource, desc: "Returns maximum amount of resource or support as number" },
+        ResourceIncome: { fn: (r) => resources[r].rateOfChange, ...argType.resource, desc: "Returns current income of resource as number" }, // rateOfChange holds full diff of resource at the moment when overrides checked
+        ResourceRatio: { fn: (r) => resources[r].storageRatio, ...argType.resource, desc: "Returns storage ratio of resource as number. Number 0.5 means that storage is 50% full, and such." },
+        ResourceSatisfied: { fn: (r) => resources[r].usefulRatio, ...argType.resource, desc: "Returns satisfied ratio of resource as number. Number above 1 means than current amount of resource above maximum costs" },
+        ResetType: { fn: (r) => settings.prestigeType === r, arg: "select", options: prestigeOptions, def: "mad", desc: "Returns true when selected reset is active" },
         HaveTrait: { fn: (t) => game.global.race[t] ? true : false, arg: "trait", def: "kindling_kindred", desc: "Returns true when current race have selected trait" },
-        RaceCurrent: { fn: (r) => game.global.race.species === r, arg: "race", def: "junker", desc: "Returns true when playing selected race" },
-        RaceFanaticism: { fn: (r) => game.global.race.gods === r, arg: "race", def: "junker", desc: "Returns true when selected race can be inherited with fanaticism" },
-        RaceDeify: { fn: (r) => game.global.race.old_gods === r, arg: "race", def: "junker", desc: "Returns true when selected race can be inherited with deify" },
+        RaceCurrent: { fn: (r) => game.global.race.species === r, ...argType.race, desc: "Returns true when playing selected race" },
+        RaceFanaticism: { fn: (r) => game.global.race.gods === r, ...argType.race, desc: "Returns true when selected race can be inherited with fanaticism" },
+        RaceDeify: { fn: (r) => game.global.race.old_gods === r, ...argType.race, desc: "Returns true when selected race can be inherited with deify" },
+        Universe: { fn: (u) => game.global.race.universe === u, arg: "universe", def: "standard", desc: "Returns true when playing in selected universe" },
+        Government: { fn: (g) => game.global.civic.govern.type === g, arg: "government", def: "anarchy", desc: "Returns true when selected government is active" },
+        Challenge: { fn: (c) => game.global.race[c] ? true : false, arg: "challenge", def: "junker", desc: "Returns true when selected challenge is active" },
     }
 
     function openOverrideModal(event) {
@@ -10685,7 +10713,7 @@
         }
         newTableBodyText += `
           <tr id="script_${settingName}_d" class="unsortable">
-            <td style="width:75%" colspan="5">Default value, applied when all checks above are falsy</td>
+            <td style="width:75%" colspan="5">Default value, applied when all checks above are false</td>
             <td style="width:15%"></td>
             <td style="width:5%"><a class="button is-dark is-small"><span>+</span></a></td>
             <td style="width:5%"></td>
@@ -10745,15 +10773,13 @@
             case "string":
                 return $(`
                   <input type="text" class="input is-small" style="height: 22px; width:100%"/>`)
-                .val(value)
-                .on('change', function() {
+                .val(value).on('change', function() {
                     callback(this.value);
                 });
             case "number":
                 return $(`
                   <input type="text" class="input is-small" style="height: 22px; width:100%"/>`)
-                .val(value)
-                .on('change', function() {
+                .val(value).on('change', function() {
                     let parsedValue = getRealNumber(this.value) || value;
                     this.value = parsedValue;
                     callback(parsedValue);
@@ -10764,47 +10790,53 @@
                     <input type="checkbox">
                     <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span>
                   </label>`)
-                .find('input')
-                  .prop('checked', value)
-                  .on('change', function() {
-                      callback(this.checked);
-                  })
+                .find('input').prop('checked', value).on('change', function() {
+                    callback(this.checked);
+                })
                 .end();
             case "select":
-               return $(`
-                 <select style="width: 100%">${options}</select>`)
-               .val(value)
-               .on('change', function() {
-                  callback(this.value);
-               });
-            case "building":
-                return buildObjectListInput(buildingIds, "_vueBinding", value, callback);
-            case "research":
-                return buildObjectListInput(techIds, "_vueBinding", value, callback);
-            case "resource":
-                return buildObjectListInput(resources, "_id", value, callback);
-            case "race":
-                return buildObjectListInput(races, "id", value, callback);
-            case "reset":
-               return $(`
-                 <select style="width: 100%">${prestigeOptions}</select>`)
-               .val(value)
-               .on('change', function() {
-                  callback(this.value);
-               });
+                return $(`
+                  <select style="width: 100%">${options}</select>`)
+                .val(value).on('change', function() {
+                    callback(this.value);
+                });
+            case "list":
+                return buildObjectListInput(options.list, options.name, options.id, value, callback);
             case "trait":
                 let traits = Object.fromEntries(Object.values(game.races)
                   .flatMap(r => Object.keys(r.traits))
                   .filter((trait, index, arr) => arr.indexOf(trait) === index)
                   .map(trait => [trait, {name: game.loc(`trait_${trait}_name`), id: trait}]));
-                return buildObjectListInput(traits, "id", value, callback);
+                return buildObjectListInput(traits, "name", "id", value, callback);
+            case "universe":
+                options = buildSelectOptions([{val: "bigbang", label: "None", hint: "Universe is not chosen yet after Big Bang"},
+                  ...universes.map(id => ({val: id, label: game.loc(`universe_${id}`), hint: game.loc(`universe_${id}_desc`)}))]);
+                return $(`
+                  <select style="width: 100%">${options}</select>`)
+                .val(value).on('change', function() {
+                    callback(this.value);
+                });
+            case "government":
+                options = buildSelectOptions(Object.keys(GovernmentManager.Types).map(id => ({val: id, label: game.loc(`govern_${id}`), hint: game.loc(`govern_${id}_desc`)})));
+                return $(`
+                  <select style="width: 100%">${options}</select>`)
+                .val(value).on('change', function() {
+                    callback(this.value);
+                });
+            case "challenge":
+                options = buildSelectOptions(challenges.flat().map(c => ({val: c.trait, label: game.loc(`evo_challenge_${c.id}`), hint: game.loc(`evo_challenge_${c.id}_effect`)})));
+                return $(`
+                  <select style="width: 100%">${options}</select>`)
+                .val(value).on('change', function() {
+                    callback(this.value);
+                });
             default:
                 return "";
         }
     }
 
     function buildConditionType(override, num, rebuild) {
-        let types = Object.entries(checkTypes).map(([id, type]) => `<option value="${id}" title="${type.desc}">${id}</option>`).join();
+        let types = Object.entries(checkTypes).map(([id, type]) => `<option value="${id}" title="${type.desc}">${id.replace(/([A-Z])/g, ' $1').trim()}</option>`).join();
         return $(`<select style="width: 100%">${types}</select>`)
         .val(override["type" + num])
         .on('change', function() {
@@ -10816,8 +10848,8 @@
     }
 
     function buildConditionArg(override, num) {
-        let varType = checkTypes[override["type" + num]]?.arg ?? "";
-        return buildInputNode(varType, null, override["arg" + num], function(result){
+        let check = checkTypes[override["type" + num]];
+        return buildInputNode(check.arg, check.options, override["arg" + num], function(result){
             override["arg" + num] = result;
             updateSettingsFromState();
         });
@@ -10852,7 +10884,7 @@
         });
     }
 
-    function buildObjectListInput(list, id, value, callback) {
+    function buildObjectListInput(list, name, id, value, callback) {
         let listNode = $(`<input type="text" style="width:100%"></input>`);
 
         // Event handler
@@ -10861,19 +10893,19 @@
 
             // If it wasn't selected from list
             if(ui.item === null){
-                let typedName = Object.values(list).find(obj => obj.name === this.value);
-                if (typedName !== undefined){
-                    ui.item = {label: this.value, value: typedName[id]};
+                let foundItem = Object.values(list).find(obj => obj[name] === this.value);
+                if (foundItem !== undefined){
+                    ui.item = {label: this.value, value: foundItem[id]};
                 }
             }
 
-            if (ui.item !== null && list.hasOwnProperty(ui.item.value)) {
+            if (ui.item !== null && Object.values(list).some(obj => obj[id] === ui.item.value)) {
                 // We have an item to switch
                 this.value = ui.item.label;
                 callback(ui.item.value);
             } else if (list.hasOwnProperty(value)) {
                 // Or try to restore old valid value
-                this.value = list[value].name;
+                this.value = list[value][name];
                 callback(value);
             } else {
                 // No luck, set it empty
@@ -10888,16 +10920,16 @@
             source: function(request, response) {
                 let matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term), "i");
                 response(Object.values(list)
-                  .filter(item => matcher.test(item.name))
-                  .map(item => ({label: item.name, value: item[id]})));
+                  .filter(item => matcher.test(item[name]))
+                  .map(item => ({label: item[name], value: item[id]})));
             },
             select: onChange, // Dropdown list click
             focus: onChange, // Arrow keys press
             change: onChange // Keyboard type
         });
 
-        if (list.hasOwnProperty(value)) {
-            listNode.val(list[value].name);
+        if (Object.values(list).some(obj => obj[id] === value)) {
+            listNode.val(list[value][name]);
         }
 
         return listNode;
@@ -10939,8 +10971,12 @@
         .appendTo(node);
     }
 
+    function buildSelectOptions(optionsList) {
+        return optionsList.map(item => `<option value="${item.val}" title="${item.hint}">${item.label}</option>`).join();
+    }
+
     function addSettingsSelect(node, settingName, labelText, hintText, optionsList) {
-        let options = optionsList.map(item => `<option value="${item.val}" title="${item.hint}" ${item.val === settingsRaw[settingName] ? "selected" : ""}>${item.label}</option>`).join();
+        let options = buildSelectOptions(optionsList);
         return $(`
            <div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
              <label title="${hintText}" tabindex="0">
@@ -11132,16 +11168,6 @@
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updatePrestigeSettingsContent);
     }
-
-    const prestigeOptions = `
-      <option value = "none" title = "Endless game">None</option>
-      <option value = "mad" title = "MAD prestige once MAD has been researched and all soldiers are home">Mutual Assured Destruction</option>
-      <option value = "bioseed" title = "Launches the bioseeder ship to perform prestige when required probes have been constructed">Bioseed</option>
-      <option value = "cataclysm" title = "Perform cataclysm reset by researching Dial It To 11 once available">Cataclysm</option>
-      <option value = "whitehole" title = "Infuses the blackhole with exotic materials to perform prestige">Whitehole</option>
-      <option value = "vacuum" title = "Build Mana Syphons until the end">Vacuum Collapse</option>
-      <option value = "ascension" title = "Allows research of Incorporeal Existence and Ascension. Ascension Machine managed by autoPower. User input still required to trigger reset, and create custom race.">Ascension</option>
-      <option value = "demonic" title = "Sacrifice your entire civilization to absorb the essence of a greater demon lord">Demonic Infusion</option>`;
 
     function updatePrestigeSettingsContent(secondaryPrefix) {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
@@ -11705,7 +11731,6 @@
 
         if (trigger.requirementType === "researched" || trigger.requirementType === "unlocked") {
             triggerElement.append(buildTriggerListInput(techIds, trigger, "requirementId"));
-            // TODO: buildObjectListInput(techIds, "_vueBinding", trigger.requirementId, (ret) => trigger.requirementId = ret)
         }
         if (trigger.requirementType === "built") {
             triggerElement.append(buildTriggerListInput(buildingIds, trigger, "requirementId"));
@@ -12939,9 +12964,9 @@
             items: "tr:not(.unsortable)",
             helper: sorterHelper,
             update: function() {
-                let jobIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
-                for (let i = 0; i < jobIds.length; i++) {
-                    settingsRaw['job_p_' + jobIds[i]] = i + 3; // farmers, hunters, and unemployed are always on top
+                let sortedIds = tableBodyNode.sortable('toArray', {attribute: 'value'});
+                for (let i = 0; i < sortedIds.length; i++) {
+                    settingsRaw['job_p_' + sortedIds[i]] = i + 3; // farmers, hunters, and unemployed are always on top
                 }
 
                 JobManager.sortByPriority();
@@ -13244,6 +13269,11 @@
             $('[class^="script_bat"]').prop('checked', this.checked);
 
             updateSettingsFromState();
+        })
+        .on('click', function(event){
+            if (event.ctrlKey) {
+                event.preventDefault();
+            }
         });
     }
 
@@ -13306,6 +13336,11 @@
             $('[class^="script_bld_s_"]').prop('checked', this.checked);
 
             updateSettingsFromState();
+        })
+        .on('click', function(event){
+            if (event.ctrlKey) {
+                event.preventDefault();
+            }
         });
     }
 
@@ -13552,7 +13587,7 @@
             $('#resources').append(scriptNode);
             resetScrollPositionRequired = true;
 
-            scriptNode.append('<label id="autoScriptInfo">More script options available in Settings tab</label></br>');
+            scriptNode.append(`<label id="autoScriptInfo">More script options available in Settings tab<br>Ctrl+click options to open advanced configuration</label><br>`);
 
             createSettingToggle(scriptNode, 'masterScriptToggle', 'Stop taking any actions on behalf of the player.');
 
