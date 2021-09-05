@@ -50,8 +50,7 @@
     var game = null;
     var win = null;
 
-    var showLogging = false;
-    var loggingType = "autoJobs";
+    var checkActions = false;
 
     // Class definitions
 
@@ -4234,7 +4233,7 @@
             this.openedByScript = true;
             this._callbackWindowTitle = callbackWindowTitle;
             this._callbackFunction = callbackFunction;
-            logClick(elementToClick, "open modal " + callbackWindowTitle);
+            elementToClick.click()
         },
 
         isOpen() {
@@ -4254,7 +4253,7 @@
 
                 let modalCloseBtn = document.querySelector('.modal .modal-close');
                 if (modalCloseBtn !== null) {
-                    logClick(modalCloseBtn, "closing modal");
+                    modalCloseBtn.click();
                 }
             } else {
                 // If we hid users's modal - show it back
@@ -5357,6 +5356,14 @@
             for (let key in def) {
                 if (!settingsRaw.hasOwnProperty(key)) {
                     settingsRaw[key] = def[key];
+                } else {
+                    // Fix misstyped settings
+                    if (typeof settingsRaw[key] === "string" && typeof def[key] === "number") {
+                        settingsRaw[key] = Number(settingsRaw[key]);
+                    }
+                    if (typeof settingsRaw[key] === "number" && typeof def[key] === "string") {
+                        settingsRaw[key] = String(settingsRaw[key]);
+                    }
                 }
             }
         }
@@ -5419,6 +5426,18 @@
         resetLoggingSettings(false);
         resetMinorTraitSettings(false);
 
+        // Fix misstyped overrides
+        for (let key in settingsRaw.overrides) {
+            for (let i = 0; i < settingsRaw.overrides[key].length; i++) {
+                let override = settingsRaw.overrides[key][i];
+                if (typeof settingsRaw[key] === "string" && typeof override.ret === "number") {
+                    override.ret = String(override.ret);
+                }
+                if (typeof settingsRaw[key] === "number" && typeof override.ret === "string") {
+                    override.ret = Number(override.ret);
+                }
+            }
+        }
         // Convert old setings
         settingsRaw.triggers.forEach(t => {
             if (techIds["tech-" + t.actionId]) { t.actionId = "tech-" + t.actionId; }
@@ -5435,7 +5454,7 @@
             Object.entries(settingsRaw.arpa).forEach(([id, enabled]) => settingsRaw["arpa_" + id] = enabled);
         }
         // Remove old settings
-        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana", "arpa"].forEach(id => delete settingsRaw[id]);
+        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana", "arpa", "autoLogging"].forEach(id => delete settingsRaw[id]);
         ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settingsRaw[id + index]));
         ["res_storage_w_", "res_trade_buy_mtr_", "res_trade_sell_mps_"].forEach(id => Object.values(resources).forEach(resource => delete settingsRaw[id + resource.id]));
         Object.values(projects).forEach(project => delete settingsRaw['arpa_ignore_money_' + project.id]);
@@ -5481,7 +5500,7 @@
                 if (typeof settingsRaw[settingName] === typeof settingValue) {
                     settingsRaw[settingName] = settingValue;
                 } else {
-                    console.log(`Type mismatch during loading queued settings: settingsRaw.${settingName} type: ${typeof settingsRaw[settingName]}, value: ${settingsRaw[settingName]}; queuedEvolution.${settingName} type: ${typeof settingValue}, value: ${settingValue};`);
+                    GameLog.logDanger("special", `Type mismatch during loading queued settings: settingsRaw.${settingName} type: ${typeof settingsRaw[settingName]}, value: ${settingsRaw[settingName]}; queuedEvolution.${settingName} type: ${typeof settingValue}, value: ${settingValue};`, ['events', 'major_events']);
                 }
             }
             updateOverrides();
@@ -5694,7 +5713,7 @@
         var action = document.getElementById(`uni-${settings.userUniverseTargetName}`);
 
         if (action !== null) {
-            logClick(action.children[0], `Select universe: ${settings.userUniverseTargetName}`);
+            action.children[0].click();
         }
     }
 
@@ -5823,7 +5842,7 @@
 
         let selectedPlanet = document.getElementById(planets[0].id);
         if (selectedPlanet) {
-            logClick(selectedPlanet.children[0], "select planet");
+            selectedPlanet.children[0].click();
         }
     }
 
@@ -6241,11 +6260,8 @@
             }
 
             // Determine the patrol attack rating
-            // let tempRating1 = 0;
-            // let tempRating2 = 0;
             if (settings.hellHandlePatrolSize) {
                 let patrolRating = game.global.portal.fortress.threat * settings.hellPatrolThreatPercent / 100;
-                //tempRating1 = patrolRating;
 
                 // Now reduce rating based on drones, droids and bootcamps
                 if (game.global.portal.war_drone) {
@@ -6257,7 +6273,6 @@
                 if (game.global.city.boot_camp) {
                     patrolRating -= settings.hellPatrolBootcampMod * game.global.city.boot_camp.count;
                 }
-                //tempRating2 = patrolRating;
 
                 // In the end, don't go lower than the minimum...
                 patrolRating = Math.max(patrolRating, settings.hellPatrolMinRating);
@@ -6295,9 +6310,6 @@
                     targetHellPatrols = Math.floor((availableHellSoldiers - hellGarrison) / targetHellPatrolSize);
                 }
             }
-
-            //console.log("availableHellSoldiers: "+availableHellSoldiers+"  hellGarrison: "+hellGarrison+" patrolSize: "+targetHellPatrolSize+"  Patrols: "+targetHellPatrols+"  Patrol Rating threat/buildings/final: "
-            //             +tempRating1+"/"+tempRating2+"/"+patrolRating);
         } else {
             // Try to leave hell if any soldiers are still assigned so the game doesn't put miniscule amounts of soldiers back
             if (m.hellAssigned > 0) {
@@ -6342,8 +6354,6 @@
         let requiredJobs = [];
         let jobAdjustments = [];
 
-        log("autoJobs", "Total employees: " + availableEmployees);
-
         // First figure out how many farmers are required
         let minFarmers = 0;
         if (farmerIndex !== -1) {
@@ -6366,14 +6376,12 @@
             if (jobList.length === (jobList.indexOf(jobs.Unemployed) === -1 ? 1 : 2)) {
                 // No other jobs are unlocked - everyone on farming!
                 requiredJobs[farmerIndex] = availableEmployees;
-                log("autoJobs", "Pushing all farmers");
             } else if (resources.Population.currentQuantity > state.lastPopulationCount) {
                 let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
                 let farmerChange = jobList[farmerIndex].count - state.lastFarmerCount;
 
                 if (populationChange === farmerChange && foodRateOfChange > 0) {
                     requiredJobs[farmerIndex] = jobList[farmerIndex].count - populationChange;
-                    log("autoJobs", "Removing a farmer due to population growth")
                 } else {
                     requiredJobs[farmerIndex] = jobList[farmerIndex].count;
                 }
@@ -6384,21 +6392,17 @@
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
                 if (jobList[farmerIndex].count === 0) { // We can't calculate production with no workers, assign one first
                     requiredJobs[farmerIndex] = 1;
-                    log("autoJobs", "Adding one farmer");
                 } else {
                     let foodPerWorker = resources.Food.getProduction("job_" + jobList[farmerIndex].id) / jobList[farmerIndex].count;
                     let missingWorkers = Math.ceil(foodRateOfChange / -foodPerWorker) || 0;
                     requiredJobs[farmerIndex] = jobList[farmerIndex].count + missingWorkers;
-                    log("autoJobs", `Adding ${missingWorkers} farmers`);
                 }
             } else if (resources.Food.currentQuantity > maxFoodStorage && foodRateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
                 requiredJobs[farmerIndex] = jobList[farmerIndex].count - 1;
-                log("autoJobs", "Removing one farmer");
             } else {
                 // We're good; leave farmers as they are
                 requiredJobs[farmerIndex] = jobList[farmerIndex].count;
-                log("autoJobs", "Leaving current farmers");
             }
 
             requiredJobs[farmerIndex] = Math.min(requiredJobs[farmerIndex], availableEmployees);
@@ -6542,8 +6546,6 @@
                 let currentBreakpoint = (job === jobs.Hunter && isDemonRace() && isLumberRace()) ? jobs.Lumberjack.breakpointEmployees(i) : job.breakpointEmployees(i);
                 let jobsToAssign = Math.min(availableEmployees, Math.max(minEmployees, currentEmployees, currentBreakpoint));
 
-                log("autoJobs", "job " + job._originalId + " currentBreakpoint " + currentBreakpoint + " availableEmployees " + availableEmployees);
-
                 if (job === jobs.SpaceMiner) {
                     let maxBreakpoint = job.getBreakpoint(i);
                     state.maxSpaceMiners = Math.max(state.maxSpaceMiners, Math.min(availableEmployees, maxBreakpoint < 0 ? Number.MAX_SAFE_INTEGER : maxBreakpoint));
@@ -6606,8 +6608,6 @@
                 requiredJobs[j] = jobsToAssign;
                 jobAdjustments[j] = jobsToAssign - job.count;
                 availableEmployees -= jobsToAssign;
-
-                log("autoJobs", "job " + job._originalId +  " has jobsToAssign: " + jobsToAssign + ", availableEmployees: " + availableEmployees + ", availableCraftsmen: " + availableCraftsmen);
             }
 
             // No more workers available
@@ -6666,7 +6666,6 @@
             let adjustment = jobAdjustments[i];
             if (adjustment < 0) {
                 jobList[i].removeWorkers(-1 * adjustment);
-                log("autoJobs", "Adjusting job " + jobList[i]._originalId + " down by " + adjustment);
             }
         }
 
@@ -6674,7 +6673,6 @@
             let adjustment = jobAdjustments[i];
             if (adjustment > 0) {
                 jobList[i].addWorkers(adjustment);
-                log("autoJobs", "Adjusting job " + jobList[i]._originalId + " up by " + adjustment);
             }
         }
 
@@ -9790,9 +9788,9 @@
 
     function verifyGameActionExists(scriptKeys, scriptObject, gameActionKey, gameObject) {
         // We know that we don't have the info objects defined in our script
-        // XXXX is special. The key doesn't match the object in the game code
         // gift is a special santa gift. Leave it to the player.
-        if (gameActionKey === "info" || gameActionKey === "gift") {
+        // bonfire and firework belongs to seasonal events
+        if (["info", "gift", "bonfire", "firework"].includes(gameActionKey)) {
             return;
         }
 
@@ -9841,7 +9839,7 @@
         });
 
         // If debug logging is enabled then verify the game actions code is both correct and in sync with our script code
-        if (showLogging) {
+        if (checkActions) {
             verifyGameActions();
         }
 
@@ -10028,6 +10026,10 @@
                     let check = conditions[i];
                     let var1 = checkTypes[check.type1].fn(check.arg1);
                     let var2 = checkTypes[check.type2].fn(check.arg2);
+
+                    if (typeof settingsRaw[key] !== typeof check.ret) {
+                        throw `Expected type: ${typeof settingsRaw[key]}; Override type: ${typeof check.ret}`;
+                    }
                     if (checkCompare[check.cmp](var1, var2)) {
                         overrides[key] = check.ret;
                         break;
@@ -10065,7 +10067,6 @@
         if (game.global === state.game) { return; }
         state.game = game.global;
 
-        // console.log("Loop: " + state.scriptTick + ", goal: " + state.goal);
         if (state.scriptTick < Number.MAX_SAFE_INTEGER) {
             state.scriptTick++;
         } else {
@@ -13586,22 +13587,6 @@
 
             createQuickOptions(scriptNode, "s-quick-prestige-options", "Prestige", buildPrestigeSettings);
 
-            if (showLogging) {
-                createSettingToggle(scriptNode, 'autoLogging', 'autoLogging');
-
-                scriptNode.append(`
-                  <div id="ea-logging">
-                    <div>Logging Type:</div>
-                    <input type="text" class="input is-small" style="width:100%"/>
-                    <a class="button is-dark is-small"><span>set</span></a>
-                  </div>`);
-                $("#ea-logging > input").val(loggingType);
-
-                $("#ea-logging > a").on('mouseup', function() {
-                   loggingType = $("#ea-logging > input").val();
-                });
-            }
-
             scriptNode.append('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
             $("#bulk-sell").on('mouseup', function() {
                 game.updateDebugData();
@@ -14005,7 +13990,7 @@
         return !game.global.blood.unbound ? 0 : game.global.blood.unbound >= 4 ? 0.95 : game.global.blood.unbound >= 2 ? 0.9 : 0.8;
     }
 
-    var baseDuration = {main: 250, mid: 1000, long: 500};
+    var baseDuration = {main: 250, mid: 1000, long: 5000};
     function gameTicksPerSecond(type) {
         let ms = baseDuration[type];
         if (game.global.race['slow']) {
@@ -14130,7 +14115,6 @@
     }
 
     function getNiceNumber(amountValue) {
-        amountValue = Number(amountValue);
         return parseFloat(amountValue < 1 ? amountValue.toPrecision(2) : amountValue.toFixed(2));
     }
 
@@ -14220,17 +14204,6 @@
         }
 
         return element.__vue__;
-    }
-
-    function log(type, text) {
-        if (settings.autoLogging && type === loggingType) {
-            console.log(text);
-        }
-    }
-
-    function logClick(element, reason) {
-        log("click", "click " + reason);
-        element.click();
     }
 
     // Recursively traverse through object, wrapping all functions in getters
