@@ -5278,9 +5278,16 @@
             fleetEmbassyKnowledge: 6000000,
             fleetAlienGiftKnowledge: 6500000,
             fleetAlien2Knowledge: 9000000,
-            fleetChthonianLoses: "frigate",
+            fleetChthonianLoses: "low",
+
+            // Default regions priority
+            fleet_pr_gxy_stargate: 0,
+            fleet_pr_gxy_alien2: 1,
+            fleet_pr_gxy_alien1: 2,
+            fleet_pr_gxy_chthonian: 3,
+            fleet_pr_gxy_gateway: 4,
+            fleet_pr_gxy_gorddon: 5,
         }
-        galaxyRegions.forEach((id, index) => def["fleet_pr_" + id] = index);
 
         applySettings(def, reset);
     }
@@ -5477,6 +5484,7 @@
                     console.log(`Type mismatch during loading queued settings: settingsRaw.${settingName} type: ${typeof settingsRaw[settingName]}, value: ${settingsRaw[settingName]}; queuedEvolution.${settingName} type: ${typeof settingValue}, value: ${settingValue};`);
                 }
             }
+            updateOverrides();
             if (settings.evolutionQueueRepeat) {
                 settingsRaw.evolutionQueue.push(queuedEvolution);
             }
@@ -9660,7 +9668,9 @@
                 let resetButton = document.querySelector(".reset .button:not(.right)");
                 if (resetButton.innerText === game.loc("reset_soft")) {
                     if (settings.evolutionQueueEnabled && settingsRaw.evolutionQueue.length > 0) {
-                        addEvolutionSetting();
+                        if (!settings.evolutionQueueRepeat) {
+                            addEvolutionSetting();
+                        }
                         settingsRaw.evolutionQueue.unshift(settingsRaw.evolutionQueue.pop());
                     }
                     updateSettingsFromState();
@@ -10604,7 +10614,7 @@
         "XNOR": (a, b) => !a == !b,
     }
 
-    // TODO: Worker counts, challenges and scenarious, arpa level, governors, government
+    // TODO: Worker counts, challenges and scenarious, arpa level, governors, government, universe, planet
     var checkTypes = {
         String: { fn: (v) => v, arg: "string", def: "none", desc: "Returns string" },
         Number: { fn: (v) => v, arg: "number", def: 0, desc: "Returns number" },
@@ -10624,8 +10634,8 @@
         ResetType: { fn: (r) => settings.prestigeType === r, arg: "reset", def: "mad", desc: "Returns true when selected reset is active" },
         HaveTrait: { fn: (t) => game.global.race[t] ? true : false, arg: "trait", def: "kindling_kindred", desc: "Returns true when current race have selected trait" },
         RaceCurrent: { fn: (r) => game.global.race.species === r, arg: "race", def: "junker", desc: "Returns true when playing selected race" },
-        RaceFanaticism: { fn: (r) => game.global.race.gods === r, arg: "race", def: "junker", desc: "Returns true when playing selected race" },
-        RaceDeify: { fn: (r) => game.global.race.old_gods === r, arg: "race", def: "junker", desc: "Returns true when playing selected race" },
+        RaceFanaticism: { fn: (r) => game.global.race.gods === r, arg: "race", def: "junker", desc: "Returns true when selected race can be inherited with fanaticism" },
+        RaceDeify: { fn: (r) => game.global.race.old_gods === r, arg: "race", def: "junker", desc: "Returns true when selected race can be inherited with deify" },
     }
 
     function openOverrideModal(event) {
@@ -10721,7 +10731,7 @@
             helper: sorterHelper,
             update: function() {
                 let newOrder = tableBodyNode.sortable('toArray', {attribute: 'value'});
-                settingsRaw.overrides[settingName] = newOrder.map((i) => overrides[parseInt(i)]);
+                settingsRaw.overrides[settingName] = newOrder.map((i) => settingsRaw.overrides[settingName][i]);
 
                 updateSettingsFromState();
                 rebuild();
@@ -11361,7 +11371,7 @@
             helper: sorterHelper,
             update: function() {
                 let newOrder = tableBodyNode.sortable('toArray', {attribute: 'value'});
-                settingsRaw.evolutionQueue = newOrder.map((i) => overrides[parseInt(i)]);
+                settingsRaw.evolutionQueue = newOrder.map((i) => settingsRaw.evolutionQueue[i]);
 
                 updateSettingsFromState();
                 updateEvolutionSettingsContent();
