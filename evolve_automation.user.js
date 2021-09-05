@@ -10633,7 +10633,7 @@
         race: {arg: "list", options: {list: races, name: "name", id: "id"}, def: "junker"},
         job: {arg: "list", options: {list: jobIds, name: "_originalName", id: "_originalId"}, def: "unemployed"},
     }
-    // TODO: planet biome\trait\geology, queue length, minor traits, protoplasm
+    // TODO: planet biome\trait\geology, queue length, minor traits, protoplasm, governor, soldiers, merc cost
     const checkTypes = {
         String: { fn: (v) => v, arg: "string", def: "none", desc: "Returns string" },
         Number: { fn: (v) => v, arg: "number", def: 0, desc: "Returns number" },
@@ -10780,7 +10780,10 @@
                 return $(`
                   <input type="text" class="input is-small" style="height: 22px; width:100%"/>`)
                 .val(value).on('change', function() {
-                    let parsedValue = getRealNumber(this.value) || value;
+                    let parsedValue = getRealNumber(this.value);
+                    if (isNaN(parsedValue)) {
+                        parsedValue = value;
+                    }
                     this.value = parsedValue;
                     callback(parsedValue);
                 })
