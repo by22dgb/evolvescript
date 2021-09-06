@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.80
+// @version      3.3.1.81
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -10628,10 +10628,36 @@
         government: {def: "anarchy", arg: "select_cb", options: () => Object.keys(GovernmentManager.Types).map(g =>
           ({val: g, label: game.loc(`govern_${g}`), hint: game.loc(`govern_${g}_desc`)}))},
         governor: {def: "none", arg: "select_cb", options: () =>
-          [{val: "none", label: "None", hint: "No governor selected" },
+          [{val: "none", label: "None", hint: "No governor selected"},
            ...governors.map(id => ({val: id, label: game.loc(`governor_${id}`), hint: game.loc(`governor_${id}_desc`)}))]},
+        queue: {def: "queue", arg: "select_cb", options: () =>
+          [{val: "queue", label: "Building", hint: "Buildings and projects queue"},
+           {val: "r_queue", label: "Research", hint: "Research queue"},
+           {val: "evo", label: "Evolution", hint: "Evolution queue"}]},
+        date: {def: "day", arg: "select_cb", options: () =>
+          [{val: "day", label: "Day (Year)", hint: "Day of year"},
+           {val: "moon", label: "Day (Month)", hint: "Day of month"},
+           {val: "total", label: "Day (Total)", hint: "Day of run"},
+           {val: "year", label: "Year", hint: "Year of run"},
+           {val: "orbit", label: "Orbit", hint: "Planet orbit in days"}]},
+        soldiers: {def: "workers", arg: "select_cb", options: () =>
+          [{val: "workers", label: "Total Soldiers"},
+           {val: "max", label: "Total Soldiers Max"},
+           {val: "currentCityGarrison", label: "City Soldiers"},
+           {val: "maxCityGarrison", label: "City Soldiers Max"},
+           {val: "hellSoldiers", label: "Hell Soldiers"},
+           {val: "hellGarrison", label: "Hell Garrison"},
+           {val: "hellPatrols", label: "Hell Patrols"},
+           {val: "hellPatrolSize", label: "Hell Patrol Size"},
+           {val: "wounded", label: "Battalion Size"},
+           {val: "hellSoldiers", label: "Wounded Soldiers"},
+           {val: "crew", label: "Ship Crew"}]},
+        biome: {def: "grassland", arg: "select_cb", options: () => biomeList.map(b =>
+          ({val: b, label: game.loc(`biome_${b}_name`)}))},
+        ptrait: {def: "", arg: "select_cb", options: () =>
+          [{val: "", label: "None", hint: "Planet have no trait"},
+           ...traitList.slice(1).map(t => ({val: t, label: game.loc(`planet_${t}`)}))]},
     }
-    // TODO: planet biome\trait\geology, queue length, soldiers, merc cost, stats, calendar, crew, and everything else
     // TODO: Make trigger use all this checks, migration will be a bit tedius, but doable
     const checkTypes = {
         String: { fn: (v) => v, arg: "string", def: "none", desc: "Returns string" },
@@ -10641,9 +10667,11 @@
         SettingCurrent: { fn: (s) => settings[s], arg: "string", def: "masterScriptToggle", desc: "Returns current value of setting, types varies" },
         Eval: { fn: (s) => eval(s), arg: "string", def: "Math.PI", desc: "Returns result of evaluating code" },
         BuildingUnlocked: { fn: (b) => buildingIds[b].isUnlocked(), ...argType.building, desc: "Return true when building is unlocked" },
-        BuildingCount: { fn: (b) => buildingIds[b].count, ...argType.building, desc: "Returns count of buildings as number" },
+        BuildingCount: { fn: (b) => buildingIds[b].count, ...argType.building, desc: "Returns amount of buildings as number" },
+        BuildingEnabled: { fn: (b) => buildingIds[b].stateOnCount, ...argType.building, desc: "Returns amount of enabled buildings as number" },
+        BuildingDisabled: { fn: (b) => buildingIds[b].stateOffCount, ...argType.building, desc: "Returns amount of disabled buildings as number" },
         ProjectUnlocked: { fn: (p) => arpaIds[p].isUnlocked(), ...argType.project, desc: "Return true when project is unlocked" },
-        ProjectCount: { fn: (p) => arpaIds[p].count, ...argType.project, desc: "Returns count of projects as number" },
+        ProjectCount: { fn: (p) => arpaIds[p].count, ...argType.project, desc: "Returns amount of projects as number" },
         ProjectProgress: { fn: (p) => arpaIds[p].progress, ...argType.project, desc: "Returns progress of projects as number" },
         JobUnlocked: { fn: (j) => jobIds[j].isUnlocked(), ...argType.job, desc: "Returns true when job is unlocked" },
         JobCount: { fn: (j) => jobIds[j].count, ...argType.job, desc: "Returns current amount of assigned workers as number" },
@@ -10665,6 +10693,11 @@
         Universe: { fn: (u) => game.global.race.universe === u, ...argType.universe, desc: "Returns true when playing in selected universe" },
         Government: { fn: (g) => game.global.civic.govern.type === g, ...argType.government, desc: "Returns true when selected government is active" },
         Governor: { fn: (g) => getGovernor() === g, ...argType.governor, desc: "Returns true when selected governor is active" },
+        Queue: { fn: (q) => q === "evo" ? settingsRaw.evolutionQueue.length : game.global[q].queue.length, ...argType.queue, desc: "Returns amount of items in queue as number" },
+        Date: { fn: (d) => d === "total" ? game.global.stats.days : game.global.city.calendar[d], ...argType.date, desc: "Returns ingame date as number" },
+        Soldiers: { fn: (s) => WarManager[s], ...argType.soldiers, desc: "Returns amount of soldiers as number" },
+        PlanetBiome: { fn: (b) => game.global.city.biome === b, ...argType.biome, desc: "Returns true when playing in selected biome" },
+        PlanetTrait: { fn: (t) => game.global.city.ptrait === t, ...argType.ptrait, desc: "Returns true when planet have selected trait" },
     }
 
     function openOverrideModal(event) {
@@ -10955,7 +10988,7 @@
     }
 
     function buildSelectOptions(optionsList) {
-        return optionsList.map(item => `<option value="${item.val}" title="${item.hint}">${item.label}</option>`).join();
+        return optionsList.map(item => `<option value="${item.val}" title="${item.hint ?? ""}">${item.label}</option>`).join();
     }
 
     function addSettingsSelect(node, settingName, labelText, hintText, optionsList) {
