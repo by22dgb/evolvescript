@@ -10634,6 +10634,7 @@
         job: {arg: "list", options: {list: jobIds, name: "_originalName", id: "_originalId"}, def: "unemployed"},
     }
     // TODO: planet biome\trait\geology, queue length, minor traits, protoplasm, governor, soldiers, merc cost
+    // TODO: Make trigger use all this checks, migration will be a bit tedius, but doable
     const checkTypes = {
         String: { fn: (v) => v, arg: "string", def: "none", desc: "Returns string" },
         Number: { fn: (v) => v, arg: "number", def: 0, desc: "Returns number" },
@@ -14264,7 +14265,7 @@
             for (let i = 0; i < props.length; i++) {
                 let settingKey = props[i].s + id(item);
                 let propertyKey = props[i].p;
-                Object.defineProperty(item, propertyKey, {configurable: true, enumerable: true, get: () => settingsRaw[settingKey]});
+                Object.defineProperty(item, propertyKey, {configurable: true, enumerable: true, get: () => settings[settingKey]});
             }
         }
         return list;
