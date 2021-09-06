@@ -6733,7 +6733,6 @@
 
     }
 
-    // TODO: Make it unassign with 0 weighting
     function autoPylon() {
         let m = RitualManager;
         // If not unlocked then nothing to do
@@ -6741,7 +6740,7 @@
             return;
         }
 
-        let spells = Object.values(m.Productions).filter(spell => spell.isUnlocked() && spell.weighting > 0);
+        let spells = Object.values(m.Productions).filter(spell => spell.isUnlocked());
 
         // Init adjustment, and sort groups by priorities
         let pylonAdjustments = {};
@@ -6754,7 +6753,7 @@
         let usableMana = manaToUse;
 
         let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
-        let remainingSpells = spells.slice();
+        let remainingSpells = spells.filter(spell => spell.weighting > 0);
         while(remainingSpells.length > 0) {
             let spell = remainingSpells.sort(spellSorter)[0];
             let amount = pylonAdjustments[spell.id];
@@ -7226,6 +7225,24 @@
                         allowedSupply = Math.max(0, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
                     }
                 }
+                transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
+                remaining -= transportAdjustments[resource.id];
+            }
+
+            // Supply excess resources when have cargo space
+            // TODO: Make switch
+            for (let i = 0; i < resourcesBySupplyValue.length; i++) {
+                if (remaining <= 0) {
+                    break;
+                }
+
+                let resource = resourcesBySupplyValue[i];
+                if (!resource.supplyEnabled || resource.isDemanded() || resource.storageRequired <= 1 || resource.currentQuantity < resource.storageRequired) {
+                    continue;
+                }
+
+                remaining += transportAdjustments[resource.id];
+                let allowedSupply = Math.max(transportAdjustments[resource.id], Math.floor((resource.currentQuantity - resource.storageRequired) / resource.supplyVolume));
                 transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
                 remaining -= transportAdjustments[resource.id];
             }
@@ -8230,8 +8247,10 @@
 
             let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             let maxBay = Math.min(buildings.SpireMechBay.count, spireSupport);
-            let maxPorts = canBuild(buildings.SpirePort) ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
-            let maxCamps = canBuild(buildings.SpireBaseCamp) ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
+            let currentPort = buildings.SpirePort.count;
+            let currentCamp = buildings.SpireBaseCamp.count;
+            let maxPorts = canBuild(buildings.SpirePort) ? buildings.SpirePort.autoMax : currentPort;
+            let maxCamps = canBuild(buildings.SpireBaseCamp) ? buildings.SpireBaseCamp.autoMax : currentCamp;
             let nextMechCost = canBuild(buildings.SpireMechBay, true) ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
             let nextPuriCost = canBuild(buildings.SpirePurifier, true) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
             let mechQueued = state.queuedTargetsAll.includes(buildings.SpireMechBay);
@@ -8251,13 +8270,13 @@
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
 
                 let missingStorage =
-                    targetPort > buildings.SpirePort.count ? buildings.SpirePort :
-                    targetCamp > buildings.SpireBaseCamp.count ? buildings.SpireBaseCamp :
+                    targetPort > currentPort ? buildings.SpirePort :
+                    targetCamp > currentCamp ? buildings.SpireBaseCamp :
                     null;
                 if (missingStorage) {
                     let storageCost = resourceCost(missingStorage, resources.Supply);
                     for (let i = maxBay; i >= 0; i--) {
-                        let [storageSupplies, storagePort, storageCamp] = getBestSupplyRatio(spireSupport - i, maxPorts, maxCamps);
+                        let [storageSupplies, storagePort, storageCamp] = getBestSupplyRatio(spireSupport - i, currentPort, currentCamp);
                         if (storageSupplies >= storageCost) {
                             adjustSpire(i, storagePort, storageCamp);
                             break;
