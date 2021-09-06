@@ -865,11 +865,6 @@
 
             resetMultiplier();
 
-            // TODO: Priest unlocked upon hovering... Fixed in 1.2
-            if (this === buildings.Temple || this === buildings.RedZiggurat) {
-                this.definition.effect();
-            }
-
             // Hide active popper from action, so it won't rewrite it
             let popper = $('#popper');
             if (popper.length > 0 && popper.data('id').indexOf(this._vueBinding) === -1) {
@@ -5472,25 +5467,7 @@
     }
 
     function isAchievementUnlocked(id, level) {
-        let universe = "l";
-        switch (game.global.race.universe){
-            case 'antimatter':
-                universe = "a";
-                break;
-            case 'heavy':
-                universe = "h";
-                break;
-            case 'evil':
-                universe = "e";
-                break;
-            case 'micro':
-                universe = "m";
-                break;
-            case 'magic':
-                universe = "mg";
-                break;
-        }
-        return game.global.stats.achieve[id] && game.global.stats.achieve[id][universe] && game.global.stats.achieve[id][universe] >= level;
+        return game.global.stats.achieve[id]?.[poly.universeAffix()] >= level;
     }
 
     function loadQueuedSettings() {
@@ -5901,7 +5878,7 @@
         }
 
         // Appoint governor
-        if (haveTech("governor") && settings.govGovernor !== "none" && getGovernor() === "") {
+        if (haveTech("governor") && settings.govGovernor !== "none" && getGovernor() === "none") {
             let candidates = game.global.race.governor?.candidates ?? [];
             for (let i = 0; i < candidates.length; i++) {
                 if (candidates[i].bg === settings.govGovernor) {
@@ -6756,6 +6733,7 @@
 
     }
 
+    // TODO: Make it unassign with 0 weighting
     function autoPylon() {
         let m = RitualManager;
         // If not unlocked then nothing to do
@@ -8114,7 +8092,7 @@
                     }
                 }
                 // Disable Waygate once it cleared, or if we're going to use bomb, or current potential is too hight
-                if (building === buildings.SpireWaygate && (settings.prestigeDemonicBomb || haveTech("waygate", 3) || (settings.autoMech && MechManager.mechsPotential > settings.mechWaygatePotential && (settings.prestigeType !== "demonic" || buildings.SpireTower.count < settings.prestigeDemonicFloor)))) {
+                if (building === buildings.SpireWaygate && ((settings.prestigeDemonicBomb && game.global.stats.spire[poly.universeAffix()]?.dlstr > 0) || haveTech("waygate", 3) || (settings.autoMech && MechManager.mechsPotential > settings.mechWaygatePotential && (settings.prestigeType !== "demonic" || buildings.SpireTower.count < settings.prestigeDemonicFloor)))) {
                       maxStateOn = 0;
                 }
                 // Once we unlocked Embassy - we don't need scouts and corvettes until we'll have piracy. Let's freeup support for more Bolognium ships
@@ -10626,14 +10604,34 @@
     }
 
     const argType = {
-        building: {arg: "list", options: {list: buildingIds, name: "name", id: "_vueBinding"}, def: "city-farm"},
-        project: {arg: "list", options: {list: arpaIds, name: "name", id: "_vueBinding"}, def: "arpalaunch_facility"},
-        research: {arg: "list", options: {list: techIds, name: "name", id: "_vueBinding"}, def: "tech-mad"},
-        resource: {arg: "list", options: {list: resources, name: "name", id: "_id"}, def: "Food"},
-        race: {arg: "list", options: {list: races, name: "name", id: "id"}, def: "junker"},
-        job: {arg: "list", options: {list: jobIds, name: "_originalName", id: "_originalId"}, def: "unemployed"},
+        building: {def: "city-farm", arg: "list", options: {list: buildingIds, name: "name", id: "_vueBinding"}},
+        research: {def: "tech-mad", arg: "list", options: {list: techIds, name: "name", id: "_vueBinding"}},
+
+        trait: {def: "kindling_kindred", arg: "list_cb", options: () => Object.fromEntries(Object.values(game.races)
+          .flatMap(r => Object.keys(r.traits)).filter((t, i, arr) => arr.indexOf(t) === i)
+          .concat(minorTraits).map(t => [t, {name: game.loc(`trait_${t}_name`), id: t}]))},
+
+        project: {def: "arpalaunch_facility", arg: "select_cb", options: () => Object.values(arpaIds).map(p =>
+          ({val: p._vueBinding, label: p.name}))},
+        job: {def: "unemployed", arg: "select_cb", options: () => Object.values(jobIds).map(j =>
+          ({val: j._originalId, label: j._originalName}))},
+        resource: {def: "Food", arg: "select_cb", options: () => Object.values(resources).map(r =>
+          ({val: r.id, label: r.name}))},
+        race: {def: "junker", arg: "select_cb", options: () =>
+          [{val: "protoplasm", label: "Protoplasm", hint: "Race is not chosen yet"},
+           ...Object.values(races).map(race => ({val: race.id, label: race.name, hint: race.desc}))]},
+        challenge: {def: "junker", arg: "select_cb", options: () => challenges.flat().map(c =>
+          ({val: c.trait, label: game.loc(`evo_challenge_${c.id}`), hint: game.loc(`evo_challenge_${c.id}_effect`)}))},
+        universe: {def: "standard", arg: "select_cb", options: () =>
+          [{val: "bigbang", label: "Big Bang", hint: "Universe is not chosen yet"},
+           ...universes.map(u => ({val: u, label: game.loc(`universe_${u}`), hint: game.loc(`universe_${u}_desc`)}))]},
+        government: {def: "anarchy", arg: "select_cb", options: () => Object.keys(GovernmentManager.Types).map(g =>
+          ({val: g, label: game.loc(`govern_${g}`), hint: game.loc(`govern_${g}_desc`)}))},
+        governor: {def: "none", arg: "select_cb", options: () =>
+          [{val: "none", label: "None", hint: "No governor selected" },
+           ...governors.map(id => ({val: id, label: game.loc(`governor_${id}`), hint: game.loc(`governor_${id}_desc`)}))]},
     }
-    // TODO: planet biome\trait\geology, queue length, minor traits, protoplasm, governor, soldiers, merc cost
+    // TODO: planet biome\trait\geology, queue length, soldiers, merc cost, stats, calendar, crew, and everything else
     // TODO: Make trigger use all this checks, migration will be a bit tedius, but doable
     const checkTypes = {
         String: { fn: (v) => v, arg: "string", def: "none", desc: "Returns string" },
@@ -10658,14 +10656,15 @@
         ResourceIncome: { fn: (r) => resources[r].rateOfChange, ...argType.resource, desc: "Returns current income of resource as number" }, // rateOfChange holds full diff of resource at the moment when overrides checked
         ResourceRatio: { fn: (r) => resources[r].storageRatio, ...argType.resource, desc: "Returns storage ratio of resource as number. Number 0.5 means that storage is 50% full, and such." },
         ResourceSatisfied: { fn: (r) => resources[r].usefulRatio, ...argType.resource, desc: "Returns satisfied ratio of resource as number. Number above 1 means than current amount of resource above maximum costs" },
-        ResetType: { fn: (r) => settings.prestigeType === r, arg: "select", options: prestigeOptions, def: "mad", desc: "Returns true when selected reset is active" },
-        HaveTrait: { fn: (t) => game.global.race[t] ? true : false, arg: "trait", def: "kindling_kindred", desc: "Returns true when current race have selected trait" },
         RaceCurrent: { fn: (r) => game.global.race.species === r, ...argType.race, desc: "Returns true when playing selected race" },
         RaceFanaticism: { fn: (r) => game.global.race.gods === r, ...argType.race, desc: "Returns true when selected race can be inherited with fanaticism" },
         RaceDeify: { fn: (r) => game.global.race.old_gods === r, ...argType.race, desc: "Returns true when selected race can be inherited with deify" },
-        Universe: { fn: (u) => game.global.race.universe === u, arg: "universe", def: "standard", desc: "Returns true when playing in selected universe" },
-        Government: { fn: (g) => game.global.civic.govern.type === g, arg: "government", def: "anarchy", desc: "Returns true when selected government is active" },
-        Challenge: { fn: (c) => game.global.race[c] ? true : false, arg: "challenge", def: "junker", desc: "Returns true when selected challenge is active" },
+        TraitLevel: { fn: (t) => game.global.race[t] ?? 0, ...argType.trait, desc: "Returns trait level as number, for major and genus traits return value is either 1 or 0, minor traits can be increased above that" },
+        ResetType: { fn: (r) => settings.prestigeType === r, arg: "select", options: prestigeOptions, def: "mad", desc: "Returns true when selected reset is active" },
+        Challenge: { fn: (c) => game.global.race[c] ? true : false, ...argType.challenge, desc: "Returns true when selected challenge is active" },
+        Universe: { fn: (u) => game.global.race.universe === u, ...argType.universe, desc: "Returns true when playing in selected universe" },
+        Government: { fn: (g) => game.global.civic.govern.type === g, ...argType.government, desc: "Returns true when selected government is active" },
+        Governor: { fn: (g) => getGovernor() === g, ...argType.governor, desc: "Returns true when selected governor is active" },
     }
 
     function openOverrideModal(event) {
@@ -10804,36 +10803,16 @@
                 .val(value).on('change', function() {
                     callback(this.value);
                 });
+            case "select_cb":
+                return $(`
+                  <select style="width: 100%">${buildSelectOptions(options())}</select>`)
+                .val(value).on('change', function() {
+                    callback(this.value);
+                });
             case "list":
                 return buildObjectListInput(options.list, options.name, options.id, value, callback);
-            case "trait":
-                let traits = Object.fromEntries(Object.values(game.races)
-                  .flatMap(r => Object.keys(r.traits))
-                  .filter((trait, index, arr) => arr.indexOf(trait) === index)
-                  .map(trait => [trait, {name: game.loc(`trait_${trait}_name`), id: trait}]));
-                return buildObjectListInput(traits, "name", "id", value, callback);
-            case "universe":
-                options = buildSelectOptions([{val: "bigbang", label: "None", hint: "Universe is not chosen yet after Big Bang"},
-                  ...universes.map(id => ({val: id, label: game.loc(`universe_${id}`), hint: game.loc(`universe_${id}_desc`)}))]);
-                return $(`
-                  <select style="width: 100%">${options}</select>`)
-                .val(value).on('change', function() {
-                    callback(this.value);
-                });
-            case "government":
-                options = buildSelectOptions(Object.keys(GovernmentManager.Types).map(id => ({val: id, label: game.loc(`govern_${id}`), hint: game.loc(`govern_${id}_desc`)})));
-                return $(`
-                  <select style="width: 100%">${options}</select>`)
-                .val(value).on('change', function() {
-                    callback(this.value);
-                });
-            case "challenge":
-                options = buildSelectOptions(challenges.flat().map(c => ({val: c.trait, label: game.loc(`evo_challenge_${c.id}`), hint: game.loc(`evo_challenge_${c.id}_effect`)})));
-                return $(`
-                  <select style="width: 100%">${options}</select>`)
-                .val(value).on('change', function() {
-                    callback(this.value);
-                });
+            case "list_cb":
+                return buildObjectListInput(options(), "name", "id", value, callback);
             default:
                 return "";
         }
@@ -10853,10 +10832,10 @@
 
     function buildConditionArg(override, num) {
         let check = checkTypes[override["type" + num]];
-        return buildInputNode(check.arg, check.options, override["arg" + num], function(result){
+        return check ? buildInputNode(check.arg, check.options, override["arg" + num], function(result){
             override["arg" + num] = result;
             updateSettingsFromState();
-        });
+        }) : "";
     }
 
     function buildConditionComparator(override) {
@@ -11286,7 +11265,7 @@
         addSettingsSelect(currentNode, "govFinal", "Second Government", "Second government choice, chosen once becomes available. Can be the same as above", governmentOptions);
         addSettingsSelect(currentNode, "govSpace", "Space Government", "Government for bioseed+. Chosen once you researched Quantum Manufacturing. Can be the same as above", governmentOptions);
 
-        let governorsOptions = [{val: "none", label: "None", hint: ""}, ...governors.map(id => ({val: id, label: game.loc(`governor_${id}`), hint: game.loc(`governor_${id}_desc`)}))];
+        let governorsOptions = [{val: "none", label: "None", hint: "Do not select governor"}, ...governors.map(id => ({val: id, label: game.loc(`governor_${id}`), hint: game.loc(`governor_${id}_desc`)}))];
         addSettingsSelect(currentNode, "govGovernor", "Governor", "Chosen governor will be appointed.", governorsOptions);
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -14158,7 +14137,7 @@
     }
 
     function getGovernor() {
-        return game.global.race.governor?.g?.bg ?? "";
+        return game.global.race.governor?.g?.bg ?? "none";
     }
 
     function haveTask(task) {
@@ -14297,6 +14276,8 @@
         weaponPower: function(e,i){return i<1&&0!==i&&e.equip.includes("special")&&"titan"===e.size&&(i+=.25*(1-i)),e.equip.includes("special")&&"large"===e.size&&(i*=1.02),i},
         // export function timeFormat(time) from functions.js
         timeFormat: function(e){let i;if(e<0)i=game.loc("time_never");else if((e=+e.toFixed(0))>60){let l=e%60,s=(e-l)/60;if(s>=60){let e=s%60,l=(s-e)/60;if(l>24){i=`${(l-(e=l%24))/24}d ${e}h`}else i=`${l}h ${e=("0"+e).slice(-2)}m`}else i=`${s=("0"+s).slice(-2)}m ${l=("0"+l).slice(-2)}s`}else i=`${e=("0"+e).slice(-2)}s`;return i},
+        // export universeAffix(universe) from achieve.js
+        universeAffix: function(e){switch(e=e||game.global.race.universe){case"evil":return"e";case"antimatter":return"a";case"heavy":return"h";case"micro":return"m";case"magic":return"mg";default:return"l"}},
 
     // Reimplemented:
         // export function crateValue() from resources.js
