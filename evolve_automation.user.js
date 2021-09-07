@@ -1734,6 +1734,7 @@
         Sun_Support: new Support("Sun Support", "Sun_Support", "space", "spc_sun"),
         Belt_Support: new BeltSupport("Belt Support", "Belt_Support", "space", "spc_belt"),
         //Titan_Support: new Support("Titan Support", "Titan_Support", "space", "spc_titan"),
+        //Enceladus_Support: new Support("Enceladus Support", "Enceladus_Support", "space", "spc_enceladus"),
         Alpha_Support: new Support("Alpha Support", "Alpha_Support", "interstellar", "int_alpha"),
         Nebula_Support: new Support("Nebula Support", "Nebula_Support", "interstellar", "int_nebula"),
         Gateway_Support: new Support("Gateway Support", "Gateway_Support", "galaxy", "gxy_gateway"),
@@ -1761,6 +1762,7 @@
         Scientist: new Job("scientist", "Scientist"),
         Banker: new Job("banker", "Banker"),
         Colonist: new Job("colonist", "Colonist"),
+        //TitanColonist: new Job("titan_colonist", "Titan Colonist"),
         SpaceMiner: new Job("space_miner", "Space Miner"),
         HellSurveyor: new Job("hell_surveyor", "Hell Surveyor"),
         Archaeologist: new Job("archaeologist", "Archaeologist"),
@@ -1902,6 +1904,9 @@
         TitanMission: new Action("Titan Mission", "space", "titan_mission", "spc_titan"),
         TitanSpaceport: new Action("Titan Spaceport", "space", "titan_spaceport", "spc_titan"),
         TitanElectrolysis: new Action("Titan Electrolysis", "space", "electrolysis", "spc_titan"),
+        TitanHydrogenPlant: new Action("Titan Hydrogen Plant", "space", "hydrogen_plant", "spc_titan"),
+        TitanQuarters: new Action("Titan Quarters", "space", "titan_quarters", "spc_titan"),
+        TitanMine: new Action("Titan Mine", "space", "titan_mine", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
         EnceladusWaterFreighter: new Action("Enceladus Water Freighter", "space", "water_freighter", "spc_enceladus"),
         */
@@ -2156,7 +2161,8 @@
       ],[
           () => {
               return buildings.LakeBireme.isAutoBuildable() && buildings.LakeBireme.isAffordable(true) &&
-                     buildings.LakeTransport.isAutoBuildable() && buildings.LakeTransport.isAffordable(true);
+                     buildings.LakeTransport.isAutoBuildable() && buildings.LakeTransport.isAffordable(true) &&
+                     resources.Lake_Support.rateOfChange <= 1; // Build any if there's spare support
           },
           (building) => {
               if (building === buildings.LakeBireme || building === buildings.LakeTransport) {
@@ -4475,6 +4481,17 @@
         buildings.SpirePort.addResourceConsumption(resources.Spire_Support, 1);
         buildings.SpireBaseCamp.addResourceConsumption(resources.Spire_Support, 1);
         buildings.SpireMechBay.addResourceConsumption(resources.Spire_Support, 1);
+
+        /*
+        buildings.TitanSpaceport.addResourceConsumption(resources.Enceladus_Support, -2);
+        buildings.TitanElectrolysis.addResourceConsumption(resources.Titan_Support, -2);
+        buildings.TitanHydrogenPlant.addResourceConsumption(resources.Titan_Support, -2);
+        buildings.TitanQuarters.addResourceConsumption(resources.Titan_Support, 1);
+        buildings.TitanMine.addResourceConsumption(resources.Titan_Support, 1);
+
+        buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Enceladus_Support, 1);
+        buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Helium_3, 2.5);
+        */
 
         // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
         Object.values(buildings).forEach(building => {
@@ -10745,13 +10762,13 @@
               <th class="has-text-warning" colspan="3">Result</th>
             </tr>
             <tr>
-              <th class="has-text-warning" style="width:18%">Type</th>
+              <th class="has-text-warning" style="width:16%">Type</th>
               <th class="has-text-warning" style="width:16%">Value</th>
-              <th class="has-text-warning" style="width:7%"></th>
-              <th class="has-text-warning" style="width:18%">Type</th>
+              <th class="has-text-warning" style="width:9%"></th>
+              <th class="has-text-warning" style="width:16%">Type</th>
               <th class="has-text-warning" style="width:16%">Value</th>
               <th class="has-text-warning" style="width:15%"></th>
-              <th style="width:5%"></th>
+              <th style="width:7%"></th>
               <th style="width:5%"></th>
             </tr>
             <tbody id="script_${settingName}ModalTable"></tbody>
@@ -10761,13 +10778,13 @@
 
         let newTableBodyText = "";
         for (let i = 0; i < overrides.length; i++) {
-            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:18%"></td><td style="width:18%"></td><td style="width:7%"></td><td style="width:18%"></td><td style="width:18%"></td><td style="width:11%"></td><td style="width:5%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
+            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:16%"></td><td style="width:16%"></td><td style="width:9%"></td><td style="width:16%"></td><td style="width:16%"></td><td style="width:15%"></td><td style="width:7%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         newTableBodyText += `
           <tr id="script_${settingName}_d" class="unsortable">
-            <td style="width:75%" colspan="5">Default value, applied when all checks above are false</td>
+            <td style="width:73%" colspan="5">Default value, applied when all checks above are false</td>
             <td style="width:15%"></td>
-            <td style="width:5%"><a class="button is-dark is-small"><span>+</span></a></td>
+            <td style="width:7%"><a class="button is-dark is-small"><span>+</span></a></td>
             <td style="width:5%"></td>
           </tr>`;
         tableBodyNode.append($(newTableBodyText));
