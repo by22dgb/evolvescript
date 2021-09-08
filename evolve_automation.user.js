@@ -1907,6 +1907,7 @@
         TitanHydrogenPlant: new Action("Titan Hydrogen Plant", "space", "hydrogen_plant", "spc_titan"),
         TitanQuarters: new Action("Titan Quarters", "space", "titan_quarters", "spc_titan"),
         TitanMine: new Action("Titan Mine", "space", "titan_mine", "spc_titan"),
+        TitanStorehouse: new Action("Titan Storehouse", "space", "storehouse", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
         EnceladusWaterFreighter: new Action("Enceladus Water Freighter", "space", "water_freighter", "spc_enceladus"),
         */
@@ -2062,6 +2063,7 @@
         Nexus: new Project("Nexus", "nexus"),
         RoidEject: new Project("Asteroid Redirect", "roid_eject"),
         ManaSyphon: new Project("Mana Syphon", "syphon"),
+        //Depot: new Project("Depot", "tp_depot"),
     }
 
     const wrGlobalCondition = 0; // Generic condition will be checked once per tick. Takes nothing and return bool - whether following rule is applicable, or not
@@ -2309,8 +2311,8 @@
       ],[
           () => true,
           (building) => building._tab !== "city" && building.stateOffCount > 0
-            && (building !== buildings.SpirePort || !buildings.SpirePort.isSmartManaged())
-            && (building !== buildings.SpireBaseCamp || !buildings.SpireBaseCamp.isSmartManaged())
+            && (building !== buildings.SpirePort || !buildings.SpirePort.isSmartManaged() || buildings.SpirePort.count + buildings.SpireBaseCamp.count >= resources.Spire_Support.maxQuantity)
+            && (building !== buildings.SpireBaseCamp || !buildings.SpireBaseCamp.isSmartManaged() || buildings.SpirePort.count + buildings.SpireBaseCamp.count >= resources.Spire_Support.maxQuantity)
             && (building !== buildings.SpireMechBay || !buildings.SpireMechBay.isSmartManaged())
             && (building !== buildings.RuinsGuardPost || !buildings.RuinsGuardPost.isSmartManaged() || isHellSupressUseful())
             && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()),
@@ -5189,6 +5191,7 @@
         setProject("Nexus", true, -1, 1);
         setProject("RoidEject", true, -1, 1);
         setProject("ManaSyphon", false, 79, 1);
+        //setProject("Depot", true, -1, 1);
 
         applySettings(def, reset);
         ProjectManager.sortByPriority();
@@ -5456,17 +5459,17 @@
             if (techIds["tech-" + t.actionId]) { t.actionId = "tech-" + t.actionId; }
             if (techIds["tech-" + t.requirementId]) { t.requirementId = "tech-" + t.requirementId; }
         });
-        if (settingsRaw.hasOwnProperty("productionPrioritizeDemanded")) {
+        if (settingsRaw.hasOwnProperty("productionPrioritizeDemanded")) { // Replace checkbox with list
             settingsRaw.productionFoundryWeighting = settingsRaw.productionPrioritizeDemanded ? "demanded" : "none";
         }
         settingsRaw.challenge_plasmid = settingsRaw.challenge_mastery || settingsRaw.challenge_plasmid; // Merge challenge settings
-        if (settingsRaw.hasOwnProperty("res_trade_buy_mtr_Food")) {
+        if (settingsRaw.hasOwnProperty("res_trade_buy_mtr_Food")) { // Reset default market settings
             MarketManager.priorityList.forEach(res => res.autoTradeBuyEnabled = true);
         }
-        if (settingsRaw.hasOwnProperty("arpa")) {
+        if (settingsRaw.hasOwnProperty("arpa")) { // Move arpa from object to strings
             Object.entries(settingsRaw.arpa).forEach(([id, enabled]) => settingsRaw["arpa_" + id] = enabled);
         }
-        // Remove old settings
+        // Remove old pre-overrides settings
         ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana", "arpa", "autoLogging"].forEach(id => delete settingsRaw[id]);
         ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settingsRaw[id + index]));
         ["res_storage_w_", "res_trade_buy_mtr_", "res_trade_sell_mps_"].forEach(id => Object.values(resources).forEach(resource => delete settingsRaw[id + resource.id]));
