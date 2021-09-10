@@ -9,7 +9,7 @@
 // @author       Vollch
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
-// @require      https://code.jquery.com/jquery-3.4.1.min.js
+// @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://code.jquery.com/ui/1.12.1/jquery-ui.min.js
 // ==/UserScript==
 //
@@ -1908,6 +1908,8 @@
         TitanQuarters: new Action("Titan Quarters", "space", "titan_quarters", "spc_titan"),
         TitanMine: new Action("Titan Mine", "space", "titan_mine", "spc_titan"),
         TitanStorehouse: new Action("Titan Storehouse", "space", "storehouse", "spc_titan"),
+        TitanBank: new Action("Titan Bank", "space", "titan_bank", "spc_titan"),
+        TitanGraphenePlant: new Action("Titan Graphene Plant", "space", "g_factory", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
         EnceladusWaterFreighter: new Action("Enceladus Water Freighter", "space", "water_freighter", "spc_enceladus"),
         */
@@ -2311,8 +2313,8 @@
       ],[
           () => true,
           (building) => building._tab !== "city" && building.stateOffCount > 0
-            && (building !== buildings.SpirePort || !buildings.SpirePort.isSmartManaged() || buildings.SpirePort.count + buildings.SpireBaseCamp.count >= resources.Spire_Support.maxQuantity)
-            && (building !== buildings.SpireBaseCamp || !buildings.SpireBaseCamp.isSmartManaged() || buildings.SpirePort.count + buildings.SpireBaseCamp.count >= resources.Spire_Support.maxQuantity)
+            && (building !== buildings.SpirePort || !buildings.SpirePort.isSmartManaged() || (buildings.SpirePort.count + buildings.SpireBaseCamp.count + 1) > resources.Spire_Support.maxQuantity)
+            && (building !== buildings.SpireBaseCamp || !buildings.SpireBaseCamp.isSmartManaged() || (buildings.SpirePort.count + buildings.SpireBaseCamp.count + 1) > resources.Spire_Support.maxQuantity)
             && (building !== buildings.SpireMechBay || !buildings.SpireMechBay.isSmartManaged())
             && (building !== buildings.RuinsGuardPost || !buildings.RuinsGuardPost.isSmartManaged() || isHellSupressUseful())
             && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()),
@@ -2833,6 +2835,7 @@
     var GrapheneManager = {
         _industryVueBinding: "iGraphene",
         _industryVue: undefined,
+        _graphPlant: null,
 
         Fuels: {
             Lumber: {id: "Lumber", cost: new ResourceProductionCost(resources.Lumber, 350, 100), add: "addWood", sub: "subWood"},
@@ -2841,7 +2844,8 @@
         },
 
         initIndustry() {
-            if (buildings.AlphaGraphenePlant.count < 1) {
+            this._graphPlant = game.global.race['truepath'] ? buildings.TitanGraphenePlant : buildings.AlphaGraphenePlant;
+            if (this._graphPlant.count < 1) {
                 return false;
             }
 
@@ -2854,11 +2858,11 @@
         },
 
         maxOperating() {
-            return game.global.interstellar.g_factory.on;
+            return this._graphPlant.instance.on;
         },
 
         fueledCount(fuel) {
-            return game.global.interstellar.g_factory[fuel.id];
+            return this._graphPlant.instance[fuel.id];
         },
 
         increaseFuel(fuel, count) {
@@ -4490,6 +4494,7 @@
         buildings.TitanHydrogenPlant.addResourceConsumption(resources.Titan_Support, -2);
         buildings.TitanQuarters.addResourceConsumption(resources.Titan_Support, 1);
         buildings.TitanMine.addResourceConsumption(resources.Titan_Support, 1);
+        buildings.TitanGraphenePlant.addResourceConsumption(resources.Titan_Support, 1);
 
         buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Enceladus_Support, 1);
         buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Helium_3, 2.5);
@@ -4959,6 +4964,7 @@
             tradeRouteSellExcess: true,
             minimumMoney: 0,
             minimumMoneyPercentage: 0,
+            marketMinIngredients: 0.001,
         }
 
         for (let i = 0; i < MarketManager.priorityList.length; i++) {
@@ -5203,7 +5209,7 @@
             productionFoundryWeighting: "demanded",
             productionRitualManaUse: 0.5,
             productionSmelting: "storage",
-            productionFactoryMinIngredients: 0.01,
+            productionFactoryMinIngredients: 0.001,
         }
 
         // Foundry
@@ -7615,7 +7621,7 @@
 
                     let calculatedRequiredFreighters = Math.min(remainingFreighters, Math.max(1, Math.floor(freightersToDistribute / totalPriorityWeight * buyResource.galaxyMarketWeighting)));
                     let actualRequiredFreighters = calculatedRequiredFreighters;
-                    if (!buyResource.isUseful() || sellResource.isDemanded() || sellResource.storageRatio < settings.productionFactoryMinIngredients) {
+                    if (!buyResource.isUseful() || sellResource.isDemanded() || sellResource.storageRatio < settings.marketMinIngredients) {
                         actualRequiredFreighters = 0;
                     }
 
@@ -12487,6 +12493,7 @@
         });
 
         addStandardHeading(currentNode, "Galaxy Trades");
+        addSettingsNumber(currentNode, "marketMinIngredients", "Minimum materials to preserve", "Galaxy Market will buy resources only when all selling materials above given ratio");
 
         currentNode.append(`
           <table style="width:100%">
@@ -12775,7 +12782,7 @@
 
     function updateProductionTableFactory(currentNode) {
         addStandardHeading(currentNode, "Factory");
-        addSettingsNumber(currentNode, "productionFactoryMinIngredients", "Minimum materials to preserve", "Factory will craft resources only when all required material above given ration");
+        addSettingsNumber(currentNode, "productionFactoryMinIngredients", "Minimum materials to preserve", "Factory will craft resources only when all required materials above given ratio");
 
         currentNode.append(`
           <table style="width:100%">
