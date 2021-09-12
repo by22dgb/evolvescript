@@ -8552,7 +8552,11 @@
                 if (missingStorage > 0 && totalContainers > 0) {
                     let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), totalContainers, resource.autoContainersMax);
                     totalContainers -= assignContainer;
+                    missingStorage -= assignContainer * assignContainer;
                     storageAdjustments[resource.id].container += assignContainer;
+                }
+                if (missingStorage > 0) {
+                    storageToBuild = Math.max(storageToBuild, missingStorage);
                 }
             }
         }
