@@ -7268,7 +7268,7 @@
                 }
 
                 remaining += transportAdjustments[resource.id];
-                let allowedSupply = Math.max(transportAdjustments[resource.id], Math.floor((resource.currentQuantity - resource.storageRequired) / resource.supplyVolume));
+                let allowedSupply = Math.max(transportAdjustments[resource.id], Math.floor((resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true})) / resource.supplyVolume));
                 transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
                 remaining -= transportAdjustments[resource.id];
             }
@@ -7348,7 +7348,7 @@
                 }
 
                 if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 1 && resource.currentQuantity >= resource.storageRequired) {
-                    ejectableAmount = Math.max(ejectableAmount, Math.ceil(resource.currentQuantity - resource.storageRequired));
+                    ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true, supply: true})));
                 }
 
                 ejectorAdjustments[resource.id] = Math.min(remaining, ejectableAmount);
