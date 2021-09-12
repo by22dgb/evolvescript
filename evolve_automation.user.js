@@ -323,7 +323,7 @@
             }
 
             // Exclude ejected resources, so we can reuse it
-            if ((settings.prestigeWhiteholeEjectEnabled || haveTask("trash")) && this.isEjectable() && buildings.BlackholeMassEjector.count > 0) {
+            if ((settings.autoEject || haveTask("trash")) && this.isEjectable() && buildings.BlackholeMassEjector.count > 0) {
                 this.currentEject = game.global.interstellar.mass_ejector[this._id];
                 this.rateOfChange += this.currentEject;
             } else {
@@ -4822,6 +4822,7 @@
 
     function resetWarSettings(reset) {
         let def = {
+            autoFight: false,
             foreignAttackLivingSoldiersPercent: 90,
             foreignAttackHealthySoldiersPercent: 90,
             foreignHireMercMoneyStoragePercent: 90,
@@ -4848,6 +4849,7 @@
 
     function resetHellSettings(reset) {
         let def = {
+            autoHell: false,
             hellTurnOffLogMessages: true,
             hellHandlePatrolCount: true,
             hellHomeGarrison: 10,
@@ -4873,6 +4875,9 @@
 
     function resetGeneralSettings(reset) {
         let def = {
+            masterScriptToggle: true,
+            showSettings: true,
+            autoAssembleGene: false,
             triggerRequest: true,
             queueRequest: true,
             researchRequest: true,
@@ -4902,7 +4907,6 @@
             prestigeWhiteholeSaveGems: true,
             prestigeWhiteholeMinMass: 8,
             prestigeWhiteholeStabiliseMass: true,
-            prestigeWhiteholeEjectEnabled: true,
             prestigeWhiteholeEjectExcess: false,
             prestigeWhiteholeDecayRate: 0.2,
             prestigeWhiteholeEjectAllCount: 100,
@@ -4918,10 +4922,11 @@
 
     function resetGovernmentSettings(reset) {
         let def = {
+            autoTax: false,
+            govManage: false,
             generalMinimumTaxRate: 20,
             generalMinimumMorale: 105,
             generalMaximumMorale: 500,
-            govManage: false,
             govInterim: GovernmentManager.Types.democracy.id,
             govFinal: GovernmentManager.Types.technocracy.id,
             govSpace: GovernmentManager.Types.corpocracy.id,
@@ -4933,6 +4938,7 @@
 
     function resetEvolutionSettings(reset) {
         let def = {
+            autoEvolution: false,
             userUniverseTargetName: "none",
             userPlanetTargetName: "none",
             userEvolutionTarget: "auto",
@@ -4948,6 +4954,7 @@
 
     function resetResearchSettings(reset) {
         let def = {
+            autoResearch: false,
             userResearchTheology_1: "auto",
             userResearchTheology_2: "auto",
             researchIgnore: ["tech-purify"],
@@ -4959,6 +4966,8 @@
     function resetMarketSettings(reset) {
         MarketManager.priorityList = Object.values(resources).filter(r => r.isTradable()).reverse();
         let def = {
+            autoMarket: false,
+            autoGalaxyMarket: false,
             tradeRouteMinimumMoneyPerSecond: 500,
             tradeRouteMinimumMoneyPercentage: 50,
             tradeRouteSellExcess: true,
@@ -5010,6 +5019,7 @@
     function resetStorageSettings(reset) {
         StorageManager.priorityList = Object.values(resources).filter(r => r.hasStorage()).reverse();
         let def = {
+            autoStorage: false,
             storageLimitPreMad: true,
             storageSafeReassign: true,
             storageAssignExtra: true,
@@ -5038,7 +5048,9 @@
 
     function resetMinorTraitSettings(reset) {
         MinorTraitManager.priorityList = minorTraits.map(trait => new MinorTrait(trait));
-        let def = {};
+        let def = {
+            autoMinorTrait: false,
+        };
 
         for (let i = 0; i < MinorTraitManager.priorityList.length; i++) {
             let trait = MinorTraitManager.priorityList[i];
@@ -5056,6 +5068,8 @@
     function resetJobSettings(reset) {
         JobManager.priorityList = Object.values(jobs);
         let def = {
+            autoJobs: false,
+            autoCraftsmen: false,
             jobSetDefault: true,
             jobLumberWeighting: 50,
             jobQuarryWeighting: 50,
@@ -5134,6 +5148,8 @@
     function resetBuildingSettings(reset) {
         initBuildingState();
         let def = {
+            autoBuild: false,
+            autoPower: false,
             buildingBuildIfStorageFull: false,
             buildingsIgnoreZeroRate: false,
             buildingsLimitPowered: false,
@@ -5177,6 +5193,7 @@
     function resetProjectSettings(reset) {
         ProjectManager.priorityList = Object.values(projects);
         let def = {
+            autoARPA: false,
             arpaScaleWeighting: true,
             arpaStep: 10,
         }
@@ -5205,6 +5222,13 @@
 
     function resetProductionSettings(reset) {
         let def = {
+            autoQuarry: false,
+            autoGraphenePlant: false,
+            autoSmelter: false,
+            autoCraft: false,
+            autoFactory: false,
+            autoMiningDroid: false,
+            autoPylon: false,
             productionChrysotileWeight: 2,
             productionFoundryWeighting: "demanded",
             productionRitualManaUse: 0.5,
@@ -5295,6 +5319,7 @@
 
     function resetFleetSettings(reset) {
         let def = {
+            autoFleet: false,
             fleetMaxCover: true,
             fleetEmbassyKnowledge: 6000000,
             fleetAlienGiftKnowledge: 6500000,
@@ -5315,6 +5340,7 @@
 
     function resetMechSettings(reset) {
         let def = {
+            autoMech: false,
             mechScrap: "mixed",
             mechScrapEfficiency: 1.5,
             mechCollectorValue: 0.5,
@@ -5337,6 +5363,7 @@
 
     function resetEjectorSettings(reset) {
         let def = {
+            autoEject: false,
             autoSupply: false,
         }
 
@@ -5358,7 +5385,6 @@
     function updateStateFromSettings() {
         TriggerManager.priorityList = [];
         settingsRaw.triggers.forEach(trigger => TriggerManager.AddTriggerFromSetting(trigger));
-
     }
 
     function updateSettingsFromState() {
@@ -5379,7 +5405,7 @@
                 if (!settingsRaw.hasOwnProperty(key)) {
                     settingsRaw[key] = def[key];
                 } else {
-                    // Fix misstyped settings
+                    // Validate settings types, and fix if needed
                     if (typeof settingsRaw[key] === "string" && typeof def[key] === "number") {
                         settingsRaw[key] = Number(settingsRaw[key]);
                     }
@@ -5396,36 +5422,9 @@
             scriptName: "TMVictor",
             overrides: {},
             triggers: [],
-
-            masterScriptToggle: true,
-            showSettings: true,
-            autoEvolution: false,
-            autoFight: false,
-            autoHell: false,
-            autoMech: false,
-            autoFleet: false,
-            autoTax: false,
-            autoCraft: false,
-            autoBuild: false,
-            autoPower: false,
-            autoStorage: false,
-            autoMarket: false,
-            autoGalaxyMarket: false,
-            autoResearch: false,
-            autoARPA: false,
-            autoJobs: false,
-            autoCraftsmen: false,
-            autoPylon: false,
-            autoQuarry: false,
-            autoSmelter: false,
-            autoFactory: false,
-            autoMiningDroid: false,
-            autoGraphenePlant: false,
-            autoAssembleGene: false,
-            autoMinorTrait: false,
         }
         settingsSections.forEach(id => def[id + "SettingsCollapsed"] = true);
-        applySettings(def, false);
+        applySettings(def, false); // For non-overridable settings only
 
         resetEvolutionSettings(false);
         resetWarSettings(false);
@@ -5448,7 +5447,7 @@
         resetLoggingSettings(false);
         resetMinorTraitSettings(false);
 
-        // Fix misstyped overrides
+        // Validate overrides types, and fix if needed
         for (let key in settingsRaw.overrides) {
             for (let i = 0; i < settingsRaw.overrides[key].length; i++) {
                 let override = settingsRaw.overrides[key][i];
@@ -5460,7 +5459,7 @@
                 }
             }
         }
-        // Convert old setings
+        // Migrate pre-overrides setings
         settingsRaw.triggers.forEach(t => {
             if (techIds["tech-" + t.actionId]) { t.actionId = "tech-" + t.actionId; }
             if (techIds["tech-" + t.requirementId]) { t.requirementId = "tech-" + t.requirementId; }
@@ -5470,17 +5469,28 @@
         }
         settingsRaw.challenge_plasmid = settingsRaw.challenge_mastery || settingsRaw.challenge_plasmid; // Merge challenge settings
         if (settingsRaw.hasOwnProperty("res_trade_buy_mtr_Food")) { // Reset default market settings
-            MarketManager.priorityList.forEach(res => res.autoTradeBuyEnabled = true);
+            MarketManager.priorityList.forEach(res => settingsRaw['res_trade_buy_' + res.id] = true);
         }
         if (settingsRaw.hasOwnProperty("arpa")) { // Move arpa from object to strings
             Object.entries(settingsRaw.arpa).forEach(([id, enabled]) => settingsRaw["arpa_" + id] = enabled);
         }
-        // Remove old pre-overrides settings
-        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana", "arpa", "autoLogging"].forEach(id => delete settingsRaw[id]);
-        ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settingsRaw[id + index]));
-        ["res_storage_w_", "res_trade_buy_mtr_", "res_trade_sell_mps_"].forEach(id => Object.values(resources).forEach(resource => delete settingsRaw[id + resource.id]));
+        // Remove deprecated pre-overrides settings
+        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana", "arpa", "autoLogging"]
+          .forEach(id => delete settingsRaw[id]);
+        ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"]
+          .forEach(id => [0, 1, 2].forEach(index => delete settingsRaw[id + index]));
+        ["res_storage_w_", "res_trade_buy_mtr_", "res_trade_sell_mps_"]
+          .forEach(id => Object.values(resources).forEach(resource => delete settingsRaw[id + resource.id]));
         Object.values(projects).forEach(project => delete settingsRaw['arpa_ignore_money_' + project.id]);
         Object.values(buildings).filter(building => !building.isSwitchable()).forEach(building => delete settingsRaw['bld_s_' + building._vueBinding]);
+        // Migrate post-overrides settings
+        settingsRaw.autoEject = settingsRaw.prestigeWhiteholeEjectEnabled ?? settingsRaw.autoEject;
+        if (settingsRaw.overrides.hasOwnProperty("prestigeWhiteholeEjectEnabled")) {
+            settingsRaw.overrides.autoEject = settingsRaw.overrides.prestigeWhiteholeEjectEnabled
+        }
+        // Remove deprecated post-overrides settings
+        ["prestigeWhiteholeEjectEnabled"]
+          .forEach(id => { delete settingsRaw[id], delete settingsRaw.overrides[id] });
     }
 
     function getAchievementLevel(context) {
@@ -5511,6 +5521,7 @@
             if (settings.evolutionQueueRepeat) {
                 settingsRaw.evolutionQueue.push(queuedEvolution);
             }
+            updateStandAloneSettings();
             updateStateFromSettings();
             updateSettingsFromState();
             if (settings.showSettings) {
@@ -8552,7 +8563,7 @@
                 if (missingStorage > 0 && totalContainers > 0) {
                     let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), totalContainers, resource.autoContainersMax);
                     totalContainers -= assignContainer;
-                    missingStorage -= assignContainer * assignContainer;
+                    missingStorage -= assignContainer * containerVolume;
                     storageAdjustments[resource.id].container += assignContainer;
                 }
                 if (missingStorage > 0) {
@@ -10168,7 +10179,7 @@
             autoMech(); // Called after autoBuild, to prevent stealing supplies from mechs
         }
         if (settings.autoAssembleGene) {
-            autoAssembleGene(); // Called after autoBuild and autoResearches to prevent stealing knowledge from them
+            autoAssembleGene(); // Called after autoBuild and autoResearch to prevent stealing knowledge from them
         }
         if (settings.autoMinorTrait) {
             autoMinorTrait(); // Called after auto assemble to utilize new genes right asap
@@ -10188,7 +10199,7 @@
         if (settings.autoSupply) {
             autoSupply(); // Purge remaining rateOfChange, should be called when it won't be needed anymore
         }
-        if (settings.prestigeWhiteholeEjectEnabled) {
+        if (settings.autoEject) {
             autoMassEjector(); // Purge remaining rateOfChange, should be called after autoSupply
         }
         if (settings.autoPower) { // Called after purging of rateOfChange, to know useless resources
@@ -11190,6 +11201,11 @@
             resetGeneralSettings(true);
             updateSettingsFromState();
             updateGeneralSettingsContent();
+
+            $(".script_masterScriptToggle").prop('checked', settingsRaw.masterScriptToggle);
+            $(".script_showSettings").prop('checked', settingsRaw.showSettings);
+            $(".script_autoAssembleGene").prop('checked', settingsRaw.autoAssembleGene);
+            // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateGeneralSettingsContent);
@@ -11298,7 +11314,6 @@
         addSettingsToggle(currentNode, "prestigeWhiteholeSaveGems", "Save up Soul Gems for reset", "Save up enough Soul Gems for reset, only excess gems will be used. This option does not affect triggers.");
         addSettingsNumber(currentNode, "prestigeWhiteholeMinMass", "Minimum solar mass for reset", "Required minimum solar mass of blackhole before prestiging. Script do not stabilize on blackhole run, this number will need to be reached naturally");
         addSettingsToggle(currentNode, "prestigeWhiteholeStabiliseMass", "Stabilize blackhole", "Stabilizes the blackhole with exotic materials, disabled on whitehole runs");
-        addSettingsToggle(currentNode, "prestigeWhiteholeEjectEnabled", "Enable mass ejector", "If not enabled the mass ejector will not be managed by the script");
         addSettingsToggle(currentNode, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until 'Eject everything' option is activated.");
         addSettingsNumber(currentNode, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate, only useful during Decay Challenge");
         addSettingsNumber(currentNode, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
@@ -11325,6 +11340,8 @@
             resetGovernmentSettings(true);
             updateSettingsFromState();
             updateGovernmentSettingsContent(secondaryPrefix);
+
+            $(".script_autoTax").prop('checked', settingsRaw.autoTax);
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateGovernmentSettingsContent);
@@ -11361,6 +11378,8 @@
             resetEvolutionSettings(true);
             updateSettingsFromState();
             updateEvolutionSettingsContent();
+
+            $(".script_autoEvolution").prop('checked', settingsRaw.autoEvolution);
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateEvolutionSettingsContent);
@@ -11963,6 +11982,8 @@
             resetResearchSettings(true);
             updateSettingsFromState();
             updateResearchSettingsContent();
+
+            $(".script_autoResearch").prop('checked', settingsRaw.autoResearch);
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateResearchSettingsContent);
@@ -11999,6 +12020,8 @@
             resetWarSettings(true);
             updateSettingsFromState();
             updateWarSettingsContent(secondaryPrefix);
+
+            $(".script_autoFight").prop('checked', settingsRaw.autoFight);
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateWarSettingsContent);
@@ -12056,6 +12079,8 @@
             resetHellSettings(true);
             updateSettingsFromState();
             updateHellSettingsContent(secondaryPrefix);
+
+            $(".script_autoHell").prop('checked', settingsRaw.autoHell);
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateHellSettingsContent);
@@ -12108,6 +12133,8 @@
             resetFleetSettings(true);
             updateSettingsFromState();
             updateFleetSettingsContent(secondaryPrefix);
+
+            $(".script_autoFleet").prop('checked', settingsRaw.autoFleet);
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateFleetSettingsContent);
@@ -12185,6 +12212,9 @@
             resetMechSettings(true);
             updateSettingsFromState();
             updateMechSettingsContent();
+
+            $(".script_autoMech").prop('checked', settingsRaw.autoMech);
+            stopMechObserver();
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateMechSettingsContent);
@@ -12311,13 +12341,10 @@
             updateSettingsFromState();
             updateEjectorSettingsContent();
 
-            // Redraw toggles on market tab
-            if ($('#resEjector .ea-eject-toggle').length > 0) {
-                createEjectToggles();
-            }
-            if ($('#resCargo .ea-supply-toggle').length > 0) {
-                createSupplyToggles();
-            }
+            $(".script_autoEject").prop('checked', settingsRaw.autoEject);
+            $(".script_autoSupply").prop('checked', settingsRaw.autoSupply);
+            removeEjectToggles();
+            removeSupplyToggles();
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateEjectorSettingsContent);
@@ -12328,8 +12355,6 @@
 
         let currentNode = $('#script_ejectorContent');
         currentNode.empty().off("*");
-
-        addSettingsToggle(currentNode, "autoSupply", "Manage Supplies", "Send excess resources to Spire. Normal resources send when they're near storage cap, craftables - when above requirements. Takes priority over ejector.");
 
         currentNode.append(`
           <table style="width:100%">
@@ -12399,10 +12424,9 @@
             updateSettingsFromState();
             updateMarketSettingsContent();
 
-            // Redraw toggles on market tab
-            if ($('#market .ea-market-toggle').length > 0) {
-                createMarketToggles();
-            }
+            $(".script_autoMarket").prop('checked', settingsRaw.autoMarket);
+            $(".script_autoGalaxyMarket").prop('checked', settingsRaw.autoGalaxyMarket);
+            removeMarketToggles();
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateMarketSettingsContent);
@@ -12549,10 +12573,8 @@
             updateSettingsFromState();
             updateStorageSettingsContent();
 
-            // Redraw toggles on storage tab
-            if ($('#resStorage .ea-storage-toggle').length > 0) {
-                createStorageToggles();
-            }
+            $(".script_autoStorage").prop('checked', settingsRaw.autoStorage);
+            removeStorageToggles();
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateStorageSettingsContent);
@@ -12636,6 +12658,8 @@
             resetMinorTraitSettings(true);
             updateSettingsFromState();
             updateMinorTraitSettingsContent();
+
+            $(".script_autoMinorTrait").prop('checked', settingsRaw.autoMinorTrait);
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateMinorTraitSettingsContent);
@@ -12707,11 +12731,14 @@
             updateSettingsFromState();
             updateProductionSettingsContent();
 
-            // Redraw toggles in resources tab
-            if ($('#resources .ea-craft-toggle').length > 0) {
-              removeCraftToggles();
-              createCraftToggles();
-            }
+            $(".script_autoQuarry").prop('checked', settingsRaw.autoQuarry);
+            $(".script_autoGraphenePlant").prop('checked', settingsRaw.autoGraphenePlant);
+            $(".script_autoSmelter").prop('checked', settingsRaw.autoSmelter);
+            $(".script_autoCraft").prop('checked', settingsRaw.autoCraft);
+            $(".script_autoFactory").prop('checked', settingsRaw.autoFactory);
+            $(".script_autoMiningDroid").prop('checked', settingsRaw.autoMiningDroid);
+            $(".script_autoPylon").prop('checked', settingsRaw.autoPylon);
+            removeCraftToggles();
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateProductionSettingsContent);
@@ -12965,6 +12992,9 @@
             resetJobSettings(true);
             updateSettingsFromState();
             updateJobSettingsContent();
+
+            $(".script_autoJobs").prop('checked', settingsRaw.autoJobs);
+            $(".script_autoCraftsmen").prop('checked', settingsRaw.autoCraftsmen);
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateJobSettingsContent);
@@ -13137,6 +13167,10 @@
             resetBuildingSettings(true);
             updateSettingsFromState();
             updateBuildingSettingsContent();
+
+            $(".script_autoBuild").prop('checked', settingsRaw.autoBuild);
+            $(".script_autoPower").prop('checked', settingsRaw.autoPower);
+            removeBuildingToggles();
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateBuildingSettingsContent);
@@ -13418,6 +13452,8 @@
             resetProjectSettings(true);
             updateSettingsFromState();
             updateProjectSettingsContent();
+
+            $(".script_autoARPA").prop('checked', settingsRaw.autoARPA);
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateProjectSettingsContent);
@@ -13685,6 +13721,8 @@
             createSettingToggle(scriptNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
             createSettingToggle(scriptNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.');
             createSettingToggle(scriptNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings.');
+            createSettingToggle(scriptNode, 'autoEject', 'Eject excess resoruces to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements.', createEjectToggles, removeEjectToggles);
+            createSettingToggle(scriptNode, 'autoSupply', 'Send excess resources to Spire. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over ejector.', createSupplyToggles, removeSupplyToggles);
 
             createQuickOptions(scriptNode, "s-quick-prestige-options", "Prestige", buildPrestigeSettings);
 
@@ -13746,7 +13784,7 @@
         if (settingsRaw.autoMarket && game.global.settings.showMarket && $('#market .ea-market-toggle').length === 0) {
             createMarketToggles();
         }
-        if (settingsRaw.prestigeWhiteholeEjectEnabled && game.global.settings.showEjector && $('#resEjector .ea-eject-toggle').length === 0) {
+        if (settingsRaw.autoEject && game.global.settings.showEjector && $('#resEjector .ea-eject-toggle').length === 0) {
             createEjectToggles();
         }
         if (settingsRaw.autoSupply && game.global.settings.showCargo && $('#resCargo .ea-supply-toggle').length === 0) {
