@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.81
+// @version      3.3.1.82
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4906,10 +4906,6 @@
             prestigeBioseedProbes: 3,
             prestigeWhiteholeSaveGems: true,
             prestigeWhiteholeMinMass: 8,
-            prestigeWhiteholeStabiliseMass: true,
-            prestigeWhiteholeEjectExcess: false,
-            prestigeWhiteholeDecayRate: 0.2,
-            prestigeWhiteholeEjectAllCount: 100,
             prestigeAscensionSkipCustom: false,
             prestigeAscensionPillar: true,
             prestigeDemonicFloor: 100,
@@ -5365,6 +5361,9 @@
         let def = {
             autoEject: false,
             autoSupply: false,
+            ejectMode: "cap",
+            supplyMode: "mixed",
+            prestigeWhiteholeStabiliseMass: true,
         }
 
         for (let i = 0; i < resourcesByAtomicMass.length; i++) {
@@ -5488,8 +5487,16 @@
         if (settingsRaw.overrides.hasOwnProperty("prestigeWhiteholeEjectEnabled")) {
             settingsRaw.overrides.autoEject = settingsRaw.overrides.prestigeWhiteholeEjectEnabled
         }
+        if (settingsRaw.hasOwnProperty("prestigeWhiteholeEjectExcess")) {
+            settingsRaw.ejectMode = settingsRaw.prestigeWhiteholeEjectExcess ? "mixed" : "cap";
+        }
+        if (settingsRaw.hasOwnProperty("prestigeWhiteholeEjectAllCount") && settingsRaw.prestigeWhiteholeEjectAllCount <= 20) {
+            // Migrate option as override, in case if someone actualy use it
+            settingsRaw.overrides.ejectMode = settingsRaw.overrides.ejectMode ?? [];
+            settingsRaw.overrides.ejectMode.push({"type1":"BuildingCount","arg1":"interstellar-mass_ejector","type2":"Number","arg2":settingsRaw.prestigeWhiteholeEjectAllCount,"cmp":">=","ret":"all"});
+        }
         // Remove deprecated post-overrides settings
-        ["prestigeWhiteholeEjectEnabled"]
+        ["prestigeWhiteholeEjectEnabled", "prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "prestigeWhiteholeEjectExcess"]
           .forEach(id => { delete settingsRaw[id], delete settingsRaw.overrides[id] });
     }
 
@@ -7227,6 +7234,13 @@
         }
     }
 
+    const supplyRatios = {
+        cap: [0.975],
+        excess: [-1],
+        all: [0.045],
+        mixed: [0.975, -1],
+        full: [0.975, -1, 0.045],
+    }
     function autoSupply() {
         if (buildings.LakeTransport.stateOnCount < 1 || buildings.LakeBireme.stateOnCount < 1) {
             return;
@@ -7239,49 +7253,44 @@
 
         if (resources.Supply.storageRatio < 1) {
             let remaining = buildings.LakeTransport.stateOnCount * 5;
-            let keepRatio = 0.975;
-            for (let i = 0; i < resourcesBySupplyValue.length; i++) {
-                if (remaining <= 0) {
-                    break;
-                }
-
-                let resource = resourcesBySupplyValue[i];
-                if (!resource.supplyEnabled || resource.isDemanded()) {
-                    continue;
-                }
-
-                let allowedSupply = 0;
-                if (resource.isCraftable()) {
-                    if (resource.currentQuantity > resource.storageRequired / keepRatio) {
-                        allowedSupply = Math.max(0, Math.floor((resource.currentQuantity - (resource.storageRequired / keepRatio)) / resource.supplyVolume));
+            for (let supplyRatio of supplyRatios[settings.supplyMode]) {
+                for (let i = 0; i < resourcesBySupplyValue.length; i++) {
+                    if (remaining <= 0) {
+                        break;
                     }
-                } else {
-                    if (resource.storageRatio > keepRatio + 0.01) {
-                        allowedSupply = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume), Math.ceil((resource.storageRatio - keepRatio) * resource.maxQuantity / resource.supplyVolume));
-                    } else if (resource.storageRatio > keepRatio) {
-                        allowedSupply = Math.max(0, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
+
+                    let resource = resourcesBySupplyValue[i];
+                    if (!resource.supplyEnabled || resource.isDemanded()) {
+                        continue;
                     }
-                }
-                transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
-                remaining -= transportAdjustments[resource.id];
-            }
 
-            // Supply excess resources when have cargo space
-            // TODO: Make switch
-            for (let i = 0; i < resourcesBySupplyValue.length; i++) {
-                if (remaining <= 0) {
-                    break;
-                }
+                    let keepRatio = supplyRatio;
+                    if (keepRatio === -1) { // Excess resources
+                        if (resource.storageRequired <= 1) { // Resource not used, can't determine excess
+                            continue;
+                        }
+                        keepRatio = Math.max(keepRatio, resource.storageRequired / resource.maxQuantity + 0.005);
+                    }
+                    keepRatio = Math.max(keepRatio, resource.requestedQuantity / resource.maxQuantity + 0.005);
 
-                let resource = resourcesBySupplyValue[i];
-                if (!resource.supplyEnabled || resource.isDemanded() || resource.storageRequired <= 1 || resource.currentQuantity < resource.storageRequired) {
-                    continue;
-                }
+                    let allowedSupply = transportAdjustments[resource.id];
+                    remaining += transportAdjustments[resource.id];
 
-                remaining += transportAdjustments[resource.id];
-                let allowedSupply = Math.max(transportAdjustments[resource.id], Math.floor((resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true})) / resource.supplyVolume));
-                transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
-                remaining -= transportAdjustments[resource.id];
+                    if (resource.isCraftable()) {
+                        if (resource.currentQuantity > (resource.storageRequired * 1.005)) {
+                            allowedSupply = Math.max(0, allowedSupply, Math.floor((resource.currentQuantity - (resource.storageRequired * 1.005)) / resource.supplyVolume));
+                        }
+                    } else {
+                        if (resource.storageRatio > keepRatio + 0.01) {
+                            allowedSupply = Math.max(1, allowedSupply, Math.ceil(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume), Math.ceil((resource.storageRatio - keepRatio) * resource.maxQuantity / resource.supplyVolume));
+                        } else if (resource.storageRatio > keepRatio) {
+                            allowedSupply = Math.max(0, allowedSupply, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
+                        }
+                    }
+
+                    transportAdjustments[resource.id] = Math.min(remaining, allowedSupply);
+                    remaining -= transportAdjustments[resource.id];
+                }
             }
         }
 
@@ -7291,7 +7300,14 @@
         transportDeltas.forEach(item => item.delta > 0 && item.res.increaseSupply(item.delta));
     }
 
-    function autoMassEjector() {
+    const ejectRatios = {
+        cap: [0.985],
+        excess: [-1],
+        all: [0.055],
+        mixed: [0.985, -1],
+        full: [0.985, -1, 0.055],
+    }
+    function autoEject() {
         let enabledEjectors = buildings.BlackholeMassEjector.stateOnCount;
         if (enabledEjectors < 1 || haveTask("trash")) {
             return;
@@ -7302,44 +7318,10 @@
             ejectorAdjustments[resourcesByAtomicMass[i].id] = 0;
         }
 
+
         let remaining = enabledEjectors * 1000;
 
-        // Eject above ratio
-        for (let i = 0; i < resourcesByAtomicMass.length; i++) {
-            if (remaining <= 0) {
-                break;
-            }
-
-            let resource = resourcesByAtomicMass[i];
-            if (!resource.ejectEnabled || resource.isDemanded()) {
-                continue;
-            }
-
-            let keepRatio = enabledEjectors >= settings.prestigeWhiteholeEjectAllCount ? 0.05 : 0.985;
-            if (resource === resources.Food && !isHungryRace()) {
-                keepRatio = Math.max(keepRatio, 0.25);
-            }
-            keepRatio = Math.max(keepRatio, resource.requestedQuantity / resource.maxQuantity + 0.01);
-
-            let allowedEject = 0;
-            if (resource.isCraftable()) {
-                if (resource.currentQuantity > resource.storageRequired / keepRatio) {
-                    allowedEject = Math.max(0, Math.floor(resource.currentQuantity - (resource.storageRequired / keepRatio)));
-                }
-            } else {
-                if (resource.storageRatio > keepRatio + 0.01) {
-                    allowedEject = Math.max(1, Math.ceil(resource.calculateRateOfChange({buy: true, supply: true})), Math.ceil((resource.storageRatio - keepRatio) * resource.maxQuantity));
-                } else if (resource.storageRatio > keepRatio) {
-                    allowedEject = Math.max(0, Math.floor(resource.calculateRateOfChange({buy: true, supply: true})));
-                }
-            }
-
-            ejectorAdjustments[resource.id] = Math.min(remaining, allowedEject);
-            remaining -= ejectorAdjustments[resource.id];
-        }
-
-        // If we still have some ejectors remaining, let's try to find something else
-        if (remaining > 0 && (settings.prestigeWhiteholeEjectExcess || (game.global.race['decay'] && settings.prestigeWhiteholeDecayRate > 0))) {
+        for (let ejectRatio of ejectRatios[settings.ejectMode]) {
             for (let i = 0; i < resourcesByAtomicMass.length; i++) {
                 if (remaining <= 0) {
                     break;
@@ -7350,19 +7332,34 @@
                     continue;
                 }
 
-                let ejectableAmount = ejectorAdjustments[resource.id];
+                let keepRatio = ejectRatio;
+                if (keepRatio === -1) { // Excess resources
+                    if (resource.storageRequired <= 1) { // Resource not used, can't determine excess
+                        continue;
+                    }
+                    keepRatio = Math.max(keepRatio, resource.storageRequired / resource.maxQuantity + 0.015);
+                }
+                if (resource === resources.Food && !isHungryRace()) { // Preserve food
+                    keepRatio = Math.max(keepRatio, 0.25);
+                }
+                keepRatio = Math.max(keepRatio, resource.requestedQuantity / resource.maxQuantity + 0.015);
+
+                let allowedEject = ejectorAdjustments[resource.id];
                 remaining += ejectorAdjustments[resource.id];
 
-                // Decay is tricky. We want to start ejecting as soon as possible... but won't have full storages here. Let's eject x% of decayed amount, unless it's on demand.
-                if (game.global.race['decay'] && !resource.isDemanded()) {
-                    ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentDecay * settings.prestigeWhiteholeDecayRate));
+                if (resource.isCraftable()) {
+                    if (resource.currentQuantity > (resource.storageRequired * 1.015)) {
+                        allowedEject = Math.max(0, allowedEject, Math.floor(resource.currentQuantity - (resource.storageRequired * 1.015)));
+                    }
+                } else {
+                    if (resource.storageRatio > keepRatio + 0.01) {
+                        allowedEject = Math.max(1, allowedEject, Math.ceil(resource.calculateRateOfChange({buy: true, supply: true})), Math.ceil((resource.storageRatio - keepRatio) * resource.maxQuantity));
+                    } else if (resource.storageRatio > keepRatio) {
+                        allowedEject = Math.max(0, allowedEject, Math.floor(resource.calculateRateOfChange({buy: true, supply: true})));
+                    }
                 }
 
-                if (settings.prestigeWhiteholeEjectExcess && resource.storageRequired > 1 && resource.currentQuantity >= resource.storageRequired) {
-                    ejectableAmount = Math.max(ejectableAmount, Math.floor(resource.currentQuantity - resource.storageRequired + resource.calculateRateOfChange({buy: true, sell: true, decay: true, supply: true})));
-                }
-
-                ejectorAdjustments[resource.id] = Math.min(remaining, ejectableAmount);
+                ejectorAdjustments[resource.id] = Math.min(remaining, allowedEject);
                 remaining -= ejectorAdjustments[resource.id];
             }
         }
@@ -10200,7 +10197,7 @@
             autoSupply(); // Purge remaining rateOfChange, should be called when it won't be needed anymore
         }
         if (settings.autoEject) {
-            autoMassEjector(); // Purge remaining rateOfChange, should be called after autoSupply
+            autoEject(); // Purge remaining rateOfChange, should be called after autoSupply
         }
         if (settings.autoPower) { // Called after purging of rateOfChange, to know useless resources
             autoPower();
@@ -11313,10 +11310,6 @@
         addSettingsHeader1(currentNode, "Whitehole");
         addSettingsToggle(currentNode, "prestigeWhiteholeSaveGems", "Save up Soul Gems for reset", "Save up enough Soul Gems for reset, only excess gems will be used. This option does not affect triggers.");
         addSettingsNumber(currentNode, "prestigeWhiteholeMinMass", "Minimum solar mass for reset", "Required minimum solar mass of blackhole before prestiging. Script do not stabilize on blackhole run, this number will need to be reached naturally");
-        addSettingsToggle(currentNode, "prestigeWhiteholeStabiliseMass", "Stabilize blackhole", "Stabilizes the blackhole with exotic materials, disabled on whitehole runs");
-        addSettingsToggle(currentNode, "prestigeWhiteholeEjectExcess", "Eject excess resources", "Eject resources above amount required for buildings, normally only resources with full storages will be ejected, until 'Eject everything' option is activated.");
-        addSettingsNumber(currentNode, "prestigeWhiteholeDecayRate", "(Decay Challenge) Eject rate", "Set amount of ejected resources up to this percent of decay rate, only useful during Decay Challenge");
-        addSettingsNumber(currentNode, "prestigeWhiteholeEjectAllCount", "Eject everything once X mass ejectors constructed", "Once we've constructed X mass ejectors the eject as much of everything as possible");
 
         // Ascension
         addSettingsHeader1(currentNode, "Ascension");
@@ -12355,6 +12348,16 @@
 
         let currentNode = $('#script_ejectorContent');
         currentNode.empty().off("*");
+
+        let spendOptions = [{val: "cap", label: "Capped", hint: "Use capped resources"},
+                            {val: "excess", label: "Excess", hint: "Use excess resources"},
+                            {val: "all", label: "All", hint: "Use all resources. This option can prevent script from progressing, and intended to use with additional conditions."},
+                            {val: "mixed", label: "Capped > Excess", hint: "Use capped resources first, switching to excess resources when capped alone is not enough."},
+                            {val: "full", label: "Capped > Excess > All", hint: "Use capped first, then excess, then everything else. Same as 'All' option can be potentialy dungerous."}];
+        let spendDesc = "Configures threshold when script will be allowed to use resources. With any option script will try to use most expensive of allowed resources within selected group. Craftables, when enabled, always use excess amount as threshold, having no cap.";
+        addSettingsSelect(currentNode, "ejectMode", "Eject mode", spendDesc, spendOptions);
+        addSettingsSelect(currentNode, "supplyMode", "Supply mode", spendDesc, spendOptions);
+        addSettingsToggle(currentNode, "prestigeWhiteholeStabiliseMass", "Stabilize blackhole", "Stabilizes the blackhole with exotic materials, disabled on whitehole runs");
 
         currentNode.append(`
           <table style="width:100%">
