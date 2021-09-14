@@ -5345,6 +5345,7 @@
             mechSizeGravity: "auto",
             mechFillBay: true,
             mechScouts: 0.05,
+            mechScoutsRebuild: false,
             mechMinSupply: 1000,
             mechMaxCollectors: 0.5,
             mechSpecial: "prefered",
@@ -9356,11 +9357,19 @@
                 let powerRatio = mech.power / newMech.power;
                 return costRatio / powerRatio > scrapEfficiency;
             }).sort((a, b) => a.efficiency - b.efficiency);
-            // TODO: Preserve min amount of scouts
+
+            let extraScouts = settings.mechScoutsRebuild ? Number.MAX_SAFE_INTEGER : m.lastScouts - (mechBay.max * settings.mechScouts / 2);
 
             // Remove worst mechs untill we have enough room for new mech
             let trashMechs = [];
             for (let i = 0; i < badMechList.length && (baySpace + spaceGained < newSpace || (mechScrap === "all" && (resources.Supply.spareQuantity + supplyGained < newSupply || resources.Soul_Gem.spareQuantity + gemsGained < newGems))); i++) {
+                if (badMechList[i].size === 'small') {
+                    if (extraScouts < 1) {
+                        continue;
+                    } else {
+                        extraScouts--;
+                    }
+                }
                 spaceGained += m.getMechSpace(badMechList[i]);
                 supplyGained += m.getMechRefund(badMechList[i])[1];
                 gemsGained += m.getMechRefund(badMechList[i])[0];
@@ -12245,10 +12254,11 @@
                               {val: "random", label: "Random", hint: "Special equipment will have same chance to be added as all others"},
                               {val: "never", label: "Never", hint: "Never add special equipment"}];
         addSettingsSelect(currentNode, "mechSpecial", "Special mechs", "Configures special equip", specialOptions);
-        addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
+        addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsNumber(currentNode, "mechMinSupply", "Minimum supply income", "Build collectors if current supply income below given number");
         addSettingsNumber(currentNode, "mechMaxCollectors", "Maximum collectors ratio", "Limiter for above option, maximum space used by collectors");
-        addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
+        addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
+        addSettingsToggle(currentNode, "mechScoutsRebuild", "Rebuild scouts", "Scouts provides full bonus to other mechs even being infficient, this option prevent rebuilding them saving resources.");
         addSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
         addSettingsToggle(currentNode, "mechFillBay", "Build smaller mechs when preferred not available", "Build smaller mechs when preferred size can't be used due to low remaining bay space, or supplies cap");
         addSettingsToggle(currentNode, "buildingMechsFirst", "Build spire buildings only with full bay", "Fill mech bays up to current limit before spending resources on additional spire buildings");
