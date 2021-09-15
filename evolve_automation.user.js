@@ -7016,7 +7016,7 @@
         // Calculate amount of factories per product
         let remainingFactories = FactoryManager.maxOperating();
         for (let i = 0; i < priorityList.length && remainingFactories > 0; i++) {
-            let products = priorityList[i];
+            let products = priorityList[i].sort((a, b) => a.weighting - b.weighting);
             while (remainingFactories > 0) {
                 let factoriesToDistribute = remainingFactories;
                 let totalPriorityWeight = products.reduce((sum, production) => sum + production.weighting, 0);
@@ -7133,7 +7133,7 @@
         // Calculate amount of factories per product
         let remainingFactories = DroidManager.maxOperating();
         for (let i = 0; i < priorityList.length && remainingFactories > 0; i++) {
-            let products = priorityList[i];
+            let products = priorityList[i].sort((a, b) => a.weighting - b.weighting);
             while (remainingFactories > 0) {
                 let factoriesToDistribute = remainingFactories;
                 let totalPriorityWeight = products.reduce((sum, production) => sum + production.weighting, 0);
@@ -7618,7 +7618,7 @@
         // Calculate amount of factories per product
         let remainingFreighters = GalaxyTradeManager.maxOperating();
         for (let i = 0; i < priorityList.length && remainingFreighters > 0; i++) {
-            let trades = priorityList[i];
+            let trades = priorityList[i].sort((a, b) => resources[a.buy.res].galaxyMarketWeighting - resources[b.buy.res].galaxyMarketWeighting);
             while (remainingFreighters > 0) {
                 let freightersToDistribute = remainingFreighters;
                 let totalPriorityWeight = trades.reduce((sum, trade) => sum + resources[trade.buy.res].galaxyMarketWeighting, 0);
@@ -8927,7 +8927,7 @@
         }
         outerLoop:
         for (let i = 0; i < priorityList.length && remainingRoutes > 0; i++) {
-            let trades = priorityList[i];
+            let trades = priorityList[i].sort((a, b) => a.autoTradeWeighting - b.autoTradeWeighting);
             assignLoop:
             while(trades.length > 0 && remainingRoutes > 0) {
                 let resource = trades.sort(resSorter)[0];
@@ -9579,8 +9579,8 @@
             resources.Polymer.requestedQuantity = Math.max(resources.Polymer.requestedQuantity, resources.Polymer.maxQuantity * factoryThreshold);
         }
         // TODO: Prioritize missing consumptions of buildings
-        // Force crafting Stanene up to 3% when we have Vitreloy Plants
-        if (resources.Stanene.storageRatio < 0.03 && buildings.Alien1VitreloyPlant.count > 0) {
+        // Force crafting Stanene when there's less than minute worths of consumption, or 5%
+        if (buildings.Alien1VitreloyPlant.count > 0 && resources.Stanene.currentQuantity < Math.min((buildings.Alien1VitreloyPlant.stateOnCount || 1) * 6000, resources.Stanene.maxQuantity * 0.05)) {
             resources.Stanene.requestedQuantity = resources.Stanene.maxQuantity;
         }
     }
