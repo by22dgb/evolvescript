@@ -56,7 +56,6 @@
 
     class Job {
         constructor(id, name) {
-            // Private properties
             this._originalId = id;
             this._originalName = name;
             this._vueBinding = "civ-" + this._originalId;
@@ -1710,6 +1709,7 @@
         Aerogel: new Resource("Aerogel", "Aerogel"),
         Nanoweave: new Resource("Nanoweave", "Nanoweave"),
         Scarletite: new Resource("Scarletite", "Scarletite"),
+        //Quantium: new Resource("Quantium", "Quantium"),
 
         // Magic universe update
         Corrupt_Gem: new Resource("Corrupt Gem", "Corrupt_Gem"),
@@ -1776,6 +1776,7 @@
         Aerogel: new CraftingJob("Aerogel", "Aerogel Crafter", resources.Aerogel),
         Nanoweave: new CraftingJob("Nanoweave", "Nanoweave Crafter", resources.Nanoweave),
         Scarletite: new CraftingJob("Scarletite", "Scarletite Crafter", resources.Scarletite),
+        //Quantium: new CraftingJob("Quantium", "Quantium Crafter", resources.Quantium),
     }
 
     var buildings = {
@@ -1912,6 +1913,7 @@
         TitanGraphenePlant: new Action("Titan Graphene Plant", "space", "g_factory", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
         EnceladusWaterFreighter: new Action("Enceladus Water Freighter", "space", "water_freighter", "spc_enceladus"),
+        EnceladusZeroGLab: new Action("Enceladus Zero Gravity Lab", "space", "zero_g_lab", "spc_enceladus"),
         */
         AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
         AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
@@ -4335,7 +4337,8 @@
         resources.Crates.resourceRequirements = normalizeProperties([() => isLumberRace() ? {resource: resources.Plywood, quantity: 10} : {resource: resources.Stone, quantity: 200}]);
         resources.Containers.resourceRequirements.push(new ResourceRequirement(resources.Steel, 125));
 
-        JobManager.addCraftingJob(jobs.Scarletite); // Scarletite should be on top
+        //JobManager.addCraftingJob(jobs.Quantium); // Non-foundry should be on top
+        JobManager.addCraftingJob(jobs.Scarletite);
         JobManager.addCraftingJob(jobs.Plywood);
         JobManager.addCraftingJob(jobs.Brick);
         JobManager.addCraftingJob(jobs.WroughtIron);
@@ -4498,6 +4501,7 @@
 
         buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Enceladus_Support, 1);
         buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Helium_3, 2.5);
+        buildings.EnceladusZeroGLab.addResourceConsumption(resources.Enceladus_Support, 1);
         */
 
         // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
@@ -4815,6 +4819,23 @@
         priorityList.push(buildings.NeutronCitadel);
         priorityList.push(buildings.Mine);
         priorityList.push(buildings.CoalMine);
+
+        /*
+        priorityList.push(buildings.DwarfShipyard);
+        priorityList.push(buildings.TitanMission);
+        priorityList.push(buildings.TitanSpaceport);
+        priorityList.push(buildings.TitanElectrolysis);
+        priorityList.push(buildings.TitanHydrogenPlant);
+        priorityList.push(buildings.TitanQuarters);
+        priorityList.push(buildings.TitanMine);
+        priorityList.push(buildings.TitanStorehouse);
+        priorityList.push(buildings.TitanBank);
+        priorityList.push(buildings.TitanStorehouse);
+        priorityList.push(buildings.TitanGraphenePlant);
+        priorityList.push(buildings.EnceladusMission);
+        priorityList.push(buildings.EnceladusWaterFreighter);
+        priorityList.push(buildings.EnceladusZeroGLab);
+        */
 
         BuildingManager.priorityList = priorityList;
         BuildingManager.statePriorityList = priorityList.filter(b => b.isSwitchable());
@@ -5247,6 +5268,7 @@
         setFoundryProduct("Aerogel", true, 3, 0);
         setFoundryProduct("Nanoweave", true, 10, 0);
         setFoundryProduct("Scarletite", true, 1, 0);
+        //setFoundryProduct("Quantium", true, 1, 0);
 
         // Pylon
         for (let spell of Object.values(RitualManager.Productions)) {
@@ -5878,7 +5900,7 @@
         craftLoop:
         for (let i = 0; i < state.craftableResourceList.length; i++) {
             let craftable = state.craftableResourceList[i];
-            if (!craftable.isUnlocked() || !craftable.autoCraftEnabled || craftable === resources.Scarletite) {
+            if (!craftable.isUnlocked() || !craftable.autoCraftEnabled || craftable === resources.Scarletite || craftable === resources.Quantium) {
                 continue;
             }
 
@@ -6457,7 +6479,7 @@
                 let job = JobManager.craftingJobs[i];
                 let resource = job.resource;
                 // Check if we're allowed to craft this resource
-                if (!job.isManaged() || !resource.autoCraftEnabled || (settings.jobDisableCraftsmans && !game.global.race['no_craft'] && job !== jobs.Scarletite)) {
+                if (!job.isManaged() || !resource.autoCraftEnabled || (settings.jobDisableCraftsmans && !game.global.race['no_craft'] && job !== jobs.Scarletite && job !== jobs.Quantium)) {
                     continue;
                 }
                 let resourceDemanded = resource.isDemanded();
@@ -6478,14 +6500,17 @@
                     continue;
                 }
 
-                // Assigning Scarletite right now, so it won't be filtered out by priority checks below, as we want to have scarletite + some other with remaining crafters
-                if (job === jobs.Scarletite) {
-                    let maxScar = buildings.RuinsHellForge.stateOnCount;
-                    if (afforableAmount < maxScar) {
+                // Assigning non-foundry crafters right now, so it won't be filtered out by priority checks below, as we want to have them always crafted among with regular craftables
+                let craftBuilding = job === jobs.Scarletite ? buildings.RuinsHellForge :
+                                    job === jobs.Quantium ? buildings.EnceladusZeroGLab :
+                                    null;
+                if (craftBuilding) {
+                    let craftMax = craftBuilding.stateOnCount;
+                    if (afforableAmount < craftMax) {
                         jobAdjustments[jobList.indexOf(job)] = 0 - job.count;
                     } else {
-                        jobAdjustments[jobList.indexOf(job)] = maxScar - job.count;
-                        availableCraftsmen -= maxScar;
+                        jobAdjustments[jobList.indexOf(job)] = craftMax - job.count;
+                        availableCraftsmen -= craftMax;
                     }
                     continue;
                 }
@@ -6518,7 +6543,7 @@
                 let job = JobManager.craftingJobs[i];
                 let jobIndex = jobList.indexOf(job);
 
-                if (jobIndex === -1 || job === jobs.Scarletite) {
+                if (jobIndex === -1 || job === jobs.Scarletite || job === jobs.Quantium) {
                     continue;
                 }
 
@@ -9351,6 +9376,9 @@
                 if (mech.infernal || mech.power >= m.bestMech[mech.size].power) {
                     return false;
                 }
+                if (forceBuild) { // Get everything that isn't infernal or 100% optimal for force rebuild
+                    return true;
+                }
                 let [gemRefund, supplyRefund] = m.getMechRefund(mech);
                 // Collector and scout does not refund gems. Let's pretend they're returning half of gem during filtering
                 let costRatio = Math.min((gemRefund || 0.5) / newGems, supplyRefund / newSupply);
@@ -10287,6 +10315,7 @@
     function addScriptStyle() {
         let styles = `
             .script-lastcolumn:after { float: right; content: "\\21c5"; }
+            .script-refresh:after { float: right; content: "\\1f5d8"; }
             .script-draggable { cursor: move; cursor: grab; }
             .script-draggable:active { cursor: grabbing !important; }
             .ui-sortable-helper { display: table; cursor: grabbing !important; }
@@ -12908,7 +12937,7 @@
             productionElement.append(buildTableToggle("craft" + resource.id));
 
             productionElement = productionElement.next();
-            if (resource == resources.Scarletite) {
+            if (resource === resources.Scarletite || resource === resources.Quantium) {
                 productionElement.append('<span>Managed</span>');
             } else {
                 productionElement.append(buildTableInput("foundry_w_" + resource.id));
@@ -13025,7 +13054,7 @@
         addSettingsNumber(currentNode, "jobCrystalWeighting", "Final Crystal Miner Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
         addSettingsNumber(currentNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
         addSettingsToggle(currentNode, "jobDisableMiners", "Disable miners in Andromeda", "Disable Miners and Coal Miners after reaching Andromeda");
-        addSettingsToggle(currentNode, "jobDisableCraftsmans", "Craft manually when possible", "Disable non-Scarletite crafters when manual craft is allowed");
+        addSettingsToggle(currentNode, "jobDisableCraftsmans", "Craft manually when possible", "Disable foundry crafters when manual craft is allowed");
 
         currentNode.append(`
           <table style="width:100%">
@@ -13226,7 +13255,7 @@
         $("#script_buildingSearch").on("keyup", filterBuildingSettingsTable); // Add building filter
 
         // Add in a first row for switching "All"
-        let newTableBodyText = '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"></td></tr>';
+        let newTableBodyText = '<tr value="All" class="unsortable"><td id="script_bldallToggle" style="width:35%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:15%"></td><td style="width:20%"><span id="script_resetBuildingsPriority" class="script-refresh"></span></td></tr>';
 
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
             let building = BuildingManager.priorityList[i];
@@ -13245,6 +13274,18 @@
         // state column
         buildingElement = buildingElement.next().next().next();
         buildingElement.append(buildAllBuildingStateSettingsToggle());
+
+        $('#script_resetBuildingsPriority').on("click", function(){
+            if (confirm("Are you sure you wish to reset buildings priority?")) {
+                initBuildingState();
+                for (let i = 0; i < BuildingManager.priorityList.length; i++) {
+                    let id = BuildingManager.priorityList[i]._vueBinding;
+                    settingsRaw['bld_p_' + id] = i;
+                }
+                updateSettingsFromState();
+                updateBuildingSettingsContent();
+            }
+        });
 
         // Build all other buildings settings rows
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
