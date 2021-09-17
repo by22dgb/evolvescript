@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.82
+// @version      3.3.1.83
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5321,6 +5321,7 @@
         }
         Object.keys(GameLog.Types).forEach(id => def["log_" + id] = true);
         def["log_mercenary"] = false;
+        def["log_multi_construction"] = false;
 
         applySettings(def, reset);
     }
@@ -7548,7 +7549,7 @@
             return;
         }
 
-        let minimumMoneyAllowed = settings.minimumMoneyPercentage > 0 ? resources.Money.maxQuantity * settings.minimumMoneyPercentage / 100 : settings.minimumMoney;
+        let minimumMoneyAllowed = Math.max(resources.Money.maxQuantity * settings.minimumMoneyPercentage / 100, settings.minimumMoney);
 
         let currentMultiplier = MarketManager.multiplier; // Save the current multiplier so we can reset it at the end of the function
         let maxMultiplier = MarketManager.getMaxMultiplier();
@@ -12480,6 +12481,8 @@
         let currentNode = $('#script_marketContent');
         currentNode.empty().off("*");
 
+        addSettingsNumber(currentNode, "minimumMoney", "Manual trade minimum money", "Minimum money to keep after bulk buying");
+        addSettingsNumber(currentNode, "minimumMoneyPercentage", "Manual trade minimum money percentage", "Minimum percentage of money to keep after bulk buying");
         addSettingsNumber(currentNode, "tradeRouteMinimumMoneyPerSecond", "Trade minimum money /s", "Uses the highest per second amount of these two values. Will trade for resources until this minimum money per second amount is hit");
         addSettingsNumber(currentNode, "tradeRouteMinimumMoneyPercentage", "Trade minimum money percentage /s", "Uses the highest per second amount of these two values. Will trade for resources until this percentage of your money per second amount is hit");
         addSettingsToggle(currentNode, "tradeRouteSellExcess", "Sell excess resources", "With this option enabled script will be allowed to sell resources above amounts needed for constructions or researches, without it script sell only capped resources. As side effect boughts will also be limited to that amounts, to avoid 'buy up to cap -> sell excess' loops.");
@@ -13786,33 +13789,6 @@
                 updateScriptData();
                 finalizeScriptData();
                 autoMarket(true, true);
-            });
-
-            scriptNode.append(`
-              <div id="ea-settings">
-                <div>Minimum money to keep :</div>
-                <input type="text" class="input is-small" style="width:100%"/>
-                <a class="button is-dark is-small" id="set-min-money"><span>Set</span></a>
-                <a class="button is-dark is-small" id="set-min-percent" title="eg. 10 equals 10%"><span>Set %</span></a>
-              </div>`);
-            let minimumMoneyValue = settingsRaw.minimumMoney > 0 ? settingsRaw.minimumMoney : settingsRaw.minimumMoneyPercentage;
-            $("#ea-settings > input").val(minimumMoneyValue);
-
-            $("#set-min-money").on('click', function() {
-                let minMoney = getRealNumber($("#ea-settings > input").val());
-                if (!isNaN(minMoney)) {
-                    settingsRaw.minimumMoney = minMoney;
-                    settingsRaw.minimumMoneyPercentage = 0;
-                    updateSettingsFromState();
-                }
-            });
-            $("#set-min-percent").on('click', function() {
-                let minMoneyPercent = getRealNumber($("#ea-settings > input").val());
-                if (!isNaN(minMoneyPercent)) {
-                    settingsRaw.minimumMoneyPercentage = minMoneyPercent;
-                    settingsRaw.minimumMoney = 0;
-                    updateSettingsFromState();
-                }
             });
         }
 
