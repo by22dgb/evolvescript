@@ -1714,6 +1714,7 @@
         // Magic universe update
         Corrupt_Gem: new Resource("Corrupt Gem", "Corrupt_Gem"),
         Codex: new Resource("Codex", "Codex"),
+        //Cipher: new Resource("Cipher", "Cipher"),
         Demonic_Essence: new Resource("Demonic Essence", "Demonic_Essence"),
         Blood_Stone: new Resource("Blood Stone", "Blood_Stone"),
         Artifact: new Resource("Artifact", "Artifact"),
@@ -1868,6 +1869,7 @@
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
+        //HellSmelter: new Action("Hell Smelter", "space", "hell_smelter", "spc_hell"),
         HellSpaceCasino: new Action("Hell Space Casino", "space", "spc_casino", "spc_hell"),
         HellSwarmPlant: new Action("Hell Swarm Plant", "space", "swarm_plant", "spc_hell"),
 
@@ -1911,10 +1913,18 @@
         TitanStorehouse: new Action("Titan Storehouse", "space", "storehouse", "spc_titan"),
         TitanBank: new Action("Titan Bank", "space", "titan_bank", "spc_titan"),
         TitanGraphenePlant: new Action("Titan Graphene Plant", "space", "g_factory", "spc_titan"),
+        TitanSAM: new Action("Titan SAM Site", "space", "sam", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
         EnceladusWaterFreighter: new Action("Enceladus Water Freighter", "space", "water_freighter", "spc_enceladus"),
         EnceladusZeroGLab: new Action("Enceladus Zero Gravity Lab", "space", "zero_g_lab", "spc_enceladus"),
+        EnceladusBase: new Action("Enceladus Operational Base", "space", "operating_base", "spc_enceladus"),
+        TritonMission: new Action("Triton Mission", "space", "triton_mission", "spc_triton"),
+        TritonMunitionsDepot: new Action("Triton Munitions Depot", "space", "munitions_depot", "spc_triton"),
+        TritonFOB: new Action("Triton Foward Base", "space", "fob", "spc_triton"),
+        TritonLander: new Action("Triton Troop Lander", "space", "lander", "spc_triton"),
+        TritonCrashedShip: new Action("Triton Derelict Ship", "space", "crashed_ship", "spc_triton"),
         */
+
         AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
         AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
         AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
@@ -2569,6 +2579,7 @@
         }
     }
 
+    // TODO: Iridium smelting
     var SmelterManager = {
         _industryVueBinding: "iSmelter",
         _industryVue: undefined,
@@ -3901,6 +3912,14 @@
                     currentBestBodyList = specialEquip;
                 }
             }
+            /* TODO: Not really sure how to utilize it for good: it does find good and bad mech compositions, but using only good ones can backfire on some floors, and there won't big enough amount of mech to use weighted random
+            currentBestBodyList.forEach(mech => {
+                mech.weigthing = 0;
+                for (let mod in this.StatusMod) {
+                    mech.weigthing += this.StatusMod[mod](mech);
+                }
+            });
+            */
             this.bestBody[size] = currentBestBodyList;
         },
 
@@ -4502,6 +4521,7 @@
         buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Enceladus_Support, 1);
         buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Helium_3, 2.5);
         buildings.EnceladusZeroGLab.addResourceConsumption(resources.Enceladus_Support, 1);
+        buildings.EnceladusBase.addResourceConsumption(resources.Enceladus_Support, 1);
         */
 
         // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
@@ -4785,10 +4805,10 @@
         priorityList.push(buildings.GateInferniteMine);
 
         priorityList.push(buildings.SpireMission);
-        priorityList.push(buildings.SpirePurifier);
         priorityList.push(buildings.SpireMechBay);
         priorityList.push(buildings.SpireBaseCamp);
         priorityList.push(buildings.SpirePort);
+        priorityList.push(buildings.SpirePurifier);
         priorityList.push(buildings.SpireBridge);
         priorityList.push(buildings.SpireSphinx);
         priorityList.push(buildings.SpireBribeSphinx);
@@ -5372,7 +5392,7 @@
             mechMinSupply: 1000,
             mechMaxCollectors: 0.5,
             mechSpecial: "prefered",
-            mechSaveSupply: true,
+            mechSaveSupplyRatio: 1,
             buildingMechsFirst: true,
             mechBaysFirst: true,
             mechWaygatePotential: 0.4,
@@ -5519,8 +5539,15 @@
             settingsRaw.overrides.ejectMode = settingsRaw.overrides.ejectMode ?? [];
             settingsRaw.overrides.ejectMode.push({"type1":"BuildingCount","arg1":"interstellar-mass_ejector","type2":"Number","arg2":settingsRaw.prestigeWhiteholeEjectAllCount,"cmp":">=","ret":"all"});
         }
+        settingsRaw.mechSaveSupplyRatio = settingsRaw.mechSaveSupplyRatio ?? (settingsRaw.mechSaveSupply ? 1 : 0);
+        if (settingsRaw.overrides.hasOwnProperty("mechSaveSupply")) {
+            settingsRaw.overrides.mechSaveSupplyRatio = settingsRaw.overrides.mechSaveSupply
+            for(let override of settingsRaw.overrides.mechSaveSupplyRatio) {
+                override.ret = override.ret ? 1 : 0;
+            }
+        }
         // Remove deprecated post-overrides settings
-        ["prestigeWhiteholeEjectEnabled", "prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "prestigeWhiteholeEjectExcess"]
+        ["prestigeWhiteholeEjectEnabled", "prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "prestigeWhiteholeEjectExcess", "mechSaveSupply"]
           .forEach(id => { delete settingsRaw[id], delete settingsRaw.overrides[id] });
     }
 
@@ -9323,9 +9350,10 @@
             savingSupply = false;
         }
 
+        // TODO: Make it configurable ratio, instead of bool
         // Save up supply for next floor when, unless our supply income only from collectors, thet aren't built yet
-        if (settings.mechSaveSupply && !lastFloor && !prolongActive && ((buildings.LakeBireme.stateOnCount > 0 && buildings.LakeTransport.stateOnCount > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
-            let missingSupplies = resources.Supply.maxQuantity - resources.Supply.currentQuantity;
+        if (settings.mechSaveSupplyRatio > 0 && !lastFloor && !prolongActive && !forceBuild && ((buildings.LakeBireme.stateOnCount > 0 && buildings.LakeTransport.stateOnCount > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
+            let missingSupplies = (resources.Supply.maxQuantity * settings.mechSaveSupplyRatio) - resources.Supply.currentQuantity;
             if (baySpace < newSpace) {
                 missingSupplies -= m.getMechRefund({size: "titan"})[1];
             }
@@ -9347,10 +9375,8 @@
                 mechScrap = "single";
             } else {
                 let mechToBuild = Math.floor(baySpace / newSpace);
-                let supplyCost = mechToBuild * newSupply;
-                if (settings.mechSaveSupply) { // If we're going to save up supplies we need to reserve time for it
-                    supplyCost += resources.Supply.maxQuantity;
-                }
+                // If we're going to save up supplies we need to reserve time for it
+                let supplyCost = (mechToBuild * newSupply) + (resources.Supply.maxQuantity * settings.mechSaveSupplyRatio);
                 let timeToFullBay = Math.max((supplyCost - resources.Supply.currentQuantity) / resources.Supply.rateOfChange,
                               (mechToBuild * newGems - resources.Soul_Gem.currentQuantity) / resources.Soul_Gem.rateOfChange);
                 // timeToClear changes drastically with new mechs, let's try to normalize it, scaling it with available power
@@ -12287,9 +12313,9 @@
         addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsNumber(currentNode, "mechMinSupply", "Minimum supply income", "Build collectors if current supply income below given number");
         addSettingsNumber(currentNode, "mechMaxCollectors", "Maximum collectors ratio", "Limiter for above option, maximum space used by collectors");
+        addSettingsNumber(currentNode, "mechSaveSupplyRatio", "Save up supplies for next floor", "Ratio of supplies to save up for next floor. Script will stop spending supplies on new mechs when it estimates that by the time when floor will be cleared you'll be under this supply ratio. That allows build bunch of new mechs suited for next enemy right after entering new floor. With 1 value script will try to start new floors with full supplies, 0.5 - with half, 0 - any, effectively disabling this option, etc.");
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
         addSettingsToggle(currentNode, "mechScoutsRebuild", "Rebuild scouts", "Scouts provides full bonus to other mechs even being infficient, this option prevent rebuilding them saving resources.");
-        addSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
         addSettingsToggle(currentNode, "mechFillBay", "Build smaller mechs when preferred not available", "Build smaller mechs when preferred size can't be used due to low remaining bay space, or supplies cap");
         addSettingsToggle(currentNode, "buildingMechsFirst", "Build spire buildings only with full bay", "Fill mech bays up to current limit before spending resources on additional spire buildings");
         addSettingsToggle(currentNode, "mechBaysFirst", "Scrap mechs only after building maximum bays", "Scrap old mechs only when no new bays and purifiers can be builded");
