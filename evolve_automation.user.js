@@ -10885,7 +10885,10 @@
           }));
 
         $(`#script_${settingName}_d a`).on('click', function() {
-            settingsRaw.overrides[settingName] = settingsRaw.overrides[settingName] ?? [];
+            if (!settingsRaw.overrides[settingName]) {
+                settingsRaw.overrides[settingName] = [];
+                $(".script_bg_" + settingName).addClass("inactive-row");
+            }
             settingsRaw.overrides[settingName].push({type1: "Boolean", arg1: true, type2: "Boolean", arg2: false, cmp: "==", ret: settingsRaw[settingName]})
             updateSettingsFromState();
             rebuild();
@@ -11009,6 +11012,7 @@
             settingsRaw.overrides[settingName].splice(id, 1);
             if (settingsRaw.overrides[settingName].length === 0) {
                 delete settingsRaw.overrides[settingName];
+                $(".script_bg_" + settingName).removeClass("inactive-row");
             }
             updateSettingsFromState();
             rebuild();
@@ -11074,12 +11078,14 @@
     }
 
     function addSettingsToggle(node, settingName, labelText, hintText) {
-        $(`<div style="margin-top: 5px; width: 90%; display: inline-block; text-align: left;">
-             <label title="${hintText}" tabindex="0" class="switch">
-               <input class="script_${settingName}" type="checkbox" ${settingsRaw[settingName] ? " checked" : ""}><span class="check"></span>
-               <span style="margin-left: 10px;">${labelText}</span>
-             </label>
-           </div>`)
+        return $(`
+          <div class="script_bg_${settingName}" style="margin-top: 5px; width: 90%; display: inline-block; text-align: left;">
+            <label title="${hintText}" tabindex="0" class="switch">
+              <input class="script_${settingName}" type="checkbox" ${settingsRaw[settingName] ? " checked" : ""}><span class="check"></span>
+              <span style="margin-left: 10px;">${labelText}</span>
+            </label>
+          </div>`)
+        .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingName]))
         .on('change', 'input', function() {
             settingsRaw[settingName] = this.checked;
             updateSettingsFromState();
@@ -11091,12 +11097,14 @@
     }
 
     function addSettingsNumber(node, settingName, labelText, hintText) {
-        $(`<div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
-             <label title="${hintText}" tabindex="0">
-               <span>${labelText}</span>
-               <input class="script_${settingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;" value="${settingsRaw[settingName]}"></input>
-             </label>
-           </div>`)
+        return $(`
+          <div class="script_bg_${settingName}" style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
+            <label title="${hintText}" tabindex="0">
+              <span>${labelText}</span>
+              <input class="script_${settingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;" value="${settingsRaw[settingName]}"></input>
+            </label>
+          </div>`)
+        .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingName]))
         .on('change', 'input', function() {
             let parsedValue = getRealNumber(this.value);
             if (!isNaN(parsedValue)) {
@@ -11116,14 +11124,15 @@
     function addSettingsSelect(node, settingName, labelText, hintText, optionsList) {
         let options = buildSelectOptions(optionsList);
         return $(`
-           <div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
-             <label title="${hintText}" tabindex="0">
-               <span>${labelText}</span>
-               <select class="script_${settingName}" style="width: 150px; float: right;">
-                 ${options}
-               </select>
-             </label>
-           </div>`)
+          <div class="script_bg_${settingName}" style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
+            <label title="${hintText}" tabindex="0">
+              <span>${labelText}</span>
+              <select class="script_${settingName}" style="width: 150px; float: right;">
+                ${options}
+              </select>
+            </label>
+          </div>`)
+        .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingName]))
         .find('select')
           .val(settingsRaw[settingName])
           .on('change', function() {
@@ -11139,7 +11148,7 @@
 
     function addSettingsList(node, settingName, labelText, hintText, list) {
         let listBlock = $(`
-          <div style="display: inline-block; width: 90%; margin-top: 6px;">
+          <div class="script_bg_${settingName} style="display: inline-block; width: 90%; margin-top: 6px;">
             <label title="${hintText}" tabindex="0">
               <span>${labelText}</span>
               <input type="text" style="height: 25px; width: 150px; float: right;" placeholder="Research...">
@@ -11149,6 +11158,7 @@
             <br>
             <textarea class="script_${settingName} textarea" style="margin-top: 12px" readonly></textarea>
           </div>`)
+        .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingName]))
         .appendTo(node);
 
         let selectedItem = "";
@@ -11215,7 +11225,8 @@
     }
 
     function addInputCallbacks(node, settingKey) {
-        node.on('change', function() {
+        return node
+        .on('change', function() {
             let parsedValue = getRealNumber(this.value);
             if (!isNaN(parsedValue)) {
                 settingsRaw[settingKey] = parsedValue;
@@ -11223,12 +11234,12 @@
             }
             $(".script_" + settingKey).val(settingsRaw[settingKey]);
         })
-        node.on('click', {label: `Number (${settingKey})`, name: settingKey, type: "number"}, openOverrideModal);
-        return node;
+        .on('click', {label: `Number (${settingKey})`, name: settingKey, type: "number"}, openOverrideModal);
     }
 
-    function buildTableInput(settingKey) {
-        return addInputCallbacks($(`<input class="script_${settingKey}" type="text" class="input is-small" style="height: 25px; width:100%" value="${settingsRaw[settingKey]}"/>`), settingKey);
+    function addTableInput(node, settingKey) {
+        node.addClass("script_bg_" + settingKey + (settingsRaw.overrides[settingKey] ? " inactive-row" : ""))
+            .append(addInputCallbacks($(`<input class="script_${settingKey}" type="text" class="input is-small" style="height: 25px; width:100%" value="${settingsRaw[settingKey]}"/>`), settingKey));
     }
 
     function addToggleCallbacks(node, settingKey) {
@@ -11242,13 +11253,14 @@
         .on('click', {label: `Toggle (${settingKey})`, name: settingKey, type: "boolean"}, openOverrideModal);
     }
 
-    function buildTableToggle(settingKey) {
-        return addToggleCallbacks($(`
+    function addTableToggle(node, settingKey) {
+        node.addClass("script_bg_" + settingKey + (settingsRaw.overrides[settingKey] ? " inactive-row" : ""))
+            .append(addToggleCallbacks($(`
           <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;">
             <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}>
             <span class="check" style="height:5px; max-width:15px"></span>
             <span style="margin-left: 20px;"></span>
-          </label>`), settingKey);
+          </label>`), settingKey));
     }
 
     function buildTableLabel(note, title = "", color = "has-text-info") {
@@ -11704,7 +11716,7 @@
             if (i < biomeList.length) {
                 tableElement.append(buildTableLabel(game.loc("biome_" +  biomeList[i] + "_name")));
                 tableElement = tableElement.next();
-                tableElement.append(buildTableInput("biome_w_" + biomeList[i]));
+                addTableInput(tableElement, "biome_w_" + biomeList[i]);
             } else {
                 tableElement = tableElement.next();
             }
@@ -11713,7 +11725,7 @@
             if (i < traitList.length) {
                 tableElement.append(buildTableLabel(i == 0 ? "None" : game.loc("planet_" + traitList[i])));
                 tableElement = tableElement.next();
-                tableElement.append(buildTableInput("trait_w_" + traitList[i]));
+                addTableInput(tableElement, "trait_w_" + traitList[i]);
             } else {
                 tableElement = tableElement.next();
             }
@@ -11722,7 +11734,7 @@
             if (i < extraList.length) {
                 tableElement.append(buildTableLabel(extraList[i]));
                 tableElement = tableElement.next();
-                tableElement.append(buildTableInput("extra_w_" + extraList[i]));
+                addTableInput(tableElement, "extra_w_" + extraList[i]);
             }
         }
 
@@ -12467,7 +12479,7 @@
                 ejectElement.append(`<span class="mass"><span class="has-text-warning">${resource.atomicMass}</span> kt</span>`);
 
                 ejectElement = ejectElement.next();
-                ejectElement.append(buildTableToggle("res_eject" + resource.id));
+                addTableToggle(ejectElement, "res_eject" + resource.id);
             } else {
                 ejectElement = ejectElement.next().next();
             }
@@ -12477,7 +12489,7 @@
                 ejectElement.append(`<span class="mass">Export <span class="has-text-caution">${resource.supplyVolume}</span>, Gain <span class="has-text-success">${resource.supplyValue}</span></span>`);
 
                 ejectElement = ejectElement.next();
-                ejectElement.append(buildTableToggle("res_supply" + resource.id));
+                addTableToggle(ejectElement, "res_supply" + resource.id);
             }
         }
 
@@ -12553,28 +12565,28 @@
             marketElement.append(buildTableLabel(resource.name));
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableToggle("buy" + resource.id));
+            addTableToggle(marketElement, "buy" + resource.id);
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableInput("res_buy_r_" + resource.id));
+            addTableInput(marketElement, "res_buy_r_" + resource.id);
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableToggle("sell" + resource.id));
+            addTableToggle(marketElement, "sell" + resource.id);
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableInput("res_sell_r_" + resource.id));
+            addTableInput(marketElement, "res_sell_r_" + resource.id);
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableToggle("res_trade_buy_" + resource.id));
+            addTableToggle(marketElement, "res_trade_buy_" + resource.id);
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableToggle("res_trade_sell_" + resource.id));
+            addTableToggle(marketElement, "res_trade_sell_" + resource.id);
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableInput("res_trade_w_" + resource.id));
+            addTableInput(marketElement, "res_trade_w_" + resource.id);
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableInput("res_trade_p_" + resource.id));
+            addTableInput(marketElement, "res_trade_p_" + resource.id);
         }
 
         tableBodyNode.sortable({
@@ -12626,10 +12638,10 @@
             marketElement.append(buildTableLabel(sellResource.name, "has-text-danger"));
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableInput("res_galaxy_w_" + buyResource.id));
+            addTableInput(marketElement, "res_galaxy_w_" + buyResource.id);
 
             marketElement = marketElement.next();
-            marketElement.append(buildTableInput("res_galaxy_p_" + buyResource.id));
+            addTableInput(marketElement, "res_galaxy_p_" + buyResource.id);
        }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -12692,16 +12704,16 @@
             storageElement.append(buildTableLabel(resource.name));
 
             storageElement = storageElement.next();
-            storageElement.append(buildTableToggle("res_storage" + resource.id));
+            addTableToggle(storageElement, "res_storage" + resource.id);
 
             storageElement = storageElement.next();
-            storageElement.append(buildTableToggle("res_storage_o_" + resource.id));
+            addTableToggle(storageElement, "res_storage_o_" + resource.id);
 
             storageElement = storageElement.next();
-            storageElement.append(buildTableInput("res_crates_m_" + resource.id));
+            addTableInput(storageElement, "res_crates_m_" + resource.id);
 
             storageElement = storageElement.next();
-            storageElement.append(buildTableInput("res_containers_m_" + resource.id));
+            addTableInput(storageElement, "res_containers_m_" + resource.id);
         }
 
         tableBodyNode.sortable({
@@ -12770,10 +12782,10 @@
             minorTraitElement.append(buildTableLabel(game.loc("trait_" + trait.traitName + "_name"), game.loc("trait_" + trait.traitName)));
 
             minorTraitElement = minorTraitElement.next();
-            minorTraitElement.append(buildTableToggle("mTrait_" + trait.traitName));
+            addTableToggle(minorTraitElement, "mTrait_" + trait.traitName);
 
             minorTraitElement = minorTraitElement.next();
-            minorTraitElement.append(buildTableInput("mTrait_w_" + trait.traitName));
+            addTableInput(minorTraitElement, "mTrait_w_" + trait.traitName);
         }
 
         tableBodyNode.sortable({
@@ -12917,13 +12929,13 @@
             productionElement.append(buildTableLabel(production.resource.name));
 
             productionElement = productionElement.next();
-            productionElement.append(buildTableToggle("production_" + production.resource.id));
+            addTableToggle(productionElement, "production_" + production.resource.id);
 
             productionElement = productionElement.next();
-            productionElement.append(buildTableInput("production_w_" + production.resource.id));
+            addTableInput(productionElement, "production_w_" + production.resource.id);
 
             productionElement = productionElement.next();
-            productionElement.append(buildTableInput("production_p_" + production.resource.id));
+            addTableInput(productionElement, "production_p_" + production.resource.id);
         }
     }
 
@@ -12963,17 +12975,17 @@
             productionElement.append(buildTableLabel(resource.name));
 
             productionElement = productionElement.next();
-            productionElement.append(buildTableToggle("craft" + resource.id));
+            addTableToggle(productionElement, "craft" + resource.id);
 
             productionElement = productionElement.next();
             if (resource === resources.Scarletite || resource === resources.Quantium) {
                 productionElement.append('<span>Managed</span>');
             } else {
-                productionElement.append(buildTableInput("foundry_w_" + resource.id));
+                addTableInput(productionElement, "foundry_w_" + resource.id);
             }
 
             productionElement = productionElement.next();
-            productionElement.append(buildTableInput("foundry_p_" + resource.id));
+            addTableInput(productionElement, "foundry_p_" + resource.id);
         }
     }
 
@@ -13011,10 +13023,10 @@
             productionElement.append(buildTableLabel(production.resource.name));
 
             productionElement = productionElement.next().next();
-            productionElement.append(buildTableInput("droid_w_" + production.resource.id));
+            addTableInput(productionElement, "droid_w_" + production.resource.id);
 
             productionElement = productionElement.next();
-            productionElement.append(buildTableInput("droid_pr_" + production.resource.id));
+            addTableInput(productionElement, "droid_pr_" + production.resource.id);
         }
     }
 
@@ -13051,7 +13063,7 @@
             productionElement.append(buildTableLabel(game.loc(`modal_pylon_spell_${production.id}`)));
 
             productionElement = productionElement.next();
-            productionElement.append(buildTableInput("spell_w_" + production.id));
+            addTableInput(productionElement, "spell_w_" + production.id);
         }
     }
 
@@ -13115,11 +13127,11 @@
             jobElement.append(toggle);
 
             jobElement = jobElement.next();
-            jobElement.append(buildJobSettingsInput(job, 1));
+            buildJobSettingsInput(jobElement, job, 1);
             jobElement = jobElement.next();
-            jobElement.append(buildJobSettingsInput(job, 2));
+            buildJobSettingsInput(jobElement, job, 2);
             jobElement = jobElement.next();
-            jobElement.append(buildJobSettingsInput(job, 3));
+            buildJobSettingsInput(jobElement, job, 3);
 
             if (i >= 3) {
                 jobElement = jobElement.next();
@@ -13155,12 +13167,12 @@
           </label>`), settingKey);
     }
 
-    function buildJobSettingsInput(job, breakpoint) {
+    function buildJobSettingsInput(node, job, breakpoint) {
         if (job === jobs.Farmer || job === jobs.Hunter || job instanceof CraftingJob || (job !== jobs.Unemployed && breakpoint === 3 && job.isUnlimited())) {
-            return $(`<span>Managed</span>`);
+            node.append(`<span>Managed</span>`);
+        } else {
+            addTableInput(node, `job_b${breakpoint}_${job._originalId}`);
         }
-        let settingKey = "job_b" + breakpoint + "_" + job._originalId;
-        return buildTableInput(settingKey);
     }
 
     function buildWeightingSettings() {
@@ -13225,8 +13237,7 @@
             <td style="width:60%"><span class="has-text-info">${conditionDesc}</span></td>
             <td style="width:10%"></td>
           </tr>`);
-        ruleNode.find('td:eq(2)').append(buildTableInput(settingKey));
-
+        addTableInput(ruleNode.find('td:eq(2)'), settingKey);
         table.append(ruleNode);
     }
 
@@ -13330,16 +13341,16 @@
             buildingElement.append(buildTableLabel(building.name, "", color));
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildTableToggle("bat" + building._vueBinding));
+            addTableToggle(buildingElement, "bat" + building._vueBinding);
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildTableInput("bld_m_" + building._vueBinding));
+            addTableInput(buildingElement, "bld_m_" + building._vueBinding);
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildTableInput("bld_w_" + building._vueBinding));
+            addTableInput(buildingElement, "bld_w_" + building._vueBinding);
 
             buildingElement = buildingElement.next();
-            buildingElement.append(buildBuildingStateSettingsToggle(building));
+            buildBuildingStateSettingsToggle(buildingElement, building);
         }
 
         tableBodyNode.sortable({
@@ -13460,22 +13471,22 @@
         });
     }
 
-    function buildBuildingStateSettingsToggle(building) {
-        let stateElement = $(`<div></div>`);
+    function buildBuildingStateSettingsToggle(node, building) {
+        let stateKey = 'bld_s_' + building._vueBinding;
+        let smartKey = 'bld_s2_' + building._vueBinding;
 
         if (building.isSwitchable()) {
-            let stateKey = 'bld_s_' + building._vueBinding;
             addToggleCallbacks($(`
               <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 10px;">
                 <input class="script_${stateKey}" type="checkbox"${settingsRaw[stateKey] ? " checked" : ""}>
                 <span class="check" style="height:5px; max-width:15px"></span>
                 <span style="margin-left: 20px;"></span>
               </label>`), stateKey)
-            .appendTo(stateElement);
+            .appendTo(node);
+            node.addClass("script_bg_" + stateKey);
         }
 
         if (building.is.smart) {
-            let smartKey = 'bld_s2_' + building._vueBinding;
             let smartNode = $(`
               <label tabindex="0" class="switch" style="position:absolute; margin-top: 8px; margin-left: 35px;">
                 <input class="script_${smartKey}" type="checkbox"${settingsRaw[smartKey] ? " checked" : ""}>
@@ -13496,11 +13507,12 @@
             } else {
                 addToggleCallbacks(smartNode, smartKey);
             }
-            stateElement.append(smartNode);
+            node.append(smartNode);
+            node.addClass("script_bg_" + smartKey);
         }
 
-        stateElement.append(`<span class="script-lastcolumn"></span>`);
-        return stateElement;
+        node.append(`<span class="script-lastcolumn"></span>`);
+        node.toggleClass('inactive-row', Boolean(settingsRaw.overrides[stateKey] || settingsRaw.overrides[smartKey]));
     }
 
     function buildAllBuildingStateSettingsToggle() {
@@ -13579,13 +13591,13 @@
             projectElement.append(buildTableLabel(project.name));
 
             projectElement = projectElement.next();
-            projectElement.append(buildTableToggle("arpa_" + project.id));
+            addTableToggle(projectElement, "arpa_" + project.id);
 
             projectElement = projectElement.next();
-            projectElement.append(buildTableInput("arpa_m_" + project.id));
+            addTableInput(projectElement, "arpa_m_" + project.id);
 
             projectElement = projectElement.next();
-            projectElement.append(buildTableInput("arpa_w_" + project.id));
+            addTableInput(projectElement, "arpa_w_" + project.id);
 
         }
 
@@ -13661,10 +13673,11 @@
 
     function createSettingToggle(node, settingKey, title, enabledCallBack, disabledCallBack) {
         let toggle = $(`
-          <label tabindex="0" class="switch" title="${title}">
+          <label class="switch script_bg_${settingKey}" tabindex="0" title="${title}">
             <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}/>
             <span class="check"></span><span>${settingKey}</span>
-          </label><br>`);
+          </label><br>`)
+        .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingKey]));
 
         if (settingsRaw[settingKey] && enabledCallBack) {
             enabledCallBack();
@@ -13772,7 +13785,7 @@
             $('#resources').append(scriptNode);
             resetScrollPositionRequired = true;
 
-            scriptNode.append(`<label id="autoScriptInfo">More script options available in Settings tab<br>Ctrl+click options to open advanced configuration</label><br>`);
+            scriptNode.append(`<label id="autoScriptInfo">More script options available in Settings tab<br>Ctrl+click options to open <span class="inactive-row">advanced configuration</span></label><br>`);
 
             createSettingToggle(scriptNode, 'masterScriptToggle', 'Stop taking any actions on behalf of the player.');
 
