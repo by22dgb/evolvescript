@@ -1904,6 +1904,8 @@
         DwarfWorldController: new Action("Dwarf World Collider (Complete)", "space", "world_controller", "spc_dwarf", {knowledge: true}),
         /*
         DwarfShipyard: new Action("Dwarf Ship Yard", "space", "shipyard", "spc_dwarf"),
+        DwarfMassRelay: new Action("Dwarf Mass Relay", "space", "mass_relay", "spc_dwarf"),
+        DwarfMassRelayComplete: new Action("Dwarf Mass Relay (Complete)", "space", "mass_relay", "spc_dwarf"),
         TitanMission: new Action("Titan Mission", "space", "titan_mission", "spc_titan"),
         TitanSpaceport: new Action("Titan Spaceport", "space", "titan_spaceport", "spc_titan"),
         TitanElectrolysis: new Action("Titan Electrolysis", "space", "electrolysis", "spc_titan"),
@@ -10601,6 +10603,18 @@
                 //let saveState = JSON.parse(LZString.decompressFromBase64($('#importExport').val()));
                 let saveState = JSON.parse($('#importExport').val());
                 if (saveState && typeof saveState === "object" && (saveState.scriptName === "TMVictor" || $.isEmptyObject(saveState))) {
+                    let evals = [];
+                    Object.values(saveState.overrides ?? []).forEach(list => list.forEach(override => {
+                        if (override.type1 === "Eval") {
+                            evals.push(override.arg1);
+                        }
+                        if (override.type2 === "Eval") {
+                            evals.push(override.arg2);
+                        }
+                    }));
+                    if (evals.length > 0 && !confirm("Warning! Imported settings includes evaluated code, which will have full access to browser page, and can be potentially dangerous.\nOnly continue if you trust the source. Injected code:\n" + evals.join("\n"))) {
+                        return;
+                    }
                     console.log("Importing script settings");
                     settingsRaw = saveState;
                     resetTriggerState();
