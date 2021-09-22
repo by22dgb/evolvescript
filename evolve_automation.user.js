@@ -3651,6 +3651,7 @@
         lastWrath: -1,
         lastScouts: -1,
         lastSpecial: "",
+        lastInfernal: null,
         bestSize: [],
         bestGems: [],
         bestSupply: [],
@@ -3750,12 +3751,13 @@
                 }
             }
 
-            if (this.lastLevel !== game.global.portal.spire.count || this.lastPrepared !== game.global.blood.prepared || this.lastWrath !== game.global.blood.wrath || this.lastScouts !== currentScouts || this.lastSpecial !== settings.mechSpecial) {
+            if (this.lastLevel !== game.global.portal.spire.count || this.lastPrepared !== game.global.blood.prepared || this.lastWrath !== game.global.blood.wrath || this.lastScouts !== currentScouts || this.lastSpecial !== settings.mechSpecial || this.lastInfernal !== settings.mechInfernalCollector) {
                 this.lastLevel = game.global.portal.spire.count;
                 this.lastPrepared = game.global.blood.prepared;
                 this.lastWrath = game.global.blood.wrath;
                 this.lastScouts = currentScouts;
                 this.lastSpecial = settings.mechSpecial;
+                this.lastInfernal = settings.mechInfernalCollector
                 this.isActive = true;
 
                 this.updateBestWeapon();
@@ -3891,10 +3893,11 @@
 
             let equipmentSlots = this.SizeSlots[size] + (game.global.blood.prepared ? 1 : 0) - (settings.mechSpecial === "always" ? 1 : 0);
             let equipOptions = settings.mechSpecial === "always" || settings.mechSpecial === "never" ? this.Equip.slice(1) : this.Equip;
+            let infernal = settings.mechInfernalCollector && size === 'collector' && game.global.blood.prepared >= 3;
 
             k_combinations(equipOptions, equipmentSlots).forEach((equip) => {
                 this.Chassis.forEach(chassis => {
-                    let mech = {size: size, chassis: chassis, equip: equip};
+                    let mech = {size: size, chassis: chassis, equip: equip, infernal: infernal};
                     let mechMod = this.getBodyMod(mech);
                     if (mechMod > currentBestBodyMod) {
                         currentBestBodyMod = mechMod;
@@ -3964,12 +3967,12 @@
         },
 
         getMechCost(mech) {
-            let {s, c} = poly.mechCost(mech.size);
+            let {s, c} = poly.mechCost(mech.size, mech.infernal);
             return [s, c, this.getMechSpace(mech)];
         },
 
         getMechRefund(mech) {
-            let {s, c} = poly.mechCost(mech.size);
+            let {s, c} = poly.mechCost(mech.size, mech.infernal);
             return [Math.floor(s / 2), Math.floor(c / 3)];
         },
 
@@ -3980,6 +3983,7 @@
         },
 
         buildMech(mech) {
+            this._assemblyVue.b.infernal = mech.infernal;
             this._assemblyVue.setSize(mech.size);
             this._assemblyVue.setType(mech.chassis);
             for (let i = 0; i < mech.hardpoint.length; i++) {
@@ -5393,6 +5397,7 @@
             mechScoutsRebuild: false,
             mechMinSupply: 1000,
             mechMaxCollectors: 0.5,
+            mechInfernalCollector: true,
             mechSpecial: "prefered",
             mechSaveSupplyRatio: 1,
             buildingMechsFirst: true,
@@ -9402,7 +9407,7 @@
               settings.mechScrapEfficiency;
 
             let badMechList = m.activeMechs.filter(mech => {
-                if (mech.infernal || mech.power >= m.bestMech[mech.size].power) {
+                if ((mech.infernal && mech.size !== 'collector') || mech.power >= m.bestMech[mech.size].power) {
                     return false;
                 }
                 if (forceBuild) { // Get everything that isn't infernal or 100% optimal for force rebuild
@@ -9467,9 +9472,6 @@
 
         // We have everything to get new mech
         if (resources.Soul_Gem.spareQuantity >= newGems && resources.Supply.spareQuantity >= newSupply && baySpace >= newSpace) {
-            if (settings.mechBuild !== "user" && mechBay.blueprint.infernal) {
-                $("#mechAssembly .b-checkbox").click(); // Never build inferno mechs
-            }
             m.buildMech(newMech);
             resources.Supply.currentQuantity -= newSupply;
             resources.Soul_Gem.currentQuantity -= newGems;
@@ -12341,6 +12343,7 @@
         addSettingsNumber(currentNode, "mechMaxCollectors", "Maximum collectors ratio", "Limiter for above option, maximum space used by collectors");
         addSettingsNumber(currentNode, "mechSaveSupplyRatio", "Save up supplies for next floor", "Ratio of supplies to save up for next floor. Script will stop spending supplies on new mechs when it estimates that by the time when floor will be cleared you'll be under this supply ratio. That allows build bunch of new mechs suited for next enemy right after entering new floor. With 1 value script will try to start new floors with full supplies, 0.5 - with half, 0 - any, effectively disabling this option, etc.");
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
+        addSettingsToggle(currentNode, "mechInfernalCollector", "Build infernal collectors", "Infernal collectors have incresed supply cost, and payback time, but becomes more profitable after ~30 minutes of uptime.");
         addSettingsToggle(currentNode, "mechScoutsRebuild", "Rebuild scouts", "Scouts provides full bonus to other mechs even being infficient, this option prevent rebuilding them saving resources.");
         addSettingsToggle(currentNode, "mechFillBay", "Build smaller mechs when preferred not available", "Build smaller mechs when preferred size can't be used due to low remaining bay space, or supplies cap");
         addSettingsToggle(currentNode, "buildingMechsFirst", "Build spire buildings only with full bay", "Fill mech bays up to current limit before spending resources on additional spire buildings");
