@@ -11369,7 +11369,7 @@
           <div style="display: inline-block; width: 90%; text-align: left; margin-bottom: 10px;">
             <label>
               <span>Prestige Type</span>
-              <select class="script_prestigeType" style="text-align: right; height: 18px; width: 150px; float: right;">
+              <select class="script_prestigeType" style="height: 18px; width: 150px; float: right;">
                 ${prestigeOptions}
               </select>
             </label>
@@ -11558,7 +11558,7 @@
         currentNode.append(`
           <div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
             <label for="script_evolution_prestige">Prestige for new evolutions:</label>
-            <select id="script_evolution_prestige" style="text-align: right; height: 18px; width: 150px; float: right;">
+            <select id="script_evolution_prestige" style="height: 18px; width: 150px; float: right;">
               <option value = "auto" title = "Inherited from current Prestige Settings">Current Prestige</option>
               ${prestigeOptions}
             </select>
