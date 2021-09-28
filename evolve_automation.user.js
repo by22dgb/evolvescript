@@ -1257,6 +1257,90 @@
             return game.races[this.id].type;
         }
 
+        getWeighting() {
+            let weighting = 0;
+
+            let starLevel = getStarLevel(settings);
+            const checkAchievement = (baseWeight, id) => {
+                weighting += baseWeight * Math.max(0, starLevel - getAchievementStar(id));
+                if (game.global.race.universe !== "micro" && game.global.race.universe !== "standard") {
+                    weighting += baseWeight * Math.max(0, starLevel - getAchievementStar(id, "standard"));
+                }
+            }
+
+            // Check pillar
+            if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic")) {
+                weighting += 1000 * Math.max(0, starLevel - (game.global.pillars[this.id] ?? 0));
+                // Check genus pillar for Enlightenment
+                if (this.id !== "custom" && this.id !== "junker") {
+                    let genusPillar = Math.max(...Object.values(races)
+                      .filter(r => r.id !== "custom" && r.id !== "junker")
+                      .map(r => (game.global.pillars[r.id] ?? 0)));
+                    weighting += 10000 * Math.max(0, starLevel - genusPillar);
+                }
+            }
+
+            // Check greatness\extinction achievement
+            if (settings.prestigeType === "bioseed" || settings.prestigeType === "ascension") {
+                checkAchievement(10, "genus_" + this.genus);
+            }  else {
+                checkAchievement(10, "extinct_" + this.id);
+            }
+
+            // Same race for Second Evolution
+            if (this.id === game.global.race.gods) {
+                checkAchievement(10, "second_evolution");
+            }
+
+            // Madagascar Tree, Godwin's law, Infested Terrans
+            for (let set of fanatAchievements) {
+                // Achievement race
+                if (this.id === set.race && game.global.race.gods === set.god) {
+                    checkAchievement(50, set.achieve);
+                }
+                // God race
+                if (this.id === set.god) {
+                    checkAchievement(1, set.achieve);
+                }
+            }
+
+            // Blood War
+            if (this.genus === "demonic" && settings.prestigeType !== "mad" && settings.prestigeType !== "bioseed") {
+                checkAchievement(50, "blood_war");
+            }
+
+            // Sharks with Lasers
+            if (this.id === "sharkin" && settings.prestigeType !== "mad") {
+                checkAchievement(50, "laser_shark");
+            }
+
+            // Macro Universe and Arquillian Galaxy
+            if (game.global.race.universe === "micro" && settings.prestigeType === "bioseed") {
+                let smallRace = (this.genus === "small" || game.races[this.id].traits.compact);
+                checkAchievement(50, smallRace ? "macro" : "marble");
+            }
+
+            // You Shall Pass
+            if (this.id === "balorg" && game.global.race.universe === "magic" && settings.prestigeType === "vacuum") {
+                checkAchievement(50, "pass");
+            }
+
+            // Increase weight for suited conditional races with achievements
+            if (this.id !== "junker" && weighting > 0 && this.getCondition() !== '' && this.getHabitability() === 1) {
+                weighting += 500;
+            }
+
+            // Ignore Valdi on low star, and decrease weight on any other star
+            if (this.id === "junker") {
+                weighting *= starLevel < 5 ? 0 : 0.01;
+            }
+
+            // Scale down weight of unsuited races, down to zero for locked ones
+            weighting *= this.getHabitability();
+
+            return weighting;
+        }
+
         getHabitability() {
             if (this.id === "junker") {
                 return game.global.genes.challenge ? 1 : 0;
@@ -1309,18 +1393,6 @@
                 default:
                     return "";
             }
-        }
-
-        isMadAchievementUnlocked(level) {
-            return isAchievementUnlocked("extinct_" + this.id, level);
-        }
-
-        isGreatnessAchievementUnlocked(level) {
-            return isAchievementUnlocked("genus_" + this.genus, level);
-        }
-
-        isPillarUnlocked(level) {
-            return game.global.pillars[this.id] >= level;
         }
     }
 
@@ -1547,8 +1619,8 @@
     const extraList = ['Achievement', 'Copper', 'Iron', 'Aluminium', 'Coal', 'Oil', 'Titanium', 'Uranium', 'Iridium'];
 
     // Biomes and traits sorted by habitability
-    const planetBiomes = ["oceanic", "forest", "grassland", "desert", "volcanic", "tundra", "eden", "hellscape"];
-    const planetTraits = ["magnetic", "elliptical", "none", "rage", "stormy", "toxic", "ozone", "trashed", "dense", "unstable", "mellow", "flare"];
+    const planetBiomes = ["eden", "volcanic", "tundra", "oceanic", "forest", "grassland", "desert", "hellscape"];
+    const planetTraits = ["elliptical", "magnetic", "rage", "none", "stormy", "toxic", "trashed", "dense", "unstable", "ozone", "mellow", "flare"];
     const planetBiomeGenus = {hellscape: "demonic", eden: "angelic", oceanic: "aquatic", forest: "fey", desert: "sand", volcanic: "heat", tundra: "polar"};
     const fanatAchievements = [{god: 'sharkin', race: 'entish', achieve: 'madagascar_tree'},
                                {god: 'sporgar', race: 'human', achieve: 'infested'},
@@ -5563,7 +5635,7 @@
           .forEach(id => { delete settingsRaw[id], delete settingsRaw.overrides[id] });
     }
 
-    function getAchievementLevel(context) {
+    function getStarLevel(context) {
         let a_level = 1;
         if (context.challenge_plasmid) { a_level++; }
         if (context.challenge_trade) { a_level++; }
@@ -5572,8 +5644,12 @@
         return a_level;
     }
 
-    function isAchievementUnlocked(id, level) {
-        return game.global.stats.achieve[id]?.[poly.universeAffix()] >= level;
+    function getAchievementStar(id, universe) {
+        return game.global.stats.achieve[id]?.[poly.universeAffix(universe)] ?? 0;
+    }
+
+    function isAchievementUnlocked(id, level, universe) {
+        return getAchievementStar(id, universe) >= level;
     }
 
     function loadQueuedSettings() {
@@ -5619,72 +5695,18 @@
 
             // Try to pick race for achievement first
             if (settings.userEvolutionTarget === "auto") {
-                // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
-                let achievementLevel = getAchievementLevel(settings);
-                let targetedGroup = {race: null, remainingPercent: 0};
+                let raceByWeighting = Object.values(races).sort((a, b) => b.getWeighting() - a.getWeighting());
 
-                let genusGroups = {};
-                for (let id in races) {
-                    let race = races[id];
-                    if (race.getHabitability() > 0) {
-                        genusGroups[race.genus] = genusGroups[race.genus] ?? [];
-                        genusGroups[race.genus].push(race);
-                    }
+                if (game.global.stats.achieve['mass_extinction']) {
+                    // With Mass Extinction we can pick any race, go for best one
+                    state.evolutionTarget = raceByWeighting[0];
+                } else {
+                    // Otherwise go for genus having most weight
+                    let genusList = Object.values(races).map(r => r.genus).filter((v, i, a) => a.indexOf(v) === i);
+                    let genusWeights = genusList.map(g => [g, Object.values(races).filter(r => r.genus === g).map(r => r.getWeighting()).reduce((sum, next) => sum + next)]);
+                    let bestGenus = genusWeights.sort((a, b) => b[1] - a[1])[0][0];
+                    state.evolutionTarget = raceByWeighting.find(r => r.genus === bestGenus);
                 }
-
-                for (let raceGroup of Object.values(genusGroups)) {
-                    let remainingAchievements = 0;
-                    let remainingRace = null;
-
-                    for (let j = 0; j < raceGroup.length; j++) {
-                        let race = raceGroup[j];
-
-                        // Ignore Valdi if we're not going for 4star MAD
-                        if (race === races.junker && (achievementLevel < 5 || settings.prestigeType === 'bioseed')) {
-                            continue;
-                        }
-
-                        // We're going to check pillars for ascension and infusion, greatness achievement for bioseeding, or extinction achievement otherwise
-                        let raceIsGood = false;
-                        if (settings.prestigeType === "ascension" || settings.prestigeType === "demonic") {
-                            raceIsGood = !race.isPillarUnlocked(achievementLevel);
-                        } else if (settings.prestigeType === "bioseed") {
-                            raceIsGood = !race.isGreatnessAchievementUnlocked(achievementLevel);
-                        } else {
-                            raceIsGood = !race.isMadAchievementUnlocked(achievementLevel);
-                        }
-
-                        if (raceIsGood) {
-                            remainingRace = race;
-                            remainingAchievements++;
-                        }
-                    }
-                    if (!remainingRace) {
-                        continue;
-                    }
-                    let raceSuited = remainingRace.getHabitability();
-
-                    // We'll target the group with the highest percentage chance of getting an achievement
-                    let remainingPercent = remainingAchievements / raceGroup.length;
-
-                    // If we have Mass Extinction perk, and not affected by randomness - prioritize suited conditional races
-                    if (remainingRace !== races.junker && game.global.stats.achieve['mass_extinction'] && remainingRace.getCondition() !== '' && raceSuited === 1) {
-                        targetedGroup.race = remainingRace;
-                        targetedGroup.remainingPercent = 100;
-                    }
-
-                    // Deprioritize unsuited
-                    if (raceSuited < 1) {
-                        remainingPercent /= 100;
-                    }
-
-                    // If this group has the most races left with remaining achievements then target an uncompleted race in this group
-                    if (remainingPercent > targetedGroup.remainingPercent) {
-                        targetedGroup.race = remainingRace;
-                        targetedGroup.remainingPercent = remainingPercent;
-                    }
-                }
-                state.evolutionTarget = targetedGroup.race;
             }
 
             // Auto Achievements disabled, checking user specified race
@@ -5863,7 +5885,7 @@
         let planets = generatePlanets();
 
         // Let's try to calculate how many achievements we can get here
-        let alevel = getAchievementLevel(settings);
+        let alevel = getStarLevel(settings);
         for (let i = 0; i < planets.length; i++){
             let planet = planets[i];
             planet.achieve = 0;
@@ -7534,7 +7556,7 @@
     }
 
     function isPillarFinished() {
-        return !settings.prestigeAscensionPillar || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel();
+        return !settings.prestigeAscensionPillar || resources.Harmony.currentQuantity < 1 || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel();
     }
 
     function getBlackholeMass() {
@@ -8213,7 +8235,6 @@
                     maxStateOn = 0;
                 }
                 // Production buildings with capped resources
-                // TODO: Disable elerium and iridium ships when obsolete
                 if (building === buildings.BeltEleriumShip && !resources.Elerium.isUseful()) {
                     maxStateOn = Math.min(maxStateOn, resources.Elerium.getBusyWorkers("job_space_miner", currentStateOn));
                 }
@@ -9356,7 +9377,6 @@
             savingSupply = false;
         }
 
-        // TODO: Make it configurable ratio, instead of bool
         // Save up supply for next floor when, unless our supply income only from collectors, thet aren't built yet
         if (settings.mechSaveSupplyRatio > 0 && !lastFloor && !prolongActive && !forceBuild && ((buildings.LakeBireme.stateOnCount > 0 && buildings.LakeTransport.stateOnCount > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
             let missingSupplies = (resources.Supply.maxQuantity * settings.mechSaveSupplyRatio) - resources.Supply.currentQuantity;
@@ -9716,51 +9736,17 @@
             let needReset = false;
 
             if (settings.userEvolutionTarget === "auto") {
-                let stars = game.alevel();
                 let newRace = races[game.global.race.species];
 
-                if ((settings.prestigeType === "ascension" || settings.prestigeType === "demonic") && newRace.isPillarUnlocked(stars)) {
-                    for (let id in races) {
-                        let race = races[id];
-                        if (race.getHabitability() > 0 && !race.isPillarUnlocked(stars)) {
-                            GameLog.logWarning("special", `${newRace.name} pillar already infused, soft resetting and trying again.`, ['progress', 'achievements']);
-                            needReset = true;
-                            break;
-                        }
-                    }
-                    if (!needReset) {
-                        GameLog.logWarning("special", `All currently available pillars already infused. Continuing with current race.`, ['progress', 'achievements']);
+                if (newRace.getWeighting() <= 0) {
+                    let bestWeighting = Math.max(...Object.values(races).map(r => r.getWeighting()));
+                    if (bestWeighting > 0) {
+                        GameLog.logDanger("special", `${newRace.name} have no unearned achievements for current prestige, soft resetting and trying again.`, ['progress', 'achievements']);
+                        needReset = true;
+                    } else {
+                        GameLog.logWarning("special", `Can't pick a race with unearned achievements for current prestige. Continuing with ${newRace.name}.`, ['progress', 'achievements']);
                     }
                 }
-
-                if (settings.prestigeType === "bioseed" && newRace.isGreatnessAchievementUnlocked(stars)) {
-                    for (let id in races) {
-                        let race = races[id];
-                        if (race.getHabitability() > 0 && !race.isGreatnessAchievementUnlocked(stars)) {
-                            GameLog.logWarning("special", `${newRace.name} greatness achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
-                            needReset = true;
-                            break;
-                        }
-                    }
-                    if (!needReset) {
-                        GameLog.logWarning("special", `All currently available greatness achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
-                    }
-                }
-
-                if (settings.prestigeType !== "bioseed" && settings.prestigeType !== "ascension" && settings.prestigeType !== "demonic" && newRace.isMadAchievementUnlocked(stars)) {
-                    for (let id in races) {
-                        let race = races[id];
-                        if (race.getHabitability() > 0 && !race.isMadAchievementUnlocked(stars)) {
-                            GameLog.logWarning("special", `${newRace.name} extinction achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
-                            needReset = true;
-                            break;
-                        }
-                    }
-                    if (!needReset) {
-                        GameLog.logWarning("special", `All currently available extinction achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
-                    }
-                }
-
             } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
                 GameLog.logDanger("special", `Wrong race, soft resetting and trying again.`, ['progress']);
                 needReset = true;
@@ -11525,7 +11511,7 @@
         addSettingsSelect(currentNode, "userPlanetTargetName", "Target Planet", "Chosen planet will be automatically selected after appropriate reset", planetOptions);
 
         // Target evolution
-        let raceOptions = [{val: "auto", label: "Auto Achievements", hint: "Picks race with not infused pillar for Ascension, with unearned Greatness achievement for Bioseed, or with unearned Extinction achievement in other cases. Conditional races are prioritized, when available."},
+        let raceOptions = [{val: "auto", label: "Auto Achievements", hint: "Picks race giving most achievements upon completing run. Tracks all achievements limited to specific races and resets. Races unique to current planet biome are prioritized, when available."},
                            ...Object.values(races).map(race => ({val: race.id, label: race.name, hint: race.desc}))];
         addSettingsSelect(currentNode, "userEvolutionTarget", "Target Race", "Chosen race will be automatically selected during next evolution", raceOptions)
           .on('change', 'select', function() {
@@ -11629,7 +11615,7 @@
 
         let star = $(`#settings a.dropdown-item:contains("${game.loc(game.global.settings.icon)}") svg`).clone();
         star.removeClass();
-        star.addClass("star" + getAchievementLevel(queuedEvolution));
+        star.addClass("star" + getStarLevel(queuedEvolution));
 
         if (queuedEvolution.prestigeType !== "none") {
             if (prestigeNames[queuedEvolution.prestigeType]) {
@@ -11643,7 +11629,7 @@
 
         let queueNode = $(`
           <tr id="script_evolution_${id}" value="${id}" class="script-draggable">
-            <td style="width:25%"><span class="${raceClass}">${raceName}</span> <span class="${prestigeClass}">${prestigeName}</span> ${star.prop('outerHTML') ?? (getAchievementLevel(queuedEvolution)-1) + "*"}</td>
+            <td style="width:25%"><span class="${raceClass}">${raceName}</span> <span class="${prestigeClass}">${prestigeName}</span> ${star.prop('outerHTML') ?? (getStarLevel(queuedEvolution)-1) + "*"}</td>
             <td style="width:70%"><textarea class="textarea">${JSON.stringify(queuedEvolution, null, 4)}</textarea></td>
             <td style="width:5%"><a class="button is-dark is-small"><span>X</span></a></td>
           </tr>`);
