@@ -8472,7 +8472,7 @@
               numberOfContainersWeCanBuild = 0;
           }
           // Only build pre-mad crates when already have Plywood for next level of library
-          if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.cost["Plywood"] > resources.Plywood.currentQuantity && (resources.Crates.maxQuantity !== buildings.StorageYard.count * 10)) {
+          if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.cost["Plywood"] > resources.Plywood.currentQuantity && resources.Steel.maxQuantity >= resources.Steel.storageRequired) {
               numberOfCratesWeCanBuild = 0;
           }
         }
