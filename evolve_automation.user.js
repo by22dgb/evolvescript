@@ -1930,6 +1930,7 @@
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
         RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}),
+        RedPylon: new Action("Red Pylon (Cataclysm)", "space", "pylon", "spc_red"),
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
@@ -2583,9 +2584,9 @@
         _industryVue: undefined,
 
         Productions: addProps({
-            Farmer: {id: 'farmer', isUnlocked: () => !game.global.race['carnivore'] && !game.global.race['soul_eater']},
-            Miner: {id: 'miner', isUnlocked: () => true},
-            Lumberjack: {id: 'lumberjack', isUnlocked: () => isLumberRace() && !game.global.race['evil']},
+            Farmer: {id: 'farmer', isUnlocked: () => !game.global.race['cataclysm'] && !game.global.race['carnivore'] && !game.global.race['soul_eater']},
+            Miner: {id: 'miner', isUnlocked: () => !game.global.race['cataclysm']},
+            Lumberjack: {id: 'lumberjack', isUnlocked: () => !game.global.race['cataclysm'] && isLumberRace() && !game.global.race['evil']},
             Science: {id: 'science', isUnlocked: () => true},
             Factory: {id: 'factory', isUnlocked: () => jobs.CementWorker.count > 0},
             Army: {id: 'army', isUnlocked: () => true},
@@ -2594,7 +2595,7 @@
         }, (s) => s.id, [{s: 'spell_w_', p: "weighting"}]),
 
         initIndustry() {
-            if (buildings.Pylon.count < 1 || !game.global.race['casting']) {
+            if ((buildings.Pylon.count < 1 && buildings.RedPylon.count < 1) || !game.global.race['casting']) {
                 return false;
             }
 
@@ -4711,6 +4712,7 @@
         priorityList.push(buildings.Shrine); // Magnificent trait
         priorityList.push(buildings.CompostHeap); // Detritivore trait
         priorityList.push(buildings.Pylon); // Magic Universe only
+        priorityList.push(buildings.RedPylon); // Magic Universe & Cataclysm only
         priorityList.push(buildings.ForgeHorseshoe); // Hooved trait
         priorityList.push(buildings.RedForgeHorseshoe); // Hooved trait
         priorityList.push(buildings.SacrificialAltar); // Cannibalize trait
