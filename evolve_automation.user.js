@@ -10500,10 +10500,6 @@
             .main #msgQueueFilters span:not(:last-child) {
                 !important; margin-right: 0.25rem;
             }
-            #msgQueueFilter-building_queue { display: none }
-            #msgQueueFilter-research_queue { display: none }
-            #msgQueueFilter-major_events { display: none }
-            #msgQueueFilter-minor_events { display: none }
 
             /* Fixes for game styles */
             .main .resources .resource :first-child { white-space: nowrap; }
