@@ -1258,8 +1258,13 @@
         }
 
         getWeighting() {
-            let weighting = 0;
+            // Locked races always have zero weighting
+            let habitability = this.getHabitability();
+            if (habitability <= 0) {
+                return 0;
+            }
 
+            let weighting = 0;
             let starLevel = getStarLevel(settings);
             const checkAchievement = (baseWeight, id) => {
                 weighting += baseWeight * Math.max(0, starLevel - getAchievementStar(id));
@@ -1282,9 +1287,9 @@
 
             // Check greatness\extinction achievement
             if (settings.prestigeType === "bioseed" || settings.prestigeType === "ascension") {
-                checkAchievement(10, "genus_" + this.genus);
+                checkAchievement(100, "genus_" + this.genus);
             }  else {
-                checkAchievement(10, "extinct_" + this.id);
+                checkAchievement(100, "extinct_" + this.id);
             }
 
             // Same race for Second Evolution
@@ -1326,8 +1331,54 @@
             }
 
             // Increase weight for suited conditional races with achievements
-            if (this.id !== "junker" && weighting > 0 && this.getCondition() !== '' && this.getHabitability() === 1) {
+            if (weighting > 0 && habitability === 1 && this.getCondition() !== '' && this.id !== "junker") {
                 weighting += 500;
+            }
+
+            // Feats, lowest weight - go for them only if there's nothing better
+            if (game.global.race.universe !== "micro") {
+                const checkFeat = (id) => {
+                    weighting += 0.1 * Math.max(0, starLevel - (game.global.stats.feat[id] ?? 0));
+                }
+
+                // Take no advice, Ill Advised
+                if (game.global.city.biome === "hellscape" && this.genus !== "demonic") {
+                    switch (settings.prestigeType) {
+                        case "mad":
+                        case "cataclysm":
+                            checkFeat("take_no_advice");
+                            break;
+                        case "bioseed":
+                            checkFeat("ill_advised");
+                            break;
+                    }
+                }
+
+                // Organ Harvester, The Misery, Garbage Pie
+                if (this.id === "junker") {
+                    switch (settings.prestigeType) {
+                        case "bioseed":
+                            checkFeat("organ_harvester");
+                            break;
+                        case "ascension":
+                        case "demonic":
+                            checkFeat("garbage_pie");
+                        case "whitehole":
+                        case "vacuum":
+                            checkFeat("the_misery");
+                            break;
+                    }
+                }
+
+                // Nephilim
+                if (settings.prestigeType === "whitehole" && game.global.race.universe === "evil" && this.genus === "angelic") {
+                    checkFeat("nephilim");
+                }
+
+                // Twisted
+                if (settings.prestigeType === "demonic" && this.genus === "angelic") {
+                    checkFeat("twisted");
+                }
             }
 
             // Ignore Valdi on low star, and decrease weight on any other star
@@ -1335,8 +1386,8 @@
                 weighting *= starLevel < 5 ? 0 : 0.01;
             }
 
-            // Scale down weight of unsuited races, down to zero for locked ones
-            weighting *= this.getHabitability();
+            // Scale down weight of unsuited races
+            weighting *= habitability;
 
             return weighting;
         }
@@ -6501,7 +6552,7 @@
                 } else {
                     let foodPerWorker = resources.Food.getProduction("job_" + jobList[farmerIndex].id) / jobList[farmerIndex].count;
                     let missingWorkers = Math.ceil(foodRateOfChange / -foodPerWorker) || 0;
-                    requiredJobs[farmerIndex] = jobList[farmerIndex].count + missingWorkers;
+                    requiredJobs[farmerIndex] = Math.max(1, jobList[farmerIndex].count + missingWorkers);
                 }
             } else if (resources.Food.currentQuantity > maxFoodStorage && foodRateOfChange > 0) {
                 // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
@@ -11284,6 +11335,10 @@
         return $(`<span class="${color}" title="${title}" >${note}</span>`);
     }
 
+    function resetCheckbox() {
+        Array.from(arguments).forEach(item => $(".script_" + item).prop('checked', settingsRaw[item]));
+    }
+
     function buildGeneralSettings() {
         let sectionId = "general";
         let sectionName = "General";
@@ -11293,9 +11348,7 @@
             updateSettingsFromState();
             updateGeneralSettingsContent();
 
-            $(".script_masterScriptToggle").prop('checked', settingsRaw.masterScriptToggle);
-            $(".script_showSettings").prop('checked', settingsRaw.showSettings);
-            $(".script_autoAssembleGene").prop('checked', settingsRaw.autoAssembleGene);
+            resetCheckboxes("masterScriptToggle", "showSettings", "autoAssembleGene");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
@@ -11430,7 +11483,7 @@
             updateSettingsFromState();
             updateGovernmentSettingsContent(secondaryPrefix);
 
-            $(".script_autoTax").prop('checked', settingsRaw.autoTax);
+            resetCheckbox("autoTax");
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateGovernmentSettingsContent);
@@ -11468,7 +11521,7 @@
             updateSettingsFromState();
             updateEvolutionSettingsContent();
 
-            $(".script_autoEvolution").prop('checked', settingsRaw.autoEvolution);
+            resetCheckbox("autoEvolution");
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateEvolutionSettingsContent);
@@ -11556,7 +11609,7 @@
           <table style="width:100%">
             <tr>
               <th class="has-text-warning" style="width:25%">Race</th>
-              <th class="has-text-warning" style="width:70%">Settings</th>
+              <th class="has-text-warning" style="width:70%" title="Settings applied before evolution. Changed settings not limited to initial template, you can manually add any script options to JSON.">Settings</th>
               <th style="width:5%"></th>
             </tr>
             <tbody id="script_evolutionQueueTable"></tbody>
@@ -12072,7 +12125,7 @@
             updateSettingsFromState();
             updateResearchSettingsContent();
 
-            $(".script_autoResearch").prop('checked', settingsRaw.autoResearch);
+            resetCheckbox("autoResearch");
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateResearchSettingsContent);
@@ -12110,7 +12163,7 @@
             updateSettingsFromState();
             updateWarSettingsContent(secondaryPrefix);
 
-            $(".script_autoFight").prop('checked', settingsRaw.autoFight);
+            resetCheckbox("autoFight");
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateWarSettingsContent);
@@ -12169,7 +12222,7 @@
             updateSettingsFromState();
             updateHellSettingsContent(secondaryPrefix);
 
-            $(".script_autoHell").prop('checked', settingsRaw.autoHell);
+            resetCheckbox("autoHell");
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateHellSettingsContent);
@@ -12223,7 +12276,7 @@
             updateSettingsFromState();
             updateFleetSettingsContent(secondaryPrefix);
 
-            $(".script_autoFleet").prop('checked', settingsRaw.autoFleet);
+            resetCheckbox("autoFleet");
         };
 
         buildSettingsSection2(parentNode, secondaryPrefix, sectionId, sectionName, resetFunction, updateFleetSettingsContent);
@@ -12302,7 +12355,7 @@
             updateSettingsFromState();
             updateMechSettingsContent();
 
-            $(".script_autoMech").prop('checked', settingsRaw.autoMech);
+            resetCheckbox("autoMech");
             stopMechObserver();
         };
 
@@ -12432,8 +12485,7 @@
             updateSettingsFromState();
             updateEjectorSettingsContent();
 
-            $(".script_autoEject").prop('checked', settingsRaw.autoEject);
-            $(".script_autoSupply").prop('checked', settingsRaw.autoSupply);
+            resetCheckbox("autoEject", "autoSupply");
             removeEjectToggles();
             removeSupplyToggles();
         };
@@ -12525,8 +12577,7 @@
             updateSettingsFromState();
             updateMarketSettingsContent();
 
-            $(".script_autoMarket").prop('checked', settingsRaw.autoMarket);
-            $(".script_autoGalaxyMarket").prop('checked', settingsRaw.autoGalaxyMarket);
+            resetCheckbox("autoMarket", "autoGalaxyMarket");
             removeMarketToggles();
         };
 
@@ -12676,7 +12727,7 @@
             updateSettingsFromState();
             updateStorageSettingsContent();
 
-            $(".script_autoStorage").prop('checked', settingsRaw.autoStorage);
+            resetCheckbox("autoStorage");
             removeStorageToggles();
         };
 
@@ -12762,7 +12813,7 @@
             updateSettingsFromState();
             updateMinorTraitSettingsContent();
 
-            $(".script_autoMinorTrait").prop('checked', settingsRaw.autoMinorTrait);
+            resetCheckbox("autoMinorTrait");
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateMinorTraitSettingsContent);
@@ -12834,13 +12885,7 @@
             updateSettingsFromState();
             updateProductionSettingsContent();
 
-            $(".script_autoQuarry").prop('checked', settingsRaw.autoQuarry);
-            $(".script_autoGraphenePlant").prop('checked', settingsRaw.autoGraphenePlant);
-            $(".script_autoSmelter").prop('checked', settingsRaw.autoSmelter);
-            $(".script_autoCraft").prop('checked', settingsRaw.autoCraft);
-            $(".script_autoFactory").prop('checked', settingsRaw.autoFactory);
-            $(".script_autoMiningDroid").prop('checked', settingsRaw.autoMiningDroid);
-            $(".script_autoPylon").prop('checked', settingsRaw.autoPylon);
+            resetCheckbox("autoQuarry", "autoGraphenePlant", "autoSmelter", "autoCraft", "autoFactory", "autoMiningDroid", "autoPylon");
             removeCraftToggles();
         };
 
@@ -12971,8 +13016,8 @@
             <tr>
               <th class="has-text-warning" style="width:35%">Resource</th>
               <th class="has-text-warning" style="width:20%">Enabled</th>
-              <th class="has-text-warning" style="width:20%">Weighting</th>
-              <th class="has-text-warning" style="width:20%">Min Ingredients</th>
+              <th class="has-text-warning" style="width:20%" title="Ratio between resources. Script assign craftsmans to resource with lowest 'amount / weighting'. Ignored by manual crafting.">Weighting</th>
+              <th class="has-text-warning" style="width:20%" title="Only craft resource when storage ratio of all required ingredients above given number. E.g. bricks with 0.1 min ingredients will be crafted only when cement storage at least 10% filled.">Min Ingredients</th>
               <th style="width:5%"></th>
             </tr>
             <tbody id="script_productionTableBodyFoundry"></tbody>
@@ -13096,8 +13141,7 @@
             updateSettingsFromState();
             updateJobSettingsContent();
 
-            $(".script_autoJobs").prop('checked', settingsRaw.autoJobs);
-            $(".script_autoCraftsmen").prop('checked', settingsRaw.autoCraftsmen);
+            resetCheckbox("autoJobs", "autoCraftsmen");
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateJobSettingsContent);
@@ -13143,9 +13187,7 @@
             const job = JobManager.priorityList[i];
             let jobElement = $('#script_' + job._originalId);
 
-            var toggle = buildJobSettingsToggle(job);
-            jobElement.append(toggle);
-
+            buildJobSettingsToggle(jobElement, job);
             jobElement = jobElement.next();
             buildJobSettingsInput(jobElement, job, 1);
             jobElement = jobElement.next();
@@ -13176,15 +13218,16 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function buildJobSettingsToggle(job) {
+    function buildJobSettingsToggle(node, job) {
         let settingKey = "job_" + job._originalId;
         let color = job === jobs.Unemployed ? 'warning' : job instanceof CraftingJob ? 'danger' : job.isUnlimited() ? 'info' : 'advanced';
-        return addToggleCallbacks($(`
+        node.addClass("script_bg_" + settingKey + (settingsRaw.overrides[settingKey] ? " inactive-row" : ""))
+            .append(addToggleCallbacks($(`
           <label tabindex="0" class="switch" style="margin-top:4px; margin-left:10px;">
             <input class="script_${settingKey}" type="checkbox"${settingsRaw[settingKey] ? " checked" : ""}>
             <span class="check" style="height:5px; max-width:15px"></span>
             <span class="has-text-${color}" style="margin-left: 20px;">${job._originalName}</span>
-          </label>`), settingKey);
+          </label>`), settingKey));
     }
 
     function buildJobSettingsInput(node, job, breakpoint) {
@@ -13270,8 +13313,7 @@
             updateSettingsFromState();
             updateBuildingSettingsContent();
 
-            $(".script_autoBuild").prop('checked', settingsRaw.autoBuild);
-            $(".script_autoPower").prop('checked', settingsRaw.autoPower);
+            resetCheckbox("autoBuild", "autoPower");
             removeBuildingToggles();
         };
 
@@ -13302,9 +13344,9 @@
           <table style="width:100%">
             <tr>
               <th class="has-text-warning" style="width:35%">Building</th>
-              <th class="has-text-warning" style="width:15%">Auto Build</th>
-              <th class="has-text-warning" style="width:15%">Max Build</th>
-              <th class="has-text-warning" style="width:15%">Weighting</th>
+              <th class="has-text-warning" style="width:15%" title="Enables auto building. Triggers ignores this option, allowing to build disabled things.">Auto Build</th>
+              <th class="has-text-warning" style="width:15%" title="Maximum amount of buildings to build. Triggers ignores this option, allowing to build above limit. Can be also used to limit amount of enabled buildings, with respective option above.">Max Build</th>
+              <th class="has-text-warning" style="width:15%" title="Script will try to spend 2x amount of resources on building having 2x weighting, and such.">Weighting</th>
               <th class="has-text-warning" style="width:20%" title="First toggle enables basic automation based on priority, power, support, and consumption. Second enables logic made specially for particlular building, their effects are different, but generally it tries to behave smarter than just staying enabled all the time.">Auto Power</th>
             </tr>
             <tbody id="script_buildingTableBody"></tbody>
@@ -13568,7 +13610,7 @@
             updateSettingsFromState();
             updateProjectSettingsContent();
 
-            $(".script_autoARPA").prop('checked', settingsRaw.autoARPA);
+            resetCheckbox("autoARPA");
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateProjectSettingsContent);
