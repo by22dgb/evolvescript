@@ -10857,6 +10857,8 @@
         SettingCurrent: { fn: (s) => settings[s], arg: "string", def: "masterScriptToggle", desc: "Returns current value of setting, types varies" },
         Eval: { fn: (s) => eval(s), arg: "string", def: "Math.PI", desc: "Returns result of evaluating code" },
         BuildingUnlocked: { fn: (b) => buildingIds[b].isUnlocked(), ...argType.building, desc: "Return true when building is unlocked" },
+        BuildingClickable: { fn: (b) => buildingIds[b].isClickable(), ...argType.building, desc: "Return true when building is clickable" },
+        BuildingAffordable: { fn: (b) => buildingIds[b].isAffordable(true), ...argType.building, desc: "Return true when building is affordable" },
         BuildingCount: { fn: (b) => buildingIds[b].count, ...argType.building, desc: "Returns amount of buildings as number" },
         BuildingEnabled: { fn: (b) => buildingIds[b].stateOnCount, ...argType.building, desc: "Returns amount of enabled buildings as number" },
         BuildingDisabled: { fn: (b) => buildingIds[b].stateOffCount, ...argType.building, desc: "Returns amount of disabled buildings as number" },
@@ -10871,7 +10873,7 @@
         ResourceUnlocked: { fn: (r) => resources[r].isUnlocked(), ...argType.resource, desc: "Returns true when resource or support is unlocked" },
         ResourceQuantity: { fn: (r) => resources[r].currentQuantity, ...argType.resource, desc: "Returns current amount of resource or support as number" },
         ResourceStorage: { fn: (r) => resources[r].maxQuantity, ...argType.resource, desc: "Returns maximum amount of resource or support as number" },
-        ResourceIncome: { fn: (r) => resources[r].rateOfChange, ...argType.resource, desc: "Returns current income of resource as number" }, // rateOfChange holds full diff of resource at the moment when overrides checked
+        ResourceIncome: { fn: (r) => resources[r].rateOfChange, ...argType.resource, desc: "Returns current income of resource or unused support as number" }, // rateOfChange holds full diff of resource at the moment when overrides checked
         ResourceRatio: { fn: (r) => resources[r].storageRatio, ...argType.resource, desc: "Returns storage ratio of resource as number. Number 0.5 means that storage is 50% full, and such." },
         ResourceSatisfied: { fn: (r) => resources[r].usefulRatio, ...argType.resource, desc: "Returns satisfied ratio of resource as number. Number above 1 means than current amount of resource above maximum costs" },
         RaceCurrent: { fn: (r) => game.global.race.species === r, ...argType.race, desc: "Returns true when playing selected race" },
