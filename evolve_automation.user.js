@@ -11350,7 +11350,7 @@
             updateSettingsFromState();
             updateGeneralSettingsContent();
 
-            resetCheckboxes("masterScriptToggle", "showSettings", "autoAssembleGene");
+            resetCheckbox("masterScriptToggle", "showSettings", "autoAssembleGene");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
@@ -13932,7 +13932,7 @@
         }
 
         // Soul Gems income rate
-        if (resources.Soul_Gem.isUnlocked()) {
+        if (settings.masterScriptToggle && resources.Soul_Gem.isUnlocked()) {
             let currentSec = Math.floor(state.scriptTick / 4);
             if (resources.Soul_Gem.currentQuantity > state.soulGemLast) {
                 state.soulGemIncomes.push({sec: currentSec, gems: resources.Soul_Gem.currentQuantity - state.soulGemLast})
