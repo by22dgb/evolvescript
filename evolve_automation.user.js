@@ -2475,7 +2475,7 @@
           () => "Not needed for Ascension prestige",
           () => 0
       ],[
-          () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isAffordable(true) && Object.keys(techIds['tech-mad'].cost).every(res => resources[res].isUnlocked()))),
+          () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isUnlocked() && techIds['tech-mad'].isAffordable(true) && Object.keys(techIds['tech-mad'].cost).every(res => resources[res].isUnlocked()))),
           (building) => !building.is.housing && !building.is.garrison && !building.cost["Knowledge"] && (building !== buildings.OilWell || !game.global.race.terrifying), // Terrifying can't buy oil, keep building rigs
           () => "Awaiting MAD prestige",
           () => settings.buildingWeightingMADUseless
