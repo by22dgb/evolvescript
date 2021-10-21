@@ -19,7 +19,7 @@
 //
 // Here's some tips about non-intuitive features:
 //   Ctrl+Click on almost any script option brings up advanced configurations, which allows to overide setting under certain conditions and set more advanced logic.
-//     Triggers, evolution queue, ignored researches, log filters, smart powering for interlinked buildings(like transport and bireme), prioritirs(draggables), and overrides itself - cannot be overridden.
+//     Triggers, evolution queue, log filters, smart powering for interlinked buildings(like transport and bireme), prioritirs(draggables), and overrides itself - cannot be overridden.
 //     Overrides affects only script behaviour, GUI(outside of overrides modal) always show and changes default values.
 //   autoMarket, autoGalaxyMarket, autoFactory, and autoMiningDroid use weightings and priorities to determine their tasks. Resources split by groups of same priority, and then resources within group having the best priority distributed according to their weights. If there's still some more unused routes\factories\drones after assigning, script moves to next group with lower priority, etc. In most cases only one group with highest priority is active and working, while other groups serve as fallback for cases when all resources with better priority are either capped, or, in case of factory, unaffordable. There's few special values for finer configuration:
 //     Prioritization(queue, trigger, etc) does temporarily change priority of resource to 100, thus resources with priority above 100 won't be affected by prioritization.
@@ -1895,19 +1895,19 @@
         CrystalMiner: new Job("crystal_miner", "Crystal Miner"),
         Scavenger: new Job("scavenger", "Scavenger"),
 
+        Colonist: new Job("colonist", "Colonist"),
+        //TitanColonist: new Job("titan_colonist", "Titan Colonist"),
         Miner: new Job("miner", "Miner"),
         CoalMiner: new Job("coal_miner", "Coal Miner"),
         CementWorker: new Job("cement_worker", "Cement Worker"),
-        Entertainer: new Job("entertainer", "Entertainer"),
-        Priest: new Job("priest", "Priest"),
         Professor: new Job("professor", "Professor"),
         Scientist: new Job("scientist", "Scientist"),
-        Banker: new Job("banker", "Banker"),
-        Colonist: new Job("colonist", "Colonist"),
-        //TitanColonist: new Job("titan_colonist", "Titan Colonist"),
-        SpaceMiner: new Job("space_miner", "Space Miner"),
+        Entertainer: new Job("entertainer", "Entertainer"),
         HellSurveyor: new Job("hell_surveyor", "Hell Surveyor"),
+        SpaceMiner: new Job("space_miner", "Space Miner"),
         Archaeologist: new Job("archaeologist", "Archaeologist"),
+        Banker: new Job("banker", "Banker"),
+        Priest: new Job("priest", "Priest"),
 
         // Crafting jobs
         Plywood: new CraftingJob("Plywood", "Plywood Crafter", resources.Plywood),
@@ -2053,7 +2053,7 @@
         TitanSpaceport: new Action("Titan Spaceport", "space", "titan_spaceport", "spc_titan"),
         TitanElectrolysis: new Action("Titan Electrolysis", "space", "electrolysis", "spc_titan"),
         TitanHydrogen: new Action("Titan Hydrogen Plant", "space", "hydrogen_plant", "spc_titan"),
-        TitanQuarters: new Action("Titan Quarters", "space", "titan_quarters", "spc_titan"),
+        TitanQuarters: new Action("Titan Habitat", "space", "titan_quarters", "spc_titan"),
         TitanMine: new Action("Titan Mine", "space", "titan_mine", "spc_titan"),
         TitanStorehouse: new Action("Titan Storehouse", "space", "storehouse", "spc_titan"),
         TitanBank: new Action("Titan Bank", "space", "titan_bank", "spc_titan"),
@@ -2062,6 +2062,7 @@
         TitanDecoder: new Action("Titan Decoder", "space", "decoder", "spc_titan"),
         TitanAI: new Action("Titan AI Core", "space", "ai_core", "spc_titan"),
         TitanAIComplete: new Action("Titan AI Core (Complete)", "space", "ai_core2", "spc_titan"),
+        TitanAIColonist: new Action("Titan AI Colonist", "space", "ai_colonist", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
         EnceladusWaterFreighter: new Action("Enceladus Water Freighter", "space", "water_freighter", "spc_enceladus", {smart: true}),
         EnceladusZeroGLab: new Action("Enceladus Zero Gravity Lab", "space", "zero_g_lab", "spc_enceladus"),
@@ -2445,7 +2446,9 @@
                   if (resources.Population.currentQuantity !== resources.Population.maxQuantity) {
                       return "Sacrifices performed only with full population";
                   }
-
+                  if (game.global.race['parasite'] && game.global.city.calendar.wind === 0) {
+                      return "Parasites sacrificed only during windy weather";
+                  }
                   if (game.global.civic[game.global.civic.d_job].workers < 1) {
                       return "No default workers to sacrifice";
                   }
@@ -3235,7 +3238,7 @@
             let price = this.getUnitBuyPrice(resource) * this.multiplier;
             if (resources.Money.currentQuantity < price) { return false; }
 
-            resources.Money.currentQuantity -= this.multiplier * this.getUnitSellPrice(resource);
+            resources.Money.currentQuantity -= this.multiplier * this.getUnitBuyPrice(resource);
             resource.currentQuantity += this.multiplier;
 
             vue.purchase(resource.id);
@@ -4776,7 +4779,8 @@
 
         /*
         buildings.TitanSpaceport.addResourceConsumption(resources.Enceladus_Support, -2);
-        buildings.TitanElectrolysis.addResourceConsumption(resources.Titan_Support, -2);
+        buildings.TitanElectrolysis.addResourceConsumption(resources.Titan_Support, () => haveTech("titan_ai_core", 2) && buildings.TitanAIComplete.stateOnCount > 0 ? -3 : -2);
+
         buildings.TitanElectrolysis.addResourceConsumption(resources.Water, 35);
         buildings.TitanElectrolysis.addResourceConsumption(resources.Electrolysis_Support, -1);
         buildings.TitanHydrogen.addResourceConsumption(resources.Titan_Support, -2);
@@ -5118,6 +5122,7 @@
         priorityList.push(buildings.TitanMission);
         priorityList.push(buildings.TitanSpaceport);
 
+        priorityList.push(buildings.TitanAIColonist);
         priorityList.push(buildings.TitanMine);
         priorityList.push(buildings.TitanSAM);
         priorityList.push(buildings.TitanGraphene);
@@ -5234,6 +5239,7 @@
             researchRequestSpace: false,
             missionRequest: true,
             unificationRequest: true,
+            useDemanded: true,
             buildingsConflictQueue: true,
             buildingsConflictRQueue: true,
             buildingsConflictPQueue: true,
@@ -5448,17 +5454,17 @@
         setBreakpoints(jobs.CrystalMiner, 2, 5, 0);
         setBreakpoints(jobs.Scavenger, 0, 0, 0);
 
-        setBreakpoints(jobs.Scientist, 3, 6, -1);
-        setBreakpoints(jobs.Professor, 6, 10, -1);
-        setBreakpoints(jobs.Entertainer, 2, 5, -1);
-        setBreakpoints(jobs.CementWorker, 4, 8, -1);
         setBreakpoints(jobs.Colonist, 0, 0, -1);
         //setBreakpoints(jobs.TitanColonist, 0, 0, -1);
+        setBreakpoints(jobs.Miner, 3, 5, -1);
+        setBreakpoints(jobs.CoalMiner, 2, 4, -1);
+        setBreakpoints(jobs.CementWorker, 4, 8, -1);
+        setBreakpoints(jobs.Professor, 6, 10, -1);
+        setBreakpoints(jobs.Scientist, 3, 6, -1);
+        setBreakpoints(jobs.Entertainer, 2, 5, -1);
         setBreakpoints(jobs.HellSurveyor, 0, 0, -1);
         setBreakpoints(jobs.SpaceMiner, 0, 0, -1);
         setBreakpoints(jobs.Archaeologist, 0, 0, -1);
-        setBreakpoints(jobs.Miner, 3, 5, -1);
-        setBreakpoints(jobs.CoalMiner, 2, 4, -1);
         setBreakpoints(jobs.Banker, 3, 5, -1);
         setBreakpoints(jobs.Priest, 0, 0, -1);
 
@@ -5543,7 +5549,7 @@
         let def = {
             autoARPA: false,
             arpaScaleWeighting: true,
-            arpaStep: 10,
+            arpaStep: 5,
         }
 
         let projectPriority = 0;
@@ -5674,7 +5680,7 @@
             fleetMaxCover: true,
             fleetEmbassyKnowledge: 6000000,
             fleetAlienGiftKnowledge: 6500000,
-            fleetAlien2Knowledge: 9000000,
+            fleetAlien2Knowledge: 8500000,
             fleetChthonianLoses: "low",
 
             // Default regions priority
@@ -5955,9 +5961,9 @@
                 return;
             }
 
-            // Still no target. Fallback to antid.
+            // Still no target. Fallback to custom, or ent.
             if (state.evolutionTarget === null) {
-                state.evolutionTarget = races.antid;
+                state.evolutionTarget = races.custom.getHabitability() > 0 ? races.custom : races.entish;
             }
             GameLog.logSuccess("special", `Attempting evolution of ${state.evolutionTarget.name}.`, ['progress']);
         }
@@ -6698,7 +6704,6 @@
 
             // Get list of craftabe resources
             let availableJobs = [];
-            craftersLoop:
             for (let i = 0; i < JobManager.craftingJobs.length; i++) {
                 let job = JobManager.craftingJobs[i];
                 let resource = job.resource;
@@ -6706,22 +6711,16 @@
                 if (!job.isManaged() || !resource.autoCraftEnabled || (settings.jobDisableCraftsmans && !game.global.race['no_craft'] && job !== jobs.Scarletite && job !== jobs.Quantium)) {
                     continue;
                 }
-                let resourceDemanded = resource.isDemanded();
-
                 // And have enough resources to craft it for at least 2 ticks
                 let afforableAmount = availableCraftsmen;
-                let lowestRatio = 1;
                 for (let res in resource.cost) {
                     let reqResource = resources[res];
-                    if (reqResource.isDemanded() && !resourceDemanded) {
-                        continue craftersLoop;
+                    if (!resource.isDemanded() && ((!settings.useDemanded && reqResource.isDemanded()) || reqResource.storageRatio < resource.craftPreserve)) {
+                        afforableAmount = 0;
+                        break;
+                    } else {
+                        afforableAmount = Math.min(afforableAmount, reqResource.currentQuantity / (resource.cost[res] * costMod) / 2 * ticksPerSecond());
                     }
-                    afforableAmount = Math.min(afforableAmount, reqResource.currentQuantity / (resource.cost[res] * costMod) / 2 * ticksPerSecond());
-                    lowestRatio = Math.min(lowestRatio, reqResource.storageRatio);
-                }
-
-                if (lowestRatio < resource.craftPreserve && !resourceDemanded) {
-                    continue;
                 }
 
                 // Assigning non-foundry crafters right now, so it won't be filtered out by priority checks below, as we want to have them always crafted among with regular craftables
@@ -6736,14 +6735,9 @@
                         jobAdjustments[jobList.indexOf(job)] = craftMax - job.count;
                         availableCraftsmen -= craftMax;
                     }
-                    continue;
+                } else if (afforableAmount >= availableCraftsmen){
+                    availableJobs.push(job);
                 }
-
-                if (afforableAmount < availableCraftsmen){
-                    continue;
-                }
-
-                availableJobs.push(job);
             }
 
             let requestedJobs = availableJobs.filter(job => job.resource.isDemanded());
@@ -7306,7 +7300,7 @@
                             let affordableAmount = Math.floor(rate / resourceCost.quantity);
                             actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
                         }
-                        if (!production.resource.isDemanded() && (resourceCost.resource.isDemanded() || resourceCost.resource.storageRatio < settings.productionFactoryMinIngredients)) {
+                        if (!production.resource.isDemanded() && ((!settings.useDemanded && resourceCost.resource.isDemanded()) || resourceCost.resource.storageRatio < settings.productionFactoryMinIngredients)) {
                             actualRequiredFactories = 0;
                         }
                     });
@@ -8148,7 +8142,8 @@
 
         // Don't click any reset options without user consent... that would be a dick move, man.
         if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" ||
-            itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion") {
+            itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion" ||
+            itemId === "tech-protocol66" || itemId === "tech-protocol66a") {
             return false;
         }
 
@@ -8363,9 +8358,9 @@
                     if (buildings.TritonFOB.stateOnCount < 1) { // Does not work with no FOB
                         maxStateOn = 0;
                     } else {
-                        // const injureRate = (s,p) => (((s-p+1)/2)*(0+(t-p)))/(s+1);
                         let protectedSoldiers = (game.global.race['armored'] ? 1 : 0) + (game.global.race['scales'] ? 1 : 0) + (game.global.tech['armor'] ?? 0);
-                        let maxLanders = Math.floor((getHealingRate() + protectedSoldiers) / 1.5);
+                        let woundCap = Math.ceil((game.global.space.fob.enemy + (game.global.tech.outer >= 4 ? 75 : 62.5)) / 5) - protectedSoldiers;
+                        let maxLanders = getHealingRate() < woundCap ? Math.floor((getHealingRate() + protectedSoldiers) / 1.5) : Number.MAX_SAFE_INTEGER;
                         let healthySquads = Math.floor((WarManager.currentSoldiers - WarManager.wounded) / 3);
                         maxStateOn = Math.min(maxStateOn, healthySquads, maxLanders);
                     }
@@ -8681,7 +8676,7 @@
 
         // Build crates
         // This check needed for cases when there's still empty crates, but they can't be used die to limits.
-        if (resources.Crates.currentQuantity === 0) {
+        if (resources.Crates.currentQuantity === 0 || resources.Containers.storageRatio === 1) {
             let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(missingStorage / poly.crateValue()));
             StorageManager.constructCrate(cratesToBuild);
 
@@ -10319,7 +10314,8 @@
         let overrides = {};
         for (let key in settingsRaw.overrides) {
             let conditions = settingsRaw.overrides[key];
-            for (let check of conditions) {
+            for (let i = 0; i < conditions.length; i++) {
+                let check = conditions[i];
                 try {
                     let var1 = checkTypes[check.type1].fn(check.arg1);
                     let var2 = checkTypes[check.type2].fn(check.arg2);
@@ -10989,7 +10985,7 @@
         job: {def: "unemployed", arg: "select_cb", options: () => Object.values(jobIds).map(j =>
           ({val: j._originalId, label: j._originalName}))},
         resource: {def: "Food", arg: "select_cb", options: () => Object.values(resources).map(r =>
-          ({val: r.id, label: r.name}))},
+          ({val: r._id, label: r.name}))},
         race: {def: "junker", arg: "select_cb", options: () =>
           [{val: "protoplasm", label: "Protoplasm", hint: "Race is not chosen yet"},
            ...Object.values(races).map(race => ({val: race.id, label: race.name, hint: race.desc}))]},
@@ -11562,6 +11558,7 @@
         addSettingsToggle(currentNode, "researchRequestSpace", "Prioritize resources for Space+ researches", "Readjust trade routes and production to resources required for unlocked and affordable researches. Works only with no active triggers, or queue. Missing resources will have 100 priority where applicable(autoMarket, autoGalaxyMarket, autoFactory, autoMiningDroid), or just 'top priority' where not(autoTax, autoCraft, autoCraftsmen, autoQuarry, autoSmelter).");
         addSettingsToggle(currentNode, "missionRequest", "Prioritize resources for missions", "Readjust trade routes and production to resources required for unlocked and affordable missions. Missing resources will have 100 priority where applicable(autoMarket, autoGalaxyMarket, autoFactory, autoMiningDroid), or just 'top priority' where not(autoTax, autoCraft, autoCraftsmen, autoQuarry, autoSmelter).");
         addSettingsToggle(currentNode, "unificationRequest", "Prioritize money for unification", "Prioritize money to buy spies and purchase foreign, when unification enabled and avaialble");
+        addSettingsToggle(currentNode, "useDemanded", "Allow using prioritized resources for crafting", "When disabled script won't make craftables out of prioritized resources in foundry and factory.");
 
         addSettingsHeader1(currentNode, "Queue");
         addSettingsToggle(currentNode, "buildingsConflictQueue", "Save resources for queued buildings", "Script won't use resources needed for queued buildings. 'No Queue Order' game setting switches whether it save resources for next item, or whole queue.");
@@ -13214,7 +13211,7 @@
               <th class="has-text-warning" style="width:35%">Resource</th>
               <th class="has-text-warning" style="width:20%">Enabled</th>
               <th class="has-text-warning" style="width:20%" title="Ratio between resources. Script assign craftsmans to resource with lowest 'amount / weighting'. Ignored by manual crafting.">Weighting</th>
-              <th class="has-text-warning" style="width:20%" title="Only craft resource when storage ratio of all required ingredients above given number. E.g. bricks with 0.1 min ingredients will be crafted only when cement storage at least 10% filled.">Min Ingredients</th>
+              <th class="has-text-warning" style="width:20%" title="Only craft resource when storage ratio of all required materials above given number. E.g. bricks with 0.1 min materials will be crafted only when cement storage at least 10% filled.">Min Materials</th>
               <th style="width:5%"></th>
             </tr>
             <tbody id="script_productionTableBodyFoundry"></tbody>
