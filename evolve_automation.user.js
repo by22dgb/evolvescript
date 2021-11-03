@@ -521,13 +521,7 @@
         }
 
         get usefulRatio() {
-            if (this.maxQuantity === 0) {
-                return 0;
-            }
-            if (this.storageRequired <= 1) {
-                return 1;
-            }
-            return this.currentQuantity / Math.min(this.maxQuantity, this.storageRequired);
+            return this.maxQuantity > 0 && this.storageRequired > 0 ? this.currentQuantity / Math.min(this.maxQuantity, this.storageRequired) : 1;
         }
 
         get timeToFull() {
@@ -1269,7 +1263,10 @@
         }
 
         get desc() {
-            return game.races[this.id].desc ?? "Custom";
+            let nameRef = game.races[this.id].desc;
+            return typeof nameRef === "function" ? nameRef() :
+                   typeof nameRef === "string" ? nameRef :
+                   "Custom"; // Nonexistent custom
         }
 
         get genus() {
@@ -1766,6 +1763,7 @@
         techTargets: [],
         otherTargets: [],
 
+        moraleAdjusted: false,
         maxSpaceMiners: Number.MAX_SAFE_INTEGER,
         globalProductionModifier: 1,
         moneyIncomes: new Array(11).fill(0),
@@ -3471,7 +3469,7 @@
                 }
 
                 // Adjust for fight
-                if (!settings.foreignPacifist) {
+                if (activeForeigns.length > 0 && !settings.foreignPacifist) {
                     // Try to attacks last uncontrolled inferior, or first occupied, or just first, in this order.
                     currentTarget = currentTarget ?? activeForeigns.find(f => f.gov.occ) ?? activeForeigns[0];
 
@@ -3488,7 +3486,7 @@
                     }
 
                     // Set last foreign to sabotage only, and then switch to occupy once we're ready to unify
-                    if (settings.foreignOccupyLast && !haveTech('world_control')) {
+                    if (settings.foreignUnification && settings.foreignOccupyLast && !haveTech('world_control')) {
                         let lastTarget = ["Occupy", "Sabotage"].includes(settings.foreignPolicySuperior) ? 2 : currentTarget.id;
                         activeForeigns[lastTarget].policy = readyToUnify ? "Occupy" : "Sabotage";
                     }
@@ -4336,6 +4334,7 @@
                     }
                 }
                 if (building.weighting > 0) {
+                    building.weighting = Math.max(Number.MIN_VALUE, building.weighting - 1e-7 * building.count);
                     building.extraDescription = "AutoBuild weighting: " + getNiceNumber(building.weighting) + "<br>" + building.extraDescription;
                 }
             }
@@ -5454,8 +5453,8 @@
         setBreakpoints(jobs.CrystalMiner, 2, 5, 0);
         setBreakpoints(jobs.Scavenger, 0, 0, 0);
 
-        setBreakpoints(jobs.Colonist, 0, 0, -1);
-        //setBreakpoints(jobs.TitanColonist, 0, 0, -1);
+        setBreakpoints(jobs.Colonist, -1, -1, -1);
+        //setBreakpoints(jobs.TitanColonist, -1, -1, -1);
         setBreakpoints(jobs.Miner, 3, 5, -1);
         setBreakpoints(jobs.CoalMiner, 2, 4, -1);
         setBreakpoints(jobs.CementWorker, 4, 8, -1);
@@ -6208,7 +6207,7 @@
                 let quantity = craftable.cost[res];
 
                 if (craftable.isDemanded()) { // Craftable demanded, get as much as we can
-                    afforableAmount = Math.min(afforableAmount, resource.currentQuantity / quantity);
+                    afforableAmount = Math.min(afforableAmount, resource.spareQuantity / quantity);
                 } else if (resource.isDemanded() || (!resource.isCapped() && resource.usefulRatio < craftable.usefulRatio)) { // Don't use demanded resources
                     continue craftLoop;
                 } else if (craftable.currentQuantity < craftable.storageRequired) { // Craftable is required, use all spare resources
@@ -6719,7 +6718,7 @@
                         afforableAmount = 0;
                         break;
                     } else {
-                        afforableAmount = Math.min(afforableAmount, reqResource.currentQuantity / (resource.cost[res] * costMod) / 2 * ticksPerSecond());
+                        afforableAmount = Math.min(afforableAmount, (resource.calculateRateOfChange({buy: true}) + reqResource.currentQuantity) / (resource.cost[res] * costMod) / 2 * ticksPerSecond());
                     }
                 }
 
@@ -6882,6 +6881,12 @@
             }
         }
 
+        // Avoid adjusting both tax and entertainers at same tick, it can cause flickering
+        let entertainerIndex = jobList.indexOf(jobs.Entertainer);
+        if (entertainerIndex !== -1 && jobAdjustments[entertainerIndex] !== 0) {
+            state.moraleAdjusted = true;
+        }
+
         let splitJobs = [];
         if (lumberjackIndex !== -1) splitJobs.push( { jobIndex: lumberjackIndex, job: jobs.Lumberjack, weighting: settings.jobLumberWeighting} );
         if (quarryWorkerIndex !== -1) splitJobs.push( { jobIndex: quarryWorkerIndex, job: jobs.QuarryWorker, weighting: settings.jobQuarryWeighting});
@@ -6970,7 +6975,7 @@
     }
 
     function autoTax() {
-        if (haveTask("tax")) {
+        if (state.moraleAdjusted || haveTask("tax")) {
             return;
         }
 
@@ -7533,7 +7538,7 @@
                         if (resource.storageRatio > keepRatio + 0.01) {
                             allowedSupply = Math.max(1, allowedSupply, Math.ceil(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume), Math.ceil((resource.storageRatio - keepRatio) * resource.maxQuantity / resource.supplyVolume));
                         } else if (resource.storageRatio > keepRatio) {
-                            allowedSupply = Math.max(0, allowedSupply, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume));
+                            allowedSupply = Math.max(0, allowedSupply, Math.floor(resource.calculateRateOfChange({buy: true}) / resource.supplyVolume), Math.floor((resource.storageRatio - keepRatio) * resource.maxQuantity / resource.supplyVolume));
                         }
                     }
 
@@ -7604,7 +7609,7 @@
                     if (resource.storageRatio > keepRatio + 0.01) {
                         allowedEject = Math.max(1, allowedEject, Math.ceil(resource.calculateRateOfChange({buy: true, supply: true})), Math.ceil((resource.storageRatio - keepRatio) * resource.maxQuantity));
                     } else if (resource.storageRatio > keepRatio) {
-                        allowedEject = Math.max(0, allowedEject, Math.floor(resource.calculateRateOfChange({buy: true, supply: true})));
+                        allowedEject = Math.max(0, allowedEject, Math.floor(resource.calculateRateOfChange({buy: true, supply: true})), Math.floor((resource.storageRatio - keepRatio) * resource.maxQuantity));
                     }
                 }
 
@@ -8278,9 +8283,13 @@
             let maxStateOn = building.count;
             let currentStateOn = building.stateOnCount;
 
+            if (!game.global.settings.showGalactic && building._tab === "galaxy") {
+                maxStateOn = 0;
+            }
             if (settings.buildingsLimitPowered) {
                 maxStateOn = Math.min(maxStateOn, building.autoMax);
             }
+
             // Max powered amount
             if (building === buildings.NeutronCitadel) {
                 while (maxStateOn > 0) {
@@ -9817,7 +9826,7 @@
         }
 
         // Unlocked and affordable techs, but only if we don't have anything more important
-        if (prioritizedTasks.length === 0 && (haveTech("mad") ? settings.researchRequestSpace : settings.researchRequest)) {
+        if (prioritizedTasks.length === 0 && ((game.global.race['cataclysm'] || haveTech("mad")) ? settings.researchRequestSpace : settings.researchRequest)) {
             prioritizedTasks = state.techTargets.filter(t => t.isAffordable());
         }
 
@@ -10034,6 +10043,7 @@
         calculateRequiredStorages(); // Uses obj.cost
         prioritizeDemandedResources(); // Set res.requestedQuantity, uses queuedTargets and triggerTargets
 
+        state.moraleAdjusted = false;
         state.moneyIncomes.push(resources.Money.rateOfChange);
         state.moneyIncomes.shift();
         state.moneyMedian = average(state.moneyIncomes);
@@ -10967,6 +10977,8 @@
         "NAND": (a, b) => !(a && b),
         "XOR": (a, b) => !a != !b,
         "XNOR": (a, b) => !a == !b,
+        "AND!": (a, b) => a && !b,
+        "OR!": (a, b) => a || !b,
     }
 
     const argType = {
@@ -11252,7 +11264,7 @@
     }
 
     function buildConditionComparator(override) {
-        let types = Object.keys(checkCompare).map(type => `<option value="${type}">${type}</option>`).join();
+        let types = Object.entries(checkCompare).map(([id, fn]) => `<option value="${id}" title="${fn.toString().substr(10)}">${id}</option>`).join();
         return $(`<select style="width: 100%">${types}</select>`)
         .val(override.cmp)
         .on('change', function() {
@@ -12622,7 +12634,7 @@
     }
 
     function calculateMechStats() {
-        let realBay = game.global.portal.mechbay // Ugly hack, and also won't work once(if) poly will be replaced with exposed function. But for now - it just works.
+        let realScouts = MechManager.lastScouts; // Ugly hack, and also won't work once(if) poly will be replaced with exposed function. But for now - it just works.
         let realPrepared = game.global.blood.prepared;
 
         let cellInfo = '<td><span class="has-text-info">';
@@ -12636,7 +12648,7 @@
         let efficient = document.getElementById('script_mechStatsEfficient').checked;
         let scouts = parseInt(document.getElementById("script_mechStatsScouts").value) || 0;
 
-        game.global.portal.mechbay = {max: Number.MAX_SAFE_INTEGER, mechs: new Array(Math.max(0, scouts)).fill({size: "small"})};
+        MechManager.lastScouts = scouts;
         game.global.blood.prepared = document.getElementById('script_mechStatsCompact').checked ? 2 : 0;
 
         let smallFactor = efficient ? 1 : average(Object.values(MechManager.SmallChassisMod).reduce((list, mod) => list.concat(Object.values(mod)), []));
@@ -12666,7 +12678,7 @@
         rows.forEach((line, index) => content += "<tr>" + (index === 0 ? cellWarn : cellAdv) + line.join("&nbsp;" + cellEnd + (index === 0 ? cellAdv : cellInfo)) + cellEnd + "</tr>");
         $("#script_mechStatsTable").html(content);
 
-        if (realBay) { game.global.portal.mechbay = realBay; }
+        MechManager.lastScouts = realScouts;
         if (realPrepared) { game.global.blood.prepared = realPrepared; }
     }
 
@@ -14705,7 +14717,7 @@
         // export function mechCost(size,infernal) from portal.js
         mechCost: function(e,a){let l=9999,r=1e7;switch(e){case"small":{let e=game.global.blood.prepared>=2?5e4:75e3;r=a?2.5*e:e,l=a?20:1}break;case"medium":r=a?45e4:18e4,l=a?100:4;break;case"large":r=a?925e3:375e3,l=a?500:20;break;case"titan":r=a?15e5:75e4,l=a?1500:75;break;case"collector":{let e=game.global.blood.prepared>=2?8e3:1e4;r=a?2.5*e:e,l=1}}return{s:l,c:r}},
         // function terrainRating(mech,rating,effects) from portal.js
-        terrainRating: function(e,l,a){if(!e.equip.includes("special")||"small"!==e.size&&"medium"!==e.size&&"collector"!==e.size||l<1&&(l+=(1-l)*(a.includes("gravity")?.1:.2)),"small"!==e.size&&l<1){let e=0,i={small:0,medium:0,large:0,titan:0,collector:0};for(let l=0;l<game.global.portal.mechbay.mechs.length;l++){let a=game.global.portal.mechbay.mechs[l];(e+=MechManager.getMechSpace(a))<=game.global.portal.mechbay.max&&i[a.size]++}(l+=(a.includes("fog")||a.includes("dark")?.005:.01)*i.small)>1&&(l=1)}return l},
+        terrainRating: function(e,i,s){return!e.equip.includes("special")||"small"!==e.size&&"medium"!==e.size&&"collector"!==e.size||i<1&&(i+=(1-i)*(s.includes("gravity")?.1:.2)),"small"!==e.size&&i<1&&(i+=(s.includes("fog")||s.includes("dark")?.005:.01)*MechManager.lastScouts)>1&&(i=1),i},
         // function weaponPower(mech,power) from portal.js
         weaponPower: function(e,i){return i<1&&0!==i&&e.equip.includes("special")&&"titan"===e.size&&(i+=.25*(1-i)),e.equip.includes("special")&&"large"===e.size&&(i*=1.02),i},
         // export function timeFormat(time) from functions.js
