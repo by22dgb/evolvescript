@@ -2429,17 +2429,17 @@
       ],[
           () => buildings.SpireWaygate.isUnlocked() && haveTech("waygate", 2),
           (building) => building === buildings.SpireWaygate,
-          () => "Not available",
+          () => "",
           () => 0 // We can't limit waygate using gameMax, as max here doesn't constant. It's start with 10, but after building count reduces down to 1
       ],[
           () => buildings.SpireSphinx.isUnlocked() && haveTech("hell_spire", 8),
           (building) => building === buildings.SpireSphinx,
-          () => "Not available",
+          () => "",
           () => 0 // Sphinx not usable after solving
       ],[
           () => buildings.RuinsAncientPillars.isUnlocked() && (game.global.tech.pillars !== 1 || game.global.race.universe === 'micro'),
           (building) => building === buildings.RuinsAncientPillars,
-          () => "Not available",
+          () => "",
           () => 0 // Pillars can't be activated in micro, and without tech.
       ],[
           () => buildings.GorddonEmbassy.count === 0 && resources.Knowledge.maxQuantity < settings.fleetEmbassyKnowledge,
@@ -8715,19 +8715,23 @@
     }
 
     function getBestSupplyRatio(support, maxPorts, maxCamps) {
-        let bestSupplies = 0;
-        let bestPort = support;
-        let bestBaseCamp = 0;
-        for (let i = 0; i < support; i++) {
-            let maxSupplies = Math.min(support - i, maxPorts) * (1 + Math.min(i, maxCamps) * 0.4);
-            if (maxSupplies <= bestSupplies) {
-                break;
-            }
-            bestSupplies = maxSupplies;
-            bestPort = Math.min(support - i, maxPorts);
-            bestBaseCamp = Math.min(i, maxCamps);
+        let bestPort = 0;
+        let bestCamp = 0;
+
+        let optPort = Math.ceil(support / 2 + 1);
+        let optCamp = Math.floor(support / 2 - 1);
+        if (support <= 3 || optPort > maxPorts) {
+            bestPort = Math.min(maxPorts, support);
+            bestCamp = Math.min(maxCamps, support - bestPort);
+        } else if (optCamp > maxCamps) {
+            bestCamp = Math.min(maxCamps, support);
+            bestPort = Math.min(maxPorts, support - bestCamp);
+        } else if (optPort <= maxPorts && optCamp <= maxCamps) {
+            bestPort = optPort;
+            bestCamp = optCamp;
         }
-        return [Math.round(bestSupplies * 10000 + 100), bestPort, bestBaseCamp];
+        let supplies = Math.round(bestPort * (1 + bestCamp * 0.4) * 10000 + 100);
+        return [supplies, bestPort, bestCamp];
     }
 
     function expandStorage(storageToBuild) {
@@ -14272,7 +14276,7 @@
     }
 
     function createMechInfo() {
-        if ($(`#mechList .mechRow[draggable=true]`).length > 0) {
+        if ((settings.masterScriptToggle && MechManager.isActive) || $(`#mechList .mechRow[draggable=true]`).length > 0) {
             return;
         }
         MechManager.mechObserver.disconnect();
