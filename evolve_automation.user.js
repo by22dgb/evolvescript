@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.87
+// @version      3.3.1.88
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -9613,7 +9613,7 @@
         let mechBay = game.global.portal.mechbay;
         let prolongActive = m.isActive;
         m.isActive = false;
-        let savingSupply = m.saveSupply;
+        let savingSupply = m.saveSupply && settings.mechBaysFirst;
         m.saveSupply = false;
 
         // Rearrange mechs for best efficiency if some of the bays are disabled
@@ -9754,7 +9754,7 @@
                 resources.Soul_Gem.currentQuantity += gemsGained;
                 // TODO: Workaround for scrap vue bug - it doesn't update used space in callback. Remove when fixed.
                 baySpace += spaceGained;
-                m._assemblyVue.m.bay -= spaceGained;
+                m._assemblyVue.m.bay = mechBay.max - baySpace;
             } else if (baySpace + spaceGained >= newSpace) {
                 return; // We have scrapable mechs, but don't want to scrap them right now. Waiting for more supplies for instant replace.
             }
@@ -14279,8 +14279,8 @@
         if ((settings.masterScriptToggle && MechManager.isActive) || $(`#mechList .mechRow[draggable=true]`).length > 0) {
             return;
         }
-        MechManager.mechObserver.disconnect();
         if (MechManager.initLab()) {
+            MechManager.mechObserver.disconnect();
             let list = getVueById("mechList");
             for (let i = 0; i < list._vnode.children.length; i++) {
                 let mech = game.global.portal.mechbay.mechs[i];
@@ -14301,8 +14301,8 @@
                     $(mechNode).prepend(`<span class="ea-mech-info">${info}</span>`);
                 }
             }
+            MechManager.mechObserver.observe(document.getElementById("mechList"), {childList: true});
         }
-        MechManager.mechObserver.observe(document.getElementById("mechList"), {childList: true});
     }
 
     function removeMechInfo() {
