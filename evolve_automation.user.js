@@ -2490,7 +2490,7 @@
           () => game.global.race['cannibalize'],
           (building) => {
               if (building === buildings.SacrificialAltar && building.count > 0) {
-                  if (resources.Population.currentQuantity < 20) {
+                  if (resources.Population.currentQuantity < 1) {
                       return "Too low population";
                   }
                   if (resources.Population.currentQuantity !== resources.Population.maxQuantity) {
@@ -2534,12 +2534,17 @@
           () => settings.buildingWeightingNonOperatingCity
       ],[
           () => true,
-          (building) => building._tab !== "city" && building.stateOffCount > 0
-            && (building !== buildings.SpirePort || !buildings.SpirePort.isSmartManaged() || (buildings.SpirePort.count + buildings.SpireBaseCamp.count + 1) > resources.Spire_Support.maxQuantity)
-            && (building !== buildings.SpireBaseCamp || !buildings.SpireBaseCamp.isSmartManaged() || (buildings.SpirePort.count + buildings.SpireBaseCamp.count + 1) > resources.Spire_Support.maxQuantity)
-            && (building !== buildings.SpireMechBay || !buildings.SpireMechBay.isSmartManaged())
-            && (building !== buildings.RuinsGuardPost || !buildings.RuinsGuardPost.isSmartManaged() || isHellSupressUseful())
-            && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()),
+          (building) => {
+              if (building._tab !== "city" && building.stateOffCount > 0) {
+                  if (building === buildings.RuinsGuardPost && building.isSmartManaged() && !isHellSupressUseful()) { return false; }
+                  if (building === buildings.BadlandsAttractor && building.isSmartManaged()) { return false; }
+                  if (building === buildings.SpireMechBay && building.isSmartManaged()) { return false; }
+                  let supplyIndex = building === buildings.SpirePort ? 1 : building === buildings.SpireBaseCamp ? 2 : -1;
+                  if ((supplyIndex > 0 && (buildings.SpireMechBay.isSmartManaged() || buildings.SpirePurifier.isSmartManaged()))
+                    && (building.count < getBestSupplyRatio(resources.Spire_Support.maxQuantity, buildings.SpirePort.autoMax, buildings.SpireBaseCamp.autoMax)[supplyIndex])) { return false; }
+                  return true;
+              }
+          },
           () => "Still have some non operating buildings",
           () => settings.buildingWeightingNonOperating
       ],[
@@ -2563,12 +2568,12 @@
           () => "Not needed for Vacuum Collapse prestige",
           () => 0
       ],[
-          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension",
-          (building) => building === buildings.GateMission || ((building === buildings.PitMission || building === buildings.RuinsMission) && isPillarFinished()),
+          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension" && isPillarFinished(),
+          (building) => building === buildings.PitMission || building === buildings.RuinsMission,
           () => "Not needed for Ascension prestige",
           () => 0
       ],[
-          () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isUnlocked() && techIds['tech-mad'].isAffordable(true) && Object.keys(techIds['tech-mad'].cost).every(res => resources[res].isUnlocked()))),
+          () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isUnlocked() && techIds['tech-mad'].isAffordable(true))),
           (building) => !building.is.housing && !building.is.garrison && !building.cost["Knowledge"] && (building !== buildings.OilWell || !game.global.race.terrifying), // Terrifying can't buy oil, keep building rigs
           () => "Awaiting MAD prestige",
           () => settings.buildingWeightingMADUseless
@@ -3755,7 +3760,20 @@
 
         getHellReservedSoldiers(){
             let soldiers = 0;
-            if (buildings.PitSoulForge.count > 0 || buildings.PitAssaultForge.isAutoBuildable()) {
+
+            // Assign soldiers to assault forge once other requirements are met
+            if (buildings.PitAssaultForge.isUnlocked() && buildings.PitAssaultForge.isAutoBuildable()) {
+                let missingRes = Object.entries(buildings.PitAssaultForge.cost).find(([id, amount]) => resources[id].currentQuantity < amount);
+                if (!missingRes) {
+                    soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
+                    if (game.global.race['smoldering']) {
+                        soldiers = Math.round(soldiers * 0.9);
+                    }
+                }
+            }
+
+            // Reserve soldiers operating forge
+            if (buildings.PitSoulForge.count > 0) {
                 // export function soulForgeSoldiers() from portal.js
                 soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
                 if (game.global.portal.gun_emplacement) {
@@ -4922,7 +4940,9 @@
             }
 
             races[id] = new Race(id);
-            races[id].evolutionTree = [e.bunker, e[id], ...(genusEvolution[races[id].genus] ?? [])];
+            // Use fungi as default Valdi genus
+            let evolutionPath = id === "junker" ? genusEvolution.fungi : genusEvolution[races[id].genus];
+            races[id].evolutionTree = [e.bunker, e[id], ...(evolutionPath ?? [])];
         }
     }
 
@@ -5408,7 +5428,8 @@
         setTradePriority(6, ["Cement"]);
         setTradePriority(7, ["Steel"]);
         setTradePriority(8, ["Titanium"]);
-        setTradePriority(9, ["Iridium", "Polymer", "Alloy", "Crystal"]);
+        setTradePriority(9, ["Iridium", "Polymer", "Alloy"]);
+        setTradePriority(-1, ["Crystal"]);
 
         for (let i = 0; i < poly.galaxyOffers.length; i++) {
             let resource = resources[poly.galaxyOffers[i].buy.res];
@@ -6471,8 +6492,8 @@
             }
         }
 
-        // Nothing to attack
-        if (!currentTarget) {
+        // Nothing to attack, or we want to occupy, and need more soldiers
+        if (!currentTarget || (requiredTactic === 4 && m.availableGarrison < getOccCosts() * 2 && m.availableGarrison < m.maxCityGarrison)) {
             return;
         }
 
@@ -10382,7 +10403,7 @@
         let obj = null;
         if (match = dataId.match(/^popArpa([a-z_-]+)\d*$/)) { // "popArpa[id-with-no-tab][quantity]" for projects
             obj = arpaIds["arpa" + match[1]];
-        } else if (match = dataId.match(/^q([a-z_-]+)\d*$/)) { // "q[id][order]" for buildings in queue
+        } else if (match = dataId.match(/^q([A-Za-z_-]+)\d*$/)) { // "q[id][order]" for buildings in queue
             obj = buildingIds[match[1]] || arpaIds[match[1]];
         } else { // "[id]" for buildings and researches
             obj = buildingIds[dataId] || techIds[dataId];
@@ -10430,8 +10451,9 @@
                         throw `Expected type: ${typeof settingsRaw[key]}; Override type: ${typeof check.ret}`;
                     }
                 } catch (error) {
-                    if (!WindowManager.isOpen()) { // Don't spam with errors during configuring
-                        GameLog.logDanger("special", `Condition ${i+1} for setting ${key} invalid! Fix or remove it. (${error})`, ['events', 'major_events']);
+                    let msg = `Condition ${i+1} for setting ${key} invalid! Fix or remove it. (${error})`;
+                    if (!WindowManager.isOpen() && !game.global.lastMsg.all.find(log => log.m === msg)) { // Don't spam with errors
+                        GameLog.logDanger("special", msg, ['events', 'major_events']);
                     }
                     continue; // Some argument not valid, skip condition
                 }
@@ -14475,10 +14497,10 @@
 
         if (!game.global.race['no_trade']) {
             $("#market .market-item[id] .res").width("7.5rem");
-            $("#market .market-item[id] .buy span").text("BUY");
-            $("#market .market-item[id] .sell span").text("SELL");
-            $("#market .market-item[id] .trade > :first-child").text("Routes:");
-            $("#market .market-item[id] .trade .zero").text("Cancel Routes");
+            $("#market .market-item[id] .buy span").text(game.loc('resource_market_buy'));
+            $("#market .market-item[id] .sell span").text(game.loc('resource_market_sell'));
+            $("#market .market-item[id] .trade > :first-child").text(game.loc('resource_market_routes'));
+            $("#market .market-item[id] .trade .zero").text(game.loc('cancel_routes'));
         }
     }
 
