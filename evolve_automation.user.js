@@ -4260,7 +4260,7 @@
 
         WeaponPower: {railgun: 36, laser: 64, p_laser: 54, plasma: 90, phaser: 114, disruptor: 156},
         SensorRange: {visual: 1, radar: 20, lidar: 35, quantum: 60},
-        ClassPower: {corvette: 1, frigate: 1.3, destroyer: 2.75, cruiser: 5.5, battlecruiser: 10, dreadnought: 22},
+        ClassPower: {corvette: 1, frigate: 1.5, destroyer: 2.75, cruiser: 5.5, battlecruiser: 10, dreadnought: 22},
         ClassCrew: {corvette: 2, frigate: 3, destroyer: 4, cruiser: 6, battlecruiser: 8, dreadnought: 10},
 
         Regions: [
@@ -9971,7 +9971,7 @@
 
         let yard = game.global.space.shipyard
         let newShip = settings.fleetOuterShips === "user" ? yard.blueprint : m.getBlueprint();
-        if (!m.isShipAffordable(newShip) || WarManager.currentCityGarrison - m.ClassCrew[newShip.class] < settings.fleetOuterCrew) {
+        if (!m.isShipAffordable(newShip) || WarManager.availableGarrison - m.ClassCrew[newShip.class] < settings.fleetOuterCrew) {
             return;
         }
 
@@ -13293,7 +13293,7 @@
         let shipOptions = [{val: "none", label: "None", hint: "Ship buildign disabled"},
                            {val: "user", label: "Current design", hint: "Build whatever currently set in Ship Yard"},
                            {val: "custom", label: "Preset", hint: "Build ships with components configured below. All components need to be unlocked, and resulting design should have enough power"}];
-        addSettingsNumber(currentNode, "fleetOuterCrew", "Mininum idle soldiers", "Only build ships when amount of idle soldiers, including wounded ones, above give number.");
+        addSettingsNumber(currentNode, "fleetOuterCrew", "Mininum idle soldiers", "Only build ships when amount of idle soldiers, excluding wounded ones, above give number.");
         addSettingsSelect(currentNode, "fleetOuterShips", "Ships to build", "Once avalable and affordable script will build ship of selected design, and send it to region with most piracy * weighting", shipOptions);
 
         for (let [type, parts] of Object.entries(FleetManagerOuter.ShipConfig)) {
