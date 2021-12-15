@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.89
+// @version      3.3.1.91
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -4343,7 +4343,7 @@
             let yard = game.global.space.shipyard;
             for (let [type, part] of Object.entries(ship)) {
                 if (type !== 'name' && yard.blueprint[type] !== part) {
-                    if (this._fleetVue.avail(type, part)) {
+                    if (this._fleetVue.avail(type, this.ShipConfig[type].indexOf(part))) {
                         this._fleetVue.setVal(type, part);
                     } else {
                         return false;
