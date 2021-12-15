@@ -6315,8 +6315,9 @@
     function resetFleetSettings(reset) {
         let def = {
             autoFleet: false,
-            fleetOuterShips: "custom",
             fleetOuterCrew: 30,
+            fleetOuterShips: "custom",
+            fleetOuterMinSyndicate: 0.1,
             fleetMaxCover: true,
             fleetEmbassyKnowledge: 6000000,
             fleetAlienGiftKnowledge: 6500000,
@@ -9976,7 +9977,7 @@
         }
 
         let regionsToProtect = m.Regions
-          .filter(reg => reg.dest && m.isUnlocked(reg.id) && m.getWeighting(reg.id) > 0 && m.syndicate(reg.id, false, true) < 1)
+          .filter(reg => reg.dest && m.isUnlocked(reg.id) && m.getWeighting(reg.id) > 0 && m.syndicate(reg.id, false, true) < (1 - settings.fleetOuterMinSyndicate))
           .sort((a, b) => ((1 - m.syndicate(b.id, false, true)) * m.getWeighting(b.id))
                         - ((1 - m.syndicate(a.id, false, true)) * m.getWeighting(a.id)));
         if (regionsToProtect.length < 1) {
@@ -13185,7 +13186,7 @@
         addSettingsSelect(currentNode, "foreignPolicySuperior", "Superior Power", "Perform this against superior foreign power, with military power above given threshold. Complex actions includes required preparation - Annex and Purchase will incite and influence, Occupy will sabotage, until said options will be available.", policyOptions);
 
         let rivalOptions = [{val: "Ignore", label: "Ignore", hint: ""},
-                            {val: "Influence", label: "Aliance", hint: ""},
+                            {val: "Influence", label: "Alliance", hint: ""},
                             {val: "Sabotage", label: "War", hint: ""}];
         addSettingsSelect(currentNode, "foreignPolicyRival", "Rival Power (The True Path)", "Perform this against rival foreign power.", rivalOptions);
 
@@ -13290,12 +13291,13 @@
 
     function updateFleetOuter(currentNode, secondaryPrefix) {
         addStandardHeading(currentNode, "Outer Solar");
+        addSettingsNumber(currentNode, "fleetOuterCrew", "Minimum idle soldiers", "Only build ships when amount of idle soldiers, excluding wounded ones, above give number.");
+        addSettingsNumber(currentNode, "fleetOuterMinSyndicate", "Minimum syndicate", "Send ships only to regions with syndicate activity above given level.");
+
         let shipOptions = [{val: "none", label: "None", hint: "Ship buildign disabled"},
                            {val: "user", label: "Current design", hint: "Build whatever currently set in Ship Yard"},
                            {val: "custom", label: "Preset", hint: "Build ships with components configured below. All components need to be unlocked, and resulting design should have enough power"}];
-        addSettingsNumber(currentNode, "fleetOuterCrew", "Mininum idle soldiers", "Only build ships when amount of idle soldiers, excluding wounded ones, above give number.");
         addSettingsSelect(currentNode, "fleetOuterShips", "Ships to build", "Once avalable and affordable script will build ship of selected design, and send it to region with most piracy * weighting", shipOptions);
-
         for (let [type, parts] of Object.entries(FleetManagerOuter.ShipConfig)) {
             let partOptions = parts.map(id => ({val: id, label: game.loc(`outer_shipyard_${type}_${id}`)}));
             addSettingsSelect(currentNode, `fleet_outer_${type}`, game.loc(`outer_shipyard_${type}`), "Preset ship component", partOptions);
