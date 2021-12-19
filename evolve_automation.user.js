@@ -4078,9 +4078,6 @@
                 let missingRes = Object.entries(buildings.PitAssaultForge.cost).find(([id, amount]) => resources[id].currentQuantity < amount);
                 if (!missingRes) {
                     soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
-                    if (game.global.race['smoldering']) {
-                        soldiers = Math.round(soldiers * 0.9);
-                    }
                 }
             }
 
@@ -7862,7 +7859,7 @@
                 smeltAdjust.Steel += steelRemoved;
             } else {
                 smeltAdjust.Steel += smelterSteelCount;
-                //smeltAdjust.Iridium += steelRemoved - smelterSteelCount;
+                smeltAdjust.Iridium += steelRemoved - smelterSteelCount;
             }
         }
 
@@ -12425,12 +12422,12 @@
         .on('click', {label: "Prestige Type (prestigeType)", name: "prestigeType", type: "select", options: prestigeOptions}, openOverrideModal);
 
         addSettingsToggle(currentNode, "prestigeWaitAT", "Use all Accelerated Time", "Delay reset until all accelerated time will be used");
+        addSettingsToggle(currentNode, "prestigeMADIgnoreArpa", "Ignore early game A.R.P.A.", "Disables building any A.R.P.A. projects until MAD is researched, or rival have appeared");
         addSettingsToggle(currentNode, "prestigeBioseedConstruct", "Ignore useless buildings", "Space Dock, Bioseeder Ship and Probes will be constructed only when Bioseed prestige enabled. World Collider won't be constructed during Bioseed. Jump Ship won't be constructed during Whitehole. Stellar Engine won't be constucted during Vacuum Collapse.");
         addSettingsNumber(currentNode, "prestigeEnabledBarracks", "Percent of active barracks after unification", "Percent of barracks to keep enabled after unification, disabling some of them can reduce stress. All barracks will be enabled back when Bioseeder Ship will be at 90%, or after building World Collider");
 
         // MAD
         addSettingsHeader1(currentNode, "Mutual Assured Destruction");
-        addSettingsToggle(currentNode, "prestigeMADIgnoreArpa", "Pre-MAD: Ignore A.R.P.A.", "Disables building A.R.P.A. projects until MAD is researched");
         addSettingsToggle(currentNode, "prestigeMADWait", "Wait for maximum population", "Wait for maximum population and soldiers to maximize plasmids gain");
         addSettingsNumber(currentNode, "prestigeMADPopulation", "Required population", "Required number of workers and soldiers before performing MAD reset");
 
