@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.91
+// @version      3.3.1.92
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -3099,7 +3099,7 @@
             Iron: {id: "Iron", unlocked: () => true, resource: resources.Iron, cost: []},
             Steel: {id: "Steel", unlocked: () => resources.Steel.isUnlocked() && haveTech("smelting", 2), resource: resources.Steel,
                     cost: [new ResourceProductionCost(resources.Coal, 0.25, 1.25), new ResourceProductionCost(resources.Iron, 2, 6)]},
-            Iridium: {id: "Iridium", unlocked: () => resources.Iridium.isUnlocked() && haveTech("m_smelting", 2), resource: resources.Iridium, cost: []},
+            Iridium: {id: "Iridium", unlocked: () => resources.Iridium.isUnlocked() && (haveTech("m_smelting", 2) || haveTech("irid_smelting")), resource: resources.Iridium, cost: []},
         }, [ResourceProductionCost]),
 
         Fuels: addProps(normalizeProperties({
