@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.91.3
+// @version      3.3.1.91.4
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -11305,12 +11305,22 @@
                 "Sirius Ascension Machine (Complete)":"飞升装置（已完成）",
                 "Shed":"仓库",
                 "Alpha Warehouse":"半人马座α星系仓库",
-                "Titan Habitat":"最大卫星定居点",
-                "Alpha Habitat":"半人马座定居点",
-                "Red Mine":"红色星球行星矿井",
-                "Titan Mine":"最大卫星行星矿井",
+                "Titan Habitat":evolve.actions.space.spc_titan.info.name() + "定居点",
+                "Alpha Habitat":"半人马座α星系定居点",
+                "Red Mine":evolve.actions.space.spc_red.info.name() + "行星矿井",
+                "Titan Mine":evolve.actions.space.spc_titan.info.name() + "行星矿井",
                 "Dwarf Mass Relay":"质量中继器",
                 "Dwarf Mass Relay (Complete)":"质量中继器（已完成）",
+                "Hell Space Casino":"太空赌场",
+                "Red Spaceport":evolve.actions.space.spc_red.info.name() + "太空港",
+                "Titan Spaceport":evolve.actions.space.spc_titan.info.name() + "太空港",
+                "Red Horseshoe (Cataclysm)":"锻造马蹄铁（大灾变）",
+                "Red Nanite Factory (Cataclysm)":"纳米机器人工厂（大灾变）",
+                "Red Assembly (Cataclysm)":"装配工厂（大灾变）",
+                "Alpha Graphene Plant":"半人马座α星系石墨烯厂",
+                "Titan Graphene Plant":evolve.actions.space.spc_titan.info.name() + "石墨烯厂",
+                "Titan Bank":evolve.actions.space.spc_titan.info.name() + "银行",
+                "Titan AI Core (Complete)":"AI超级核心（已完成）",
                 '':'',
                 '':'',
                 '':'',
