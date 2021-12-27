@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.92
+// @version      3.3.1.92.1
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -11023,7 +11023,7 @@
         let dataId = node.dataset.id;
         // Tooltips for things with no script objects
         if (dataId === 'powerStatus') {
-            $(node).append(`<p class="modal_bd"><span>Disabled</span><span class="has-text-danger">${getNiceNumber(resources.Power.maxQuantity)}</span></p>`);
+            $(node).append(`<p class="modal_bd"><span>未启用</span><span class="has-text-danger">${getNiceNumber(resources.Power.maxQuantity)}</span></p>`);
             return;
         } else if (infusionStep[dataId]) {
             $(node).find('.costList .res-Blood_Stone').append(` (+${infusionStep[dataId]})`);
@@ -11047,7 +11047,7 @@
         if (obj === buildings.BlackholeStellarEngine && buildings.BlackholeMassEjector.count > 0 && game.global.interstellar.stellar_engine.exotic < 0.025) {
             let massPerSec = (resources.Elerium.atomicMass * game.global.interstellar.mass_ejector.Elerium + resources.Infernite.atomicMass * game.global.interstellar.mass_ejector.Infernite) || -1;
             let missingExotics = (0.025 - game.global.interstellar.stellar_engine.exotic) * 1e10;
-            $(node).append(`<div id="popTimer" class="flair has-text-advanced">Contaminated in [${poly.timeFormat(missingExotics / massPerSec)}]</div>`);
+            $(node).append(`<div id="popTimer" class="flair has-text-advanced">[${poly.timeFormat(missingExotics / massPerSec)}]后可进行奇异灌输</div>`);
         }
 
         let description = getTooltipInfo(obj);
