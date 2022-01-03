@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.92.2
+// @version      3.3.1.92.3
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -14232,8 +14232,8 @@
             <tr>
               <th class="has-text-warning" style="width:35%">资源名称</th>
               <th class="has-text-warning" style="width:20%">是否启用</th>
-              <th class="has-text-warning" style="width:20%" title="Ratio between resources. Script assign craftsmans to resource with lowest 'amount / weighting'. Ignored by manual crafting.">权重</th>
-              <th class="has-text-warning" style="width:20%" title="Only craft resource when storage ratio of all required materials above given number. E.g. bricks with 0.1 min materials will be crafted only when cement storage at least 10% filled.">Min Materials</th>
+              <th class="has-text-warning" style="width:20%" title="资源的权重。脚本会优先将工匠分配给(资源数量除以权重)较低的锻造物。手动锻造时无效。">权重</th>
+              <th class="has-text-warning" style="width:20%" title="只在原材料大于相应比例时进行锻造。例如，将砌砖设为0.1，则只会在水泥数量超过库存上限10%的时候锻造砌砖。">锻造物原料保底产量</th>
               <th style="width:5%"></th>
             </tr>
             <tbody id="script_productionTableBodyFoundry"></tbody>
@@ -14564,7 +14564,7 @@
               <th class="has-text-warning" style="width:35%">建筑物</th>
               <th class="has-text-warning" style="width:15%" title="开启自动建造。触发器无视此选项。">是否自动建造</th>
               <th class="has-text-warning" style="width:15%" title="建造上限。触发器无视此选项。开启上方相应选项以后还可以用来限制供能的建筑数量。">建造上限</th>
-              <th class="has-text-warning" style="width:15%" title="Script will try to spend 2x amount of resources on building having 2x weighting, and such.">权重</th>
+              <th class="has-text-warning" style="width:15%" title="权重越高，将优先使用越多资源来进行建造。">权重</th>
               <th class="has-text-warning" style="width:20%" title="第一个开关会根据优先级，供能情况，支持，和消耗情况来控制供能。第二个开关可以更好地根据当前情况控制特定建筑的供能。">是否自动供能</th>
             </tr>
             <tbody id="script_buildingTableBody"></tbody>
