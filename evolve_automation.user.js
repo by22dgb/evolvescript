@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.92
+// @version      3.3.1.93
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1233,9 +1233,9 @@
             if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic")) {
                 weighting += 1000 * Math.max(0, starLevel - (game.global.pillars[this.id] ?? 0));
                 // Check genus pillar for Enlightenment
-                if (this.id !== "custom" && this.id !== "junker") {
+                if (this.id !== "custom" && this.id !== "junker" && this.id !== "sludge") {
                     let genusPillar = Math.max(...Object.values(races)
-                      .filter(r => r.id !== "custom" && r.id !== "junker")
+                      .filter(r => r.id !== "custom" && r.id !== "junker" & r.id !== "sludge")
                       .map(r => (game.global.pillars[r.id] ?? 0)));
                     weighting += 10000 * Math.max(0, starLevel - genusPillar);
                 }
@@ -1277,7 +1277,7 @@
             }
 
             // Increase weight for suited conditional races with achievements
-            if (weighting > 0 && habitability === 1 && this.getCondition() !== '' && this.id !== "junker") {
+            if (weighting > 0 && habitability === 1 && this.getCondition() !== '' && this.id !== "junker" && this.id !== "sludge") {
                 weighting += 500;
             }
 
@@ -1342,7 +1342,7 @@
             }
 
             // Ignore Valdi on low star, and decrease weight on any other star
-            if (this.id === "junker") {
+            if (this.id === "junker" || this.id === "sludge") {
                 weighting *= starLevel < 5 ? 0 : 0.01;
             }
 
@@ -1355,6 +1355,9 @@
         getHabitability() {
             if (this.id === "junker") {
                 return game.global.genes.challenge ? 1 : 0;
+            }
+            if (this.id === "sludge") {
+                return ((game.global.stats.achieve['ascended'] || game.global.stats.achieve['corrupted']) && game.global.stats.achieve['extinct_junker']) ? 1 : 0;
             }
 
             switch (this.genus) {
@@ -1383,7 +1386,10 @@
 
         getCondition() {
             if (this.id === "junker") {
-                return "Challenge genes unlocked";
+                return "Genetic Dead End unlocked";
+            }
+            if (this.id === "sludge") {
+                return "Failed Experiment unlocked";
             }
 
             switch (this.genus) {
@@ -1651,6 +1657,7 @@
         [{id:"decay", trait:"decay"}],
         [{id:"emfield", trait:"emfield"}],
         [{id:"inflation", trait:"inflation"}],
+        [{id:"sludge", trait:"sludge"}],
         [{id:"junker", trait:"junker"}],
         [{id:"cataclysm", trait:"cataclysm"}],
         [{id:"banana", trait:"banana"}],
@@ -3864,7 +3871,7 @@
                     }
 
                     // Do not attack if policy set to influence, or we're ready to unify
-                    if (currentTarget.policy === "Influence" || (readyToUnify && currentTarget.policy !== "Occupy")) {
+                    if (currentTarget.policy === "Influence" || (readyToUnify && currentTarget.policy !== "Occupy") || (currentTarget.policy === "Betrayal" && currentTarget.gov.mil > 75)) {
                         currentTarget = null;
                     }
                 }
@@ -4978,9 +4985,9 @@
                     project.weighting = 0;
                     project.extraDescription = "Maximum amount reached<br>";
                 }
-                if (settings.prestigeMADIgnoreArpa && !haveTech("mad") && !haveTech("rival") && !game.global.race['cataclysm']) {
+                if (settings.prestigeMADIgnoreArpa && isEarlyGame()) {
                     project.weighting = 0;
-                    project.extraDescription = "Projects ignored PreMAD<br>";
+                    project.extraDescription = "Projects ignored Pre-MAD<br>";
                 }
                 if (state.queuedTargets.includes(project)) {
                     project.weighting = 0;
@@ -5463,7 +5470,7 @@
 
             races[id] = new Race(id);
             // Use fungi as default Valdi genus
-            let evolutionPath = id === "junker" ? genusEvolution.fungi : genusEvolution[races[id].genus];
+            let evolutionPath = (id === "junker" || id === "sludge") ? genusEvolution.fungi : genusEvolution[races[id].genus];
             races[id].evolutionTree = [e.bunker, e[id], ...(evolutionPath ?? [])];
         }
     }
@@ -7020,7 +7027,18 @@
                 continue;
             }
 
-            let espionageMission = m.Types[foreign.policy === "Occupy" ? "Sabotage" : foreign.policy];
+            let espionageMission = null;
+            if (foreign.policy === "Betrayal") {
+                if (foreign.gov.mil <= 75 || foreign.gov.hstl <= 0) {
+                    espionageMission = m.Types.Sabotage;
+                } else {
+                    espionageMission = m.Types.Influence;
+                }
+            } else if (foreign.policy === "Occupy") {
+                espionageMission = m.Types.Sabotage;
+            } else {
+                espionageMission = m.Types[foreign.policy];
+            }
             if (!espionageMission) {
                 continue;
             }
@@ -9312,7 +9330,7 @@
             numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, resources[res].currentQuantity / resources.Containers.cost[res]);
         }
 
-        if (settings.storageLimitPreMad && !game.global.race['cataclysm'] && !haveTech("mad") && !haveTech("rival")) {
+        if (settings.storageLimitPreMad && isEarlyGame()) {
           // Only build pre-mad containers when steel storage is over 80%
           if (resources.Steel.storageRatio < 0.8) {
               numberOfContainersWeCanBuild = 0;
@@ -10488,7 +10506,7 @@
         }
 
         // Unlocked and affordable techs, but only if we don't have anything more important
-        if (prioritizedTasks.length === 0 && ((game.global.race['cataclysm'] || haveTech("mad")) ? settings.researchRequestSpace : settings.researchRequest)) {
+        if (prioritizedTasks.length === 0 && (isEarlyGame() ? settings.researchRequest : settings.researchRequestSpace)) {
             prioritizedTasks = state.unlockedTechs.filter(t => t.isAffordable());
         }
 
@@ -11041,7 +11059,7 @@
         }
 
         // Flair, added before other descriptions
-        if (obj === buildings.BlackholeStellarEngine && buildings.BlackholeMassEjector.count > 0 && game.global.interstellar.stellar_engine.exotic < 0.025) {
+        if (obj === buildings.BlackholeStellarEngine && game.global.race.universe !== "magic" && buildings.BlackholeMassEjector.count > 0 && game.global.interstellar.stellar_engine.exotic < 0.025) {
             let massPerSec = (resources.Elerium.atomicMass * game.global.interstellar.mass_ejector.Elerium + resources.Infernite.atomicMass * game.global.interstellar.mass_ejector.Infernite) || -1;
             let missingExotics = (0.025 - game.global.interstellar.stellar_engine.exotic) * 1e10;
             $(node).append(`<div id="popTimer" class="flair has-text-advanced">Contaminated in [${poly.timeFormat(missingExotics / massPerSec)}]</div>`);
@@ -11061,6 +11079,12 @@
             for (let i = 0; i < conditions.length; i++) {
                 let check = conditions[i];
                 try {
+                    if (!checkTypes[check.type1]) {
+                        throw `${check.type1} check not found`;
+                    }
+                    if (!checkTypes[check.type2]) {
+                        throw `${check.type2} check not found`;
+                    }
                     let var1 = checkTypes[check.type1].fn(check.arg1);
                     let var2 = checkTypes[check.type2].fn(check.arg2);
                     if (!checkCompare[check.cmp](var1, var2)) {
@@ -11778,10 +11802,12 @@
            {val: "evo", label: "Evolution", hint: "Evolution queue"}]},
         date: {def: "day", arg: "select_cb", options: () =>
           [{val: "day", label: "Day (Year)", hint: "Day of year"},
-           {val: "moon", label: "Day (Month)", hint: "Day of month"},
+           {val: "moon", label: "Day (Month)", hint: "Day of month (0-27 range)"},
            {val: "total", label: "Day (Total)", hint: "Day of run"},
            {val: "year", label: "Year", hint: "Year of run"},
-           {val: "orbit", label: "Orbit", hint: "Planet orbit in days"}]},
+           {val: "orbit", label: "Orbit", hint: "Planet orbit in days"},
+           {val: "season", label: "Season", hint: "Current season (0 - Spring, 1 - Summer, 2 - Fall, 3 - Winter)"},
+           {val: "temp", label: "Temperature", hint: "Current temperature (0 - Cold, 1 - Normal, 2 - Hot)"}]},
         soldiers: {def: "workers", arg: "select_cb", options: () =>
           [{val: "workers", label: "Total Soldiers"},
            {val: "max", label: "Total Soldiers Max"},
@@ -11841,10 +11867,12 @@
         ResourceIncome: { fn: (r) => resources[r].rateOfChange, ...argType.resource, desc: "Returns current income of resource or unused support as number" }, // rateOfChange holds full diff of resource at the moment when overrides checked
         ResourceRatio: { fn: (r) => resources[r].storageRatio, ...argType.resource, desc: "Returns storage ratio of resource as number. Number 0.5 means that storage is 50% full, and such." },
         ResourceSatisfied: { fn: (r) => resources[r].usefulRatio >= 1, ...argType.resource, desc: "Returns true when current amount of resource above maximum costs" },
+        ResourceSatisfyRatio: { fn: (r) => resources[r].usefulRatio, ...argType.resource, desc: "Returns satisfy ratio of resource. Number 0.5 means that storead amount equal half of maximum costs" },
         ResourceDemanded: { fn: (r) => resources[r].isDemanded(), ...argType.resource, desc: "Returns true when resource is demanded, i.e. missed by some prioritized task, such as queue or trigger" },
         RaceId: { fn: (r) => argMap.race(r), ...argType.race, desc: "Returns ID of selected race as string" },
         RacePillared: { fn: (r) => game.global.pillars[argMap.race(r)] >= game.alevel(), ...argType.race, desc: "Returns true when selected race pillared at current star level" },
         RaceGenus: { fn: (g) => races[game.global.race.species]?.genus === g, ...argType.genus, desc: "Returns true when playing selected genus" },
+        RaceImitation: { fn: (r) => game.global.race.srace === argMap.race(r), ...argType.race, desc: "Returns true when imitating selected race" },
         MimicGenus: { fn: (g) => (game.global.race.ss_genus ?? 'none') === g, ...argType.genus_ss, desc: "Returns true when mimicking selected genus" },
         TraitLevel: { fn: (t) => game.global.race[t] ?? 0, ...argType.trait, desc: "Returns trait level as number" },
         ResetType: { fn: (r) => settings.prestigeType === r, arg: "select", options: prestigeOptions, def: "mad", desc: "Returns true when selected reset is active" },
@@ -13177,9 +13205,10 @@
         addSettingsSelect(currentNode, "foreignPolicyInferior", "Inferior Power", "Perform this against inferior foreign power, with military power equal or below given threshold. Complex actions includes required preparation - Annex and Purchase will incite and influence, Occupy will sabotage, until said options will be available.", policyOptions);
         addSettingsSelect(currentNode, "foreignPolicySuperior", "Superior Power", "Perform this against superior foreign power, with military power above given threshold. Complex actions includes required preparation - Annex and Purchase will incite and influence, Occupy will sabotage, until said options will be available.", policyOptions);
 
-        let rivalOptions = [{val: "Ignore", label: "Ignore", hint: ""},
-                            {val: "Influence", label: "Alliance", hint: ""},
-                            {val: "Sabotage", label: "War", hint: ""}];
+        let rivalOptions = [{val: "Ignore", label: "Ignore", hint: "Does nothing"},
+                            {val: "Influence", label: "Alliance", hint: "Influence rival up to best relations"},
+                            {val: "Sabotage", label: "War", hint: "Sabotage and plunder rival"},
+                            {val: "Betrayal", label: "Betrayal", hint: "Influence rival up to best relations, and start sabotaging. Once military power reached minimum - start plundering it"}];
         addSettingsSelect(currentNode, "foreignPolicyRival", "Rival Power (The True Path)", "Perform this against rival foreign power.", rivalOptions);
 
         // Campaign panel
@@ -14030,7 +14059,7 @@
                               {val: "storage", label: "Up to full storages", hint: "Produce both Iron and Steel at ratio which will fill both storages at same time for both"},
                               {val: "required", label: "Up to required amounts", hint: "Produce both Iron and Steel at ratio which will produce maximum amount of resources required for buildings at same time for both"}];
         addSettingsSelect(currentNode, "productionSmelting", "Smelters production", "Distribution of smelters between iron and steel", smelterOptions);
-        addSettingsNumber(currentNode, "productionSmeltingIridium", "Iridium ratio (The True Path)", "Share of smelters dedicated to Iridium");
+        addSettingsNumber(currentNode, "productionSmeltingIridium", "Iridium ratio", "Share of smelters dedicated to Iridium");
 
         currentNode.append(`
           <table style="width:100%">
@@ -14985,7 +15014,7 @@
             createSettingToggle(scriptNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(scriptNode, 'autoPower', 'Manages power based on a priority order of buildings. Also disables currently useless buildings to save up resources.');
             createSettingToggle(scriptNode, 'autoStorage', 'Assigns crates and containers to resources needed for buildings enabled for Auto Build, queued buildings, researches, and enabled projects', createStorageToggles, removeStorageToggles);
-            createSettingToggle(scriptNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximise your trade routes.', createMarketToggles, removeMarketToggles);
+            createSettingToggle(scriptNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximize your trade routes.', createMarketToggles, removeMarketToggles);
             createSettingToggle(scriptNode, 'autoGalaxyMarket', 'Manages galaxy trade routes');
             createSettingToggle(scriptNode, 'autoResearch', 'Performs research when minimum requirements are met.');
             createSettingToggle(scriptNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
@@ -15522,6 +15551,16 @@
 
     function haveTech(research, level = 1) {
         return game.global.tech[research] && game.global.tech[research] >= level;
+    }
+
+    function isEarlyGame() {
+        if (game.global.race['cataclysm']) {
+            return false;
+        } else if (game.global.race['truepath'] || game.global.race['sludge']) {
+            return !haveTech("high_tech", 7);
+        } else {
+            return !haveTech("mad");
+        }
     }
 
     function isHungryRace() {
