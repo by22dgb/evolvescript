@@ -1244,7 +1244,7 @@
             // Check greatness\extinction achievement
             if (settings.prestigeType === "bioseed" || settings.prestigeType === "ascension") {
                 checkAchievement(100, "genus_" + this.genus);
-            }  else {
+            } else if (this.id !== "sludge" || settings.prestigeType !== "mad") {
                 checkAchievement(100, "extinct_" + this.id);
             }
 
@@ -1338,6 +1338,16 @@
                 // Twisted
                 if (settings.prestigeType === "demonic" && this.genus === "angelic") {
                     checkFeat("twisted");
+                }
+
+                // Digital Ascension
+                if (settings.prestigeType === "ascension" && settings.challenge_emfield && this.genus === "artifical" && this.id !== "custom") {
+                    checkFeat("digital_ascension");
+                }
+
+                // Slime Lord
+                if (settings.prestigeType === "demonic" && this.id === "sludge") {
+                    checkFeat("slime_lord");
                 }
             }
 
