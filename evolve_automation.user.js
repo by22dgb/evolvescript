@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.92.3
+// @version      3.3.1.93
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -1236,9 +1236,9 @@
             if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic")) {
                 weighting += 1000 * Math.max(0, starLevel - (game.global.pillars[this.id] ?? 0));
                 // Check genus pillar for Enlightenment
-                if (this.id !== "custom" && this.id !== "junker") {
+                if (this.id !== "custom" && this.id !== "junker" && this.id !== "sludge") {
                     let genusPillar = Math.max(...Object.values(races)
-                      .filter(r => r.id !== "custom" && r.id !== "junker")
+                      .filter(r => r.id !== "custom" && r.id !== "junker" & r.id !== "sludge")
                       .map(r => (game.global.pillars[r.id] ?? 0)));
                     weighting += 10000 * Math.max(0, starLevel - genusPillar);
                 }
@@ -1247,7 +1247,7 @@
             // Check greatness\extinction achievement
             if (settings.prestigeType === "bioseed" || settings.prestigeType === "ascension") {
                 checkAchievement(100, "genus_" + this.genus);
-            }  else {
+            } else if (this.id !== "sludge" || settings.prestigeType !== "mad") {
                 checkAchievement(100, "extinct_" + this.id);
             }
 
@@ -1280,7 +1280,7 @@
             }
 
             // Increase weight for suited conditional races with achievements
-            if (weighting > 0 && habitability === 1 && this.getCondition() !== '' && this.id !== "junker") {
+            if (weighting > 0 && habitability === 1 && this.getCondition() !== '' && this.id !== "junker" && this.id !== "sludge") {
                 weighting += 500;
             }
 
@@ -1342,10 +1342,20 @@
                 if (settings.prestigeType === "demonic" && this.genus === "angelic") {
                     checkFeat("twisted");
                 }
+
+                // Digital Ascension
+                if (settings.prestigeType === "ascension" && settings.challenge_emfield && this.genus === "artifical" && this.id !== "custom") {
+                    checkFeat("digital_ascension");
+                }
+
+                // Slime Lord
+                if (settings.prestigeType === "demonic" && this.id === "sludge") {
+                    checkFeat("slime_lord");
+                }
             }
 
             // Ignore Valdi on low star, and decrease weight on any other star
-            if (this.id === "junker") {
+            if (this.id === "junker" || this.id === "sludge") {
                 weighting *= starLevel < 5 ? 0 : 0.01;
             }
 
@@ -1358,6 +1368,9 @@
         getHabitability() {
             if (this.id === "junker") {
                 return game.global.genes.challenge ? 1 : 0;
+            }
+            if (this.id === "sludge") {
+                return ((game.global.stats.achieve['ascended'] || game.global.stats.achieve['corrupted']) && game.global.stats.achieve['extinct_junker']) ? 1 : 0;
             }
 
             switch (this.genus) {
@@ -1386,7 +1399,10 @@
 
         getCondition() {
             if (this.id === "junker") {
-                return "Challenge genes unlocked";
+                return "解锁遗传绝境剧情模式";
+            }
+            if (this.id === "sludge") {
+                return "解锁实验失败挑战";
             }
 
             switch (this.genus) {
@@ -1654,6 +1670,7 @@
         [{id:"decay", trait:"decay"}],
         [{id:"emfield", trait:"emfield"}],
         [{id:"inflation", trait:"inflation"}],
+        [{id:"sludge", trait:"sludge"}],
         [{id:"junker", trait:"junker"}],
         [{id:"cataclysm", trait:"cataclysm"}],
         [{id:"banana", trait:"banana"}],
@@ -3867,7 +3884,7 @@
                     }
 
                     // Do not attack if policy set to influence, or we're ready to unify
-                    if (currentTarget.policy === "Influence" || (readyToUnify && currentTarget.policy !== "Occupy")) {
+                    if (currentTarget.policy === "Influence" || (readyToUnify && currentTarget.policy !== "Occupy") || (currentTarget.policy === "Betrayal" && currentTarget.gov.mil > 75)) {
                         currentTarget = null;
                     }
                 }
@@ -4981,7 +4998,7 @@
                     project.weighting = 0;
                     project.extraDescription = "已达建造上限<br>";
                 }
-                if (settings.prestigeMADIgnoreArpa && !haveTech("mad") && !haveTech("rival") && !game.global.race['cataclysm']) {
+                if (settings.prestigeMADIgnoreArpa && isEarlyGame()) {
                     project.weighting = 0;
                     project.extraDescription = "核爆重置阶段之前忽略项目<br>";
                 }
@@ -5466,7 +5483,7 @@
 
             races[id] = new Race(id);
             // Use fungi as default Valdi genus
-            let evolutionPath = id === "junker" ? genusEvolution.fungi : genusEvolution[races[id].genus];
+            let evolutionPath = (id === "junker" || id === "sludge") ? genusEvolution.fungi : genusEvolution[races[id].genus];
             races[id].evolutionTree = [e.bunker, e[id], ...(evolutionPath ?? [])];
         }
     }
@@ -7023,7 +7040,18 @@
                 continue;
             }
 
-            let espionageMission = m.Types[foreign.policy === "Occupy" ? "Sabotage" : foreign.policy];
+            let espionageMission = null;
+            if (foreign.policy === "Betrayal") {
+                if (foreign.gov.mil <= 75 || foreign.gov.hstl <= 0) {
+                    espionageMission = m.Types.Sabotage;
+                } else {
+                    espionageMission = m.Types.Influence;
+                }
+            } else if (foreign.policy === "Occupy") {
+                espionageMission = m.Types.Sabotage;
+            } else {
+                espionageMission = m.Types[foreign.policy];
+            }
             if (!espionageMission) {
                 continue;
             }
@@ -9315,7 +9343,7 @@
             numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, resources[res].currentQuantity / resources.Containers.cost[res]);
         }
 
-        if (settings.storageLimitPreMad && !game.global.race['cataclysm'] && !haveTech("mad") && !haveTech("rival")) {
+        if (settings.storageLimitPreMad && isEarlyGame()) {
           // Only build pre-mad containers when steel storage is over 80%
           if (resources.Steel.storageRatio < 0.8) {
               numberOfContainersWeCanBuild = 0;
@@ -10491,7 +10519,7 @@
         }
 
         // Unlocked and affordable techs, but only if we don't have anything more important
-        if (prioritizedTasks.length === 0 && ((game.global.race['cataclysm'] || haveTech("mad")) ? settings.researchRequestSpace : settings.researchRequest)) {
+        if (prioritizedTasks.length === 0 && (isEarlyGame() ? settings.researchRequest : settings.researchRequestSpace)) {
             prioritizedTasks = state.unlockedTechs.filter(t => t.isAffordable());
         }
 
@@ -10636,14 +10664,14 @@
                 if (newRace.getWeighting() <= 0) {
                     let bestWeighting = Math.max(...Object.values(races).map(r => r.getWeighting()));
                     if (bestWeighting > 0) {
-                        GameLog.logDanger("special", `${newRace.name} have no unearned achievements for current prestige, soft resetting and trying again.`, ['progress', 'achievements']);
+                        GameLog.logDanger("special", `${newRace.name}已经获得当前威望重置方式可以获得的所有成就，尝试软重置并重试。`, ['progress', 'achievements']);
                         needReset = true;
                     } else {
-                        GameLog.logWarning("special", `Can't pick a race with unearned achievements for current prestige. Continuing with ${newRace.name}.`, ['progress', 'achievements']);
+                        GameLog.logWarning("special", `当前威望重置方式不存在未获得相应成就的种族。以${newRace.name}继续进化。`, ['progress', 'achievements']);
                     }
                 }
             } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
-                GameLog.logDanger("special", `Wrong race, soft resetting and trying again.`, ['progress']);
+                GameLog.logDanger("special", `种族错误，尝试软重置并重试。`, ['progress']);
                 needReset = true;
             }
 
@@ -11044,7 +11072,7 @@
         }
 
         // Flair, added before other descriptions
-        if (obj === buildings.BlackholeStellarEngine && buildings.BlackholeMassEjector.count > 0 && game.global.interstellar.stellar_engine.exotic < 0.025) {
+        if (obj === buildings.BlackholeStellarEngine && game.global.race.universe !== "magic" && buildings.BlackholeMassEjector.count > 0 && game.global.interstellar.stellar_engine.exotic < 0.025) {
             let massPerSec = (resources.Elerium.atomicMass * game.global.interstellar.mass_ejector.Elerium + resources.Infernite.atomicMass * game.global.interstellar.mass_ejector.Infernite) || -1;
             let missingExotics = (0.025 - game.global.interstellar.stellar_engine.exotic) * 1e10;
             $(node).append(`<div id="popTimer" class="flair has-text-advanced">[${poly.timeFormat(missingExotics / massPerSec)}]后可进行奇异灌输</div>`);
@@ -11064,6 +11092,12 @@
             for (let i = 0; i < conditions.length; i++) {
                 let check = conditions[i];
                 try {
+                    if (!checkTypes[check.type1]) {
+                        throw `${check.type1} check not found`;
+                    }
+                    if (!checkTypes[check.type2]) {
+                        throw `${check.type2} check not found`;
+                    }
                     let var1 = checkTypes[check.type1].fn(check.arg1);
                     let var2 = checkTypes[check.type2].fn(check.arg2);
                     if (!checkCompare[check.cmp](var1, var2)) {
@@ -11879,10 +11913,12 @@
            {val: "evo", label: "进化", hint: "进化队列"}]},
         date: {def: "day", arg: "select_cb", options: () =>
           [{val: "day", label: "天数(年)", hint: "一年中的第几天"},
-           {val: "moon", label: "天数(月)", hint: "一月中的第几天"},
+           {val: "moon", label: "天数(月)", hint: "一月中的第几天(范围为0到27)"},
            {val: "total", label: "天数(总)", hint: "本轮游戏天数"},
            {val: "year", label: "年数", hint: "本轮游戏年数"},
-           {val: "orbit", label: "公转天数", hint: "行星公转的天数"}]},
+           {val: "orbit", label: "公转天数", hint: "行星公转的天数"},
+           {val: "season", label: "季节", hint: "当前季节(0为春天，1为夏天，2为秋天，3为冬天)"},
+           {val: "temp", label: "温度", hint: "当前温度(0为寒冷，1为温度适中，2为炎热)"}]},
         soldiers: {def: "workers", arg: "select_cb", options: () =>
           [{val: "workers", label: "士兵总数"},
            {val: "max", label: "士兵总上限"},
@@ -11942,10 +11978,12 @@
         ResourceIncome: { fn: (r) => resources[r].rateOfChange, ...argType.resource, desc: "以数值形式返回当前资源收入或未使用的支持的数量", title:"资源收入" }, // rateOfChange holds full diff of resource at the moment when overrides checked
         ResourceRatio: { fn: (r) => resources[r].storageRatio, ...argType.resource, desc: "以数值形式返回当前资源与上限比值的数量。0.5意味着资源到达了储量上限的50%，以此类推。", title:"资源比例" },
         ResourceSatisfied: { fn: (r) => resources[r].usefulRatio >= 1, ...argType.resource, desc: "如果当前资源超过了最大花费，则返回真值。", title:"资源是否满足" },
+        ResourceSatisfyRatio: { fn: (r) => resources[r].usefulRatio, ...argType.resource, desc: "以数值形式返回资源满足率。0.5意味着资源到达了最大花费的一半。", title:"资源满足率" },
         ResourceDemanded: { fn: (r) => resources[r].isDemanded(), ...argType.resource, desc: "如果资源目前需要，则返回真值。例如，当前队列或者触发器的消耗包含此项资源。", title:"资源是否需要" },
         RaceId: { fn: (r) => argMap.race(r), ...argType.race, desc: "以字符串形式返回所选择种族的类别", title:"种族类别" },
         RacePillared: { fn: (r) => game.global.pillars[argMap.race(r)] >= game.alevel(), ...argType.race, desc: "如果当前种族已经在当前成就等级下在永恒立柱上嵌入水晶，则返回真值", title:"种族是否已嵌水晶" },
         RaceGenus: { fn: (g) => races[game.global.race.species]?.genus === g, ...argType.genus, desc: "如果当前种群为所选择的种群，则返回真值", title:"当前种群" },
+        RaceImitation: { fn: (r) => game.global.race.srace === argMap.race(r), ...argType.race, desc: "如果仿制特质选择的种族为所选择的种族，则返回真值", title:"仿制种族" },
         MimicGenus: { fn: (g) => (game.global.race.ss_genus ?? 'none') === g, ...argType.genus_ss, desc: "如果拟态特质选择的种群为所选择的种群，则返回真值", title:"拟态种群" },
         TraitLevel: { fn: (t) => game.global.race[t] ?? 0, ...argType.trait, desc: "以数值形式返回特质的等级", title:"特质等级" },
         ResetType: { fn: (r) => settings.prestigeType === r, arg: "select", options: prestigeOptions, def: "mad", desc: "如果正在进行所选择的重置类型，则返回真值", title:"重置类型" },
@@ -13278,9 +13316,10 @@
         addSettingsSelect(currentNode, "foreignPolicyInferior", "对较弱小的国家进行的间谍活动", "对较弱小的国家进行的间谍活动类型，较弱小指军事力量不高于上方数值的国家。复杂的活动将首先进行相应的准备——吞并和收购将先进行煽动和亲善，占领将先进行破坏，直到相应的选项可用为止。", policyOptions);
         addSettingsSelect(currentNode, "foreignPolicySuperior", "对较强大的国家进行的间谍活动", "对较强大的国家进行的间谍活动类型，较强大指军事力量高于上方数值的国家。复杂的活动将首先进行相应的准备——吞并和收购将先进行煽动和亲善，占领将先进行破坏，直到相应的选项可用为止。", policyOptions);
 
-        let rivalOptions = [{val: "Ignore", label: "忽略", hint: ""},
-                            {val: "Influence", label: "联盟", hint: ""},
-                            {val: "Sabotage", label: "战斗", hint: ""}];
+        let rivalOptions = [{val: "Ignore", label: "忽略", hint: "什么都不做"},
+                            {val: "Influence", label: "联盟", hint: "一直进行亲善活动，直到双边关系达到最大"},
+                            {val: "Sabotage", label: "战斗", hint: "进行破坏活动，并对他们进行攻击"},
+                            {val: "Betrayal", label: "背刺", hint: "进行亲善活动，直到双边关系达到最大，然后开始破坏活动。当该国军事力量达到最小时，开始对他们进行攻击"}];
         addSettingsSelect(currentNode, "foreignPolicyRival", "竞争国家(智械黎明模式)", "对竞争国家进行的间谍活动类型。", rivalOptions);
 
         // Campaign panel
@@ -14131,7 +14170,7 @@
                               {val: "storage", label: "直到达到上限", hint: "以一定的比例同时冶炼铁和钢，保证它们同时达到存储上限"},
                               {val: "required", label: "直到达到需求数量", hint: "以一定的比例同时冶炼铁和钢，保证它们同时达到建筑的需求"}];
         addSettingsSelect(currentNode, "productionSmelting", "冶炼厂生产", "冶炼厂冶炼铁和钢的方式", smelterOptions);
-        addSettingsNumber(currentNode, "productionSmeltingIridium", "铱冶炼比例(智械黎明模式)", "用于冶炼铱的比例");
+        addSettingsNumber(currentNode, "productionSmeltingIridium", "铱冶炼比例", "用于冶炼铱的比例");
 
         currentNode.append(`
           <table style="width:100%">
@@ -15623,6 +15662,16 @@
 
     function haveTech(research, level = 1) {
         return game.global.tech[research] && game.global.tech[research] >= level;
+    }
+
+    function isEarlyGame() {
+        if (game.global.race['cataclysm']) {
+            return false;
+        } else if (game.global.race['truepath'] || game.global.race['sludge']) {
+            return !haveTech("high_tech", 7);
+        } else {
+            return !haveTech("mad");
+        }
     }
 
     function isHungryRace() {
