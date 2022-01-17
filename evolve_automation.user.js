@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.93
+// @version      3.3.1.93.1
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -13303,7 +13303,7 @@
 
         addSettingsToggle(currentNode, "foreignUnification", "是否进行统一", "是否在控制了三个敌对国家后进行统一。需要开启自动研究后此项才能生效。");
         addSettingsToggle(currentNode, "foreignOccupyLast", "是否占领最后一个未占领的国家", "当控制其他两个国家并研究统一后，自动占领最后一个国家。它可以加速统一。除非您是要做统一方式相关的成就，否则不建议关闭此项。");
-        addSettingsToggle(currentNode, "foreignForceSabotage", "在有必要的时候对敌对国家进行破坏活动", "在有需要的时候(军事力量大于50)，对当前的目标进行破坏活动。将无视下方选项的相应设置。");
+        addSettingsToggle(currentNode, "foreignForceSabotage", "在有必要的时候对敌对国家进行破坏行动", "在有需要的时候(军事力量大于50)，对当前的目标进行破坏行动。将无视下方选项的相应设置。");
         addSettingsToggle(currentNode, "foreignTrainSpy", "派遣间谍", "训练间谍用于在外国势力执行任务");
         addSettingsNumber(currentNode, "foreignSpyMax", "最大间谍数", "每个敌对国家最多训练的间谍数");
 
@@ -13313,14 +13313,14 @@
                              ...Object.entries(SpyManager.Types).map(([name, task]) => (
                              {val: name, label: game.loc("civics_spy_" + task.id), hint: ""})),
                              {val: "Occupy", label: "占领", hint: ""}];
-        addSettingsSelect(currentNode, "foreignPolicyInferior", "对较弱小的国家进行的间谍活动", "对较弱小的国家进行的间谍活动类型，较弱小指军事力量不高于上方数值的国家。复杂的活动将首先进行相应的准备——吞并和收购将先进行煽动和亲善，占领将先进行破坏，直到相应的选项可用为止。", policyOptions);
-        addSettingsSelect(currentNode, "foreignPolicySuperior", "对较强大的国家进行的间谍活动", "对较强大的国家进行的间谍活动类型，较强大指军事力量高于上方数值的国家。复杂的活动将首先进行相应的准备——吞并和收购将先进行煽动和亲善，占领将先进行破坏，直到相应的选项可用为止。", policyOptions);
+        addSettingsSelect(currentNode, "foreignPolicyInferior", "对较弱小的国家进行的间谍行动", "对较弱小的国家进行的间谍行动类型，较弱小指军事力量不高于上方数值的国家。复杂的行动将首先进行相应的准备——吞并和收购将先进行煽动和亲善，占领将先进行破坏，直到相应的选项可用为止。", policyOptions);
+        addSettingsSelect(currentNode, "foreignPolicySuperior", "对较强大的国家进行的间谍行动", "对较强大的国家进行的间谍行动类型，较强大指军事力量高于上方数值的国家。复杂的行动将首先进行相应的准备——吞并和收购将先进行煽动和亲善，占领将先进行破坏，直到相应的选项可用为止。", policyOptions);
 
         let rivalOptions = [{val: "Ignore", label: "忽略", hint: "什么都不做"},
-                            {val: "Influence", label: "联盟", hint: "一直进行亲善活动，直到双边关系达到最大"},
-                            {val: "Sabotage", label: "战斗", hint: "进行破坏活动，并对他们进行攻击"},
-                            {val: "Betrayal", label: "背刺", hint: "进行亲善活动，直到双边关系达到最大，然后开始破坏活动。当该国军事力量达到最小时，开始对他们进行攻击"}];
-        addSettingsSelect(currentNode, "foreignPolicyRival", "竞争国家(智械黎明模式)", "对竞争国家进行的间谍活动类型。", rivalOptions);
+                            {val: "Influence", label: "联盟", hint: "一直进行亲善行动，直到双边关系达到最大"},
+                            {val: "Sabotage", label: "战斗", hint: "进行破坏行动，并对他们进行攻击"},
+                            {val: "Betrayal", label: "背刺", hint: "进行亲善行动，直到双边关系达到最大，然后开始破坏行动。当该国军事力量达到最小时，开始对他们进行攻击"}];
+        addSettingsSelect(currentNode, "foreignPolicyRival", "竞争国家(智械黎明模式)", "对竞争国家进行的间谍行动类型。", rivalOptions);
 
         // Campaign panel
         addSettingsHeader1(currentNode, "战役相关");
