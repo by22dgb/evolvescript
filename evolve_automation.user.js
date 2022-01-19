@@ -7447,7 +7447,7 @@
                                     job === jobs.Quantium ? buildings.EnceladusZeroGLab :
                                     null;
                 if (craftBuilding) {
-                    let craftMax = craftBuilding.stateOnCount;
+                    let craftMax = craftBuilding.stateOnCount * traitVal('high_pop', 0, 1);
                     if (afforableAmount < craftMax) {
                         jobAdjustments[jobList.indexOf(job)] = 0 - job.count;
                     } else {
