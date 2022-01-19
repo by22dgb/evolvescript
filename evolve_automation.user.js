@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.93
+// @version      3.3.1.94
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -105,16 +105,18 @@
             return this.definition.max;
         }
 
-        breakpointEmployees(breakpoint) {
+        breakpointEmployees(breakpoint, ignoreMax) {
             let breakpointActual = this.getBreakpoint(breakpoint);
 
             // -1 equals unlimited up to the maximum available jobs for this job
             if (breakpointActual === -1) {
                 breakpointActual = Number.MAX_SAFE_INTEGER;
+            } else if (settings.jobScalePop && this._originalId !== "hell_surveyor"){
+                breakpointActual *= traitVal('high_pop', 0, 1);
             }
 
             // return the actual workers required for this breakpoint (either our breakpoint or our max, whichever is lower)
-            return Math.min(breakpointActual, this.max);
+            return ignoreMax ? breakpointActual : Math.min(breakpointActual, this.max);
         }
 
         addWorkers(count) {
@@ -560,7 +562,7 @@
 
             let maxStations = settings.autoPower && buildings.BeltSpaceStation.autoStateEnabled ? buildings.BeltSpaceStation.count : buildings.BeltSpaceStation.stateOnCount;
             let maxWorkers = settings.autoJobs && jobs.SpaceMiner.autoJobEnabled ? state.maxSpaceMiners : jobs.SpaceMiner.count;
-            this.maxQuantity = Math.min(maxStations * 3, maxWorkers);
+            this.maxQuantity = Math.min(maxStations * 3 * traitVal('high_pop', 0, 1), maxWorkers);
             this.currentQuantity = game.global[this._region][this.supportId].support;
             this.rateOfChange = this.maxQuantity - this.currentQuantity;
         }
@@ -815,6 +817,10 @@
             return true;
         }
 
+        addSupport(resource) {
+            this.consumption.push(normalizeProperties({ resource: resource, rate: () => this.definition.support() * -1 }));
+        }
+
         addResourceConsumption(resource, rate) {
             this.consumption.push(normalizeProperties({ resource: resource, rate: rate }));
         }
@@ -882,12 +888,12 @@
                 if (!(resource instanceof Support) || rate >= 0) {
                     continue;
                 }
-                let minSupport = resource == resources.Belt_Support ? 2 : resource == resources.Gateway_Support ? 5 : 1;
+                let minSupport = resource == resources.Belt_Support ? (2 * traitVal('high_pop', 0, 1)): resource == resources.Gateway_Support ? 5 : 1;
 
                 if (resource.rateOfChange >= minSupport) {
                     uselessSupports.push(resource);
                 } else {
-                    // If we have something useful - stop here, we care only about buildings with all suppors useless
+                    // If we have something useful - stop here, we care only about buildings with all supports useless
                     return null;
                 }
             }
@@ -948,6 +954,23 @@
                 }
                 return true;
             }
+        }
+    }
+
+    class Pillar extends Action {
+        get count() {
+            return this.isUnlocked() ? this.definition.count() : 0;
+        }
+
+        get stateOnCount() {
+            return this.isUnlocked() ? this.definition.on() : 0;
+        }
+
+        isAffordable(max = false) {
+            if (game.global.tech.pillars !== 1 || game.global.race.universe === 'micro') {
+                return false;
+            }
+            return game.checkAffordable(this.definition, max);
         }
     }
 
@@ -1701,6 +1724,7 @@
         tabHash: 0,
 
         lastWasteful: null,
+        lastHighPop: null,
         lastPopulationCount: 0,
         lastFarmerCount: 0,
 
@@ -2147,7 +2171,7 @@
         RuinsArcology: new Action("Ruins Arcology", "portal", "arcology", "prtl_ruins"),
         RuinsHellForge: new Action("Ruins Infernal Forge", "portal", "hell_forge", "prtl_ruins"),
         RuinsInfernoPower: new Action("Ruins Inferno Reactor", "portal", "inferno_power", "prtl_ruins"),
-        RuinsAncientPillars: new Action("Ruins Ancient Pillars", "portal", "ancient_pillars", "prtl_ruins"),
+        RuinsAncientPillars: new Pillar("Ruins Ancient Pillars", "portal", "ancient_pillars", "prtl_ruins"),
 
         GateMission: new Action("Gate Mission", "portal", "gate_mission", "prtl_gate"),
         GateEastTower: new Action("Gate East Tower", "portal", "east_tower", "prtl_gate"),
@@ -2367,11 +2391,6 @@
           () => "",
           () => 0 // Sphinx not usable after solving
       ],[
-          () => buildings.RuinsAncientPillars.isUnlocked() && (game.global.tech.pillars !== 1 || game.global.race.universe === 'micro'),
-          (building) => building === buildings.RuinsAncientPillars,
-          () => "",
-          () => 0 // Pillars can't be activated in micro, and without tech.
-      ],[
           () => game.global.race['artifical'],
           (building) => building instanceof Assembly && resources.Population.storageRatio === 1,
           () => "",
@@ -2472,7 +2491,7 @@
           (building) => {
               if (building._tab !== "city" && building.stateOffCount > 0) {
                   if (building === buildings.RuinsGuardPost && building.isSmartManaged() && !isHellSupressUseful() 
-                    && building.count < Math.ceil(5000 / (game.armyRating(1, "hellArmy", 0) * traitVal('holy', 1, '+')))) { return false; }
+                    && building.count < Math.ceil(5000 / (game.armyRating(traitVal('high_pop', 0, 1), "hellArmy", 0) * traitVal('holy', 1, '+')))) { return false; }
                   if (building === buildings.BadlandsAttractor && building.isSmartManaged()) { return false; }
                   if (building === buildings.SpireMechBay && building.isSmartManaged()) { return false; }
                   let supplyIndex = building === buildings.SpirePort ? 1 : building === buildings.SpireBaseCamp ? 2 : -1;
@@ -2780,7 +2799,7 @@
         resEnabled: (id) => settings['res_supply' + id],
 
         isUnlocked() {
-            return buildings.LakeTransport.isUnlocked();
+            return buildings.LakeTransport.count > 0;
         },
 
         isUseful() {
@@ -4068,6 +4087,7 @@
             if (game.global.race['inflation']){
                 cost *= 1 + (game.global.race.inflation / 500);
             }
+            cost *= traitVal('high_pop', 1, '=');
             return Math.round(cost);
         },
 
@@ -4112,7 +4132,7 @@
 
             // Guardposts need at least one soldier free so lets just always keep one handy
             if (buildings.RuinsGuardPost.count > 0) {
-                soldiers += buildings.RuinsGuardPost.stateOnCount + 1;
+                soldiers += (buildings.RuinsGuardPost.stateOnCount + 1) * traitVal('high_pop', 0, 1);
             }
             return soldiers;
         },
@@ -4184,7 +4204,6 @@
             // Ok, we've done no hivemind. Hivemind is trickier because each soldier gives attack rating and a bonus to all other soldiers.
             // I'm sure there is an exact mathematical calculation for this but...
             // Just loop through and remove 1 at a time until we're under the max rating.
-            // At 10 soldiers there's no hivemind bonus or malus, and the malus gets up to 50%, so start with up to 2x soldiers below 10
 
             let hiveSize = traitVal('hivemind', 0);
             if (maxSoldiers < hiveSize) {
@@ -5199,7 +5218,7 @@
     }
 
     function updateCraftCost() {
-        if (state.lastWasteful === game.global.race.wasteful) {
+        if (state.lastWasteful === game.global.race.wasteful && state.lastHighPop === game.global.race.high_pop) {
             return;
         }
         // Construct craftable resource list
@@ -5218,6 +5237,7 @@
             }
         }
         state.lastWasteful = game.global.race.wasteful;
+        state.lastHighPop = game.global.race.high_pop;
     }
 
     // Gui & Init functions
@@ -5276,84 +5296,124 @@
         buildings.FissionPower.addResourceConsumption(resources.Uranium, 0.1);
         buildings.TouristCenter.addResourceConsumption(resources.Food, 50);
 
-        // Construct space buildings list
+        // Init support
         buildings.SpaceNavBeacon.addResourceConsumption(resources.Moon_Support, -1);
         buildings.SpaceNavBeacon.addResourceConsumption(resources.Red_Support, () => haveTech("luna", 3) ? -1 : 0);
-        buildings.MoonBase.addResourceConsumption(resources.Moon_Support, -2);
+
+        buildings.MoonBase.addSupport(resources.Moon_Support);
+        buildings.MoonIridiumMine.addSupport(resources.Moon_Support);
+        buildings.MoonHeliumMine.addSupport(resources.Moon_Support);
+        buildings.MoonObservatory.addSupport(resources.Moon_Support);
+
+        buildings.RedSpaceport.addSupport(resources.Red_Support);
+        buildings.RedLivingQuarters.addSupport(resources.Red_Support);
+        buildings.RedVrCenter.addSupport(resources.Red_Support);
+        buildings.RedMine.addSupport(resources.Red_Support);
+        buildings.RedFabrication.addSupport(resources.Red_Support);
+        buildings.RedBiodome.addSupport(resources.Red_Support);
+        buildings.RedExoticLab.addSupport(resources.Red_Support);
+
+        buildings.SunSwarmControl.addSupport(resources.Sun_Support);
+        buildings.SunSwarmSatellite.addSupport(resources.Sun_Support);
+
+        buildings.BeltSpaceStation.addSupport(resources.Belt_Support);
+        buildings.BeltEleriumShip.addSupport(resources.Belt_Support);
+        buildings.BeltIridiumShip.addSupport(resources.Belt_Support);
+        buildings.BeltIronShip.addSupport(resources.Belt_Support);
+
+        buildings.AlphaStarport.addSupport(resources.Alpha_Support);
+        buildings.AlphaHabitat.addSupport(resources.Alpha_Support);
+        buildings.AlphaMiningDroid.addSupport(resources.Alpha_Support);
+        buildings.AlphaProcessing.addSupport(resources.Alpha_Support);
+        buildings.AlphaFusion.addSupport(resources.Alpha_Support);
+        buildings.AlphaLaboratory.addSupport(resources.Alpha_Support);
+        buildings.AlphaExchange.addSupport(resources.Alpha_Support);
+        buildings.AlphaGraphenePlant.addSupport(resources.Alpha_Support);
+        buildings.AlphaExoticZoo.addResourceConsumption(resources.Alpha_Support, 1);
+        buildings.ProximaTransferStation.addSupport(resources.Alpha_Support);
+
+        buildings.NebulaNexus.addSupport(resources.Nebula_Support);
+        buildings.NebulaHarvester.addSupport(resources.Nebula_Support);
+        buildings.NebulaEleriumProspector.addSupport(resources.Nebula_Support);
+
+        buildings.GatewayStarbase.addSupport(resources.Gateway_Support);
+        buildings.GatewayShipDock.addSupport(resources.Gateway_Support);
+        buildings.BologniumShip.addSupport(resources.Gateway_Support);
+        buildings.ScoutShip.addSupport(resources.Gateway_Support);
+        buildings.CorvetteShip.addSupport(resources.Gateway_Support);
+        buildings.FrigateShip.addSupport(resources.Gateway_Support);
+        buildings.CruiserShip.addSupport(resources.Gateway_Support);
+        buildings.Dreadnought.addSupport(resources.Gateway_Support);
+        buildings.StargateStation.addSupport(resources.Gateway_Support);
+        buildings.StargateTelemetryBeacon.addSupport(resources.Gateway_Support);
+
+        buildings.Alien2Foothold.addSupport(resources.Alien_Support);
+        buildings.Alien2ArmedMiner.addSupport(resources.Alien_Support);
+        buildings.Alien2OreProcessor.addSupport(resources.Alien_Support);
+        buildings.Alien2Scavenger.addSupport(resources.Alien_Support);
+
+        buildings.LakeHarbour.addSupport(resources.Lake_Support);
+        buildings.LakeBireme.addSupport(resources.Lake_Support);
+        buildings.LakeTransport.addSupport(resources.Lake_Support);
+
+        buildings.SpirePurifier.addSupport(resources.Spire_Support);
+        buildings.SpirePort.addSupport(resources.Spire_Support);
+        buildings.SpireBaseCamp.addSupport(resources.Spire_Support);
+        buildings.SpireMechBay.addSupport(resources.Spire_Support);
+
+        buildings.TitanElectrolysis.addSupport(resources.Titan_Support);
+        buildings.TitanHydrogen.addSupport(resources.Titan_Support);
+        buildings.TitanQuarters.addSupport(resources.Titan_Support);
+        buildings.TitanMine.addSupport(resources.Titan_Support);
+        buildings.TitanGraphene.addSupport(resources.Titan_Support);
+        buildings.TitanDecoder.addResourceConsumption(resources.Titan_Support, 1);
+
+        buildings.TitanSpaceport.addSupport(resources.Enceladus_Support);
+        buildings.EnceladusWaterFreighter.addSupport(resources.Enceladus_Support);
+        buildings.EnceladusZeroGLab.addSupport(resources.Enceladus_Support);
+        buildings.EnceladusBase.addSupport(resources.Enceladus_Support);
+
+        buildings.TitanElectrolysis.addResourceConsumption(resources.Electrolysis_Support, -1);
+        buildings.TitanHydrogen.addResourceConsumption(resources.Electrolysis_Support, 1);
+
+        buildings.ErisDrone.addSupport(resources.Eris_Support);
+        buildings.ErisTrooper.addSupport(resources.Eris_Support);
+        buildings.ErisTank.addSupport(resources.Eris_Support);
+
+        // Init consumptions
         buildings.MoonBase.addResourceConsumption(resources.Oil, 2);
-        buildings.MoonIridiumMine.addResourceConsumption(resources.Moon_Support, 1);
-        buildings.MoonHeliumMine.addResourceConsumption(resources.Moon_Support, 1);
-        buildings.MoonObservatory.addResourceConsumption(resources.Moon_Support, 1);
-        buildings.RedSpaceport.addResourceConsumption(resources.Red_Support, () => game.actions.space.spc_red.spaceport.support() * -1);
         buildings.RedSpaceport.addResourceConsumption(resources.Helium_3, 1.25);
         buildings.RedSpaceport.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] ? 2 : 25);
         buildings.RedTower.addResourceConsumption(resources.Red_Support, () => game.global.race['cataclysm'] ? -2 : -1);
-        buildings.RedLivingQuarters.addResourceConsumption(resources.Red_Support, 1);
-        buildings.RedMine.addResourceConsumption(resources.Red_Support, 1);
-        buildings.RedFabrication.addResourceConsumption(resources.Red_Support, 1);
         buildings.RedFactory.addResourceConsumption(resources.Helium_3, 1);
-        buildings.RedBiodome.addResourceConsumption(resources.Red_Support, 1);
-        buildings.RedExoticLab.addResourceConsumption(resources.Red_Support, 1);
         buildings.RedSpaceBarracks.addResourceConsumption(resources.Oil, 2);
         buildings.RedSpaceBarracks.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] ? 0 : 10);
-        buildings.RedVrCenter.addResourceConsumption(resources.Red_Support, 1);
         buildings.HellGeothermal.addResourceConsumption(resources.Helium_3, 0.5);
-        buildings.SunSwarmControl.addResourceConsumption(resources.Sun_Support, () => game.actions.space.spc_sun.swarm_control.support() * -1);
-        buildings.SunSwarmSatellite.addResourceConsumption(resources.Sun_Support, 1);
         buildings.GasMoonOutpost.addResourceConsumption(resources.Oil, 2);
-        buildings.BeltSpaceStation.addResourceConsumption(resources.Belt_Support, -3);
         buildings.BeltSpaceStation.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] ? 1 : 10);
         buildings.BeltSpaceStation.addResourceConsumption(resources.Helium_3, 2.5);
-        buildings.BeltEleriumShip.addResourceConsumption(resources.Belt_Support, 2);
-        buildings.BeltIridiumShip.addResourceConsumption(resources.Belt_Support, 1);
-        buildings.BeltIronShip.addResourceConsumption(resources.Belt_Support, 1);
         buildings.DwarfEleriumReactor.addResourceConsumption(resources.Elerium, 0.05);
 
-        buildings.AlphaStarport.addResourceConsumption(resources.Alpha_Support, -5);
         buildings.AlphaStarport.addResourceConsumption(resources.Food, 100);
         buildings.AlphaStarport.addResourceConsumption(resources.Helium_3, 5);
-        buildings.AlphaHabitat.addResourceConsumption(resources.Alpha_Support, -1);
-        buildings.AlphaMiningDroid.addResourceConsumption(resources.Alpha_Support, 1);
-        buildings.AlphaProcessing.addResourceConsumption(resources.Alpha_Support, 1);
-        buildings.AlphaFusion.addResourceConsumption(resources.Alpha_Support, 1);
         buildings.AlphaFusion.addResourceConsumption(resources.Deuterium, 1.25);
-        buildings.AlphaLaboratory.addResourceConsumption(resources.Alpha_Support, 1);
-        buildings.AlphaExchange.addResourceConsumption(resources.Alpha_Support, 1);
-        buildings.AlphaGraphenePlant.addResourceConsumption(resources.Alpha_Support, 1);
-        buildings.AlphaExoticZoo.addResourceConsumption(resources.Alpha_Support, 1);
         buildings.AlphaExoticZoo.addResourceConsumption(resources.Food, 12000);
         buildings.AlphaMegaFactory.addResourceConsumption(resources.Deuterium, 5);
 
-        buildings.ProximaTransferStation.addResourceConsumption(resources.Alpha_Support, -1);
         buildings.ProximaTransferStation.addResourceConsumption(resources.Uranium, 0.28);
         buildings.ProximaCruiser.addResourceConsumption(resources.Helium_3, 6);
 
-        buildings.NebulaNexus.addResourceConsumption(resources.Nebula_Support, -2);
-        buildings.NebulaHarvester.addResourceConsumption(resources.Nebula_Support, 1);
-        buildings.NebulaEleriumProspector.addResourceConsumption(resources.Nebula_Support, 1);
-
         buildings.NeutronMiner.addResourceConsumption(resources.Helium_3, 3);
 
-        buildings.GatewayStarbase.addResourceConsumption(resources.Gateway_Support, -2);
         buildings.GatewayStarbase.addResourceConsumption(resources.Helium_3, 25);
         buildings.GatewayStarbase.addResourceConsumption(resources.Food, 250);
-        buildings.GatewayShipDock.addResourceConsumption(resources.Gateway_Support, () => buildings.GatewayStarbase.stateOnCount * -0.25);
 
-        buildings.BologniumShip.addResourceConsumption(resources.Gateway_Support, 1);
         buildings.BologniumShip.addResourceConsumption(resources.Helium_3, 5);
-        buildings.ScoutShip.addResourceConsumption(resources.Gateway_Support, 1);
         buildings.ScoutShip.addResourceConsumption(resources.Helium_3, 6);
-        buildings.CorvetteShip.addResourceConsumption(resources.Gateway_Support, 1);
         buildings.CorvetteShip.addResourceConsumption(resources.Helium_3, 10);
-        buildings.FrigateShip.addResourceConsumption(resources.Gateway_Support, 2);
         buildings.FrigateShip.addResourceConsumption(resources.Helium_3, 25);
-        buildings.CruiserShip.addResourceConsumption(resources.Gateway_Support, 3);
         buildings.CruiserShip.addResourceConsumption(resources.Deuterium, 25);
-        buildings.Dreadnought.addResourceConsumption(resources.Gateway_Support, 5);
         buildings.Dreadnought.addResourceConsumption(resources.Deuterium, 80);
-
-        buildings.StargateStation.addResourceConsumption(resources.Gateway_Support, -0.5);
-        buildings.StargateTelemetryBeacon.addResourceConsumption(resources.Gateway_Support, -0.75);
 
         buildings.GorddonEmbassy.addResourceConsumption(resources.Food, 7500);
         buildings.GorddonFreighter.addResourceConsumption(resources.Helium_3, 12);
@@ -5363,12 +5423,8 @@
         buildings.Alien1VitreloyPlant.addResourceConsumption(resources.Money, 50000);
         buildings.Alien1SuperFreighter.addResourceConsumption(resources.Helium_3, 25);
 
-        buildings.Alien2Foothold.addResourceConsumption(resources.Alien_Support, -4);
         buildings.Alien2Foothold.addResourceConsumption(resources.Elerium, 2.5);
-        buildings.Alien2ArmedMiner.addResourceConsumption(resources.Alien_Support, 1);
         buildings.Alien2ArmedMiner.addResourceConsumption(resources.Helium_3, 10);
-        buildings.Alien2OreProcessor.addResourceConsumption(resources.Alien_Support, 1);
-        buildings.Alien2Scavenger.addResourceConsumption(resources.Alien_Support, 1);
         buildings.Alien2Scavenger.addResourceConsumption(resources.Helium_3, 12);
 
         buildings.ChthonianMineLayer.addResourceConsumption(resources.Helium_3, 8);
@@ -5378,35 +5434,14 @@
         buildings.RuinsInfernoPower.addResourceConsumption(resources.Coal, 100);
         buildings.RuinsInfernoPower.addResourceConsumption(resources.Oil, 80);
 
-        buildings.LakeHarbour.addResourceConsumption(resources.Lake_Support, -1);
-        buildings.LakeBireme.addResourceConsumption(resources.Lake_Support, 1);
-        buildings.LakeTransport.addResourceConsumption(resources.Lake_Support, 1);
-
-        buildings.SpirePurifier.addResourceConsumption(resources.Spire_Support, () => haveTech("b_stone", 3) ? -1.25 : -1);
-        buildings.SpirePort.addResourceConsumption(resources.Spire_Support, 1);
-        buildings.SpireBaseCamp.addResourceConsumption(resources.Spire_Support, 1);
-        buildings.SpireMechBay.addResourceConsumption(resources.Spire_Support, 1);
-
-        buildings.TitanSpaceport.addResourceConsumption(resources.Enceladus_Support, -2);
-        buildings.TitanElectrolysis.addResourceConsumption(resources.Titan_Support, () => haveTech("titan_ai_core", 2) && buildings.TitanAIComplete.stateOnCount > 0 ? -3 : -2);
-
         buildings.TitanElectrolysis.addResourceConsumption(resources.Water, 35);
-        buildings.TitanElectrolysis.addResourceConsumption(resources.Electrolysis_Support, -1);
-        buildings.TitanHydrogen.addResourceConsumption(resources.Titan_Support, -2);
-        buildings.TitanHydrogen.addResourceConsumption(resources.Electrolysis_Support, 1);
-        buildings.TitanQuarters.addResourceConsumption(resources.Titan_Support, 1);
+
         buildings.TitanQuarters.addResourceConsumption(resources.Water, 12);
         buildings.TitanQuarters.addResourceConsumption(resources.Food, 500);
-        buildings.TitanMine.addResourceConsumption(resources.Titan_Support, 1);
-        buildings.TitanGraphene.addResourceConsumption(resources.Titan_Support, 1);
-        buildings.TitanDecoder.addResourceConsumption(resources.Titan_Support, 1);
         buildings.TitanDecoder.addResourceConsumption(resources.Cipher, 0.06);
         buildings.TitanAIComplete.addResourceConsumption(resources.Water, 1000);
 
-        buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Enceladus_Support, 1);
         buildings.EnceladusWaterFreighter.addResourceConsumption(resources.Helium_3, 5);
-        buildings.EnceladusZeroGLab.addResourceConsumption(resources.Enceladus_Support, 1);
-        buildings.EnceladusBase.addResourceConsumption(resources.Enceladus_Support, 1);
 
         buildings.TritonFOB.addResourceConsumption(resources.Helium_3, 125);
         buildings.TritonLander.addResourceConsumption(resources.Oil, 50);
@@ -5416,10 +5451,7 @@
         buildings.KuiperNeutronium.addResourceConsumption(resources.Oil, 60);
         buildings.KuiperElerium.addResourceConsumption(resources.Oil, 125);
 
-        buildings.ErisDrone.addResourceConsumption(resources.Eris_Support, -5);
         buildings.ErisDrone.addResourceConsumption(resources.Uranium, 5);
-        buildings.ErisTrooper.addResourceConsumption(resources.Eris_Support, 1);
-        buildings.ErisTank.addResourceConsumption(resources.Eris_Support, 1);
 
         // These are buildings which are specified as powered in the actions definition game code but aren't actually powered in the main.js powered calculations
         Object.values(buildings).forEach(building => {
@@ -6021,6 +6053,8 @@
         let def = {
             autoMinorTrait: false,
             shifterGenus: "ignore",
+            buildingShrineType: "know",
+            jobScalePop: true
         };
 
         for (let i = 0; i < MinorTraitManager.priorityList.length; i++) {
@@ -6125,7 +6159,6 @@
             autoPower: false,
             buildingsIgnoreZeroRate: false,
             buildingsLimitPowered: false,
-            buildingShrineType: "know",
             buildingTowerSuppression: 100,
             buildingEnabledAll: true,
             buildingStateAll: true
@@ -7100,7 +7133,7 @@
         let requiredBattalion = m.maxCityGarrison;
         if (protectSoldiers) {
             let armor = (traitVal('scales', 0) + (game.global.tech.armor ?? 0)) / traitVal('armored', 0, '-') - traitVal('frail', 0);
-            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((5 - tactic) * (armor + (game.global.city.ptrait === 'rage' ? 1 : 2)) - 1)));
+            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= (cap * traitVal('high_pop', 0, 1)) ? Number.MAX_SAFE_INTEGER : ((5 - tactic) * (armor + (game.global.city.ptrait === 'rage' ? 1 : 2)) - 1)));
             maxBattalion = protectedBattalion.map(soldiers => Math.min(soldiers, m.availableGarrison));
             requiredBattalion = 0;
         }
@@ -7499,15 +7532,14 @@
                 let jobsToAssign = Math.min(availableEmployees, Math.max(minEmployees, currentEmployees, currentBreakpoint));
 
                 if (job === jobs.SpaceMiner) {
-                    let maxBreakpoint = job.getBreakpoint(i);
-                    state.maxSpaceMiners = Math.max(state.maxSpaceMiners, Math.min(availableEmployees, maxBreakpoint < 0 ? Number.MAX_SAFE_INTEGER : maxBreakpoint));
-                    let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
+                    state.maxSpaceMiners = Math.max(state.maxSpaceMiners, Math.min(availableEmployees, job.breakpointEmployees(i, true)));
+                    let minersNeeded = (buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount) * traitVal('high_pop', 0, 1);
                     jobsToAssign = Math.min(jobsToAssign, minersNeeded);
                 }
 
                 if (job === jobs.Entertainer && !haveTech("superstar")) {
                     let taxBuffer = (settings.autoTax || haveTask("tax")) && game.global.civic.taxes.tax_rate < poly.taxCap(false) ? 1 : 0;
-                    let entertainerMorale = (game.global.tech['theatre'] + traitVal('musical', 0)) * traitVal('emotionless', 0, '-');
+                    let entertainerMorale = (game.global.tech['theatre'] + traitVal('musical', 0)) * traitVal('emotionless', 0, '-') * traitVal('high_pop', 1, '=');
                     let moraleExtra = resources.Morale.rateOfChange - resources.Morale.maxQuantity - taxBuffer;
                     let entertainersDelta = Math.floor(moraleExtra / entertainerMorale);
                     jobsToAssign = Math.min(jobsToAssign, job.count - entertainersDelta);
@@ -8732,7 +8764,7 @@
                         let thisQuantity = building.cost[res];
 
                         // Ignore locked and capped resources
-                        if (!resource.isUnlocked() || resource.storageRatio > 0.99){
+                        if (!resource.isUnlocked() || (resource.storageRatio > 0.99 && resource.currentQuantity >= resource.storageRequired)){
                             continue;
                         }
 
@@ -9024,7 +9056,7 @@
                         //let protectedSoldiers = (game.global.race['armored'] ? 1 : 0) + (game.global.race['scales'] ? 1 : 0) + (game.global.tech['armor'] ?? 0);
                         //let woundCap = Math.ceil((game.global.space.fob.enemy + (game.global.tech.outer >= 4 ? 75 : 62.5)) / 5) - protectedSoldiers;
                         //let maxLanders = getHealingRate() < woundCap ? Math.floor((getHealingRate() + protectedSoldiers) / 1.5) : Number.MAX_SAFE_INTEGER;
-                        let healthySquads = Math.floor((WarManager.currentSoldiers - WarManager.wounded) / 3);
+                        let healthySquads = Math.floor((WarManager.currentSoldiers - WarManager.wounded) / (3 * traitVal('high_pop', 0, 1)));
                         maxStateOn = Math.min(maxStateOn, healthySquads /*, maxLanders*/ );
                     }
                 }
@@ -9073,7 +9105,7 @@
                 // Disable useless Guard Post
                 if (building === buildings.RuinsGuardPost) {
                     if (isHellSupressUseful()) {
-                        let postRating = game.armyRating(1, "hellArmy", 0) * traitVal('holy', 1, '+');
+                        let postRating = game.armyRating(traitVal('high_pop', 0, 1), "hellArmy", 0) * traitVal('holy', 1, '+');
                         // 1 extra power to compensate rounding errors, 100 extra to compensate heling drinf of rage races
                         let postAdjust = ((game.global.race['rage'] ? 5100 : 5001) - poly.hellSupression("ruins").rating) / postRating;
                         if (haveTech('hell_gate')) {
@@ -9290,11 +9322,17 @@
         for (let i = 0; i < warnBuildings.length; i++) {
             let building = buildingIds[warnBuildings[i].parentNode.id];
             if (building && building.autoStateEnabled && !building.is.ship) {
-                if (((building === buildings.BeltEleriumShip || building === buildings.BeltIridiumShip || building === buildings.BeltIronShip) &&
-                     (buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount) <= resources.Belt_Support.maxQuantity) ||
-                    ((building === buildings.LakeBireme || building === buildings.LakeTransport) &&
-                     (buildings.LakeBireme.stateOnCount + buildings.LakeTransport.stateOnCount) <= resources.Lake_Support.maxQuantity)) {
-                      continue;
+                if (building === buildings.BeltEleriumShip || building === buildings.BeltIridiumShip || building === buildings.BeltIronShip) {
+                    let beltSupportNeeded = (buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount) * traitVal('high_pop', 0, 1);
+                    if (beltSupportNeeded <= resources.Belt_Support.maxQuantity) {
+                        continue;
+                    }
+                }
+                if (building === buildings.LakeBireme || building === buildings.LakeTransport) {
+                    let lakeSupportNeeded = buildings.LakeBireme.stateOnCount + buildings.LakeTransport.stateOnCount;
+                    if (lakeSupportNeeded <= resources.Lake_Support.maxQuantity) {
+                        continue;
+                    }
                 }
                 building.tryAdjustState(-1);
                 break;
@@ -9990,7 +10028,7 @@
             return;
         }
 
-        let yard = game.global.space.shipyard
+        let yard = game.global.space.shipyard;
         let newShip = settings.fleetOuterShips === "user" ? yard.blueprint : m.getBlueprint();
         if (!m.isShipAffordable(newShip) || WarManager.availableGarrison - m.ClassCrew[newShip.class] < settings.fleetOuterCrew) {
             return;
@@ -10216,7 +10254,7 @@
         let mechBay = game.global.portal.mechbay;
         let prolongActive = m.isActive;
         m.isActive = false;
-        let savingSupply = m.saveSupply && settings.mechBaysFirst;
+        let savingSupply = m.saveSupply && settings.mechBaysFirst && buildings.SpirePurifier.stateOffCount === 0;
         m.saveSupply = false;
 
         // Rearrange mechs for best efficiency if some of the bays are disabled
@@ -10972,8 +11010,7 @@
             notes.push(`Next level will increase ${buildings.AlphaExchange.title} storage by +${getNiceNumber(total)}% (+${getNiceNumber(crew)}% per crew)`);
         }
         if (obj === buildings.Hospital) {
-            let heal = 1 / (getHealingRate() / 5); // Long loop, once per 5 seconds
-            notes.push(`~${getNiceNumber(heal)} seconds to heal soldier`);
+            notes.push(`~${getNiceNumber(getHealingRate())} soldiers helead per day`);
             let growth = 1 / (getGrowthRate() * 4); // Fast loop, 4 times per second
             notes.push(`~${getNiceNumber(growth)} seconds to increase population`);
         }
@@ -13481,7 +13518,7 @@
         addSettingsSelect(currentNode, "mechSpecial", "Special mechs", "Configures special equip", specialOptions);
         addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsNumber(currentNode, "mechMinSupply", "Minimum supply income", "Build collectors if current supply income below given number");
-        addSettingsNumber(currentNode, "mechMaxCollectors", "Maximum collectors ratio", "Limiter for above option, maximum space used by collectors");
+        addSettingsNumber(currentNode, "mechMaxCollectors", "Maximum collectors ratio", "Limiter for above option, maximum space used by collectors. 0.5 means up to 50% of total bay capacity will be dedicated to collectors, and such.");
         addSettingsNumber(currentNode, "mechSaveSupplyRatio", "Save up supplies for next floor", "Ratio of supplies to save up for next floor. Script will stop spending supplies on new mechs when it estimates that by the time when floor will be cleared you'll be under this supply ratio. That allows build bunch of new mechs suited for next enemy right after entering new floor. With 1 value script will try to start new floors with full supplies, 0.5 - with half, 0 - any, effectively disabling this option, etc.");
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
         addSettingsToggle(currentNode, "mechInfernalCollector", "Build infernal collectors", "Infernal collectors have incresed supply cost, and payback time, but becomes more profitable after ~30 minutes of uptime.");
@@ -13914,6 +13951,15 @@
                             ...Object.values(game.races).map(r => r.type).filter((g, i, a) => g && g !== "organism" && g !== "synthetic" && a.indexOf(g) === i).map(g => (
                             {val: g, label: game.loc(`genelab_genus_${g}`)}))];
         addSettingsSelect(currentNode, "shifterGenus", "Mimic genus", "Mimic selected genus, if avaialble. If you want to add some conditional overrides to this setting, keep in mind changing genus redraws game page, too frequent(every tick or few) changes can drastically harm game performance.", genusOptions);
+
+        let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
+                             {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
+                             {val: "morale", label: "Morale", hint: "Build only Morale Shrines"},
+                             {val: "metal", label: "Metal", hint: "Build only Metal Shrines"},
+                             {val: "know", label: "Knowledge", hint: "Build only Knowledge Shrines"},
+                             {val: "tax", label: "Tax", hint: "Build only Tax Shrines"}];
+        addSettingsSelect(currentNode, "buildingShrineType", "Magnificent shrine", "Auto Build shrines only at moons of chosen shrine", shrineOptions);
+        addSettingsToggle(currentNode, "jobScalePop", "High Pop job scale", "Auto Job will automatically scaly breakpoints to match population increase");
 
         currentNode.append(`
           <table style="width:100%">
@@ -14486,14 +14532,6 @@
         addSettingsToggle(currentNode, "buildingsIgnoreZeroRate", "Do not wait for resources without income", "Weighting checks will ignore resources without positive income(craftables, inactive factory goods, etc), buildings with such resources will not delay other buildings.");
         addSettingsToggle(currentNode, "buildingsLimitPowered", "Limit amount of powered buildings", "With this option enabled Max Build will prevent powering extra building. Can be useful to disable buildings with overrided settings.");
         addSettingsNumber(currentNode, "buildingTowerSuppression", "Minimum suppression for Towers", "East Tower and West Tower won't be built until minimum suppression is reached");
-
-        let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
-                             {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
-                             {val: "morale", label: "Morale", hint: "Build only Morale Shrines"},
-                             {val: "metal", label: "Metal", hint: "Build only Metal Shrines"},
-                             {val: "know", label: "Knowledge", hint: "Build only Knowledge Shrines"},
-                             {val: "tax", label: "Tax", hint: "Build only Tax Shrines"}];
-        addSettingsSelect(currentNode, "buildingShrineType", "Magnificent Shrine", "Auto Build shrines only at moons of chosen shrine", shrineOptions);
 
         currentNode.append(`
           <div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings..."></div>
@@ -15153,10 +15191,10 @@
     }
 
     function createMechInfo() {
-        if ((settings.masterScriptToggle && MechManager.isActive) || $(`#mechList .mechRow[draggable=true]`).length > 0) {
+        if ($(`#mechList .mechRow[draggable=true]`).length > 0) {
             return;
         }
-        if (MechManager.initLab()) {
+        if (MechManager.isActive || MechManager.initLab()) {
             MechManager.mechObserver.disconnect();
             let list = getVueById("mechList");
             for (let i = 0; i < list._vnode.children.length; i++) {
@@ -15484,6 +15522,7 @@
         lb += buildings.Hospital.count * (haveTech('reproduction', 2) ? 1 : 0);
         lb += game.global.genes['birth'] ?? 0;
         lb += game.global.race['promiscuous'] ?? 0;
+        lb *= traitVal("high_pop", 2, 1);
         let base = resources.Population.currentQuantity * (game.global.city.ptrait === 'toxic' ? 1.25 : 1);
         if (game.global.race['parasite'] && game.global.race['cataclysm']){
             lb = Math.round(lb / 5);
@@ -15674,10 +15713,12 @@
                 return 1 - val / 100;
             } else if (opt === "+") {
                 return 1 + val / 100;
+            } else if (opt === "=") {
+                return val / 100;
             } else {
                 return val;
             }
-        } else if (opt === '+' || opt === '-') {
+        } else if (opt === '+' || opt === '-' || opt === '=') {
             return 1;
         } else {
             return opt ?? 0;
@@ -15698,7 +15739,7 @@
         // export const monsters from portal.js
         monsters: {fire_elm:{weapon:{laser:1.05,flame:0,plasma:.25,kinetic:.5,missile:.5,sonic:1,shotgun:.75,tesla:.65},nozone:{freeze:!0,flooded:!0},amp:{hot:1.75,humid:.8,steam:.9}},water_elm:{weapon:{laser:.65,flame:.5,plasma:1,kinetic:.2,missile:.5,sonic:.5,shotgun:.25,tesla:.75},nozone:{hot:!0,freeze:!0},amp:{steam:1.5,river:1.1,flooded:2,rain:1.75,humid:1.25}},rock_golem:{weapon:{laser:1,flame:.5,plasma:1,kinetic:.65,missile:.95,sonic:.75,shotgun:.35,tesla:0},nozone:{},amp:{}},bone_golem:{weapon:{laser:.45,flame:.35,plasma:.55,kinetic:1,missile:1,sonic:.75,shotgun:.75,tesla:.15},nozone:{},amp:{}},mech_dino:{weapon:{laser:.85,flame:.05,plasma:.55,kinetic:.45,missile:.5,sonic:.35,shotgun:.5,tesla:1},nozone:{},amp:{}},plant:{weapon:{laser:.42,flame:1,plasma:.65,kinetic:.2,missile:.25,sonic:.75,shotgun:.35,tesla:.38},nozone:{},amp:{}},crazed:{weapon:{laser:.5,flame:.85,plasma:.65,kinetic:1,missile:.35,sonic:.15,shotgun:.95,tesla:.6},nozone:{},amp:{}},minotaur:{weapon:{laser:.32,flame:.5,plasma:.82,kinetic:.44,missile:1,sonic:.15,shotgun:.2,tesla:.35},nozone:{},amp:{}},ooze:{weapon:{laser:.2,flame:.65,plasma:1,kinetic:0,missile:0,sonic:.85,shotgun:0,tesla:.15},nozone:{},amp:{}},zombie:{weapon:{laser:.35,flame:1,plasma:.45,kinetic:.08,missile:.8,sonic:.18,shotgun:.95,tesla:.05},nozone:{},amp:{}},raptor:{weapon:{laser:.68,flame:.55,plasma:.85,kinetic:1,missile:.44,sonic:.22,shotgun:.33,tesla:.66},nozone:{},amp:{}},frost_giant:{weapon:{laser:.9,flame:.82,plasma:1,kinetic:.25,missile:.08,sonic:.45,shotgun:.28,tesla:.5},nozone:{hot:!0},amp:{freeze:2.5,hail:1.65}},swarm:{weapon:{laser:.02,flame:1,plasma:.04,kinetic:.01,missile:.08,sonic:.66,shotgun:.38,tesla:.45},nozone:{},amp:{}},dragon:{weapon:{laser:.18,flame:0,plasma:.12,kinetic:.35,missile:1,sonic:.22,shotgun:.65,tesla:.15},nozone:{},amp:{}},mech_dragon:{weapon:{laser:.84,flame:.1,plasma:.68,kinetic:.18,missile:.75,sonic:.22,shotgun:.28,tesla:1},nozone:{},amp:{}},construct:{weapon:{laser:.5,flame:.2,plasma:.6,kinetic:.34,missile:.9,sonic:.08,shotgun:.28,tesla:1},nozone:{},amp:{}},beholder:{weapon:{laser:.75,flame:.15,plasma:1,kinetic:.45,missile:.05,sonic:.01,shotgun:.12,tesla:.3},nozone:{},amp:{}},worm:{weapon:{laser:.55,flame:.38,plasma:.45,kinetic:.2,missile:.05,sonic:1,shotgun:.02,tesla:.01},nozone:{},amp:{}},hydra:{weapon:{laser:.85,flame:.75,plasma:.85,kinetic:.25,missile:.45,sonic:.5,shotgun:.6,tesla:.65},nozone:{},amp:{}},colossus:{weapon:{laser:1,flame:.05,plasma:.75,kinetic:.45,missile:1,sonic:.35,shotgun:.35,tesla:.5},nozone:{},amp:{}},lich:{weapon:{laser:.1,flame:.1,plasma:.1,kinetic:.45,missile:.75,sonic:.35,shotgun:.75,tesla:.5},nozone:{},amp:{}},ape:{weapon:{laser:1,flame:.95,plasma:.85,kinetic:.5,missile:.5,sonic:.05,shotgun:.35,tesla:.68},nozone:{},amp:{}},bandit:{weapon:{laser:.65,flame:.5,plasma:.85,kinetic:1,missile:.5,sonic:.25,shotgun:.75,tesla:.25},nozone:{},amp:{}},croc:{weapon:{laser:.65,flame:.05,plasma:.6,kinetic:.5,missile:.5,sonic:1,shotgun:.2,tesla:.75},nozone:{},amp:{}},djinni:{weapon:{laser:0,flame:.35,plasma:1,kinetic:.15,missile:0,sonic:.65,shotgun:.22,tesla:.4},nozone:{},amp:{}},snake:{weapon:{laser:.5,flame:.5,plasma:.5,kinetic:.5,missile:.5,sonic:.5,shotgun:.5,tesla:.5},nozone:{},amp:{}},centipede:{weapon:{laser:.5,flame:.85,plasma:.95,kinetic:.65,missile:.6,sonic:0,shotgun:.5,tesla:.01},nozone:{},amp:{}},spider:{weapon:{laser:.65,flame:1,plasma:.22,kinetic:.75,missile:.15,sonic:.38,shotgun:.9,tesla:.18},nozone:{},amp:{}},manticore:{weapon:{laser:.05,flame:.25,plasma:.95,kinetic:.5,missile:.15,sonic:.48,shotgun:.4,tesla:.6},nozone:{},amp:{}},fiend:{weapon:{laser:.75,flame:.25,plasma:.5,kinetic:.25,missile:.75,sonic:.25,shotgun:.5,tesla:.5},nozone:{},amp:{}},bat:{weapon:{laser:.16,flame:.18,plasma:.12,kinetic:.25,missile:.02,sonic:1,shotgun:.9,tesla:.58},nozone:{},amp:{}},medusa:{weapon:{laser:.35,flame:.1,plasma:.3,kinetic:.95,missile:1,sonic:.15,shotgun:.88,tesla:.26},nozone:{},amp:{}},ettin:{weapon:{laser:.5,flame:.35,plasma:.8,kinetic:.5,missile:.25,sonic:.3,shotgun:.6,tesla:.09},nozone:{},amp:{}},faceless:{weapon:{laser:.6,flame:.28,plasma:.6,kinetic:0,missile:.05,sonic:.8,shotgun:.15,tesla:1},nozone:{},amp:{}},enchanted:{weapon:{laser:1,flame:.02,plasma:.95,kinetic:.2,missile:.7,sonic:.05,shotgun:.65,tesla:.01},nozone:{},amp:{}},gargoyle:{weapon:{laser:.15,flame:.4,plasma:.3,kinetic:.5,missile:.5,sonic:.85,shotgun:1,tesla:.2},nozone:{},amp:{}},chimera:{weapon:{laser:.38,flame:.6,plasma:.42,kinetic:.85,missile:.35,sonic:.5,shotgun:.65,tesla:.8},nozone:{},amp:{}},gorgon:{weapon:{laser:.65,flame:.65,plasma:.65,kinetic:.65,missile:.65,sonic:.65,shotgun:.65,tesla:.65},nozone:{},amp:{}},kraken:{weapon:{laser:.75,flame:.35,plasma:.75,kinetic:.35,missile:.5,sonic:.18,shotgun:.05,tesla:.85},nozone:{},amp:{}},homunculus:{weapon:{laser:.05,flame:1,plasma:.1,kinetic:.85,missile:.65,sonic:.5,shotgun:.75,tesla:.2},nozone:{},amp:{}}},
         // export function hellSupression(area, val) from portal.js
-        hellSupression: function(t,e){switch(t){case"ruins":{let t=e||buildings.RuinsGuardPost.stateOnCount,r=75*buildings.RuinsArcology.stateOnCount,a=game.armyRating(t,"hellArmy",0);game.global.race.holy&&(a*=1.25);let l=(a+r)/5e3;return{supress:l>1?1:l,rating:a+r}}case"gate":{let t=poly.hellSupression("ruins",e),r=100*buildings.GateTurret.stateOnCount;game.global.race.holy&&(r*=1.25);let a=(t.rating+r)/7500;return{supress:a>1?1:a,rating:t.rating+r}}default:return 0}},
+        hellSupression: function(t,e){switch(t){case"ruins":{let t=e||buildings.RuinsGuardPost.stateOnCount,r=75*buildings.RuinsArcology.stateOnCount,a=game.armyRating(t*traitVal('high_pop', 0, 1),"hellArmy",0);a*=traitVal('holy', 1, '+');let l=(a+r)/5e3;return{supress:l>1?1:l,rating:a+r}}case"gate":{let t=poly.hellSupression("ruins",e),r=100*buildings.GateTurret.stateOnCount;r*=traitVal('holy', 1, '+');let a=(t.rating+r)/7500;return{supress:a>1?1:a,rating:t.rating+r}}default:return 0}},
         // function taxCap(min) from civics.js
         taxCap: function(e){let a=(haveTech("currency",5)||game.global.race.terrifying)&&!game.global.race.noble;if(e)return a?0:traitVal("noble",0,10);{let e=traitVal("noble",1,30);return a&&(e+=20),"oligarchy"===game.global.civic.govern.type&&(e+=20),"noble"===getGovernor()&&(e+=10),e}},
         // export function mechCost(size,infernal) from portal.js
