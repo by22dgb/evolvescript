@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.94
+// @version      3.3.1.94.1
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -14060,7 +14060,7 @@
                              {val: "know", label: "知识", hint: "只建造提升知识的圣地"},
                              {val: "tax", label: "税收", hint: "只建造提升税收的圣地"}];
         addSettingsSelect(currentNode, "buildingShrineType", "圣地种类偏好", "只在对应月相时建造相应的圣地", shrineOptions);
-        addSettingsToggle(currentNode, "jobScalePop", "拥有人口众多特质时的工作倍率", "自动工作将自动将相应阈值乘以该倍率，以匹配人口数量");
+        addSettingsToggle(currentNode, "jobScalePop", "拥有人口众多特质时自动工作倍率提升", "自动工作将自动将相应阈值乘以该倍率，以匹配人口数量");
 
         currentNode.append(`
           <table style="width:100%">
