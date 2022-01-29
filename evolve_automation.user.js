@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.94.1
+// @version      3.3.1.94.2
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -11343,7 +11343,7 @@
         if (!game) {
             if (state.warnDebug) {
                 state.warnDebug = false;
-                alert("You need to enable Debug Mode in settings for script to work");
+                alert("您需要启用“开启调试模式”后，脚本才可以正常工作");
             }
             setTimeout(mainAutoEvolveScript, 100);
             return;
@@ -11359,7 +11359,7 @@
         if (!game.global.settings.tabLoad) {
             if (state.warnPreload) {
                 state.warnPreload = false;
-                alert("You need to enable Preload Tab Content in settings for script to work");
+                alert("您需要启用“预加载面板内容”后，脚本才可以正常工作");
             }
             setTimeout(mainAutoEvolveScript, 100);
             return;
