@@ -1167,7 +1167,13 @@
         }
 
         get name() {
-            return this.title;
+            let nameStr = typeof this.title === 'function' ? this.title() : this.title;
+            let pathStr = "";
+            if((game.actions.tech[this._id].path) && (game.actions.tech[this._id].path.length == 1) && (game.actions.tech[this._id].path[0] == "truepath"))
+            {
+                pathStr = "（智械黎明）";
+            }
+            return nameStr+pathStr;
         }
 
         isAffordable(max = false) {
