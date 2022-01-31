@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.94.2
+// @version      3.3.1.94.3
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -2538,7 +2538,7 @@
           () => 0
       ],[
           () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isUnlocked() && techIds['tech-mad'].isAffordable(true))),
-          (building) => !building.is.housing && !building.is.garrison && !building.cost["Knowledge"] && (building !== buildings.OilWell || !game.global.race.terrifying), // Terrifying can't buy oil, keep building rigs
+          (building) => !building.is.housing && !building.is.garrison && !building.cost["Knowledge"] && building !== buildings.OilWell,
           () => "等待核爆重置",
           () => settings.buildingWeightingMADUseless
       ],[
