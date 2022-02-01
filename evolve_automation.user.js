@@ -4119,7 +4119,7 @@
             }
 
             // Reserve soldiers operating forge
-            if (buildings.PitSoulForge.count > 0) {
+            if (buildings.PitSoulForge.count > 0 && (buildings.PitSoulForge.autoStateEnabled || buildings.PitSoulForge.stateOnCount > 0)) {
                 // export function soulForgeSoldiers() from portal.js
                 soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
                 if (game.global.portal.gun_emplacement) {
@@ -10046,7 +10046,7 @@
             let name = game.loc(`outer_shipyard_class_${newShip.class}`);
             let targetRef = game.actions.space[regionsToProtect[0]].info.name;
             let targetName = typeof targetRef === 'function' ? targetRef() : targetRef;
-            GameLog.logSuccess("outer_fleet", `${name} mech has been assembled, and dispatched to ${targetName}.`, ['combat']);
+            GameLog.logSuccess("outer_fleet", `${name} has been assembled, and dispatched to ${targetName}.`, ['combat']);
         }
     }
 
