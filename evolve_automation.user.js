@@ -12700,9 +12700,26 @@
         let prestigeClass = "";
 
         let race = races[queuedEvolution.userEvolutionTarget];
-        if (race) {
-            raceName = race.name;
 
+        if (queuedEvolution.challenge_junker || queuedEvolution.challenge_sludge) {
+            raceName = queuedEvolution.challenge_junker ? races.junker.name : races.sludge.name;
+            if (race) {
+                raceName += ", ";
+                if (race === races.junker || race === races.sludge) {
+                    raceName += game.loc(`genelab_genus_fungi`);
+                } else {
+                    raceName += game.loc(`genelab_genus_${race.genus}`);
+                }
+            }
+        } else if (queuedEvolution.userEvolutionTarget === "auto") {
+            raceName = "Auto Achievements";
+        } else if (race) {
+            raceName = race.name;
+        } else {
+            raceName = "Unrecognized race!";
+        }
+
+        if (race) {
             // Check if we can evolve intro it
             let suited = race.getHabitability();
             if (suited === 1) {
@@ -12713,10 +12730,8 @@
                 raceClass = "has-text-warning";
             }
         } else if (queuedEvolution.userEvolutionTarget === "auto") {
-            raceName = "Auto Achievements";
             raceClass = "has-text-advanced";
         } else {
-            raceName = "Unrecognized race!";
             raceClass = "has-text-danger";
         }
 
