@@ -2604,7 +2604,7 @@
           () => settings.buildingWeightingNeedStorage
       ],[
           () => resources.Population.maxQuantity > 50 && resources.Population.storageRatio < 0.9,
-          (building) => building.is.housing && building instanceof Assembly,
+          (building) => building.is.housing && !(building instanceof Assembly),
           () => "No more houses needed",
           () => settings.buildingWeightingUselessHousing
     ]];
@@ -4119,7 +4119,7 @@
             }
 
             // Reserve soldiers operating forge
-            if (buildings.PitSoulForge.count > 0 && (buildings.PitSoulForge.autoStateEnabled || buildings.PitSoulForge.stateOnCount > 0)) {
+            if (buildings.PitSoulForge.stateOnCount > 0) {
                 // export function soulForgeSoldiers() from portal.js
                 soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
                 if (game.global.portal.gun_emplacement) {
@@ -13950,7 +13950,7 @@
                             {val: "none", label: game.loc(`genelab_genus_none`)},
                             ...Object.values(game.races).map(r => r.type).filter((g, i, a) => g && g !== "organism" && g !== "synthetic" && a.indexOf(g) === i).map(g => (
                             {val: g, label: game.loc(`genelab_genus_${g}`)}))];
-        addSettingsSelect(currentNode, "shifterGenus", "Mimic genus", "Mimic selected genus, if avaialble. If you want to add some conditional overrides to this setting, keep in mind changing genus redraws game page, too frequent(every tick or few) changes can drastically harm game performance.", genusOptions);
+        addSettingsSelect(currentNode, "shifterGenus", "Mimic genus", "Mimic selected genus, if avaialble. If you want to add some conditional overrides to this setting, keep in mind changing genus redraws game page, frequent changes can drastically harm game performance.", genusOptions);
 
         let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
                              {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
