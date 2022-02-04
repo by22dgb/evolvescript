@@ -2604,7 +2604,7 @@
           () => settings.buildingWeightingNeedStorage
       ],[
           () => resources.Population.maxQuantity > 50 && resources.Population.storageRatio < 0.9,
-          (building) => building.is.housing && !(building instanceof Assembly),
+          (building) => building.is.housing && building !== buildings.Alien1Consulate && !(building instanceof Assembly),
           () => "No more houses needed",
           () => settings.buildingWeightingUselessHousing
     ]];
@@ -8896,11 +8896,6 @@
     }
 
     function autoResearch() {
-        // Check if we have something researchable
-        if (state.unlockedTechs.length === 0){
-            return;
-        }
-
         for (let tech of state.unlockedTechs) {
             if (tech.isAffordable() && !getCostConflict(tech) && tech.click()) {
                 BuildingManager.updateBuildings(); // Cache cost if we just unlocked some building
