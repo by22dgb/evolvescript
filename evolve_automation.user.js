@@ -11010,7 +11010,7 @@
             notes.push(`Next level will increase ${buildings.AlphaExchange.title} storage by +${getNiceNumber(total)}% (+${getNiceNumber(crew)}% per crew)`);
         }
         if (obj === buildings.Hospital) {
-            notes.push(`~${getNiceNumber(getHealingRate())} soldiers helead per day`);
+            notes.push(`~${getNiceNumber(getHealingRate())} soldiers healed per day`);
             let growth = 1 / (getGrowthRate() * 4); // Fast loop, 4 times per second
             notes.push(`~${getNiceNumber(growth)} seconds to increase population`);
         }
