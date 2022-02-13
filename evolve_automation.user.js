@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.94
+// @version      3.3.1.95
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5684,6 +5684,7 @@
 
         priorityList.push(buildings.SiriusAscensionTrigger); // This is the 10,000 power one, buildings below this one should be safe to underpower for ascension. Buildings above this either provides, or support population
         priorityList.push(buildings.BlackholeMassEjector); // Top priority of safe buildings, disable *only* for ascension, otherwise we want to have them on at any cost, to keep pumping black hole
+        priorityList.push(buildings.PitSoulForge);
 
         priorityList.push(buildings.Alien1Consulate);
         priorityList.push(buildings.Alien1Resort);
@@ -5730,7 +5731,6 @@
         priorityList.push(buildings.BadlandsPredatorDrone);
         priorityList.push(buildings.BadlandsAttractor);
         priorityList.push(buildings.PortalCarport);
-        priorityList.push(buildings.PitSoulForge);
         priorityList.push(buildings.PitGunEmplacement);
         priorityList.push(buildings.PitSoulAttractor);
         priorityList.push(buildings.PortalRepairDroid);
@@ -6378,7 +6378,7 @@
             fleet_outer_pr_spc_eris: 0,
 
             // Default outer ship
-            fleet_outer_class: 'corvette',
+            fleet_outer_class: 'destroyer',
             fleet_outer_armor: 'neutronium',
             fleet_outer_weapon: 'plasma',
             fleet_outer_engine: 'ion',
@@ -6714,7 +6714,7 @@
             if (settings["challenge_" + challenges[i][0].id]) {
                 for (let j = 0; j < challenges[i].length; j++) {
                     let {id, trait} = challenges[i][j];
-                    if (game.global.race[trait] !== 1 && evolutions[id].click() && id === "junker") {
+                    if (game.global.race[trait] !== 1 && evolutions[id].click() && (id === "junker" || id === "sludge")) {
                         return; // Give game time to update state after activating junker
                     }
                 }
@@ -7574,11 +7574,13 @@
                     jobsToAssign = Math.min(jobsToAssign, resources.Crystal.getBusyWorkers("job_crystal_miner", jobs.CrystalMiner.count));
                 }
                 if (job === jobs.CementWorker) {
-                    let stoneRateOfChange = resources.Stone.rateOfChange + (job.count * 3) - 5;
-                    if (game.global.race['smoldering'] && settings.autoQuarry) {
-                        stoneRateOfChange += resources.Chrysotile.rateOfChange;
+                    if (resources.Stone.storageRatio < 0.1) {
+                        let stoneRateOfChange = resources.Stone.rateOfChange + (job.count * 3) - 5;
+                        if (game.global.race['smoldering'] && settings.autoQuarry) {
+                            stoneRateOfChange += resources.Chrysotile.rateOfChange;
+                        }
+                        jobsToAssign = Math.min(jobsToAssign, Math.floor(stoneRateOfChange / 3));
                     }
-                    jobsToAssign = Math.min(jobsToAssign, Math.floor(stoneRateOfChange / 3));
                     if (!resources.Cement.isUseful()) {
                         jobsToAssign = Math.min(jobsToAssign, resources.Cement.getBusyWorkers("city_cement_plant_bd", jobs.CementWorker.count));
                     }
@@ -7607,10 +7609,10 @@
         }
 
         let splitJobs = [];
-        if (lumberjackIndex !== -1) splitJobs.push( { jobIndex: lumberjackIndex, job: jobs.Lumberjack, weighting: settings.jobLumberWeighting} );
-        if (quarryWorkerIndex !== -1) splitJobs.push( { jobIndex: quarryWorkerIndex, job: jobs.QuarryWorker, weighting: settings.jobQuarryWeighting});
-        if (crystalMinerIndex !== -1 && resources.Crystal.isUseful()) splitJobs.push( { jobIndex: crystalMinerIndex, job: jobs.CrystalMiner, weighting: settings.jobCrystalWeighting});
-        if (scavengerIndex !== -1) splitJobs.push( { jobIndex: scavengerIndex, job: jobs.Scavenger, weighting: settings.jobScavengerWeighting});
+        if (lumberjackIndex !== -1 && settings.jobLumberWeighting > 0) splitJobs.push( { jobIndex: lumberjackIndex, job: jobs.Lumberjack, weighting: settings.jobLumberWeighting} );
+        if (quarryWorkerIndex !== -1 && settings.jobQuarryWeighting > 0) splitJobs.push( { jobIndex: quarryWorkerIndex, job: jobs.QuarryWorker, weighting: settings.jobQuarryWeighting});
+        if (crystalMinerIndex !== -1 && settings.jobCrystalWeighting > 0 && resources.Crystal.isUseful()) splitJobs.push( { jobIndex: crystalMinerIndex, job: jobs.CrystalMiner, weighting: settings.jobCrystalWeighting});
+        if (scavengerIndex !== -1 && settings.jobScavengerWeighting > 0) splitJobs.push( { jobIndex: scavengerIndex, job: jobs.Scavenger, weighting: settings.jobScavengerWeighting});
 
         // Balance lumberjacks, quarry workers, crystal miners and scavengers if they are unlocked
         if (splitJobs.length > 0) {
@@ -7634,7 +7636,7 @@
                 let remainingJobs = splitJobs.slice();
                 while (availableEmployees > 0 && remainingJobs.length > 0) {
                     let jobDetails = remainingJobs.sort(splitSorter)[0];
-                    if (b == 2 || requiredJobs[jobDetails.jobIndex] < jobDetails.job.breakpointEmployees(b)) {
+                    if (b === 2 || requiredJobs[jobDetails.jobIndex] < jobDetails.job.breakpointEmployees(b)) {
                         requiredJobs[jobDetails.jobIndex]++;
                         jobAdjustments[jobDetails.jobIndex]++;
                         availableEmployees--;
@@ -10025,7 +10027,7 @@
 
         let yard = game.global.space.shipyard;
         let newShip = settings.fleetOuterShips === "user" ? yard.blueprint : m.getBlueprint();
-        if (!m.isShipAffordable(newShip) || WarManager.availableGarrison - m.ClassCrew[newShip.class] < settings.fleetOuterCrew) {
+        if (!m.isShipAffordable(newShip) || WarManager.currentCityGarrison - m.ClassCrew[newShip.class] < settings.fleetOuterCrew) {
             return;
         }
 
@@ -10587,7 +10589,9 @@
                 // Only craftables stores their cost, no need for additional checks
                 for (let res in resource.cost) {
                     let material = resources[res];
-                    material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (resource.craftPreserve + 0.05));
+                    if (material.currentQuantity < material.maxQuantity * (resource.craftPreserve + 0.05)) {
+                        material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (resource.craftPreserve + 0.05));
+                    }
                 }
             }
         }
@@ -10755,7 +10759,8 @@
             + (haveTech('titan', 3) && haveTech('enceladus', 2) ? 1 : 0) // Enceladus syndicate
             + (haveTech('triton', 2) ? 1 : 0) // Triton syndicate
             + (haveTech('kuiper') ? 1 : 0) // Kuiper syndicate
-            + (haveTech('eris') ? 1 : 0); // Eris syndicate
+            + (haveTech('eris') ? 1 : 0) // Eris syndicate
+            + (haveTech('titan_ai_core') ? 1 : 0); // AI core built, drones unlocked
         }
 
         if (game.global.race['shapeshifter']){
@@ -13369,7 +13374,7 @@
 
     function updateFleetOuter(currentNode, secondaryPrefix) {
         addStandardHeading(currentNode, "Outer Solar");
-        addSettingsNumber(currentNode, "fleetOuterCrew", "Minimum idle soldiers", "Only build ships when amount of idle soldiers, excluding wounded ones, above give number.");
+        addSettingsNumber(currentNode, "fleetOuterCrew", "Minimum idle soldiers", "Only build ships when amount of idle soldiers above give number.");
         addSettingsNumber(currentNode, "fleetOuterMinSyndicate", "Minimum syndicate", "Send ships only to regions with syndicate activity above given level.");
 
         let shipOptions = [{val: "none", label: "None", hint: "Ship buildign disabled"},
