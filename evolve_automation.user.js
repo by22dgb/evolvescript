@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.94.4
+// @version      3.3.1.94.5
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -2619,7 +2619,7 @@
           () => settings.buildingWeightingNeedStorage
       ],[
           () => resources.Population.maxQuantity > 50 && resources.Population.storageRatio < 0.9,
-          (building) => building.is.housing && building instanceof Assembly,
+          (building) => building.is.housing && building !== buildings.Alien1Consulate && !(building instanceof Assembly),
           () => "无需更多住房",
           () => settings.buildingWeightingUselessHousing
     ]];
@@ -4134,7 +4134,7 @@
             }
 
             // Reserve soldiers operating forge
-            if (buildings.PitSoulForge.count > 0) {
+            if (buildings.PitSoulForge.stateOnCount > 0) {
                 // export function soulForgeSoldiers() from portal.js
                 soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
                 if (game.global.portal.gun_emplacement) {
@@ -8911,11 +8911,6 @@
     }
 
     function autoResearch() {
-        // Check if we have something researchable
-        if (state.unlockedTechs.length === 0){
-            return;
-        }
-
         for (let tech of state.unlockedTechs) {
             if (tech.isAffordable() && !getCostConflict(tech) && tech.click()) {
                 BuildingManager.updateBuildings(); // Cache cost if we just unlocked some building
@@ -12813,9 +12808,26 @@
         let prestigeClass = "";
 
         let race = races[queuedEvolution.userEvolutionTarget];
-        if (race) {
-            raceName = race.name;
 
+        if (queuedEvolution.challenge_junker || queuedEvolution.challenge_sludge) {
+            raceName = queuedEvolution.challenge_junker ? races.junker.name : races.sludge.name;
+            if (race) {
+                raceName += ", ";
+                if (race === races.junker || race === races.sludge) {
+                    raceName += game.loc(`genelab_genus_fungi`);
+                } else {
+                    raceName += game.loc(`genelab_genus_${race.genus}`);
+                }
+            }
+        } else if (queuedEvolution.userEvolutionTarget === "auto") {
+            raceName = "自动完成成就";
+        } else if (race) {
+            raceName = race.name;
+        } else {
+            raceName = "种族无法识别！";
+        }
+
+        if (race) {
             // Check if we can evolve intro it
             let suited = race.getHabitability();
             if (suited === 1) {
@@ -12826,10 +12838,8 @@
                 raceClass = "has-text-warning";
             }
         } else if (queuedEvolution.userEvolutionTarget === "auto") {
-            raceName = "自动完成成就";
             raceClass = "has-text-advanced";
         } else {
-            raceName = "种族无法识别！";
             raceClass = "has-text-danger";
         }
 
