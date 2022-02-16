@@ -7974,6 +7974,11 @@
         if (resources.Steel.isDemanded()) {
             steelWeighting = Number.MAX_SAFE_INTEGER;
         }
+        if (jobs.Miner.count === 0 && buildings.BeltIronShip.stateOnCount === 0) {
+            ironWeighting = 0;
+            steelWeighting = 1;
+            maxAllowedSteel = totalSmelters - smelterIridiumCount;
+        }
 
         // We have more steel than we can afford OR iron income is too low
         if (smelterSteelCount > maxAllowedSteel || smelterSteelCount > 0 && ironWeighting > steelWeighting) {
@@ -10746,7 +10751,9 @@
           + (game.global.tech.govern ? 1 : 0) // Government unlocked
           + (game.global.tech.trade ? 1 : 0) // Trade Routes unlocked
           + (resources.Crates.isUnlocked() ? 1 : 0) // Crates in storage tab
-          + (resources.Containers.isUnlocked() ? 1 : 0); // Containers in storage tab
+          + (resources.Containers.isUnlocked() ? 1 : 0) // Containers in storage tab
+          + (haveTech("m_smelting", 2) ? 1 : 0) // TP Iridium smelting
+          + (haveTech("irid_smelting") ? 1 : 0); // Iridium smelting
 
         if (game.global.settings.showShipYard) { // TP Ship Yard
           state.tabHash += 1
@@ -11893,7 +11900,7 @@
         Boolean: { fn: (v) => v, arg: "boolean", def: false, desc: "Returns boolean" },
         SettingDefault: { fn: (s) => settingsRaw[s], arg: "string", def: "masterScriptToggle", desc: "Returns default value of setting, types varies" },
         SettingCurrent: { fn: (s) => settings[s], arg: "string", def: "masterScriptToggle", desc: "Returns current value of setting, types varies" },
-        Eval: { fn: (s) => eval(s), arg: "string", def: "Math.PI", desc: "Returns result of evaluating code" },
+        Eval: { fn: (s) => fastEval(s), arg: "string", def: "Math.PI", desc: "Returns result of evaluating code" },
         BuildingUnlocked: { fn: (b) => buildingIds[b].isUnlocked(), ...argType.building, desc: "Return true when building is unlocked" },
         BuildingClickable: { fn: (b) => buildingIds[b].isClickable(), ...argType.building, desc: "Return true when building have all required resources, and can be purchased" },
         BuildingAffordable: { fn: (b) => buildingIds[b].isAffordable(true), ...argType.building, desc: "Return true when building is affordable, i.e. costs of all resources below storage caps" },
@@ -15224,9 +15231,7 @@
                 let mechNode = list._vnode.children[i].elm;
                 let firstNode = $(mechNode.childNodes[0]);
                 if (firstNode.hasClass("ea-mech-info")) {
-                    if (firstNode.text() !== "info") {
-                        firstNode.text(info);
-                    }
+                    firstNode.text(info);
                 } else {
                     $(mechNode).prepend(`<span class="ea-mech-info">${info}</span>`);
                 }
@@ -15684,6 +15689,14 @@
                 return maxPower[govIndex];
             }
         }
+    }
+
+    var evalCache = {};
+    function fastEval(s) {
+        if (!evalCache[s]) {
+            evalCache[s] = eval(`(function() { return ${s} })`);
+        }
+        return evalCache[s]();
     }
 
     function getVueById(elementId) {
