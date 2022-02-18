@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.95
+// @version      3.3.1.96
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -507,9 +507,32 @@
             }
 
             this.currentQuantity = game.global.city.power;
-            let missingPopEnergy = (resources.Population.maxQuantity - resources.Population.currentQuantity) * traitVal('powered', 0);
-            this.maxQuantity = Object.values(buildings).reduce((net, b) => net + (b === buildings.NeutronCitadel ? getCitadelConsumption(b.count) - getCitadelConsumption(b.stateOnCount) : b.stateOffCount * b.powered), missingPopEnergy);
             this.rateOfChange = game.global.city.power;
+
+            this.maxQuantity = 0;
+            if (game.global.race.powered) {
+                this.maxQuantity += (resources.Population.maxQuantity - resources.Population.currentQuantity) * traitVal('powered', 0);
+            }
+            for (let building of Object.values(buildings)) {
+                if (building.stateOffCount > 0) {
+                    let missingAmount = building.stateOffCount;
+                    if (building === buildings.Mine && settings.masterScriptToggle && settings.autoPower && building.autoStateEnabled && building.autoStateSmart && settings.autoJobs && settings.jobDisableMiners && jobs.Miner.autoJobEnabled && buildings.GatewayStarbase.count > 0) {
+                        continue;
+                    }
+                    if (building === buildings.CoalMine && settings.masterScriptToggle && settings.autoPower && building.autoStateEnabled && building.autoStateSmart && settings.autoJobs && settings.jobDisableMiners && jobs.CoalMiner.autoJobEnabled && buildings.GatewayStarbase.count > 0) {
+                        continue;
+                    }
+                    if (building.autoMax < building.count && settings.masterScriptToggle && settings.autoPower && building.autoStateEnabled && settings.buildingsLimitPowered) {
+                        missingAmount -= building.count - building.autoMax;
+                    }
+
+                    if (building === buildings.NeutronCitadel) {
+                        this.maxQuantity += getCitadelConsumption(building.stateOnCount + missingAmount) - getCitadelConsumption(building.stateOnCount);
+                    } else {
+                        this.maxQuantity += missingAmount * building.powered;
+                    }
+                }
+            }
         }
 
         get usefulRatio() { // Could be useful for satisfied check in override
@@ -7501,7 +7524,7 @@
         }
 
         let minersDisabled = settings.jobDisableMiners && buildings.GatewayStarbase.count > 0;
-        let hoovedMiner = game.global.race.hooved && !isLumberRace() && !minersDisabled  && availableEmployees > 0 ? jobList.indexOf(jobs.Miner) : -1;
+        let hoovedMiner = game.global.race.hooved && !minersDisabled && availableEmployees > 0 ? jobList.indexOf(jobs.Miner) : -1;
 
         // Make sure our hooved have miner for horseshoes
         if (hoovedMiner !== -1) {
