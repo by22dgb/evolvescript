@@ -516,12 +516,6 @@
             for (let building of Object.values(buildings)) {
                 if (building.stateOffCount > 0) {
                     let missingAmount = building.stateOffCount;
-                    if (building === buildings.Mine && settings.masterScriptToggle && settings.autoPower && building.autoStateEnabled && building.autoStateSmart && settings.autoJobs && settings.jobDisableMiners && jobs.Miner.autoJobEnabled && buildings.GatewayStarbase.count > 0) {
-                        continue;
-                    }
-                    if (building === buildings.CoalMine && settings.masterScriptToggle && settings.autoPower && building.autoStateEnabled && building.autoStateSmart && settings.autoJobs && settings.jobDisableMiners && jobs.CoalMiner.autoJobEnabled && buildings.GatewayStarbase.count > 0) {
-                        continue;
-                    }
                     if (building.autoMax < building.count && settings.masterScriptToggle && settings.autoPower && building.autoStateEnabled && settings.buildingsLimitPowered) {
                         missingAmount -= building.count - building.autoMax;
                     }
@@ -2521,7 +2515,7 @@
                   if ((supplyIndex > 0 && (buildings.SpireMechBay.isSmartManaged() || buildings.SpirePurifier.isSmartManaged()))
                     && (building.count < getBestSupplyRatio(resources.Spire_Support.maxQuantity, buildings.SpirePort.autoMax, buildings.SpireBaseCamp.autoMax)[supplyIndex])) { return false; }
                   return true;
-              };
+              }
           },
           () => "Still have some non operating buildings",
           () => settings.buildingWeightingNonOperating
@@ -7359,7 +7353,7 @@
             return;
         }
 
-        let farmerIndex = Math.max(jobList.indexOf(jobs.Hunter), jobList.indexOf(jobs.Farmer));
+        let farmerIndex = game.global.race['artifical'] ? -1 : Math.max(jobList.indexOf(jobs.Hunter), jobList.indexOf(jobs.Farmer));
         let lumberjackIndex = isDemonRace() && isLumberRace() ? farmerIndex : jobList.indexOf(jobs.Lumberjack);
         let quarryWorkerIndex = jobList.indexOf(jobs.QuarryWorker);
         let crystalMinerIndex = jobList.indexOf(jobs.CrystalMiner);
