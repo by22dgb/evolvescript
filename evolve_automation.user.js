@@ -1180,7 +1180,7 @@
             let def = this.definition;
             let title = typeof def.title === 'function' ? def.title() : def.title;
             if (def.path?.includes('truepath')) {
-                title += " (True Path)";
+                title += ` (${game.loc('evo_challenge_truepath')})`;
             }
             return title;
         }
@@ -12458,7 +12458,7 @@
         addSettingsSelect(currentNode, "prioritizeQueue", "Queue", "Alter script behaviour to speed up queued items, prioritizing missing resources.", priority);
         addSettingsSelect(currentNode, "prioritizeTriggers", "Triggers", "Alter script behaviour to speed up triggers, prioritizing missing resources.", priority);
         addSettingsSelect(currentNode, "prioritizeUnify", "Unification", "Alter script behaviour to speed up unification, prioritizing money required to purchase foreign cities.", priority);
-        addSettingsSelect(currentNode, "prioritizeOuterFleet", "Ship Yard Blueprint (True Path)", "Alter script behaviour to assist fleet building, prioritizing resources required for current design of ship.", priority);
+        addSettingsSelect(currentNode, "prioritizeOuterFleet", "Ship Yard Blueprint (The True Path)", "Alter script behaviour to assist fleet building, prioritizing resources required for current design of ship.", priority);
 
         addSettingsHeader1(currentNode, "Auto clicker");
         addSettingsToggle(currentNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of autoBuild, to bootstrap production. With this toggled on it will continue clicking forever");
@@ -13302,7 +13302,7 @@
                             {val: "Influence", label: "Alliance", hint: "Influence rival up to best relations"},
                             {val: "Sabotage", label: "War", hint: "Sabotage and plunder rival"},
                             {val: "Betrayal", label: "Betrayal", hint: "Influence rival up to best relations, and start sabotaging. Once military power reached minimum - start plundering it"}];
-        addSettingsSelect(currentNode, "foreignPolicyRival", "Rival Power (True Path)", "Perform this against rival foreign power.", rivalOptions);
+        addSettingsSelect(currentNode, "foreignPolicyRival", "Rival Power (The True Path)", "Perform this against rival foreign power.", rivalOptions);
 
         // Campaign panel
         addSettingsHeader1(currentNode, "Campaigns");
