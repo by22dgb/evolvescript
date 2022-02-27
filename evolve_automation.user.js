@@ -7028,8 +7028,8 @@
                 minMoney = 0;
                 maxCost = Number.MAX_SAFE_INTEGER;
             }
-            while (m.currentSoldiers < mercenaryMax && resources.Money.spareQuantity >= mercenaryCost &&
-                  (resources.Money.currentQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
+            while (m.currentSoldiers < mercenaryMax && resources.Money.currentQuantity >= mercenaryCost &&
+                  (resources.Money.spareQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
                 m.hireMercenary()) {
                 mercenariesHired++;
                 mercenaryCost = m.getMercenaryCost();
