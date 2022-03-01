@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.96
+// @version      3.3.1.97
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -1417,15 +1417,15 @@
 
             switch (this.genus) {
                 case "aquatic":
-                    return game.global.city.biome === 'oceanic' ? 1 : getUnsuitedMod();
+                    return ['swamp','oceanic'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "fey":
-                    return game.global.city.biome === 'forest' ? 1 : getUnsuitedMod();
+                    return ['forest','swamp','taiga'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "sand":
-                    return game.global.city.biome === 'desert' ? 1 : getUnsuitedMod();
+                    return ['ashland','desert'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "heat":
-                    return game.global.city.biome === 'volcanic' ? 1 : getUnsuitedMod();
+                    return ['ashland','volcanic'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "polar":
-                    return game.global.city.biome === 'tundra' ? 1 : getUnsuitedMod();
+                    return ['tundra','taiga'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "demonic":
                     return game.global.city.biome === 'hellscape' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
                 case "angelic":
@@ -1449,15 +1449,15 @@
 
             switch (this.genus) {
                 case "aquatic":
-                    return "Oceanic planet";
+                    return "Oceanic or Swamp planet";
                 case "fey":
-                    return "Forest planet";
+                    return "Forest, Swamp or Taiga planet";
                 case "sand":
-                    return "Desert planet";
+                    return "Ashland or Desert planet";
                 case "heat":
-                    return "Volcanic planet";
+                    return "Ashland or Volcanic planet";
                 case "polar":
-                    return "Tundra planet";
+                    return "Tundra or Taiga planet";
                 case "demonic":
                     return "Hellscape planet";
                 case "angelic":
@@ -1687,13 +1687,13 @@
     const universes = ['standard','heavy','antimatter','evil','micro','magic'];
 
     // Biomes, traits and geologies in natural order
-    const biomeList = ['grassland', 'oceanic', 'forest', 'desert', 'volcanic', 'tundra', 'hellscape', 'eden'];
-    const traitList = ['none', 'toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable'];
+    const biomeList = ['grassland', 'oceanic', 'forest', 'desert', 'volcanic', 'tundra', 'savanna', 'swamp', 'taiga', 'ashland', 'hellscape', 'eden'];
+    const traitList = ['none', 'toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable', 'permafrost'];
     const extraList = ['Achievement', 'Copper', 'Iron', 'Aluminium', 'Coal', 'Oil', 'Titanium', 'Uranium', 'Iridium'];
 
     // Biomes and traits sorted by habitability
-    const planetBiomes = ["eden", "volcanic", "tundra", "oceanic", "forest", "grassland", "desert", "hellscape"];
-    const planetTraits = ["elliptical", "magnetic", "rage", "none", "stormy", "toxic", "trashed", "dense", "unstable", "ozone", "mellow", "flare"];
+    const planetBiomes = ["eden", "ashland", "volcanic", "taiga", "tundra", "swamp", "oceanic", "forest", "savanna", "grassland", "desert", "hellscape"];
+    const planetTraits = ["elliptical", "magnetic", "permafrost", "rage", "none", "stormy", "toxic", "trashed", "dense", "unstable", "ozone", "mellow", "flare"];
     const planetBiomeGenus = {hellscape: "demonic", eden: "angelic", oceanic: "aquatic", forest: "fey", desert: "sand", volcanic: "heat", tundra: "polar"};
     const fanatAchievements = [{god: 'sharkin', race: 'entish', achieve: 'madagascar_tree'},
                                {god: 'sporgar', race: 'human', achieve: 'infested'},
@@ -4195,6 +4195,9 @@
             let enemy = [5, 27.5, 62.5, 125, 300][tactic];
             if (game.global.race['banana']) {
                 enemy *= 2;
+            }
+            if (game.global.city.biome === 'swamp'){
+                enemy *= 1.4;
             }
             return enemy * getGovPower(govIndex) / 100;
         },
@@ -6829,7 +6832,8 @@
         }
 
         let biomes = ['grassland', 'oceanic', 'forest', 'desert', 'volcanic', 'tundra', game.global.race.universe === 'evil' ? 'eden' : 'hellscape'];
-        let traits = ['toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable', 'none', 'none', 'none', 'none', 'none'];
+        let subbiomes = ['savanna', 'swamp', ['taiga', 'swamp'], 'ashland', 'ashland', 'taiga'];
+        let traits = ['toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable', 'permafrost'];
         let geologys = ['Copper', 'Iron', 'Aluminium', 'Coal', 'Oil', 'Titanium', 'Uranium'];
         if (game.global.stats.achieve['whitehole']) {
             geologys.push('Iridium');
@@ -6841,8 +6845,35 @@
         for (let i = 0; i < maxPlanets; i++){
             let planet = {geology: {}};
             let max_bound = !hell && game.global.stats.portals >= 1 ? 7 : 6;
-            planet.biome = biomes[Math.floor(seededRandom(0, max_bound))];
-            planet.trait = traits[Math.floor(seededRandom(0, 16))];
+
+            let subbiome = Math.floor(seededRandom(0,3)) === 0 ? true : false;
+            let idx = Math.floor(seededRandom(0, max_bound));
+
+            if (subbiome && isAchievementUnlocked("biome_" + biomes[idx], 1) && idx < subbiomes.length) {
+                let sub = subbiomes[idx];
+                if (sub instanceof Array) {
+                    planet.biome = sub[Math.floor(seededRandom(0, sub.length))];
+                } else {
+                    planet.biome = sub;
+                }
+            } else {
+                planet.biome = biomes[idx];
+            }
+
+            planet.traits = [];
+            for (let i = 0; i < 2; i++){
+                let idx = Math.floor(seededRandom(0, 18 + (9 * i)));
+                if (traits[idx] === 'permafrost' && ['volcanic','ashland','hellscape'].includes(planet.biome)) {
+                    continue;
+                }
+                if (idx < traits.length && !planet.traits.includes(traits[idx])) {
+                    planet.traits.push(traits[idx]);
+                }
+            }
+            planet.traits.sort();
+            if (planet.traits.length === 0) {
+                planet.traits.push('none');
+            }
 
             let max = Math.floor(seededRandom(0,3));
             let top = planet.biome === 'eden' ? 35 : 30;
@@ -6887,8 +6918,10 @@
             if (!isAchievementUnlocked("biome_" + planet.biome, alevel)) {
                 planet.achieve++;
             }
-            if (planet.trait !== "none" && !isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
-                planet.achieve++;
+            for (let trait of planet.traits) {
+                if (trait !== "none" && !isAchievementUnlocked("atmo_" + trait, alevel)) {
+                    planet.achieve++;
+                }
             }
             if (planetBiomeGenus[planet.biome]) {
                 for (let id in races) {
@@ -6909,7 +6942,9 @@
             planet.weighting = 0;
 
             planet.weighting += settings["biome_w_" + planet.biome];
-            planet.weighting += settings["trait_w_" + planet.trait];
+            for (let trait of planet.traits) {
+                planet.weighting += settings["trait_w_" + trait];
+            }
 
             planet.weighting += planet.achieve * settings["extra_w_Achievement"];
 
@@ -7157,7 +7192,7 @@
         let requiredBattalion = m.maxCityGarrison;
         if (protectSoldiers) {
             let armor = (traitVal('scales', 0) + (game.global.tech.armor ?? 0)) / traitVal('armored', 0, '-') - traitVal('frail', 0);
-            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= (cap * traitVal('high_pop', 0, 1)) ? Number.MAX_SAFE_INTEGER : ((5 - tactic) * (armor + (game.global.city.ptrait === 'rage' ? 1 : 2)) - 1)));
+            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= (cap * traitVal('high_pop', 0, 1)) ? Number.MAX_SAFE_INTEGER : ((5 - tactic) * (armor + (game.global.city.ptrait.includes('rage') ? 1 : 2)) - 1)));
             maxBattalion = protectedBattalion.map(soldiers => Math.min(soldiers, m.availableGarrison));
             requiredBattalion = 0;
         }
@@ -11060,7 +11095,7 @@
         }
         if (obj === buildings.PortalRepairDroid) {
             let wallRepair = Math.round(200 * (0.95 ** obj.stateOnCount)) / 4;
-            let carRepair = Math.round(180 * (0.95 ** obj.stateOnCount)) / 4;
+            let carRepair = Math.round(180 * (0.92 ** obj.stateOnCount)) / 4;
             notes.push(`${getNiceNumber(wallRepair)} seconds to repair 1% of wall`);
             notes.push(`${getNiceNumber(carRepair)} seconds to repair car`);
         }
@@ -11962,7 +11997,7 @@
         Date: { fn: (d) => d === "total" ? game.global.stats.days : game.global.city.calendar[d], ...argType.date, desc: "Returns ingame date as number" },
         Soldiers: { fn: (s) => WarManager[s], ...argType.soldiers, desc: "Returns amount of soldiers as number" },
         PlanetBiome: { fn: (b) => game.global.city.biome === b, ...argType.biome, desc: "Returns true when playing in selected biome" },
-        PlanetTrait: { fn: (t) => game.global.city.ptrait === t, ...argType.ptrait, desc: "Returns true when planet have selected trait" },
+        PlanetTrait: { fn: (t) => game.global.city.ptrait.includes(t), ...argType.ptrait, desc: "Returns true when planet have selected trait" },
     }
 
     function openOverrideModal(event) {
@@ -15567,7 +15602,8 @@
         lb += game.global.genes['birth'] ?? 0;
         lb += game.global.race['promiscuous'] ?? 0;
         lb *= traitVal("high_pop", 2, 1);
-        let base = resources.Population.currentQuantity * (game.global.city.ptrait === 'toxic' ? 1.25 : 1);
+        lb *= (game.global.city.biome === 'taiga' ? 1.5 : 1);
+        let base = resources.Population.currentQuantity * (game.global.city.ptrait.includes('toxic') ? 1.25 : 1);
         if (game.global.race['parasite'] && game.global.race['cataclysm']){
             lb = Math.round(lb / 5);
             base *= 3;
