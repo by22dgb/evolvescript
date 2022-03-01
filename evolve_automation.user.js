@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.95
+// @version      3.3.1.97
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -372,7 +372,7 @@
 
         isUseful() {
             // Spending accumulated resources
-            if (!this.storeOverflow && this.currentQuantity > this.storageRequired && this.currentCrates + this.currentContainers > 0 && this.calculateRateOfChange({buy: false, all: true}) < 0) {
+            if (settings.autoStorage && !this.storeOverflow && this.currentQuantity > this.storageRequired && this.currentCrates + this.currentContainers > 0 && this.calculateRateOfChange({buy: false, all: true}) < 0) {
                 return false;
             }
             return this.storageRatio < 0.99 || this.isDemanded() || this.rateMods['eject'] > 0 || this.rateMods['supply'] > 0 || (this.storeOverflow && (this.currentCrates < this.autoCratesMax || this.currentContainers < this.autoContainersMax));
@@ -510,9 +510,26 @@
             }
 
             this.currentQuantity = game.global.city.power;
-            let missingPopEnergy = (resources.Population.maxQuantity - resources.Population.currentQuantity) * traitVal('powered', 0);
-            this.maxQuantity = Object.values(buildings).reduce((net, b) => net + (b === buildings.NeutronCitadel ? getCitadelConsumption(b.count) - getCitadelConsumption(b.stateOnCount) : b.stateOffCount * b.powered), missingPopEnergy);
             this.rateOfChange = game.global.city.power;
+
+            this.maxQuantity = 0;
+            if (game.global.race.powered) {
+                this.maxQuantity += (resources.Population.maxQuantity - resources.Population.currentQuantity) * traitVal('powered', 0);
+            }
+            for (let building of Object.values(buildings)) {
+                if (building.stateOffCount > 0) {
+                    let missingAmount = building.stateOffCount;
+                    if (building.autoMax < building.count && settings.masterScriptToggle && settings.autoPower && building.autoStateEnabled && settings.buildingsLimitPowered) {
+                        missingAmount -= building.count - building.autoMax;
+                    }
+
+                    if (building === buildings.NeutronCitadel) {
+                        this.maxQuantity += getCitadelConsumption(building.stateOnCount + missingAmount) - getCitadelConsumption(building.stateOnCount);
+                    } else {
+                        this.maxQuantity += missingAmount * building.powered;
+                    }
+                }
+            }
         }
 
         get usefulRatio() { // Could be useful for satisfied check in override
@@ -1163,7 +1180,12 @@
         }
 
         get title() {
-            return typeof this.definition.title === 'function' ? this.definition.title() : this.definition.title;
+            let def = this.definition;
+            let title = typeof def.title === 'function' ? def.title() : def.title;
+            if (def.path?.includes('truepath')) {
+                title += `（${game.loc('evo_challenge_truepath')}）`;
+            }
+            return title;
         }
 
         get name() {
@@ -1410,15 +1432,15 @@
 
             switch (this.genus) {
                 case "aquatic":
-                    return game.global.city.biome === 'oceanic' ? 1 : getUnsuitedMod();
+                    return ['swamp','oceanic'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "fey":
-                    return game.global.city.biome === 'forest' ? 1 : getUnsuitedMod();
+                    return ['forest','swamp','taiga'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "sand":
-                    return game.global.city.biome === 'desert' ? 1 : getUnsuitedMod();
+                    return ['ashland','desert'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "heat":
-                    return game.global.city.biome === 'volcanic' ? 1 : getUnsuitedMod();
+                    return ['ashland','volcanic'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "polar":
-                    return game.global.city.biome === 'tundra' ? 1 : getUnsuitedMod();
+                    return ['tundra','taiga'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
                 case "demonic":
                     return game.global.city.biome === 'hellscape' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
                 case "angelic":
@@ -1442,15 +1464,15 @@
 
             switch (this.genus) {
                 case "aquatic":
-                    return "海洋星球";
+                    return "海洋或沼泽星球";
                 case "fey":
-                    return "森林星球";
+                    return "森林、沼泽或针叶林星球";
                 case "sand":
-                    return "沙漠星球";
+                    return "灰幕或沙漠星球";
                 case "heat":
-                    return "火山星球";
+                    return "灰幕或火山星球";
                 case "polar":
-                    return "苔原星球";
+                    return "苔原或针叶林星球";
                 case "demonic":
                     return "地狱星球";
                 case "angelic":
@@ -1680,13 +1702,13 @@
     const universes = ['standard','heavy','antimatter','evil','micro','magic'];
 
     // Biomes, traits and geologies in natural order
-    const biomeList = ['grassland', 'oceanic', 'forest', 'desert', 'volcanic', 'tundra', 'hellscape', 'eden'];
-    const traitList = ['none', 'toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable'];
+    const biomeList = ['grassland', 'oceanic', 'forest', 'desert', 'volcanic', 'tundra', 'savanna', 'swamp', 'taiga', 'ashland', 'hellscape', 'eden'];
+    const traitList = ['none', 'toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable', 'permafrost'];
     const extraList = ['Achievement', 'Copper', 'Iron', 'Aluminium', 'Coal', 'Oil', 'Titanium', 'Uranium', 'Iridium'];
 
     // Biomes and traits sorted by habitability
-    const planetBiomes = ["eden", "volcanic", "tundra", "oceanic", "forest", "grassland", "desert", "hellscape"];
-    const planetTraits = ["elliptical", "magnetic", "rage", "none", "stormy", "toxic", "trashed", "dense", "unstable", "ozone", "mellow", "flare"];
+    const planetBiomes = ["eden", "ashland", "volcanic", "taiga", "tundra", "swamp", "oceanic", "forest", "savanna", "grassland", "desert", "hellscape"];
+    const planetTraits = ["elliptical", "magnetic", "permafrost", "rage", "none", "stormy", "toxic", "trashed", "dense", "unstable", "ozone", "mellow", "flare"];
     const planetBiomeGenus = {hellscape: "demonic", eden: "angelic", oceanic: "aquatic", forest: "fey", desert: "sand", volcanic: "heat", tundra: "polar"};
     const fanatAchievements = [{god: 'sharkin', race: 'entish', achieve: 'madagascar_tree'},
                                {god: 'sporgar', race: 'human', achieve: 'infested'},
@@ -2513,7 +2535,7 @@
                   if ((supplyIndex > 0 && (buildings.SpireMechBay.isSmartManaged() || buildings.SpirePurifier.isSmartManaged()))
                     && (building.count < getBestSupplyRatio(resources.Spire_Support.maxQuantity, buildings.SpirePort.autoMax, buildings.SpireBaseCamp.autoMax)[supplyIndex])) { return false; }
                   return true;
-              };
+              }
           },
           () => "存在未供能的建筑",
           () => settings.buildingWeightingNonOperating
@@ -4188,6 +4210,9 @@
             let enemy = [5, 27.5, 62.5, 125, 300][tactic];
             if (game.global.race['banana']) {
                 enemy *= 2;
+            }
+            if (game.global.city.biome === 'swamp'){
+                enemy *= 1.4;
             }
             return enemy * getGovPower(govIndex) / 100;
         },
@@ -6822,7 +6847,8 @@
         }
 
         let biomes = ['grassland', 'oceanic', 'forest', 'desert', 'volcanic', 'tundra', game.global.race.universe === 'evil' ? 'eden' : 'hellscape'];
-        let traits = ['toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable', 'none', 'none', 'none', 'none', 'none'];
+        let subbiomes = ['savanna', 'swamp', ['taiga', 'swamp'], 'ashland', 'ashland', 'taiga'];
+        let traits = ['toxic', 'mellow', 'rage', 'stormy', 'ozone', 'magnetic', 'trashed', 'elliptical', 'flare', 'dense', 'unstable', 'permafrost'];
         let geologys = ['Copper', 'Iron', 'Aluminium', 'Coal', 'Oil', 'Titanium', 'Uranium'];
         if (game.global.stats.achieve['whitehole']) {
             geologys.push('Iridium');
@@ -6834,8 +6860,35 @@
         for (let i = 0; i < maxPlanets; i++){
             let planet = {geology: {}};
             let max_bound = !hell && game.global.stats.portals >= 1 ? 7 : 6;
-            planet.biome = biomes[Math.floor(seededRandom(0, max_bound))];
-            planet.trait = traits[Math.floor(seededRandom(0, 16))];
+
+            let subbiome = Math.floor(seededRandom(0,3)) === 0 ? true : false;
+            let idx = Math.floor(seededRandom(0, max_bound));
+
+            if (subbiome && isAchievementUnlocked("biome_" + biomes[idx], 1) && idx < subbiomes.length) {
+                let sub = subbiomes[idx];
+                if (sub instanceof Array) {
+                    planet.biome = sub[Math.floor(seededRandom(0, sub.length))];
+                } else {
+                    planet.biome = sub;
+                }
+            } else {
+                planet.biome = biomes[idx];
+            }
+
+            planet.traits = [];
+            for (let i = 0; i < 2; i++){
+                let idx = Math.floor(seededRandom(0, 18 + (9 * i)));
+                if (traits[idx] === 'permafrost' && ['volcanic','ashland','hellscape'].includes(planet.biome)) {
+                    continue;
+                }
+                if (idx < traits.length && !planet.traits.includes(traits[idx])) {
+                    planet.traits.push(traits[idx]);
+                }
+            }
+            planet.traits.sort();
+            if (planet.traits.length === 0) {
+                planet.traits.push('none');
+            }
 
             let max = Math.floor(seededRandom(0,3));
             let top = planet.biome === 'eden' ? 35 : 30;
@@ -6880,8 +6933,10 @@
             if (!isAchievementUnlocked("biome_" + planet.biome, alevel)) {
                 planet.achieve++;
             }
-            if (planet.trait !== "none" && !isAchievementUnlocked("atmo_" + planet.trait, alevel)) {
-                planet.achieve++;
+            for (let trait of planet.traits) {
+                if (trait !== "none" && !isAchievementUnlocked("atmo_" + trait, alevel)) {
+                    planet.achieve++;
+                }
             }
             if (planetBiomeGenus[planet.biome]) {
                 for (let id in races) {
@@ -6902,7 +6957,9 @@
             planet.weighting = 0;
 
             planet.weighting += settings["biome_w_" + planet.biome];
-            planet.weighting += settings["trait_w_" + planet.trait];
+            for (let trait of planet.traits) {
+                planet.weighting += settings["trait_w_" + trait];
+            }
 
             planet.weighting += planet.achieve * settings["extra_w_Achievement"];
 
@@ -6957,7 +7014,9 @@
                 let quantity = craftable.cost[res];
 
                 if (craftable.isDemanded()) { // Craftable demanded, get as much as we can
-                    afforableAmount = Math.min(afforableAmount, resource.spareQuantity / quantity);
+                    let maxUse = (resource.currentQuantity < resource.maxQuantity * (craftable.craftPreserve + 0.05))
+                      ? resource.currentQuantity : resource.spareQuantity;
+                    afforableAmount = Math.min(afforableAmount, maxUse / quantity);
                 } else if (resource.isDemanded() || (!resource.isCapped() && resource.usefulRatio < craftable.usefulRatio)) { // Don't use demanded resources
                     continue craftLoop;
                 } else if (craftable.currentQuantity < craftable.storageRequired) { // Craftable is required, use all spare resources
@@ -7019,8 +7078,8 @@
                 minMoney = 0;
                 maxCost = Number.MAX_SAFE_INTEGER;
             }
-            while (m.currentSoldiers < mercenaryMax && resources.Money.spareQuantity >= mercenaryCost &&
-                  (resources.Money.currentQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
+            while (m.currentSoldiers < mercenaryMax && resources.Money.currentQuantity >= mercenaryCost &&
+                  (resources.Money.spareQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
                 m.hireMercenary()) {
                 mercenariesHired++;
                 mercenaryCost = m.getMercenaryCost();
@@ -7148,7 +7207,7 @@
         let requiredBattalion = m.maxCityGarrison;
         if (protectSoldiers) {
             let armor = (traitVal('scales', 0) + (game.global.tech.armor ?? 0)) / traitVal('armored', 0, '-') - traitVal('frail', 0);
-            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= (cap * traitVal('high_pop', 0, 1)) ? Number.MAX_SAFE_INTEGER : ((5 - tactic) * (armor + (game.global.city.ptrait === 'rage' ? 1 : 2)) - 1)));
+            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= (cap * traitVal('high_pop', 0, 1)) ? Number.MAX_SAFE_INTEGER : ((5 - tactic) * (armor + (game.global.city.ptrait.includes('rage') ? 1 : 2)) - 1)));
             maxBattalion = protectedBattalion.map(soldiers => Math.min(soldiers, m.availableGarrison));
             requiredBattalion = 0;
         }
@@ -7349,7 +7408,7 @@
             return;
         }
 
-        let farmerIndex = Math.max(jobList.indexOf(jobs.Hunter), jobList.indexOf(jobs.Farmer));
+        let farmerIndex = game.global.race['artifical'] ? -1 : Math.max(jobList.indexOf(jobs.Hunter), jobList.indexOf(jobs.Farmer));
         let lumberjackIndex = isDemonRace() && isLumberRace() ? farmerIndex : jobList.indexOf(jobs.Lumberjack);
         let quarryWorkerIndex = jobList.indexOf(jobs.QuarryWorker);
         let crystalMinerIndex = jobList.indexOf(jobs.CrystalMiner);
@@ -7514,7 +7573,7 @@
         }
 
         let minersDisabled = settings.jobDisableMiners && buildings.GatewayStarbase.count > 0;
-        let hoovedMiner = game.global.race.hooved && !isLumberRace() && !minersDisabled  && availableEmployees > 0 ? jobList.indexOf(jobs.Miner) : -1;
+        let hoovedMiner = game.global.race.hooved && !minersDisabled && availableEmployees > 0 ? jobList.indexOf(jobs.Miner) : -1;
 
         // Make sure our hooved have miner for horseshoes
         if (hoovedMiner !== -1) {
@@ -7988,6 +8047,11 @@
         }
         if (resources.Steel.isDemanded()) {
             steelWeighting = Number.MAX_SAFE_INTEGER;
+        }
+        if (jobs.Miner.count === 0 && buildings.BeltIronShip.stateOnCount === 0) {
+            ironWeighting = 0;
+            steelWeighting = 1;
+            maxAllowedSteel = totalSmelters - smelterIridiumCount;
         }
 
         // We have more steel than we can afford OR iron income is too low
@@ -10761,7 +10825,9 @@
           + (game.global.tech.govern ? 1 : 0) // Government unlocked
           + (game.global.tech.trade ? 1 : 0) // Trade Routes unlocked
           + (resources.Crates.isUnlocked() ? 1 : 0) // Crates in storage tab
-          + (resources.Containers.isUnlocked() ? 1 : 0); // Containers in storage tab
+          + (resources.Containers.isUnlocked() ? 1 : 0) // Containers in storage tab
+          + (haveTech("m_smelting", 2) ? 1 : 0) // TP Iridium smelting
+          + (haveTech("irid_smelting") ? 1 : 0); // Iridium smelting
 
         if (game.global.settings.showShipYard) { // TP Ship Yard
           state.tabHash += 1
@@ -11044,7 +11110,7 @@
         }
         if (obj === buildings.PortalRepairDroid) {
             let wallRepair = Math.round(200 * (0.95 ** obj.stateOnCount)) / 4;
-            let carRepair = Math.round(180 * (0.95 ** obj.stateOnCount)) / 4;
+            let carRepair = Math.round(180 * (0.92 ** obj.stateOnCount)) / 4;
             notes.push(`约需要 ${getNiceNumber(wallRepair)} 秒修复 1% 城墙耐久`);
             notes.push(`约需要 ${getNiceNumber(carRepair)} 秒修复一辆勘探车`);
         }
@@ -12006,7 +12072,7 @@
         Boolean: { fn: (v) => v, arg: "boolean", def: false, desc: "返回布尔值的值", title:"布尔值" },
         SettingDefault: { fn: (s) => settingsRaw[s], arg: "string", def: "masterScriptToggle", desc: "返回默认设置的值，数值类型可变", title:"默认设置" },
         SettingCurrent: { fn: (s) => settings[s], arg: "string", def: "masterScriptToggle", desc: "返回当前设置的值，数值类型可变", title:"当前设置" },
-        Eval: { fn: (s) => eval(s), arg: "string", def: "Math.PI", desc: "返回代码求值后的值，可以在源代码中的变量名前加上evolve.来引用", title:"求值" },
+        Eval: { fn: (s) => fastEval(s), arg: "string", def: "Math.PI", desc: "返回代码求值后的值，可以在源代码中的变量名前加上evolve.来引用", title:"求值" },
         BuildingUnlocked: { fn: (b) => buildingIds[b].isUnlocked(), ...argType.building, desc: "如果建筑已解锁，则返回真值", title:"建筑是否解锁" },
         BuildingClickable: { fn: (b) => buildingIds[b].isClickable(), ...argType.building, desc: "如果建筑满足所有建造条件并可以建造，则返回真值", title:"建筑是否可点击" },
         BuildingAffordable: { fn: (b) => buildingIds[b].isAffordable(true), ...argType.building, desc: "如果建筑足够资源建造，则返回真值", title:"建筑是否足够资源建造" },
@@ -12044,7 +12110,7 @@
         Date: { fn: (d) => d === "total" ? game.global.stats.days : game.global.city.calendar[d], ...argType.date, desc: "以数值形式返回游戏中天数的数量", title:"天数" },
         Soldiers: { fn: (s) => WarManager[s], ...argType.soldiers, desc: "以数值形式返回士兵的数量", title:"士兵数" },
         PlanetBiome: { fn: (b) => game.global.city.biome === b, ...argType.biome, desc: "如果当前行星的生物群系为所选择的生物群系，则返回真值", title:"行星生物群系" },
-        PlanetTrait: { fn: (t) => game.global.city.ptrait === t, ...argType.ptrait, desc: "如果当前行星的星球特性为所选择的星球特性，则返回真值", title:"行星星球特性" },
+        PlanetTrait: { fn: (t) => game.global.city.ptrait.includes(t), ...argType.ptrait, desc: "如果当前行星的星球特性为所选择的星球特性，则返回真值", title:"行星星球特性" },
     }
 
     function openOverrideModal(event) {
@@ -15337,9 +15403,7 @@
                 let mechNode = list._vnode.children[i].elm;
                 let firstNode = $(mechNode.childNodes[0]);
                 if (firstNode.hasClass("ea-mech-info")) {
-                    if (firstNode.text() !== "info") {
-                        firstNode.text(info);
-                    }
+                    firstNode.text(info);
                 } else {
                     $(mechNode).prepend(`<span class="ea-mech-info">${info}</span>`);
                 }
@@ -15651,7 +15715,8 @@
         lb += game.global.genes['birth'] ?? 0;
         lb += game.global.race['promiscuous'] ?? 0;
         lb *= traitVal("high_pop", 2, 1);
-        let base = resources.Population.currentQuantity * (game.global.city.ptrait === 'toxic' ? 1.25 : 1);
+        lb *= (game.global.city.biome === 'taiga' ? 1.5 : 1);
+        let base = resources.Population.currentQuantity * (game.global.city.ptrait.includes('toxic') ? 1.25 : 1);
         if (game.global.race['parasite'] && game.global.race['cataclysm']){
             lb = Math.round(lb / 5);
             base *= 3;
@@ -15799,6 +15864,14 @@
         }
     }
 
+    var evalCache = {};
+    function fastEval(s) {
+        if (!evalCache[s]) {
+            evalCache[s] = eval(`(function() { return ${s} })`);
+        }
+        return evalCache[s]();
+    }
+
     function getVueById(elementId) {
         let element = win.document.getElementById(elementId);
         if (element === null || !element.__vue__) {
@@ -15860,7 +15933,6 @@
         // function govPrice(gov) from civics.js
         govPrice: function(e){let o=game.global.civic.foreign[`gov${e}`],i=15384*o.eco;return i*=1+1.6*o.hstl/100,+(i*=1-.25*o.unrest/100).toFixed(0)},
         // export const galaxyOffers from resources.js
-        // This one does *not* work exactly like in game: game's function is bugged, and doesn't track mutation out of kindling kindred, here it's fixed, and change of trait will take immediate effect, without reloading page. Reimplementing this bug would require additional efforts, as polyfills initialized before we have access to game state, and we don't know traits at this time. Players doesn't mutate out of kindled kindered daily, and even if someone will - he will also need to fix game bug by reloading, and that will also sync return values of this poly with game implementation again, so no big deal...
         galaxyOffers: normalizeProperties([{buy:{res:"Deuterium",vol:5},sell:{res:"Helium_3",vol:25}},{buy:{res:"Neutronium",vol:2.5},sell:{res:"Copper",vol:200}},{buy:{res:"Adamantite",vol:3},sell:{res:"Iron",vol:300}},{buy:{res:"Elerium",vol:1},sell:{res:"Oil",vol:125}},{buy:{res:"Nano_Tube",vol:10},sell:{res:"Titanium",vol:20}},{buy:{res:"Graphene",vol:25},sell:{res:()=>game.global.race.kindling_kindred||game.global.race.smoldering?game.global.race.smoldering?"Chrysotile":"Stone":"Lumber",vol:1e3}},{buy:{res:"Stanene",vol:40},sell:{res:"Aluminium",vol:800}},{buy:{res:"Bolognium",vol:.75},sell:{res:"Uranium",vol:4}},{buy:{res:"Vitreloy",vol:1},sell:{res:"Infernite",vol:1}}]),
         // export const supplyValue from resources.js
         supplyValue: {Lumber:{in:.5,out:25e3},Chrysotile:{in:.5,out:25e3},Stone:{in:.5,out:25e3},Crystal:{in:3,out:25e3},Furs:{in:3,out:25e3},Copper:{in:1.5,out:25e3},Iron:{in:1.5,out:25e3},Aluminium:{in:2.5,out:25e3},Cement:{in:3,out:25e3},Coal:{in:1.5,out:25e3},Oil:{in:2.5,out:12e3},Uranium:{in:5,out:300},Steel:{in:3,out:25e3},Titanium:{in:3,out:25e3},Alloy:{in:6,out:25e3},Polymer:{in:6,out:25e3},Iridium:{in:8,out:25e3},Helium_3:{in:4.5,out:12e3},Deuterium:{in:4,out:1e3},Neutronium:{in:15,out:1e3},Adamantite:{in:12.5,out:1e3},Infernite:{in:25,out:250},Elerium:{in:30,out:250},Nano_Tube:{in:6.5,out:1e3},Graphene:{in:5,out:1e3},Stanene:{in:4.5,out:1e3},Bolognium:{in:18,out:1e3},Vitreloy:{in:14,out:1e3},Orichalcum:{in:10,out:1e3},Plywood:{in:10,out:250},Brick:{in:10,out:250},Wrought_Iron:{in:10,out:250},Sheet_Metal:{in:10,out:250},Mythril:{in:12.5,out:250},Aerogel:{in:16.5,out:250},Nanoweave:{in:18,out:250},Scarletite:{in:35,out:250}},
