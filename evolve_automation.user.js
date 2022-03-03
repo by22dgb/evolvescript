@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.97
+// @version      3.3.1.98
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -11217,7 +11217,7 @@
                     }
                 } catch (error) {
                     let msg = `Condition ${i+1} for setting ${key} invalid! Fix or remove it. (${error})`;
-                    if (!WindowManager.isOpen() && !game.global.lastMsg.all.find(log => log.m === msg)) { // Don't spam with errors
+                    if (!WindowManager.isOpen() && !Object.values(game.global.lastMsg.all).find(log => log.m === msg)) { // Don't spam with errors
                         GameLog.logDanger("special", msg, ['events', 'major_events']);
                     }
                     continue; // Some argument not valid, skip condition
@@ -15292,7 +15292,10 @@
                 if (firstNode.hasClass("ea-mech-info")) {
                     firstNode.text(info);
                 } else {
-                    $(mechNode).prepend(`<span class="ea-mech-info">${info}</span>`);
+                    let note = document.createElement("span");
+                    note.className = "ea-mech-info";
+                    note.innerHTML = info;
+                    mechNode.insertBefore(note, mechNode.firstChild);
                 }
             }
             MechManager.mechObserver.observe(document.getElementById("mechList"), {childList: true});
