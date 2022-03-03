@@ -1179,7 +1179,7 @@
         get title() {
             let def = this.definition;
             let title = typeof def.title === 'function' ? def.title() : def.title;
-            if (def.path?.includes('truepath')) {
+            if (def.path && def.path.includes('truepath') && !def.path.includes('standard')) {
                 title += ` (${game.loc('evo_challenge_truepath')})`;
             }
             return title;
