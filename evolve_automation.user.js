@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.97
+// @version      3.3.1.98
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -1182,7 +1182,7 @@
         get title() {
             let def = this.definition;
             let title = typeof def.title === 'function' ? def.title() : def.title;
-            if (def.path?.includes('truepath')) {
+            if (def.path && def.path.includes('truepath') && !def.path.includes('standard')) {
                 title += `（${game.loc('evo_challenge_truepath')}）`;
             }
             return title;
@@ -1195,13 +1195,7 @@
             {
                 return speciNames[this._id];
             }
-            let nameStr = typeof this.title === 'function' ? this.title() : this.title;
-            let pathStr = "";
-            if((game.actions.tech[this._id].path) && (game.actions.tech[this._id].path.length == 1) && (game.actions.tech[this._id].path[0] == "truepath"))
-            {
-                pathStr = "（智械黎明）";
-            }
-            return nameStr+pathStr;
+            return this.title;
         }
 
         isAffordable(max = false) {
@@ -11232,7 +11226,7 @@
                     }
                 } catch (error) {
                     let msg = `Condition ${i+1} for setting ${key} invalid! Fix or remove it. (${error})`;
-                    if (!WindowManager.isOpen() && !game.global.lastMsg.all.find(log => log.m === msg)) { // Don't spam with errors
+                    if (!WindowManager.isOpen() && !Object.values(game.global.lastMsg.all).find(log => log.m === msg)) { // Don't spam with errors
                         GameLog.logDanger("special", msg, ['events', 'major_events']);
                     }
                     continue; // Some argument not valid, skip condition
@@ -15405,7 +15399,10 @@
                 if (firstNode.hasClass("ea-mech-info")) {
                     firstNode.text(info);
                 } else {
-                    $(mechNode).prepend(`<span class="ea-mech-info">${info}</span>`);
+                    let note = document.createElement("span");
+                    note.className = "ea-mech-info";
+                    note.innerHTML = info;
+                    mechNode.insertBefore(note, mechNode.firstChild);
                 }
             }
             MechManager.mechObserver.observe(document.getElementById("mechList"), {childList: true});
