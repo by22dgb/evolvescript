@@ -1261,7 +1261,7 @@
         getWeighting() {
             // Locked races always have zero weighting
             let habitability = this.getHabitability();
-            if (habitability <= 0) {
+            if (habitability < (settings.evolutionAutoUnbound ? 0.8 : 1)) {
                 return 0;
             }
 
@@ -5968,6 +5968,7 @@
             evolutionQueue: [],
             evolutionQueueEnabled: false,
             evolutionQueueRepeat: false,
+            evolutionAutoUnbound: true,
             evolutionBackup: false,
         }
         challenges.forEach(set => def["challenge_" + set[0].id] = false);
@@ -12699,6 +12700,7 @@
         currentNode.append(`<div><span id="script_race_warning"></span></div>`);
         updateRaceWarning();
 
+        addSettingsToggle(currentNode, "evolutionAutoUnbound", "Allow unbound races", "Allow Auto Achievement to pick biome restricted races on unsuited biomes, after getting unbound.");
         addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Useless after getting mass exintion perk.");
 
         // Challenges
