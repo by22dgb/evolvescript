@@ -11031,7 +11031,8 @@
     function getTooltipInfo(obj) {
         let notes = [];
         if (obj === buildings.NeutronCitadel) {
-            notes.push(`Next level will increase total consumption by ${getCitadelConsumption(obj.stateOnCount+1) - getCitadelConsumption(obj.stateOnCount)} MW`);
+            let diff = getCitadelConsumption(obj.stateOnCount + 1) - getCitadelConsumption(obj.stateOnCount);
+            notes.push(`Next level will increase total consumption by ${getNiceNumber(diff)} MW`);
         }
         if (obj === buildings.SpireMechBay && MechManager.initLab()) {
             notes.push(`Current team potential: ${getNiceNumber(MechManager.mechsPotential)}`);
@@ -11041,7 +11042,6 @@
             if (supplyCollected > 0) {
                 notes.push(`Supplies collected: ${getNiceNumber(supplyCollected)} /s`);
             }
-
         }
 
         if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargetsAll.includes(obj) && !state.triggerTargets.includes(obj)) {
@@ -11118,6 +11118,13 @@
         if (obj === buildings.Smokehouse) {
             let spoilage = 50 * (0.9 ** obj.count);
             notes.push(`${getNiceNumber(spoilage)}% of stored ${resources.Food.title} spoiled per second`);
+        }
+        if (obj === buildings.LakeCoolingTower) {
+            let coolers = buildings.LakeCoolingTower.stateOnCount;
+            let current = 500 * (0.92 ** coolers);
+            let next = 500 * (0.92 ** (coolers+1));
+            let diff = ((current - next) * buildings.LakeHarbour.stateOnCount) * (game.global.race['emfield'] ? 1.5 : 1);
+            notes.push(`Next level will decrease total consumption by ${getNiceNumber(diff)} MW`);
         }
 
         if (obj.extraDescription) {
@@ -12701,7 +12708,7 @@
         updateRaceWarning();
 
         addSettingsToggle(currentNode, "evolutionAutoUnbound", "Allow unbound races", "Allow Auto Achievement to pick biome restricted races on unsuited biomes, after getting unbound.");
-        addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Useless after getting mass exintion perk.");
+        addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Have no effect after getting mass exintion perk.");
 
         // Challenges
         for (let i = 0; i < challenges.length; i++) {
