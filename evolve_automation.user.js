@@ -7559,7 +7559,7 @@
         }
 
         let minersDisabled = settings.jobDisableMiners && buildings.GatewayStarbase.count > 0;
-        let hoovedMiner = game.global.race.hooved && !minersDisabled && availableEmployees > 0 ? jobList.indexOf(jobs.Miner) : -1;
+        let hoovedMiner = game.global.race.hooved && resources.Horseshoe.usefulRatio < 1 && !minersDisabled && availableEmployees > 0 ? jobList.indexOf(jobs.Miner) : -1;
 
         // Make sure our hooved have miner for horseshoes
         if (hoovedMiner !== -1) {
