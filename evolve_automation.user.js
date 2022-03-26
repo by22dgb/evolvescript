@@ -2512,7 +2512,7 @@
           () => true,
           (building) => {
               if (building._tab !== "city" && building.stateOffCount > 0) {
-                  if (building === buildings.RuinsGuardPost && building.isSmartManaged() && !isHellSupressUseful() 
+                  if (building === buildings.RuinsGuardPost && building.isSmartManaged() && !isHellSupressUseful()
                     && building.count < Math.ceil(5000 / (game.armyRating(traitVal('high_pop', 0, 1), "hellArmy", 0) * traitVal('holy', 1, '+')))) { return false; }
                   if (building === buildings.BadlandsAttractor && building.isSmartManaged()) { return false; }
                   if (building === buildings.SpireMechBay && building.isSmartManaged()) { return false; }
@@ -4413,11 +4413,11 @@
 
             if (yard.sort) {
                 $("#shipPlans .b-checkbox").eq(1).click()
-                this._fleetVue.build();  
+                this._fleetVue.build();
                 getVueById('shipReg0')?.setLoc(region, yard.ships.length);
                 $("#shipPlans .b-checkbox").eq(1).click()
             } else {
-                this._fleetVue.build();  
+                this._fleetVue.build();
                 getVueById('shipReg0')?.setLoc(region, yard.ships.length);
             }
             return true;
@@ -4481,7 +4481,7 @@
                     patrol += 500;
                     sensor += 10;
                 }
-                
+
                 if (sensor > 100){
                     sensor = Math.round((sensor - 100) / ((sensor - 100) + 200) * 100) + 100;
                 }
@@ -10643,7 +10643,7 @@
         if (FleetManagerOuter.nextShipAffordable && settings.prioritizeOuterFleet.includes("req")) {
             for (let res in FleetManagerOuter.nextShipCost) {
                 let resource = resources[res];
-                resource.requestedQuantity = Math.max(resource.requestedQuantity, FleetManagerOuter.nextShipCost[res]);              
+                resource.requestedQuantity = Math.max(resource.requestedQuantity, FleetManagerOuter.nextShipCost[res]);
             }
         }
 
@@ -11247,6 +11247,11 @@
                     settings[key].push(item);
                 }
             }
+        }
+
+        let currentValue = $(`#script_override_true_value:visible`);
+        if (currentValue.length !== 0) {
+            currentValue.find(`td:eq(1)`).text(JSON.stringify(settings[currentValue.attr("value")]));
         }
     }
 
@@ -12048,6 +12053,7 @@
         let note = typeof settingsRaw[settingName] === "object" ?
           "All values passed checks will be added or removed from list":
           "First value passed check will be used. Default value:";
+        let note_2 = "The current value:";
 
         let newTableBodyText = "";
         for (let i = 0; i < overrides.length; i++) {
@@ -12058,6 +12064,11 @@
             <td style="width:76%" colspan="5">${note}</td>
             <td style="width:15%"></td>
             <td style="width:9%"><a class="button is-dark is-small"><span>+</span></a></td>
+          </tr>
+          <tr id="script_override_true_value" class="unsortable" value="${settingName}">
+            <td style="width:76%" colspan="5">${note_2}</td>
+            <td style="width:15%"></td>
+            <td style="width:9%"></td>
           </tr>`;
         let tableBodyNode = $(`#script_${settingName}ModalTable`);
         tableBodyNode.append($(newTableBodyText));
@@ -12073,6 +12084,7 @@
                   $(".script_" + settingName).prop(retType, settingsRaw[settingName]);
               }));
         }
+        $(`#script_override_true_value td:eq(1)`).text(JSON.stringify(settings[settingName]));
 
         // Add button
         $(`#script_${settingName}_d a`).on('click', function() {
