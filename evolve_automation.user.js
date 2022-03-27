@@ -11249,9 +11249,9 @@
             }
         }
 
-        let currentValue = $(`#script_override_true_value:visible`);
-        if (currentValue.length !== 0) {
-            currentValue.find(`td:eq(1)`).text(JSON.stringify(settings[currentValue.attr("value")]));
+        let currentNode = $(`#script_override_true_value:visible`);
+        if (currentNode.length !== 0) {
+            changeDisplayInputNode(currentNode.attr("type"), settings[currentNode.attr("value")], currentNode.find(`td:eq(1)>*:first-child`));
         }
     }
 
@@ -11273,7 +11273,7 @@
         } else {
             state.scriptTick = 1;
         }
-        if (state.scriptTick % (settings.tickRate * (game.global.settings.at ? 2 : 1)) !== 0) {
+        if (state.scriptTick % (game.global.settings.at ? settings.tickRate * 2 : settings.tickRate) !== 0) {
             return;
         }
 
@@ -12065,7 +12065,7 @@
             <td style="width:15%"></td>
             <td style="width:9%"><a class="button is-dark is-small"><span>+</span></a></td>
           </tr>
-          <tr id="script_override_true_value" class="unsortable" value="${settingName}">
+          <tr id="script_override_true_value" class="unsortable" value="${settingName}" type="${type}">
             <td style="width:76%" colspan="5">${note_2}</td>
             <td style="width:15%"></td>
             <td style="width:9%"></td>
@@ -12084,7 +12084,7 @@
                   $(".script_" + settingName).prop(retType, settingsRaw[settingName]);
               }));
         }
-        $(`#script_override_true_value td:eq(1)`).text(JSON.stringify(settings[settingName]));
+        $(`#script_override_true_value td:eq(1)`).append(buildInputNodeForDisplay(type, options, settings[settingName]));
 
         // Add button
         $(`#script_${settingName}_d a`).on('click', function() {
@@ -12176,6 +12176,44 @@
                 return buildObjectListInput(options(), "name", "id", value, callback);
             default:
                 return "";
+        }
+    }
+
+    function buildInputNodeForDisplay(type, options, value) {
+        switch (type) {
+            case "string":
+            case "number":
+                return $(`
+                  <input type="text" class="input is-small" style="height: 22px; width:100%" disabled="disabled"/>`)
+                .val(value);
+            case "boolean":
+                return $(`
+                  <label tabindex="0" disabled="disabled" class="switch is-disabled" style="position:absolute; margin-top: 8px; margin-left: 10px;">
+                    <input type="checkbox"  disabled="disabled">
+                    <span class="check" style="height:5px; max-width:15px"></span><span style="margin-left: 20px;"></span>
+                  </label>`)
+                .find('input').prop('checked', value).end();
+            case "select":
+                return $(`
+                  <select style="width: 100%"  disabled="disabled" class="dropdown is-disabled">${options}</select>`)
+                .val(value);
+            default:
+                return $(`
+                  <span></span>`)
+                .text(JSON.stringify(value));
+        }
+    }
+
+    function changeDisplayInputNode(type, value, node) {
+        switch (type) {
+            case "string":
+            case "number":
+            case "select":
+                return node.val(value);
+            case "boolean":
+                return node.find('input').prop('checked', value).end();
+            default:
+                return node.text(JSON.stringify(value));
         }
     }
 
