@@ -4097,7 +4097,7 @@
         },
 
         // function mercCost from civics.js
-        getMercenaryCost() {
+        get mercenaryCost() {
             let cost = Math.round((1.24 ** this.workers) * 75) - 50;
             if (cost > 25000){
                 cost = 25000;
@@ -4114,7 +4114,7 @@
         },
 
         hireMercenary() {
-            let cost = this.getMercenaryCost();
+            let cost = this.mercenaryCost;
             if (this.workers >= this.max || resources.Money.currentQuantity < cost){
                 return false;
             }
@@ -5775,10 +5775,10 @@
         priorityList.push(buildings.GateInferniteMine);
 
         priorityList.push(buildings.SpireMission);
+        priorityList.push(buildings.SpirePurifier);
         priorityList.push(buildings.SpireMechBay);
         priorityList.push(buildings.SpireBaseCamp);
         priorityList.push(buildings.SpirePort);
-        priorityList.push(buildings.SpirePurifier);
         priorityList.push(buildings.SpireBridge);
         priorityList.push(buildings.SpireSphinx);
         priorityList.push(buildings.SpireBribeSphinx);
@@ -6291,7 +6291,7 @@
             productionFoundryWeighting: "demanded",
             productionSmelting: "required",
             productionSmeltingIridium: 0.5,
-            productionFactoryMinIngredients: 0.001,
+            productionFactoryMinIngredients: 0,
         }
 
         // Foundry
@@ -7054,7 +7054,7 @@
         }
 
         if (!haveTask("merc")) {
-            let mercenaryCost = m.getMercenaryCost();
+            let mercenaryCost = m.mercenaryCost;
             let mercenariesHired = 0;
             let mercenaryMax = m.maxSoldiers - settings.foreignHireMercDeadSoldiers;
             let maxCost = state.moneyMedian * settings.foreignHireMercCostLowerThanIncome;
@@ -7068,7 +7068,7 @@
                   (resources.Money.spareQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
                 m.hireMercenary()) {
                 mercenariesHired++;
-                mercenaryCost = m.getMercenaryCost();
+                mercenaryCost = m.mercenaryCost;
             }
 
             // Log the interaction
@@ -11945,7 +11945,8 @@
            {val: "hellPatrolSize", label: "Hell Patrol Size"},
            {val: "wounded", label: "Wounded Soldiers"},
            {val: "deadSoldiers", label: "Dead Soldiers"},
-           {val: "crew", label: "Ship Crew"}]},
+           {val: "crew", label: "Ship Crew"},
+           {val: "mercenaryCost", label: "Mercenary Cost"}]},
         tab: {def: "civTabs1", arg: "select_cb", options: () =>
           [{val: "civTabs0", label: game.loc('tab_evolve')},
            {val: "civTabs1", label: game.loc('tab_civil')},
@@ -12211,7 +12212,7 @@
             case "select":
                 return node.val(value);
             case "boolean":
-                return node.find('input').prop('checked', value).end();
+                return node.find('input').prop('checked', value);
             default:
                 return node.text(JSON.stringify(value));
         }
