@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.99
+// @version      3.3.1.100
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -11485,7 +11485,43 @@
     }
 
     function addScriptStyle() {
-        let styles = `
+        // Hover calculated by (alt_color - 111111), and others from original
+        let cssData = {
+            dark:{background_color:"#1f2424", alt_color:"#0f1414", hover_color:"#010303", primary_border:"#ccc", primary_color:"#fff"},
+            light:{background_color:"#fff", alt_color:"#ddd", hover_color:"#ccc", primary_border:"#000", primary_color:"#000"},
+            night:{background_color:"#000", alt_color:"#1b1b1b", hover_color:"#0a0a0a", primary_border:"#ccc", primary_color:"#fff"},
+            darkNight:{background_color:"#000", alt_color:"#1b1b1b", hover_color:"#0a0a0a", primary_border:"#ccc", primary_color:"#b8b8b8"},
+            redgreen:{background_color:"#000", alt_color:"#1b1b1b", hover_color:"#0a0a0a", primary_border:"#ccc", primary_color:"#fff"},
+            gruvboxLight:{background_color:"#fbf1c7", alt_color:"#f9f5d7", hover_color:"#e8e4c6", primary_border:"#3c3836", primary_color:"#3c3836"},
+            gruvboxDark:{background_color:"#282828", alt_color:"#1d2021", hover_color:"#0c0f10", primary_border:"#3c3836", primary_color:"#ebdbb2"},
+            orangeSoda:{background_color:"#131516", alt_color:"#292929", hover_color:"#181818", primary_border:"#313638", primary_color:"#EBDBB2"}
+        };
+        let styles = "";
+        // Colors for different themes
+        for (let theme in cssData) {
+            styles += `
+                html.${theme} .script-modal-content {
+                    background-color: ${cssData[theme].background_color};
+                }
+
+                html.${theme} #scriptModalBody table td,
+                html.${theme} #scriptModalBody table th {
+                    border-color: ${cssData[theme].primary_border};
+                }
+
+                html.${theme} .script-collapsible {
+                    background-color: ${cssData[theme].alt_color};
+                }
+
+                html.${theme} .script-collapsible:after {
+                    color: ${cssData[theme].primary_color};
+                }
+
+                html.${theme} .script-contentactive,html.${theme} .script-collapsible:hover {
+                    background-color: ${cssData[theme].hover_color};
+                }`;
+        };
+        styles += `
             .script-lastcolumn:after { float: right; content: "\\21c5"; }
             .script-refresh:after { float: right; content: "\\1f5d8"; }
             .script-draggable { cursor: move; cursor: grab; }
@@ -11493,7 +11529,6 @@
             .ui-sortable-helper { display: table; cursor: grabbing !important; }
 
             .script-collapsible {
-                background-color: #444;
                 color: white;
                 cursor: pointer;
                 padding: 18px;
@@ -11502,10 +11537,6 @@
                 text-align: left;
                 outline: none;
                 font-size: 15px;
-            }
-
-            .script-contentactive, .script-collapsible:hover {
-                background-color: #333;
             }
 
             .script-collapsible:after {
@@ -11558,7 +11589,6 @@
             /* Modal Content/Box */
             .script-modal-content {
                 position: relative;
-                background-color: #1f2424;
                 margin: auto;
                 margin-top: 50px;
                 margin-bottom: 50px;
@@ -11609,6 +11639,7 @@
                 cursor: default;
                 z-index: 10000 !important;
             }
+
             .ui-helper-hidden-accessible {
                 border: 0;
                 clip: rect(0 0 0 0);
@@ -11647,7 +11678,7 @@
             .area { width: calc(100% / 6) !important; max-width: 8rem; }
             .offer-item { width: 15% !important; max-width: 7.5rem; }
             .tradeTotal { margin-left: 11.5rem !important; }
-        `
+        `;
 
         // Create style document
         var css = document.createElement('style');
@@ -11841,7 +11872,7 @@
     }
 
     function addStandardHeading(node, heading) {
-        node.append('<div style="margin-top: 5px; width: 600px;"><span class="has-text-danger" style="margin-left: 10px;">' + heading + '</span></div>');
+        node.append(`<div style="margin-top: 5px; width: 600px; text-align: left;"><span class="has-text-danger" style="margin-left: 10px;">${heading}</span></div>`);
     }
 
     function addSettingsHeader1(node, headerText) {
@@ -13513,7 +13544,7 @@
         }
 
         currentNode.append(`
-          <table style="width:100%">
+          <table style="width:100%; text-align: left">
             <tr>
               <th class="has-text-warning" style="width:55%">Region</th>
               <th class="has-text-warning" style="width:20%">Weighting</th>
@@ -13526,13 +13557,13 @@
         let newTableBodyText = "";
 
         for (let reg of FleetManagerOuter.Regions) {
-            newTableBodyText += `<tr><td id="script_fleet_${reg}" style="width:55%"></td><td style="width:20%"></td><td style="width:25%"></td></tr>`;
+            newTableBodyText += `<tr><td id="script_${secondaryPrefix}fleet_${reg}" style="width:55%"></td><td style="width:20%"></td><td style="width:25%"></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let reg of FleetManagerOuter.Regions) {
-            let fleetElement = $('#script_fleet_' + reg);
+            let fleetElement = $(`#script_${secondaryPrefix}fleet_${reg}`);
 
             let nameRef = game.actions.space[reg].info.name;
             let gameName = typeof nameRef === 'function' ? nameRef() : nameRef;
@@ -15920,5 +15951,4 @@
     };
 
     $().ready(mainAutoEvolveScript);
-
 })($);
