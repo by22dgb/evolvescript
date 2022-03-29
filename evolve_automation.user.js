@@ -11508,9 +11508,10 @@
                     border-color: ${color.border};
                 }
 
+                /*
                 html.${theme} .script-modal-body .button {
                     background-color: ${color.alt};
-                }
+                }*/
 
                 html.${theme} .script-modal-body table td,
                 html.${theme} .script-modal-body table th {
@@ -11525,7 +11526,8 @@
                     color: ${color.primary};
                 }
 
-                html.${theme} .script-contentactive,html.${theme} .script-collapsible:hover {
+                html.${theme} .script-contentactive,
+                html.${theme} .script-collapsible:hover {
                     background-color: ${color.hover};
                 }`;
         };
@@ -11565,7 +11567,6 @@
                 //max-height: 0;
                 overflow: hidden;
                 //transition: max-height 0.2s ease-out;
-                //background-color: #f1f1f1;
             }
 
             .script-searchsettings {
@@ -12103,7 +12104,7 @@
           <tr id="script_${settingName}_d" class="unsortable">
             <td style="width:76%" colspan="5">${note}</td>
             <td style="width:15%"></td>
-            <td style="width:9%"><a class="button is-dark is-small"><span>+</span></a></td>
+            <td style="width:9%"><a class="button is-small" style="width: 26px; height: 26px"><span>+</span></a></td>
           </tr>
           <tr id="script_override_true_value" class="unsortable" value="${settingName}" type="${type}">
             <td style="width:76%" colspan="5">${note_2}</td>
@@ -12288,7 +12289,7 @@
     }
 
     function buildConditionRemove(settingName, id, rebuild) {
-        return $(`<a class="button is-dark is-small"><span>-</span></a>`)
+        return $(`<a class="button is-small" style="width: 26px; height: 26px"><span>-</span></a>`)
         .on('click', function() {
             settingsRaw.overrides[settingName].splice(id, 1);
             if (settingsRaw.overrides[settingName].length === 0) {
@@ -12918,7 +12919,7 @@
           <tr id="script_evolution_${id}" value="${id}" class="script-draggable">
             <td style="width:25%"><span class="${raceClass}">${raceName}</span> <span class="${prestigeClass}">${prestigeName}</span> ${star.prop('outerHTML') ?? (getStarLevel(queuedEvolution)-1) + "*"}</td>
             <td style="width:70%"><textarea class="textarea">${JSON.stringify(queuedEvolution, null, 4)}</textarea></td>
-            <td style="width:5%"><a class="button is-dark is-small"><span>X</span></a></td>
+            <td style="width:5%"><a class="button is-dark is-small" style="width: 26px; height: 26px"><span>X</span></a></td>
           </tr>`);
 
         // Delete button
@@ -13266,7 +13267,7 @@
         let triggerElement = $('#script_trigger_' + trigger.seq).children().eq(6);
         triggerElement.empty().off("*");
 
-        let deleteTriggerButton = $('<a class="button is-dark is-small"><span>X</span></a>');
+        let deleteTriggerButton = $('<a class="button is-dark is-small" style="width: 26px; height: 26px"><span>X</span></a>');
         triggerElement.append(deleteTriggerButton);
         deleteTriggerButton.on('click', function() {
             TriggerManager.RemoveTrigger(trigger.seq);
@@ -13338,7 +13339,7 @@
     }
 
     function buildTriggerCountInput(trigger, property) {
-        let textBox = $('<input type="text" class="input is-small" style="width:100%"/>');
+        let textBox = $('<input type="text" class="input is-small" style="height: 22px; width:100%"/>');
         textBox.val(trigger[property]);
 
         textBox.on('change', function() {
