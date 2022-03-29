@@ -11485,40 +11485,48 @@
     }
 
     function addScriptStyle() {
-        // Hover calculated by (alt_color - 111111), and others from original
+        // Hover calculated by (alt - 111111), and others from original
         let cssData = {
-            dark:{background_color:"#1f2424", alt_color:"#0f1414", hover_color:"#010303", primary_border:"#ccc", primary_color:"#fff"},
-            light:{background_color:"#fff", alt_color:"#ddd", hover_color:"#ccc", primary_border:"#000", primary_color:"#000"},
-            night:{background_color:"#000", alt_color:"#1b1b1b", hover_color:"#0a0a0a", primary_border:"#ccc", primary_color:"#fff"},
-            darkNight:{background_color:"#000", alt_color:"#1b1b1b", hover_color:"#0a0a0a", primary_border:"#ccc", primary_color:"#b8b8b8"},
-            redgreen:{background_color:"#000", alt_color:"#1b1b1b", hover_color:"#0a0a0a", primary_border:"#ccc", primary_color:"#fff"},
-            gruvboxLight:{background_color:"#fbf1c7", alt_color:"#f9f5d7", hover_color:"#e8e4c6", primary_border:"#3c3836", primary_color:"#3c3836"},
-            gruvboxDark:{background_color:"#282828", alt_color:"#1d2021", hover_color:"#0c0f10", primary_border:"#3c3836", primary_color:"#ebdbb2"},
-            orangeSoda:{background_color:"#131516", alt_color:"#292929", hover_color:"#181818", primary_border:"#313638", primary_color:"#EBDBB2"}
+            dark: {background: "#282f2f", alt: "#0f1414", hover: "#010303", border: "#ccc", primary: "#fff"},
+            light: {background: "#fff", alt: "#ddd", hover: "#ccc", border: "#000", primary: "#000"},
+            night: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff"},
+            darkNight: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#b8b8b8"},
+            redgreen: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff"},
+            gruvboxLight: {background: "#fbf1c7", alt: "#f9f5d7", hover: "#e8e4c6", border: "#3c3836", primary: "#3c3836"},
+            gruvboxDark: {background: "#282828", alt: "#1d2021", hover: "#0c0f10", border: "#3c3836", primary: "#ebdbb2"},
+            orangeSoda: {background: "#131516", alt: "#292929", hover: "#181818", border: "#313638", primary: "#EBDBB2"}
         };
         let styles = "";
         // Colors for different themes
-        for (let theme in cssData) {
+        for (let [theme, color] of Object.entries(cssData)) {
             styles += `
                 html.${theme} .script-modal-content {
-                    background-color: ${cssData[theme].background_color};
+                    background-color: ${color.background};
                 }
 
-                html.${theme} #scriptModalBody table td,
-                html.${theme} #scriptModalBody table th {
-                    border-color: ${cssData[theme].primary_border};
+                html.${theme} .script-modal-header {
+                    border-color: ${color.border};
+                }
+
+                html.${theme} .script-modal-body .button {
+                    background-color: ${color.alt};
+                }
+
+                html.${theme} .script-modal-body table td,
+                html.${theme} .script-modal-body table th {
+                    border-color: ${color.border};
                 }
 
                 html.${theme} .script-collapsible {
-                    background-color: ${cssData[theme].alt_color};
+                    background-color: ${color.alt};
                 }
 
                 html.${theme} .script-collapsible:after {
-                    color: ${cssData[theme].primary_color};
+                    color: ${color.primary};
                 }
 
                 html.${theme} .script-contentactive,html.${theme} .script-collapsible:hover {
-                    background-color: ${cssData[theme].hover_color};
+                    background-color: ${color.hover};
                 }`;
         };
         styles += `
