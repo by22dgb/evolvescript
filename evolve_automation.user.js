@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.99
+// @version      3.3.1.99.1
 // @description  try to take over the world!
 // @downloadURL  https://gitee.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @author       Fafnir
@@ -14043,7 +14043,7 @@
         });
 
         addStandardHeading(currentNode, "星际贸易");
-        addSettingsNumber(currentNode, "marketMinIngredients", "原料保底产量", "星际贸易只在所有出售的材料都高于保底产量时购买相应资源");
+        addSettingsNumber(currentNode, "marketMinIngredients", "原料保底储量", "星际贸易只在所有出售的材料都高于保底储量时购买相应资源");
 
         currentNode.append(`
           <table style="width:100%">
@@ -14408,7 +14408,7 @@
 
     function updateProductionTableFactory(currentNode) {
         addStandardHeading(currentNode, "工厂");
-        addSettingsNumber(currentNode, "productionFactoryMinIngredients", "原料保底产量", "工厂只在所有需要的材料都高于保底产量时制造相应产品");
+        addSettingsNumber(currentNode, "productionFactoryMinIngredients", "原料保底储量", "工厂只在所有需要的材料都高于保底储量时制造相应产品");
 
         currentNode.append(`
           <table style="width:100%">
