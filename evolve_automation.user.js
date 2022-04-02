@@ -11450,11 +11450,11 @@
             return;
         }
 
-        
+
         if(!translateFinish)
         {
-            //建筑翻译注入
-            let theKeys = Object.keys(buildings)
+            //建筑翻译手动注入
+            let theKeys = Object.keys(buildings);
             let difList = {
                 "Proxima Dyson Sphere (Orichalcum)": "奥利哈刚戴森球",
                 "Windmill (Evil)": "风车（邪恶种群）",
@@ -11477,8 +11477,8 @@
                 "Titan Graphene Plant":evolve.actions.space.spc_titan.info.name() + "石墨烯厂",
                 "Titan Bank":evolve.actions.space.spc_titan.info.name() + "银行",
                 "Titan AI Core (Complete)":"AI超级核心（已完成）",
-                '':'',
-                '':'',
+                'Dwarf World Collider':'世界对撞机',
+                'Dwarf World Collider (Complete)':'世界对撞机（已完成）',
                 '':'',
                 '':'',
                 '':'',
@@ -11489,10 +11489,10 @@
             }
             for(let i = 0; i < theKeys.length; i++)
             {
-                let buildObj = buildings[theKeys[i]]
-                let tempTitle
-                let tempB1 = buildObj._tab
-                let tempB2 = buildObj._id
+                let buildObj = buildings[theKeys[i]];
+                let tempTitle;
+                let tempB1 = buildObj._tab;
+                let tempB2 = buildObj._id;
 
                 if(Object.keys(difList).includes(buildObj.name)){
                     buildObj.name = difList[buildObj.name];
@@ -11539,14 +11539,22 @@
                         break;
                 }
             }
-            //arpa翻译注入
-            theKeys = Object.keys(projects)
+            //arpa翻译手动注入
+            theKeys = Object.keys(projects);
             for(let i = 0; i < theKeys.length; i++)
             {
-                let tempObj = game.actions.arpa[projects[theKeys[i]]._id].title
-                projects[theKeys[i]].name = (typeof(tempObj) == "function") ?  tempObj() : tempObj
+                let tempObj;
+                switch (theKeys[i])
+                {
+                    case "Monument":
+                        tempObj = "纪念碑";
+                        break;
+                    default:
+                        tempObj = game.actions.arpa[projects[theKeys[i]]._id].title;
+                }
+                projects[theKeys[i]].name = (typeof(tempObj) == "function") ?  tempObj() : tempObj;
             }
-            translateFinish = true
+            translateFinish = true;
         }
         // Make sure we have jQuery UI even if script was injected without *monkey
         if (!jQuery.ui) {
