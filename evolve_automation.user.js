@@ -8787,7 +8787,7 @@
                     let weightDiffRatio = other.weighting / building.weighting;
 
                     // Buildings sorted by weighting, so once we reached something with lower weighting - all remaining also lower, and we don't care about them
-                    if (weightDiffRatio <= 1) {
+                    if (weightDiffRatio <= 1.000001) {
                         break;
                     }
                     // And we don't want to process clickable buildings - all buildings with highter weighting should already been proccessed.
