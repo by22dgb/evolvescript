@@ -13614,7 +13614,7 @@
         addSettingsNumber(currentNode, "hellPatrolDroneMod", "&emsp;每个掠食者无人机减少恶魔生物评级", "掠食者无人机在巡逻队战斗前就减少恶魔生物数量");
         addSettingsNumber(currentNode, "hellPatrolDroidMod", "&emsp;每个战斗机器人减少恶魔生物评级", "根据研究情况，战斗机器人可以增加1至2名士兵的巡逻队战斗评级");
         addSettingsNumber(currentNode, "hellPatrolBootcampMod", "&emsp;每个新兵训练营减少恶魔生物评级", "新兵训练营使士兵更快完成训练");
-        addSettingsNumber(currentNode, "hellBolsterPatrolRating", "士兵阵亡时增加巡逻队战斗评级至此数值", "更大的巡逻队效率更低，但阵亡也更少");
+        addSettingsNumber(currentNode, "hellBolsterPatrolRating", "士兵阵亡时增加此战斗评级数值的巡逻队", "更大的巡逻队效率更低，但阵亡也更少");
         addSettingsNumber(currentNode, "hellBolsterPatrolPercentTop", "&emsp;当驻军到达此比例时开始增加巡逻队战斗评级", "较高数值");
         addSettingsNumber(currentNode, "hellBolsterPatrolPercentBottom", "&emsp;当驻军低于此比例时将巡逻队战斗评级增加到最大", "较低数值");
 
