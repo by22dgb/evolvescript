@@ -4618,7 +4618,8 @@
               + game.global.blood.wrath
               + game.global.portal.mechbay.scouts * 1e7
               + (settings.mechSpecial ? 1e14 : 0)
-              + (settings.mechInfernalCollector ? 1e15 : 0);
+              + (settings.mechInfernalCollector ? 1e15 : 0)
+              + (settings.mechCollectorValue);
 
               return this.stateHash !== oldHash;
         },
