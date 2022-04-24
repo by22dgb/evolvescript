@@ -11906,7 +11906,7 @@
                             evals.push(override.arg2);
                         }
                     }));
-                    if (evals.length > 0 && !confirm("Warning! Imported settings includes evaluated code, which will have full access to browser page, and can be potentially dangerous.\nOnly continue if you trust the source. Injected code:\n" + evals.join("\n"))) {
+                    if (evals.length > 0 && !confirm("警告！导入的设置包含可执行JS代码，这些代码将有对浏览器页面的完全访问权限，并且可能存在潜在危险。\n只有在您信任来源的情况下才能继续。代码:\n" + evals.join("\n"))) {
                         return;
                     }
                     console.log("Importing script settings");
@@ -11990,7 +11990,7 @@
     }
 
     function genericResetFunction(resetFunction, sectionName) {
-        if (confirm("Are you sure you wish to reset " + sectionName + " Settings?")) {
+        if (confirm("你确定要还原" + sectionName + "的设置吗？")) {
             resetFunction();
         }
     }
@@ -12556,7 +12556,7 @@
             <textarea class="script_${settingName} textarea" style="margin-top: 12px" readonly></textarea>
           </div>`)
         .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingName]))
-        .on('click', {label: `Add or Remove (${settingName})`, name: settingName, type: "list", options: {list: list, name: "name", id: "_vueBinding"}}, openOverrideModal)
+        .on('click', {label: `增加或减少 (${settingName})`, name: settingName, type: "list", options: {list: list, name: "name", id: "_vueBinding"}}, openOverrideModal)
         .appendTo(node);
 
         let selectedItem = "";
@@ -12774,7 +12774,7 @@
             state.goal = "Standard";
             updateSettingsFromState();
         })
-        .on('click', {label: "Prestige Type (prestigeType)", name: "prestigeType", type: "select", options: prestigeOptions}, openOverrideModal);
+        .on('click', {label: "威望重置类型 (prestigeType)", name: "prestigeType", type: "select", options: prestigeOptions}, openOverrideModal);
 
         addSettingsToggle(currentNode, "prestigeWaitAT", "是否在重置前用完所有的加速时间", "直到用完所有的加速时间才进行重置");
         addSettingsToggle(currentNode, "prestigeBioseedConstruct", "忽略无用的建筑", "只在需要进行播种重置时建造星际船坞、生命播种飞船和星际探测器，并且不建造世界超级对撞机。进行黑洞重置时不建造跃迁飞船。进行真空坍缩时不建造恒星引擎。");
@@ -14868,7 +14868,7 @@
         buildingElement.append(buildAllBuildingStateSettingsToggle());
 
         $('#script_resetBuildingsPriority').on("click", function(){
-            if (confirm("Are you sure you wish to reset buildings priority?")) {
+            if (confirm("你确定要还原自动建筑优先级吗？")) {
                 initBuildingState();
                 for (let i = 0; i < BuildingManager.priorityList.length; i++) {
                     let id = BuildingManager.priorityList[i]._vueBinding;
@@ -15246,7 +15246,7 @@
                 disabledCallBack();
             }
         });
-        toggle.on('click', {label: `Toggle (${settingKey})`, name: settingKey, type: "boolean"}, openOverrideModal);
+        toggle.on('click', {label: `${label} (${settingKey})`, name: settingKey, type: "boolean"}, openOverrideModal);
 
         node.append(toggle);
     }
