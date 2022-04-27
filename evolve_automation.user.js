@@ -11252,7 +11252,7 @@
 
         let currentNode = $(`#script_override_true_value:visible`);
         if (currentNode.length !== 0) {
-            changeDisplayInputNode(currentNode.attr("type"), settings[currentNode.attr("value")], currentNode.find(`td:eq(1)>*:first-child`));
+            changeDisplayInputNode(currentNode.attr("type"), currentNode.attr("value"), settings[currentNode.attr("value")], currentNode.find(`td:eq(1)>*:first-child`));
         }
     }
 
@@ -12239,6 +12239,10 @@
                 return $(`
                   <select style="width: 100%"  disabled="disabled" class="dropdown is-disabled">${options}</select>`)
                 .val(value);
+            case "list":
+                return $(`
+                  <span></span>`)
+               .text(value.map(item => options.list[item].name).join(", "));
             default:
                 return $(`
                   <span></span>`)
@@ -12246,7 +12250,7 @@
         }
     }
 
-    function changeDisplayInputNode(type, value, node) {
+    function changeDisplayInputNode(type, id, value, node) {
         switch (type) {
             case "string":
             case "number":
@@ -12254,6 +12258,9 @@
                 return node.val(value);
             case "boolean":
                 return node.find('input').prop('checked', value);
+            case "list":
+                if(id === "researchIgnore")
+                    return node.text(value.map(item => techIds[item].name).join(", "));
             default:
                 return node.text(JSON.stringify(value));
         }
