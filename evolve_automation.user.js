@@ -7009,7 +7009,8 @@
                 } else if (craftable.currentQuantity < craftable.storageRequired) { // Craftable is required, use all spare resources
                     afforableAmount = Math.min(afforableAmount, resource.spareQuantity / quantity);
                 } else if (resource.currentQuantity >= resource.storageRequired || resource.isCapped()) { // Resource not required - consume income
-                    afforableAmount = Math.min(afforableAmount, Math.ceil(resource.rateOfChange / ticksPerSecond() / quantity));
+                    afforableAmount = Math.min(afforableAmount, Math.ceil(resource.rateOfChange / ticksPerSecond() / quantity),
+                       Math.ceil((resource.currentQuantity - (resource.maxQuantity * craftable.craftPreserve)) / quantity));
                 } else { // Resource is required, and craftable not required. Don't craft anything.
                     continue craftLoop;
                 }
@@ -8509,7 +8510,6 @@
 
         let vue = getVueById("arpaSequence");
         if (vue === undefined) { return false; }
-
 
         let genesToAssemble = Math.ceil(overflowKnowledge / 200000);
         if (genesToAssemble > 0) {
@@ -12259,8 +12259,9 @@
             case "boolean":
                 return node.find('input').prop('checked', value);
             case "list":
-                if(id === "researchIgnore")
+                if (id === "researchIgnore") {
                     return node.text(value.map(item => techIds[item].name).join(", "));
+                } // else default
             default:
                 return node.text(JSON.stringify(value));
         }
@@ -15263,7 +15264,7 @@
             createSettingToggle(scriptNode, 'autoFactory', 'Manages factory production.');
             createSettingToggle(scriptNode, 'autoMiningDroid', 'Manages mining droid production.');
             createSettingToggle(scriptNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
-            createSettingToggle(scriptNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max. Stops when DNA Sequencing is researched.');
+            createSettingToggle(scriptNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max.');
             createSettingToggle(scriptNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings.');
             createSettingToggle(scriptNode, 'autoEject', 'Eject excess resources to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements.', createEjectToggles, removeEjectToggles);
             createSettingToggle(scriptNode, 'autoSupply', 'Send excess resources to Spire. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over ejector.', createSupplyToggles, removeSupplyToggles);
