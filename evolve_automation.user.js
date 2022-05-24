@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.100
+// @version      3.3.1.100.1
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/blob/master/evolve_automation.user.js
 // @author       Fafnir
@@ -7018,7 +7018,8 @@
                 } else if (craftable.currentQuantity < craftable.storageRequired) { // Craftable is required, use all spare resources
                     afforableAmount = Math.min(afforableAmount, resource.spareQuantity / quantity);
                 } else if (resource.currentQuantity >= resource.storageRequired || resource.isCapped()) { // Resource not required - consume income
-                    afforableAmount = Math.min(afforableAmount, Math.ceil(resource.rateOfChange / ticksPerSecond() / quantity));
+                    afforableAmount = Math.min(afforableAmount, Math.ceil(resource.rateOfChange / ticksPerSecond() / quantity),
+                       Math.ceil((resource.currentQuantity - (resource.maxQuantity * craftable.craftPreserve)) / quantity));
                 } else { // Resource is required, and craftable not required. Don't craft anything.
                     continue craftLoop;
                 }
@@ -8518,7 +8519,6 @@
 
         let vue = getVueById("arpaSequence");
         if (vue === undefined) { return false; }
-
 
         let genesToAssemble = Math.ceil(overflowKnowledge / 200000);
         if (genesToAssemble > 0) {
@@ -11991,7 +11991,7 @@
     }
 
     function genericResetFunction(resetFunction, sectionName) {
-        if (confirm("你确定要还原" + sectionName + "的设置吗？")) {
+        if (confirm("您确定要还原" + sectionName + "的设置吗？")) {
             resetFunction();
         }
     }
@@ -12374,8 +12374,9 @@
             case "boolean":
                 return node.find('input').prop('checked', value);
             case "list":
-                if(id === "researchIgnore")
+                if (id === "researchIgnore") {
                     return node.text(value.map(item => techIds[item].name).join(", "));
+                } // else default
             default:
                 return node.text(JSON.stringify(value));
         }
@@ -14876,7 +14877,7 @@
         buildingElement.append(buildAllBuildingStateSettingsToggle());
 
         $('#script_resetBuildingsPriority').on("click", function(){
-            if (confirm("你确定要还原自动建筑优先级吗？")) {
+            if (confirm("您确定要还原自动建筑优先级吗？")) {
                 initBuildingState();
                 for (let i = 0; i < BuildingManager.priorityList.length; i++) {
                     let id = BuildingManager.priorityList[i]._vueBinding;
@@ -15378,7 +15379,7 @@
             createSettingToggle(scriptNode, 'autoFactory', '自动工厂', '自动管理工厂的生产。');
             createSettingToggle(scriptNode, 'autoMiningDroid', '自动采矿机器人', '自动管理采矿机器人的生产。');
             createSettingToggle(scriptNode, 'autoGraphenePlant', '自动石墨烯厂', '自动管理石墨烯厂的燃料。无法手动控制，会自动使用需求最少的燃料。');
-            createSettingToggle(scriptNode, 'autoAssembleGene', '自动组装基因', '当知识满了以后，自动进行基因重组。进行首次测序时不生效。');
+            createSettingToggle(scriptNode, 'autoAssembleGene', '自动组装基因', '当知识满了以后，自动进行基因重组。');
             createSettingToggle(scriptNode, 'autoMinorTrait', '自动次要基因', '根据相应的权重，自动使用基因购买次要特质。');
             createSettingToggle(scriptNode, 'autoEject', '自动质量喷射', '将多余的资源用于黑洞质量喷射。普通资源将在接近上限时用于喷射，锻造物将在超过需求时用于喷射。', createEjectToggles, removeEjectToggles);
             createSettingToggle(scriptNode, 'autoSupply', '自动补给', '将多余的资源用于补给。普通资源将在接近上限时用于补给，锻造物将在超过需求时用于补给。优先级高于质量喷射器。', createSupplyToggles, removeSupplyToggles);
