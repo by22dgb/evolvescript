@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.100
+// @version      3.3.1.101
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -5388,7 +5388,6 @@
         buildings.SpireMechBay.addSupport(resources.Spire_Support);
 
         buildings.TitanElectrolysis.addSupport(resources.Titan_Support);
-        buildings.TitanHydrogen.addSupport(resources.Titan_Support);
         buildings.TitanQuarters.addSupport(resources.Titan_Support);
         buildings.TitanMine.addSupport(resources.Titan_Support);
         buildings.TitanGraphene.addSupport(resources.Titan_Support);
