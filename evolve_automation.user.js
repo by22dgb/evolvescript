@@ -1723,7 +1723,7 @@
     const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", apocalypse: "AI Apocalypse", ascension: "Ascension", demonic: "Infusion"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
-    const settingsSections = ["general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech", "magic"];
+    const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech", "magic"];
     const unlimitedJobs = ["unemployed", "hunter", "farmer", "lumberjack", "quarry_worker", "crystal_miner", "scavenger", "forager"]; // this.definition.max holds zero at evolution stage, and that can mess with settings gui
 
     // Lookup tables, will be filled on init
@@ -11738,7 +11738,7 @@
         buildProjectSettings();
         buildLoggingSettings(scriptContentNode, "");
 
-        let collapsibles = document.getElementsByClassName("script-collapsible");
+        let collapsibles = document.querySelectorAll("#script_settings .script-collapsible");
         for (let i = 0; i < collapsibles.length; i++) {
             collapsibles[i].addEventListener("click", function() {
                 this.classList.toggle("script-contentactive");
@@ -15228,51 +15228,67 @@
 
         let scriptNode = $('#autoScriptContainer');
         if (scriptNode.length === 0) {
-            scriptNode = $('<div id="autoScriptContainer"></div>');
-            $('#resources').append(scriptNode);
             resetScrollPositionRequired = true;
+            $('#resources').append(`
+              <div id="autoScriptContainer" style="margin-top: 10px;">
+                <h3 id="toggleSettingsCollapsed" class="script-collapsible text-center has-text-success">Automation</h3>
+                <div id="scriptToggles">
+                  <label>More script options available in Settings tab<br>Ctrl+click options to open <span class="inactive-row">advanced configuration</span></label><br>
+                </div>
+              </div>`);
 
-            scriptNode.append(`<label id="autoScriptInfo">More script options available in Settings tab<br>Ctrl+click options to open <span class="inactive-row">advanced configuration</span></label><br>`);
+            let collapsibleNode = $('#toggleSettingsCollapsed');
+            let togglesNode = $('#scriptToggles');
 
-            createSettingToggle(scriptNode, 'masterScriptToggle', 'Stop taking any actions on behalf of the player.');
+            collapsibleNode.toggleClass('script-contentactive', !settingsRaw["toggleSettingsCollapsed"])
+            togglesNode.css('display', settingsRaw["toggleSettingsCollapsed"] ? 'none' : 'block');
+
+            collapsibleNode.on('click', function() {
+                settingsRaw["toggleSettingsCollapsed"] = !settingsRaw["toggleSettingsCollapsed"];
+                collapsibleNode.toggleClass('script-contentactive', !settingsRaw["toggleSettingsCollapsed"])
+                togglesNode.css('display', settingsRaw["toggleSettingsCollapsed"] ? 'none' : 'block');
+                updateSettingsFromState();
+            });
+
+            createSettingToggle(togglesNode, 'masterScriptToggle', 'Stop taking any actions on behalf of the player.');
 
             // Dirty performance patch. Settings have a lot of elements, and they stress JQuery selectors way too much. This toggle allow to remove them from DOM completely, when they aren't needed.
             // It doesn't have huge impact anymore, after all script and game changes, but still won't hurt to have an option to increase performance a tiny bit more
-            createSettingToggle(scriptNode, 'showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
+            createSettingToggle(togglesNode, 'showSettings', 'You can disable rendering of settings UI once you\'ve done with configuring script, if you experiencing performance issues. It can help a little.', buildScriptSettings, removeScriptSettings);
 
-            createSettingToggle(scriptNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\\greatness achievements for yet.');
-            createSettingToggle(scriptNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
-            createSettingToggle(scriptNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
-            createSettingToggle(scriptNode, 'autoMech', 'Builds most effective large mechs for current spire floor. Least effective will be scrapped to make room for new ones.', createMechInfo, removeMechInfo);
-            createSettingToggle(scriptNode, 'autoFleet', 'Manages Andromeda fleet to supress piracy');
-            createSettingToggle(scriptNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
-            createSettingToggle(scriptNode, 'autoCraft', 'Automatically produce craftable resources, thresholds when it happens depends on current demands and stocks.', createCraftToggles, removeCraftToggles);
-            createSettingToggle(scriptNode, 'autoTrigger', 'Purchase triggered buildings, projects, and researches once conditions met');
-            createSettingToggle(scriptNode, 'autoBuild', 'Construct buildings based on their weightings(user configured), and various rules(e.g. it won\'t build building which have no support to run)', createBuildingToggles, removeBuildingToggles);
-            createSettingToggle(scriptNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
-            createSettingToggle(scriptNode, 'autoPower', 'Manages power based on a priority order of buildings. Also disables currently useless buildings to save up resources.');
-            createSettingToggle(scriptNode, 'autoStorage', 'Assigns crates and containers to resources needed for buildings enabled for Auto Build, queued buildings, researches, and enabled projects', createStorageToggles, removeStorageToggles);
-            createSettingToggle(scriptNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximize your trade routes.', createMarketToggles, removeMarketToggles);
-            createSettingToggle(scriptNode, 'autoGalaxyMarket', 'Manages galaxy trade routes');
-            createSettingToggle(scriptNode, 'autoResearch', 'Performs research when minimum requirements are met.');
-            createSettingToggle(scriptNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
-            createSettingToggle(scriptNode, 'autoCraftsmen', 'With this option autoJobs will also manage craftsmens.');
-            createSettingToggle(scriptNode, 'autoAlchemy', 'Manages alchemic transmutations');
-            createSettingToggle(scriptNode, 'autoPylon', 'Manages pylon rituals');
-            createSettingToggle(scriptNode, 'autoQuarry', 'Manages rock quarry stone to chrysotile ratio for smoldering races');
-            createSettingToggle(scriptNode, 'autoSmelter', 'Manages smelter fuel and production.');
-            createSettingToggle(scriptNode, 'autoFactory', 'Manages factory production.');
-            createSettingToggle(scriptNode, 'autoMiningDroid', 'Manages mining droid production.');
-            createSettingToggle(scriptNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
-            createSettingToggle(scriptNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max.');
-            createSettingToggle(scriptNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings.');
-            createSettingToggle(scriptNode, 'autoEject', 'Eject excess resources to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements.', createEjectToggles, removeEjectToggles);
-            createSettingToggle(scriptNode, 'autoSupply', 'Send excess resources to Spire. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over ejector.', createSupplyToggles, removeSupplyToggles);
-            createSettingToggle(scriptNode, 'autoNanite', 'Consume resources to produce Nanite. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over supplies and ejector.');
+            createSettingToggle(togglesNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\\greatness achievements for yet.');
+            createSettingToggle(togglesNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
+            createSettingToggle(togglesNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
+            createSettingToggle(togglesNode, 'autoMech', 'Builds most effective large mechs for current spire floor. Least effective will be scrapped to make room for new ones.', createMechInfo, removeMechInfo);
+            createSettingToggle(togglesNode, 'autoFleet', 'Manages Andromeda fleet to supress piracy');
+            createSettingToggle(togglesNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
+            createSettingToggle(togglesNode, 'autoCraft', 'Automatically produce craftable resources, thresholds when it happens depends on current demands and stocks.', createCraftToggles, removeCraftToggles);
+            createSettingToggle(togglesNode, 'autoTrigger', 'Purchase triggered buildings, projects, and researches once conditions met');
+            createSettingToggle(togglesNode, 'autoBuild', 'Construct buildings based on their weightings(user configured), and various rules(e.g. it won\'t build building which have no support to run)', createBuildingToggles, removeBuildingToggles);
+            createSettingToggle(togglesNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
+            createSettingToggle(togglesNode, 'autoPower', 'Manages power based on a priority order of buildings. Also disables currently useless buildings to save up resources.');
+            createSettingToggle(togglesNode, 'autoStorage', 'Assigns crates and containers to resources needed for buildings enabled for Auto Build, queued buildings, researches, and enabled projects', createStorageToggles, removeStorageToggles);
+            createSettingToggle(togglesNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximize your trade routes.', createMarketToggles, removeMarketToggles);
+            createSettingToggle(togglesNode, 'autoGalaxyMarket', 'Manages galaxy trade routes');
+            createSettingToggle(togglesNode, 'autoResearch', 'Performs research when minimum requirements are met.');
+            createSettingToggle(togglesNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
+            createSettingToggle(togglesNode, 'autoCraftsmen', 'With this option autoJobs will also manage craftsmens.');
+            createSettingToggle(togglesNode, 'autoAlchemy', 'Manages alchemic transmutations');
+            createSettingToggle(togglesNode, 'autoPylon', 'Manages pylon rituals');
+            createSettingToggle(togglesNode, 'autoQuarry', 'Manages rock quarry stone to chrysotile ratio for smoldering races');
+            createSettingToggle(togglesNode, 'autoSmelter', 'Manages smelter fuel and production.');
+            createSettingToggle(togglesNode, 'autoFactory', 'Manages factory production.');
+            createSettingToggle(togglesNode, 'autoMiningDroid', 'Manages mining droid production.');
+            createSettingToggle(togglesNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
+            createSettingToggle(togglesNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max.');
+            createSettingToggle(togglesNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings.');
+            createSettingToggle(togglesNode, 'autoEject', 'Eject excess resources to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements.', createEjectToggles, removeEjectToggles);
+            createSettingToggle(togglesNode, 'autoSupply', 'Send excess resources to Spire. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over ejector.', createSupplyToggles, removeSupplyToggles);
+            createSettingToggle(togglesNode, 'autoNanite', 'Consume resources to produce Nanite. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over supplies and ejector.');
 
-            createQuickOptions(scriptNode, "s-quick-prestige-options", "Prestige", buildPrestigeSettings);
+            createQuickOptions(togglesNode, "s-quick-prestige-options", "Prestige", buildPrestigeSettings);
 
-            scriptNode.append('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
+            togglesNode.append('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
             $("#bulk-sell").on('mouseup', function() {
                 updateDebugData();
                 updateScriptData();
