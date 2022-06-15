@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.101
+// @version      3.3.1.102
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
+// @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
 // @author       Fafnir
 // @author       TMVictor
 // @author       Vollch
@@ -15240,12 +15241,12 @@
             let collapsibleNode = $('#toggleSettingsCollapsed');
             let togglesNode = $('#scriptToggles');
 
-            collapsibleNode.toggleClass('script-contentactive', !settingsRaw["toggleSettingsCollapsed"])
+            collapsibleNode.toggleClass('script-contentactive', !settingsRaw["toggleSettingsCollapsed"]);
             togglesNode.css('display', settingsRaw["toggleSettingsCollapsed"] ? 'none' : 'block');
 
             collapsibleNode.on('click', function() {
                 settingsRaw["toggleSettingsCollapsed"] = !settingsRaw["toggleSettingsCollapsed"];
-                collapsibleNode.toggleClass('script-contentactive', !settingsRaw["toggleSettingsCollapsed"])
+                collapsibleNode.toggleClass('script-contentactive', !settingsRaw["toggleSettingsCollapsed"]);
                 togglesNode.css('display', settingsRaw["toggleSettingsCollapsed"] ? 'none' : 'block');
                 updateSettingsFromState();
             });
