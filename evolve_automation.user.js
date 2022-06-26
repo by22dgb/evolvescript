@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.100.1
+// @version      3.3.1.102
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
+// @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
 // @author       Fafnir
 // @author       TMVictor
 // @author       Vollch
@@ -1732,7 +1733,7 @@
     const prestigeNames = {mad: "核爆重置", bioseed: "播种重置", cataclysm: "大灾变重置", vacuum: "真空坍缩", whitehole: "黑洞重置", apocalypse: "人工智能觉醒", ascension: "飞升重置", demonic: "恶魔灌注"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
-    const settingsSections = ["general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech", "magic"];
+    const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech", "magic"];
     const unlimitedJobs = ["unemployed", "hunter", "farmer", "lumberjack", "quarry_worker", "crystal_miner", "scavenger", "forager"]; // this.definition.max holds zero at evolution stage, and that can mess with settings gui
 
     // Lookup tables, will be filled on init
@@ -5304,6 +5305,7 @@
         buildings.DwarfWorldCollider.gameMax = 1859;
         buildings.DwarfShipyard.gameMax = 1;
         buildings.DwarfMassRelayComplete.gameMax = 1;
+        buildings.TitanAI.gameMax = 100;
         buildings.TitanAIComplete.gameMax = 1;
         buildings.TritonFOB.gameMax = 1;
 
@@ -5397,7 +5399,6 @@
         buildings.SpireMechBay.addSupport(resources.Spire_Support);
 
         buildings.TitanElectrolysis.addSupport(resources.Titan_Support);
-        buildings.TitanHydrogen.addSupport(resources.Titan_Support);
         buildings.TitanQuarters.addSupport(resources.Titan_Support);
         buildings.TitanMine.addSupport(resources.Titan_Support);
         buildings.TitanGraphene.addSupport(resources.Titan_Support);
@@ -8059,7 +8060,7 @@
         // We can afford more steel AND either steel income is too low OR both steel and iron full, but we can use steel smelters to increase titanium income
         if (smelterSteelCount < maxAllowedSteel && smelterIronCount > 0 &&
              ((steelWeighting > ironWeighting) ||
-              (steelWeighting === 0 && ironWeighting === 0 && resources.Titanium.storageRatio < 0.99 && haveTech("titanium")))) {
+              (steelWeighting <= 0 && ironWeighting <= 0 && resources.Titanium.storageRatio < 0.99 && haveTech("titanium")))) {
             smeltAdjust.Steel++;
         }
 
@@ -11853,7 +11854,7 @@
         buildProjectSettings();
         buildLoggingSettings(scriptContentNode, "");
 
-        let collapsibles = document.getElementsByClassName("script-collapsible");
+        let collapsibles = document.querySelectorAll("#script_settings .script-collapsible");
         for (let i = 0; i < collapsibles.length; i++) {
             collapsibles[i].addEventListener("click", function() {
                 this.classList.toggle("script-contentactive");
@@ -15343,51 +15344,67 @@
 
         let scriptNode = $('#autoScriptContainer');
         if (scriptNode.length === 0) {
-            scriptNode = $('<div id="autoScriptContainer"></div>');
-            $('#resources').append(scriptNode);
             resetScrollPositionRequired = true;
+            $('#resources').append(`
+              <div id="autoScriptContainer" style="margin-top: 10px;">
+                <h3 id="toggleSettingsCollapsed" class="script-collapsible text-center has-text-success">脚本设置开关</h3>
+                <div id="scriptToggles">
+                  <label>设置选项卡中可以进行更详细的设置<br>按住Ctrl键再点击选项，可以开启<span class="inactive-row">进阶设置</span></label><br>
+                </div>
+              </div>`);
 
-            scriptNode.append(`<label id="autoScriptInfo">设置选项卡中可以进行更详细的设置<br>按住Ctrl键再点击选项，可以开启<span class="inactive-row">进阶设置</span></label><br>`);
+            let collapsibleNode = $('#toggleSettingsCollapsed');
+            let togglesNode = $('#scriptToggles');
 
-            createSettingToggle(scriptNode, 'masterScriptToggle', '启用脚本', '在玩家需要的时候，停止所有脚本的活动。');
+            collapsibleNode.toggleClass('script-contentactive', !settingsRaw["toggleSettingsCollapsed"]);
+            togglesNode.css('display', settingsRaw["toggleSettingsCollapsed"] ? 'none' : 'block');
+
+            collapsibleNode.on('click', function() {
+                settingsRaw["toggleSettingsCollapsed"] = !settingsRaw["toggleSettingsCollapsed"];
+                collapsibleNode.toggleClass('script-contentactive', !settingsRaw["toggleSettingsCollapsed"]);
+                togglesNode.css('display', settingsRaw["toggleSettingsCollapsed"] ? 'none' : 'block');
+                updateSettingsFromState();
+            });
+
+            createSettingToggle(togglesNode, 'masterScriptToggle', '启用脚本', '在玩家需要的时候，停止所有脚本的活动。');
 
             // Dirty performance patch. Settings have a lot of elements, and they stress JQuery selectors way too much. This toggle allow to remove them from DOM completely, when they aren't needed.
             // It doesn't have huge impact anymore, after all script and game changes, but still won't hurt to have an option to increase performance a tiny bit more
-            createSettingToggle(scriptNode, 'showSettings', '显示设置', '在设置选项卡中是否显示脚本相关设置。可能略微提升游戏速度。', buildScriptSettings, removeScriptSettings);
+            createSettingToggle(togglesNode, 'showSettings', '显示设置', '在设置选项卡中是否显示脚本相关设置。可能略微提升游戏速度。', buildScriptSettings, removeScriptSettings);
 
-            createSettingToggle(scriptNode, 'autoEvolution', '自动进化', '自动进行进化阶段。如果选择自动完成成就，则会优先考虑还未完成过毁灭类成就或者伟大类成就的种族。');
-            createSettingToggle(scriptNode, 'autoFight', '自动战斗', '当士兵已满员且没有伤兵时让他们进行战斗。当战斗评级足够以后，会自动切换战役类型。');
-            createSettingToggle(scriptNode, 'autoHell', '自动地狱维度', '将士兵派往地狱维度并自动分配巡逻队。根据恶魔生物数量自动调节吸引器信标的数量。');
-            createSettingToggle(scriptNode, 'autoMech', '自动机甲', '建造效率最高的大型机甲。将根据当前的情况调整机甲配置。', createMechInfo, removeMechInfo);
-            createSettingToggle(scriptNode, 'autoFleet', '自动仙女座舰队', '自动分配仙女座星系的舰队以压制海盗活动');
-            createSettingToggle(scriptNode, 'autoTax', '自动税率', '如果当前的士气高于上限，则会自动调整税率。会尽可能将士气保持在100%以上。');
-            createSettingToggle(scriptNode, 'autoCraft', '自动锻造', '自动将资源转换为锻造物，进行转换的阈值根据当前需求和储量而定。', createCraftToggles, removeCraftToggles);
-            createSettingToggle(scriptNode, 'autoTrigger', '自动触发器', '满足条件时，购买相应的建筑，项目或者研究');
-            createSettingToggle(scriptNode, 'autoBuild', '自动建筑', '根据玩家设置的权重自动建造建筑，同时需要满足一定条件(例如：不会在支持不够时建造消耗相应支持的建筑)', createBuildingToggles, removeBuildingToggles);
-            createSettingToggle(scriptNode, 'autoARPA', '自动ARPA', '自动建造玩家允许建造的ARPA项目。', createArpaToggles, removeArpaToggles);
-            createSettingToggle(scriptNode, 'autoPower', '自动供能', '根据建筑的优先级自动管理供能。同时会自动关闭无用的建筑，以节省资源。');
-            createSettingToggle(scriptNode, 'autoStorage', '自动存储', '自动分配箱子来管理自动建造、队列中的建筑、研究、以及ARPA项目所需的资源存储。', createStorageToggles, removeStorageToggles);
-            createSettingToggle(scriptNode, 'autoMarket', '自动市场', '当资源到达某个比例以后自动买卖相应资源。也可以设置自动使用贸易路线进行交易，并且可以设置交易时最小的资金收入。将尽可能使用所有的贸易路线。', createMarketToggles, removeMarketToggles);
-            createSettingToggle(scriptNode, 'autoGalaxyMarket', '自动星际贸易', '自动管理星际贸易路线');
-            createSettingToggle(scriptNode, 'autoResearch', '自动研究', '当满足相应条件时自动进行研究。');
-            createSettingToggle(scriptNode, 'autoJobs', '自动工作', '以相应优先级和多个阈值来自动分配工作。将先满足第一阈值后，再考虑第二阈值，然后再考虑最终阈值。在考虑其他工作前会先考虑伐木工人和石工数量。');
-            createSettingToggle(scriptNode, 'autoCraftsmen', '自动工匠', '自动分配工匠。');
-            createSettingToggle(scriptNode, 'autoAlchemy', '自动炼金术', '自动管理炼金术转化');
-            createSettingToggle(scriptNode, 'autoPylon', '自动水晶塔', '自动管理水晶塔符文');
-            createSettingToggle(scriptNode, 'autoQuarry', '自动温石棉控制', '烈焰种族自动管理石头和温石棉的比例');
-            createSettingToggle(scriptNode, 'autoSmelter', '自动冶炼', '自动管理冶炼厂的生产。');
-            createSettingToggle(scriptNode, 'autoFactory', '自动工厂', '自动管理工厂的生产。');
-            createSettingToggle(scriptNode, 'autoMiningDroid', '自动采矿机器人', '自动管理采矿机器人的生产。');
-            createSettingToggle(scriptNode, 'autoGraphenePlant', '自动石墨烯厂', '自动管理石墨烯厂的燃料。无法手动控制，会自动使用需求最少的燃料。');
-            createSettingToggle(scriptNode, 'autoAssembleGene', '自动组装基因', '当知识满了以后，自动进行基因重组。');
-            createSettingToggle(scriptNode, 'autoMinorTrait', '自动次要基因', '根据相应的权重，自动使用基因购买次要特质。');
-            createSettingToggle(scriptNode, 'autoEject', '自动质量喷射', '将多余的资源用于黑洞质量喷射。普通资源将在接近上限时用于喷射，锻造物将在超过需求时用于喷射。', createEjectToggles, removeEjectToggles);
-            createSettingToggle(scriptNode, 'autoSupply', '自动补给', '将多余的资源用于补给。普通资源将在接近上限时用于补给，锻造物将在超过需求时用于补给。优先级高于质量喷射器。', createSupplyToggles, removeSupplyToggles);
-            createSettingToggle(scriptNode, 'autoNanite', '自动纳米体', '将资源转化为纳米体。普通资源将在接近上限时用于转化，锻造物将在超过需求时用于转化。优先级高于补给和质量喷射器。');
+            createSettingToggle(togglesNode, 'autoEvolution', '自动进化', '自动进行进化阶段。如果选择自动完成成就，则会优先考虑还未完成过毁灭类成就或者伟大类成就的种族。');
+            createSettingToggle(togglesNode, 'autoFight', '自动战斗', '当士兵已满员且没有伤兵时让他们进行战斗。当战斗评级足够以后，会自动切换战役类型。');
+            createSettingToggle(togglesNode, 'autoHell', '自动地狱维度', '将士兵派往地狱维度并自动分配巡逻队。根据恶魔生物数量自动调节吸引器信标的数量。');
+            createSettingToggle(togglesNode, 'autoMech', '自动机甲', '建造效率最高的大型机甲。将根据当前的情况调整机甲配置。', createMechInfo, removeMechInfo);
+            createSettingToggle(togglesNode, 'autoFleet', '自动仙女座舰队', '自动分配仙女座星系的舰队以压制海盗活动');
+            createSettingToggle(togglesNode, 'autoTax', '自动税率', '如果当前的士气高于上限，则会自动调整税率。会尽可能将士气保持在100%以上。');
+            createSettingToggle(togglesNode, 'autoCraft', '自动锻造', '自动将资源转换为锻造物，进行转换的阈值根据当前需求和储量而定。', createCraftToggles, removeCraftToggles);
+            createSettingToggle(togglesNode, 'autoTrigger', '自动触发器', '满足条件时，购买相应的建筑，项目或者研究');
+            createSettingToggle(togglesNode, 'autoBuild', '自动建筑', '根据玩家设置的权重自动建造建筑，同时需要满足一定条件(例如：不会在支持不够时建造消耗相应支持的建筑)', createBuildingToggles, removeBuildingToggles);
+            createSettingToggle(togglesNode, 'autoARPA', '自动ARPA', '自动建造玩家允许建造的ARPA项目。', createArpaToggles, removeArpaToggles);
+            createSettingToggle(togglesNode, 'autoPower', '自动供能', '根据建筑的优先级自动管理供能。同时会自动关闭无用的建筑，以节省资源。');
+            createSettingToggle(togglesNode, 'autoStorage', '自动存储', '自动分配箱子来管理自动建造、队列中的建筑、研究、以及ARPA项目所需的资源存储。', createStorageToggles, removeStorageToggles);
+            createSettingToggle(togglesNode, 'autoMarket', '自动市场', '当资源到达某个比例以后自动买卖相应资源。也可以设置自动使用贸易路线进行交易，并且可以设置交易时最小的资金收入。将尽可能使用所有的贸易路线。', createMarketToggles, removeMarketToggles);
+            createSettingToggle(togglesNode, 'autoGalaxyMarket', '自动星际贸易', '自动管理星际贸易路线');
+            createSettingToggle(togglesNode, 'autoResearch', '自动研究', '当满足相应条件时自动进行研究。');
+            createSettingToggle(togglesNode, 'autoJobs', '自动工作', '以相应优先级和多个阈值来自动分配工作。将先满足第一阈值后，再考虑第二阈值，然后再考虑最终阈值。在考虑其他工作前会先考虑伐木工人和石工数量。');
+            createSettingToggle(togglesNode, 'autoCraftsmen', '自动工匠', '自动分配工匠。');
+            createSettingToggle(togglesNode, 'autoAlchemy', '自动炼金术', '自动管理炼金术转化');
+            createSettingToggle(togglesNode, 'autoPylon', '自动水晶塔', '自动管理水晶塔符文');
+            createSettingToggle(togglesNode, 'autoQuarry', '自动温石棉控制', '烈焰种族自动管理石头和温石棉的比例');
+            createSettingToggle(togglesNode, 'autoSmelter', '自动冶炼', '自动管理冶炼厂的生产。');
+            createSettingToggle(togglesNode, 'autoFactory', '自动工厂', '自动管理工厂的生产。');
+            createSettingToggle(togglesNode, 'autoMiningDroid', '自动采矿机器人', '自动管理采矿机器人的生产。');
+            createSettingToggle(togglesNode, 'autoGraphenePlant', '自动石墨烯厂', '自动管理石墨烯厂的燃料。无法手动控制，会自动使用需求最少的燃料。');
+            createSettingToggle(togglesNode, 'autoAssembleGene', '自动组装基因', '当知识满了以后，自动进行基因重组。');
+            createSettingToggle(togglesNode, 'autoMinorTrait', '自动次要基因', '根据相应的权重，自动使用基因购买次要特质。');
+            createSettingToggle(togglesNode, 'autoEject', '自动质量喷射', '将多余的资源用于黑洞质量喷射。普通资源将在接近上限时用于喷射，锻造物将在超过需求时用于喷射。', createEjectToggles, removeEjectToggles);
+            createSettingToggle(togglesNode, 'autoSupply', '自动补给', '将多余的资源用于补给。普通资源将在接近上限时用于补给，锻造物将在超过需求时用于补给。优先级高于质量喷射器。', createSupplyToggles, removeSupplyToggles);
+            createSettingToggle(togglesNode, 'autoNanite', '自动纳米体', '将资源转化为纳米体。普通资源将在接近上限时用于转化，锻造物将在超过需求时用于转化。优先级高于补给和质量喷射器。');
 
-            createQuickOptions(scriptNode, "s-quick-prestige-options", "威望重置", buildPrestigeSettings);
+            createQuickOptions(togglesNode, "s-quick-prestige-options", "威望重置", buildPrestigeSettings);
 
-            scriptNode.append('<a class="button is-dark is-small" id="bulk-sell"><span>Bulk Sell</span></a>');
+            togglesNode.append('<a class="button is-dark is-small" id="bulk-sell"><span>批量出售</span></a>');
             $("#bulk-sell").on('mouseup', function() {
                 updateDebugData();
                 updateScriptData();
@@ -16067,7 +16084,7 @@
         // export universeAffix(universe) from achieve.js
         universeAffix: function(e){switch(e=e||game.global.race.universe){case"evil":return"e";case"antimatter":return"a";case"heavy":return"h";case"micro":return"m";case"magic":return"mg";default:return"l"}},
         // function shipCosts(bp) from truepath.js
-        shipCosts: function(e){let a={},r=1,u=1,n=1;switch(e.class){case"corvette":a.Money=25e5,a.Aluminium=5e5,r=1,u=1,n=2;break;case"frigate":a.Money=5e6,a.Aluminium=125e4,r=1.1,u=1.09,n=1.5;break;case"destroyer":a.Money=15e6,a.Aluminium=35e5,r=1.2,u=1.18,n=1.2;break;case"cruiser":a.Money=5e7,a.Adamantite=1e6,r=1.3,u=1.25;break;case"battlecruiser":a.Money=125e6,a.Adamantite=26e5,r=1.35,u=1.3,n=.8;break;case"dreadnought":a.Money=5e8,a.Adamantite=8e6,r=1.4,u=1.35,n=.5}switch(e.armor){case"steel":a.Steel=Math.round(35e4**r);break;case"alloy":a.Alloy=Math.round(25e4**r);break;case"neutronium":a.Neutronium=Math.round(1e4**r)}switch(e.engine){case"ion":a.Titanium=Math.round(75e3**u);break;case"tie":a.Titanium=Math.round(15e4**u);break;case"pulse":a.Titanium=Math.round(125e3**u);break;case"photon":a.Titanium=Math.round(21e4**u);break;case"vacuum":a.Titanium=Math.round(3e5**u)}switch(e.power){case"solar":case"diesel":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(4e4**r),a.Iridium=Math.round(15e3**u);break;case"fission":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(5e4**r),a.Iridium=Math.round(3e4**u);break;case"fusion":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(5e4**r),a.Iridium=Math.round(4e4**u);break;case"elerium":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(6e4**r),a.Iridium=Math.round(55e3**u)}switch(e.sensor){case"radar":a.Money=Math.round(a.Money**1.05);break;case"lidar":a.Money=Math.round(a.Money**1.12);break;case"quantum":a.Money=Math.round(a.Money**1.25)}switch(e.weapon){case"railgun":a.Iron=Math.round(25e3**r);break;case"laser":a.Iridium=Math.round(a.Iridium**1.05),a.Nano_Tube=Math.round(12e3**r);break;case"p_laser":a.Iridium=Math.round(a.Iridium**1.035),a.Nano_Tube=Math.round(12e3**r);break;case"plasma":a.Iridium=Math.round(a.Iridium**1.1),a.Nano_Tube=Math.round(2e4**r);break;case"phaser":a.Iridium=Math.round(a.Iridium**1.15),a.Quantium=Math.round(18e3**r);break;case"disruptor":a.Iridium=Math.round(a.Iridium**1.2),a.Quantium=Math.round(35e3**r)}let i=0;game.global.space.shipyard.ships.forEach(function(a){a.class===e.class&&i++});let o=1+(i-2)/25*n;return Object.keys(a).forEach(function(e){i<2?a[e]=Math.ceil(a[e]*(0===i?.75:.9)):i>2&&(a[e]=Math.ceil(a[e]*o))}),a},
+        shipCosts: function(e){let a={},r=1,u=1,n=1;switch(e.class){case"corvette":a.Money=25e5,a.Aluminium=5e5,r=1,u=1,n=2;break;case"frigate":a.Money=5e6,a.Aluminium=125e4,r=1.1,u=1.09,n=1.5;break;case"destroyer":a.Money=15e6,a.Aluminium=35e5,r=1.2,u=1.18,n=1.2;break;case"cruiser":a.Money=5e7,a.Adamantite=1e6,r=1.3,u=1.25;break;case"battlecruiser":a.Money=125e6,a.Adamantite=26e5,r=1.35,u=1.3,n=.8;break;case"dreadnought":a.Money=5e8,a.Adamantite=8e6,r=1.4,u=1.35,n=.5}switch(e.armor){case"steel":a.Steel=Math.round(35e4**r);break;case"alloy":a.Alloy=Math.round(25e4**r);break;case"neutronium":a.Neutronium=Math.round(1e4**r)}switch(e.engine){case"ion":a.Titanium=Math.round(75e3**u);break;case"tie":a.Titanium=Math.round(15e4**u);break;case"pulse":a.Titanium=Math.round(125e3**u);break;case"photon":a.Titanium=Math.round(21e4**u);break;case"vacuum":a.Titanium=Math.round(3e5**u)}switch(e.power){case"solar":case"diesel":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(4e4**r),a.Iridium=Math.round(15e3**u);break;case"fission":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(5e4**r),a.Iridium=Math.round(3e4**u);break;case"fusion":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(5e4**r),a.Iridium=Math.round(4e4**u);break;case"elerium":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(6e4**r),a.Iridium=Math.round(55e3**u)}switch(e.sensor){case"radar":a.Money=Math.round(a.Money**1.05);break;case"lidar":a.Money=Math.round(a.Money**1.12);break;case"quantum":a.Money=Math.round(a.Money**1.25)}switch(e.weapon){case"railgun":a.Iron=Math.round(25e3**r);break;case"laser":a.Iridium=Math.round(a.Iridium**1.05),a.Nano_Tube=Math.round(12e3**r);break;case"p_laser":a.Iridium=Math.round(a.Iridium**1.035),a.Nano_Tube=Math.round(12e3**r);break;case"plasma":a.Iridium=Math.round(a.Iridium**1.1),a.Nano_Tube=Math.round(2e4**r);break;case"phaser":a.Iridium=Math.round(a.Iridium**1.15),a.Quantium=Math.round(18e3**r);break;case"disruptor":a.Iridium=Math.round(a.Iridium**1.2),a.Quantium=Math.round(35e3**r)}let i=0;for(let a of game.global.space.shipyard.ships){a.class === e.class && i++};let o=1+(i-2)/25*n;return Object.keys(a).forEach(function(e){i<2?a[e]=Math.ceil(a[e]*(0===i?.75:.9)):i>2&&(a[e]=Math.ceil(a[e]*o))}),a},
 
     // Reimplemented:
         // export function crateValue() from resources.js
