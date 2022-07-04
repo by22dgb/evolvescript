@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.102
+// @version      3.3.1.103
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -9239,13 +9239,12 @@
 
             for (let j = 0; j < building.consumption.length; j++) {
                 let resourceType = building.consumption[j];
-                if (!resourceType.resource.isUnlocked()) {
-                    maxStateOn = 0;
-                    break;
-                }
-
                 // If resource rate is negative then we are gaining resources. So, only check if we are consuming resources
                 if (resourceType.rate > 0) {
+                    if (!resourceType.resource.isUnlocked()) {
+                        maxStateOn = 0;
+                        break;
+                    }
 
                     if (resourceType.resource === resources.Food) {
                         // Wendigo doesn't store food. Let's assume it's always available.
