@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105
+// @version      3.3.1.105.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -9424,7 +9424,7 @@
                     }
                 }
                 // Do not enable Ascension Machine whire we're waiting for pillar
-                if (building === buildings.SiriusAscensionTrigger && (!isPillarFinished() || !(settings.autoPrestige && settings.prestigeType === 'ascension'))) {
+                if (building === buildings.SiriusAscensionTrigger && (!isPillarFinished() || settings.prestigeType !== 'ascension')) {
                     maxStateOn = 0;
                 }
                 if (building === buildings.RedAtmoTerraformer && !(settings.autoPrestige && settings.prestigeType === 'terraform')) {
