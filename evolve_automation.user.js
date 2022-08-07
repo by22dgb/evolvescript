@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105.2
+// @version      3.3.1.105.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -5061,7 +5061,7 @@
             for (let i = 0; i < this.priorityList.length; i++) {
                 let trigger = this.priorityList[i];
                 trigger.updateComplete();
-                if ((settings.autoResearch || trigger.actionType !== "research") && (settings.autoBuild || trigger.actionType !== "build") && !trigger.complete && trigger.areRequirementsMet() && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
+                if (!trigger.complete && trigger.areRequirementsMet() && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
                     this.targetTriggers.push(trigger);
                 }
             }
@@ -11191,7 +11191,10 @@
         if (update && state.tabHash !== oldHash){
             let mainVue = $('#mainColumn > div:first-child')[0].__vue__;
             mainVue.s.civTabs = 7;
-            $(".settings11").click().click();
+            mainVue.s.tabLoad = false;
+            mainVue.toggleTabLoad();
+            mainVue.s.tabLoad = true;
+            mainVue.toggleTabLoad();
             mainVue.s.civTabs = game.global.settings.civTabs;
             return true;
         } else {
