@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105.1
+// @version      3.3.1.105.2
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -5364,7 +5364,7 @@
     // Gui & Init functions
     function initialiseState() {
         updateCraftCost();
-        updateTabs();
+        updateTabs(false);
 
         // Lets set our crate / container resource requirements
         Object.defineProperty(resources.Crates, "cost", {get: () => isLumberRace() ? {Plywood: 10} : {Stone: 200}});
@@ -8774,6 +8774,7 @@
         }
 
         getVueById('sshifter')?.setShape(settings.shifterGenus);
+        updateTabs(true);
     }
 
     function autoAssembleGene() {
@@ -11148,7 +11149,7 @@
         return true;
     }
 
-    function updateTabs() {
+    function updateTabs(update) {
         let oldHash = state.tabHash;
         state.tabHash = 0 // Not really a hash, but it should never go down, that's enough to track unlocks. (Except market after mutation in terrifying, 1000 weight should prevent all possible issues)
           + (game.global.race['smoldering'] && $("#iQuarry").length === 0 ? buildings.RockQuarry.count : 0) // Chrysotile production
@@ -11187,7 +11188,15 @@
             state.tabHash += (game.global.race.ss_genus ?? 'none').split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0);
         }
 
-        return state.tabHash !== oldHash; // Return true if something changed since last check, and we need to redraw preloaded tabs
+        if (update && state.tabHash !== oldHash){
+            let mainVue = $('#mainColumn > div:first-child')[0].__vue__;
+            mainVue.s.civTabs = 7;
+            $(".settings11").click().click();
+            mainVue.s.civTabs = game.global.settings.civTabs;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     function updateState() {
@@ -11205,12 +11214,7 @@
         }
 
         // Redraw tabs once they unlocked
-        if (updateTabs()) {
-            let mainVue = $('#mainColumn > div:first-child')[0].__vue__;
-            mainVue.s.civTabs = 7;
-            $(".settings11").click().click();
-            mainVue.s.civTabs = game.global.settings.civTabs;
-        }
+        updateTabs(true);
 
         // Reset required storage and prioritized resources
         for (let id in resources) {
