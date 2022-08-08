@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105.3
+// @version      3.3.1.105.4
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -51,6 +51,13 @@
     var settings = {};
     var game = null;
     var win = null;
+
+    var overrideKey = "ctrlKey";
+    var overrideKeyLabel = "Ctrl";
+    if (window.navigator.platform.indexOf("Mac") === 0) {
+        overrideKey = "altKey";
+        overrideKeyLabel = "Alt";
+    }
 
     var checkActions = false;
 
@@ -7379,10 +7386,10 @@
         let currentTarget = sm.foreignTarget;
         for (let foreign of sm.foreignActive) {
             if (foreign.policy === "Occupy" && !foreign.gov.occ) {
-                let soldiersMin = m.getSoldiersForAdvantage(minAdv, 4, foreign.id);
+                let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, foreign.id);
                 if (soldiersMin <= m.maxCityGarrison) {
                     currentTarget = foreign;
-                    requiredBattalion = Math.max(soldiersMin, Math.min(m.availableGarrison, m.getSoldiersForAdvantage(maxAdv, 4, foreign.id) - 1));
+                    requiredBattalion = Math.max(soldiersMin, Math.min(m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, foreign.id) - 1));
                     requiredTactic = 4;
                     break;
                 }
@@ -12447,7 +12454,7 @@
     }
 
     function openOverrideModal(event) {
-        if (event.ctrlKey) {
+        if (event[overrideKey]) {
             event.preventDefault();
             openOptionsModal(event.data.label, function(modal) {
                 modal.append(`<div style="margin-top: 10px; margin-bottom: 10px;" id="script_${event.data.name}Modal"></div>`);
@@ -15340,7 +15347,7 @@
             updateSettingsFromState();
         })
         .on('click', function(event){
-            if (event.ctrlKey) {
+            if (event[overrideKey]) {
                 event.preventDefault();
             }
         });
@@ -15408,7 +15415,7 @@
             updateSettingsFromState();
         })
         .on('click', function(event){
-            if (event.ctrlKey) {
+            if (event[overrideKey]) {
                 event.preventDefault();
             }
         });
@@ -15662,7 +15669,7 @@
               <div id="autoScriptContainer" style="margin-top: 10px;">
                 <h3 id="toggleSettingsCollapsed" class="script-collapsible text-center has-text-success">Automation</h3>
                 <div id="scriptToggles">
-                  <label>More script options available in Settings tab<br>Ctrl+click options to open <span class="inactive-row">advanced configuration</span></label><br>
+                  <label>More script options available in Settings tab<br>${overrideKeyLabel}+click options to open <span class="inactive-row">advanced configuration</span></label><br>
                 </div>
               </div>`);
 
