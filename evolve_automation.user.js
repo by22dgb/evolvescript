@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105.4
+// @version      3.3.1.105.5
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -6013,6 +6013,7 @@
             showSettings: true,
             autoPrestige: false,
             tickRate: 4,
+            tickTimeout: typeof unsafeWindow !== "object", // By default enabled on Chrome, and disabled on FF
             autoAssembleGene: false,
             researchRequest: true,
             researchRequestSpace: false,
@@ -11852,7 +11853,11 @@
             get: setCallback(() => craftCost),
             set: setCallback(v => {
                 craftCost = v;
-                setTimeout(automate);
+                if (settings.tickTimeout) {
+                    setTimeout(automate);
+                } else {
+                    automate();
+                }
             })
         });
         // Game disables workers in lab ui, we need to check that outside of debug hook
@@ -12995,6 +13000,7 @@
         currentNode.empty().off("*");
 
         addSettingsNumber(currentNode, "tickRate", "Script tick rate", "Script runs once per this amount of game ticks. Game tick every 250ms, thus with rate 4 script will run once per second. You can set it lower to make script act faster, or increase it if you have performance issues. Tick rate should be a positive integer.");
+        addSettingsToggle(currentNode, "tickTimeout", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof. If you're expiriencing weird script behaviour, such of sudden jumps of tick rate, you can try to disable this option.");
 
         addSettingsHeader1(currentNode, "Prioritization");
         let priority = [{val: "ignore", label: "Ignore", hint: "Does nothing"},
