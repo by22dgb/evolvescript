@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105
+// @version      3.3.1.105.5
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -54,6 +54,13 @@
     var settings = {};
     var game = null;
     var win = null;
+
+    var overrideKey = "ctrlKey";
+    var overrideKeyLabel = "Ctrl";
+    if (window.navigator.platform.indexOf("Mac") === 0) {
+        overrideKey = "altKey";
+        overrideKeyLabel = "Alt";
+    }
 
     var checkActions = false;
 
@@ -5070,7 +5077,7 @@
             for (let i = 0; i < this.priorityList.length; i++) {
                 let trigger = this.priorityList[i];
                 trigger.updateComplete();
-                if ((settings.autoResearch || trigger.actionType !== "research") && (settings.autoBuild || trigger.actionType !== "build") && !trigger.complete && trigger.areRequirementsMet() && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
+                if (!trigger.complete && trigger.areRequirementsMet() && trigger.isActionPossible() && !this.actionConflicts(trigger)) {
                     this.targetTriggers.push(trigger);
                 }
             }
@@ -5373,7 +5380,7 @@
     // Gui & Init functions
     function initialiseState() {
         updateCraftCost();
-        updateTabs();
+        updateTabs(false);
 
         // Lets set our crate / container resource requirements
         Object.defineProperty(resources.Crates, "cost", {get: () => isLumberRace() ? {Plywood: 10} : {Stone: 200}});
@@ -6015,6 +6022,7 @@
             showSettings: true,
             autoPrestige: false,
             tickRate: 4,
+            tickTimeout: typeof unsafeWindow !== "object", // By default enabled on Chrome, and disabled on FF
             autoAssembleGene: false,
             researchRequest: true,
             researchRequestSpace: false,
@@ -7388,10 +7396,10 @@
         let currentTarget = sm.foreignTarget;
         for (let foreign of sm.foreignActive) {
             if (foreign.policy === "Occupy" && !foreign.gov.occ) {
-                let soldiersMin = m.getSoldiersForAdvantage(minAdv, 4, foreign.id);
+                let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, foreign.id);
                 if (soldiersMin <= m.maxCityGarrison) {
                     currentTarget = foreign;
-                    requiredBattalion = Math.max(soldiersMin, Math.min(m.availableGarrison, m.getSoldiersForAdvantage(maxAdv, 4, foreign.id) - 1));
+                    requiredBattalion = Math.max(soldiersMin, Math.min(m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, foreign.id) - 1));
                     requiredTactic = 4;
                     break;
                 }
@@ -8783,6 +8791,7 @@
         }
 
         getVueById('sshifter')?.setShape(settings.shifterGenus);
+        updateTabs(true);
     }
 
     function autoAssembleGene() {
@@ -9433,7 +9442,7 @@
                     }
                 }
                 // Do not enable Ascension Machine whire we're waiting for pillar
-                if (building === buildings.SiriusAscensionTrigger && (!isPillarFinished() || !(settings.autoPrestige && settings.prestigeType === 'ascension'))) {
+                if (building === buildings.SiriusAscensionTrigger && (!isPillarFinished() || settings.prestigeType !== 'ascension')) {
                     maxStateOn = 0;
                 }
                 if (building === buildings.RedAtmoTerraformer && !(settings.autoPrestige && settings.prestigeType === 'terraform')) {
@@ -11157,7 +11166,7 @@
         return true;
     }
 
-    function updateTabs() {
+    function updateTabs(update) {
         let oldHash = state.tabHash;
         state.tabHash = 0 // Not really a hash, but it should never go down, that's enough to track unlocks. (Except market after mutation in terrifying, 1000 weight should prevent all possible issues)
           + (game.global.race['smoldering'] && $("#iQuarry").length === 0 ? buildings.RockQuarry.count : 0) // Chrysotile production
@@ -11196,7 +11205,18 @@
             state.tabHash += (game.global.race.ss_genus ?? 'none').split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0);
         }
 
-        return state.tabHash !== oldHash; // Return true if something changed since last check, and we need to redraw preloaded tabs
+        if (update && state.tabHash !== oldHash){
+            let mainVue = $('#mainColumn > div:first-child')[0].__vue__;
+            mainVue.s.civTabs = 7;
+            mainVue.s.tabLoad = false;
+            mainVue.toggleTabLoad();
+            mainVue.s.tabLoad = true;
+            mainVue.toggleTabLoad();
+            mainVue.s.civTabs = game.global.settings.civTabs;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     function updateState() {
@@ -11214,12 +11234,7 @@
         }
 
         // Redraw tabs once they unlocked
-        if (updateTabs()) {
-            let mainVue = $('#mainColumn > div:first-child')[0].__vue__;
-            mainVue.s.civTabs = 7;
-            $(".settings11").click().click();
-            mainVue.s.civTabs = game.global.settings.civTabs;
-        }
+        updateTabs(true);
 
         // Reset required storage and prioritized resources
         for (let id in resources) {
@@ -11953,7 +11968,11 @@
             get: setCallback(() => craftCost),
             set: setCallback(v => {
                 craftCost = v;
-                setTimeout(automate);
+                if (settings.tickTimeout) {
+                    setTimeout(automate);
+                } else {
+                    automate();
+                }
             })
         });
         // Game disables workers in lab ui, we need to check that outside of debug hook
@@ -12555,7 +12574,7 @@
     }
 
     function openOverrideModal(event) {
-        if (event.ctrlKey) {
+        if (event[overrideKey]) {
             event.preventDefault();
             openOptionsModal(event.data.label, function(modal) {
                 modal.append(`<div style="margin-top: 10px; margin-bottom: 10px;" id="script_${event.data.name}Modal"></div>`);
@@ -13096,6 +13115,7 @@
         currentNode.empty().off("*");
 
         addSettingsNumber(currentNode, "tickRate", "脚本运算频率", "每达到相应时刻后脚本就进行一次运算。游戏每250毫秒达到一个时刻，因此设为4以后脚本将每秒运算一次。您可以将此值调低以使脚本更快运行，也可以将此值调高来避免卡顿。时刻数值需要为正整数。");
+        addSettingsToggle(currentNode, "tickTimeout", "计划脚本时刻", "启用后脚本时刻将在游戏本体时刻后进行，而不是同时进行。这将使游戏本体和脚本时刻分别运算，使游戏运行更顺畅，但可能导致卡顿。如果启用后碰到例如脚本运算频率不正常的情况，则可以考虑关闭该项。");
 
         addSettingsHeader1(currentNode, "优先级");
         let priority = [{val: "ignore", label: "忽略", hint: "什么都不做"},
@@ -15449,7 +15469,7 @@
             updateSettingsFromState();
         })
         .on('click', function(event){
-            if (event.ctrlKey) {
+            if (event[overrideKey]) {
                 event.preventDefault();
             }
         });
@@ -15517,7 +15537,7 @@
             updateSettingsFromState();
         })
         .on('click', function(event){
-            if (event.ctrlKey) {
+            if (event[overrideKey]) {
                 event.preventDefault();
             }
         });
@@ -15771,7 +15791,7 @@
               <div id="autoScriptContainer" style="margin-top: 10px;">
                 <h3 id="toggleSettingsCollapsed" class="script-collapsible text-center has-text-success">脚本设置开关</h3>
                 <div id="scriptToggles">
-                  <label>设置选项卡中可以进行更详细的设置<br>按住Ctrl键再点击选项，可以开启<span class="inactive-row">进阶设置</span></label><br>
+                  <label>设置选项卡中可以进行更详细的设置<br>按住${overrideKeyLabel}键再点击选项，可以开启<span class="inactive-row">进阶设置</span></label><br>
                 </div>
               </div>`);
 
