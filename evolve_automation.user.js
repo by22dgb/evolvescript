@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105.6
+// @version      3.3.1.105.7
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1745,6 +1745,7 @@
     // State variables
     var state = {
         forcedUpdate: false,
+        gameTicked: false,
         scriptTick: 1,
         multiplierTick: 0,
         buildingToggles: 0,
@@ -11634,9 +11635,10 @@
     }
 
     function automate() {
-        if (state.goal === "GameOverMan" || state.forcedUpdate) {
+        if (state.goal === "GameOverMan" || state.forcedUpdate || !state.gameTicked) {
             return;
         }
+        state.gameTicked = false;
         if (state.scriptTick < Number.MAX_SAFE_INTEGER) {
             state.scriptTick++;
         } else {
@@ -11855,6 +11857,7 @@
             get: setCallback(() => craftCost),
             set: setCallback(v => {
                 craftCost = v;
+                state.gameTicked = true;
                 if (settings.tickSchedule) {
                     setTimeout(automate);
                 } else {
@@ -13002,7 +13005,7 @@
         currentNode.empty().off("*");
 
         addSettingsNumber(currentNode, "tickRate", "Script tick rate", "Script runs once per this amount of game ticks. Game tick every 250ms, thus with rate 4 script will run once per second. You can set it lower to make script act faster, or increase it if you have performance issues. Tick rate should be a positive integer.");
-        addSettingsToggle(currentNode, "tickSchedule", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof. It also can cause weird bugs, such of sudden jumps of tick rate or double-processing of same game tick.");
+        addSettingsToggle(currentNode, "tickSchedule", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof. It also can cause weird bugs, such of sudden jumps of tick rate or double-processing of same game tick. Unstable experimental option, use at your own risk.");
 
         addSettingsHeader1(currentNode, "Prioritization");
         let priority = [{val: "ignore", label: "Ignore", hint: "Does nothing"},
