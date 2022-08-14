@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105.5
+// @version      3.3.1.105.6
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -6000,8 +6000,8 @@
             hellBolsterPatrolPercentTop: 50,
             hellBolsterPatrolPercentBottom: 20,
             hellBolsterPatrolRating: 300,
-            hellAttractorTopThreat: 3000,
-            hellAttractorBottomThreat: 1300,
+            hellAttractorTopThreat: 9000,
+            hellAttractorBottomThreat: 6000,
         }
 
         applySettings(def, reset);
@@ -6013,7 +6013,7 @@
             showSettings: true,
             autoPrestige: false,
             tickRate: 4,
-            tickTimeout: typeof unsafeWindow !== "object", // By default enabled on Chrome, and disabled on FF
+            tickSchedule: false,
             autoAssembleGene: false,
             researchRequest: true,
             researchRequestSpace: false,
@@ -6456,10 +6456,10 @@
             def['droid_w_' + id] = weighting;
             def['droid_pr_' + id] = priority;
         };
-        setDroidProduct("Adamantite", 10, 1);
+        setDroidProduct("Adamantite", 15, 1);
         setDroidProduct("Aluminium", 1, 1);
-        setDroidProduct("Uranium", 10, -1);
-        setDroidProduct("Coal", 10, -1);
+        setDroidProduct("Uranium", 5, -1);
+        setDroidProduct("Coal", 5, -1);
 
         applySettings(def, reset);
     }
@@ -6762,7 +6762,7 @@
         // Garbage collection
         Object.values(crafter).forEach(job => { delete settingsRaw['job_p_' + job._originalId], delete settingsRaw['job_b1_' + job._originalId], delete settingsRaw['job_b2_' + job._originalId], delete settingsRaw['job_b3_' + job._originalId] });
         // Remove deprecated post-overrides settings
-        ["prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "genesAssembleGeneAlways", "buildingsConflictQueue", "buildingsConflictRQueue", "buildingsConflictPQueue", "fleet_outer_pr_spc_hell", "fleet_outer_pr_spc_dwarf", "prestigeEnabledBarracks", "bld_s2_city-garrison", "prestigeAscensionSkipCustom", "prestigeBioseedGECK"]
+        ["prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "genesAssembleGeneAlways", "buildingsConflictQueue", "buildingsConflictRQueue", "buildingsConflictPQueue", "fleet_outer_pr_spc_hell", "fleet_outer_pr_spc_dwarf", "prestigeEnabledBarracks", "bld_s2_city-garrison", "prestigeAscensionSkipCustom", "prestigeBioseedGECK", "tickTimeout"]
           .forEach(id => { delete settingsRaw[id], delete settingsRaw.overrides[id] });
     }
 
@@ -8782,7 +8782,6 @@
         }
 
         getVueById('sshifter')?.setShape(settings.shifterGenus);
-        updateTabs(true);
     }
 
     function autoAssembleGene() {
@@ -11157,6 +11156,7 @@
         return true;
     }
 
+    // TODO: quntium lab
     function updateTabs(update) {
         let oldHash = state.tabHash;
         state.tabHash = 0 // Not really a hash, but it should never go down, that's enough to track unlocks. (Except market after mutation in terrifying, 1000 weight should prevent all possible issues)
@@ -11223,9 +11223,6 @@
                 updateTriggerSettingsContent();
             }
         }
-
-        // Redraw tabs once they unlocked
-        updateTabs(true);
 
         // Reset required storage and prioritized resources
         for (let id in resources) {
@@ -11653,6 +11650,11 @@
         updateOverrides();  // Apply settings overrides as soon as possible
         finalizeScriptData(); // Second part of updating data, applying settings
 
+        // Redraw tabs once they unlocked
+        if (updateTabs(true)) {
+            return;
+        }
+
         // TODO: Properly sepparate updateState between updateScriptData and finalizeScriptData
         updateState();
         updateUI();
@@ -11853,7 +11855,7 @@
             get: setCallback(() => craftCost),
             set: setCallback(v => {
                 craftCost = v;
-                if (settings.tickTimeout) {
+                if (settings.tickSchedule) {
                     setTimeout(automate);
                 } else {
                     automate();
@@ -13000,7 +13002,7 @@
         currentNode.empty().off("*");
 
         addSettingsNumber(currentNode, "tickRate", "Script tick rate", "Script runs once per this amount of game ticks. Game tick every 250ms, thus with rate 4 script will run once per second. You can set it lower to make script act faster, or increase it if you have performance issues. Tick rate should be a positive integer.");
-        addSettingsToggle(currentNode, "tickTimeout", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof. If you're expiriencing weird script behaviour, such of sudden jumps of tick rate, you can try to disable this option.");
+        addSettingsToggle(currentNode, "tickSchedule", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof. It also can cause weird bugs, such of sudden jumps of tick rate or double-processing of same game tick.");
 
         addSettingsHeader1(currentNode, "Prioritization");
         let priority = [{val: "ignore", label: "Ignore", hint: "Does nothing"},
@@ -16148,6 +16150,7 @@
                 hc += Math.floor(traitVal("cannibalize", 0) / 5);
             }
         }
+        hc *= traitVal("high_pop", 2, 1);
         if (getGovernor() === 'sports') {
             hc *= 1.5;
         }
