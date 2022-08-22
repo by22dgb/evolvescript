@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105.9
+// @version      3.3.1.105.10
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -901,7 +901,8 @@
 
         getUselessSupport() {
             // Starbase and Habitats are exceptions, they're always useful
-            if (this === buildings.GatewayStarbase || this === buildings.AlphaHabitat) {
+            if (this === buildings.GatewayStarbase || this === buildings.AlphaHabitat ||
+               (this === buildings.SpaceNavBeacon && game.global.race['orbit_decayed'])) {
                 return null;
             }
 
@@ -7734,7 +7735,7 @@
                                 minFoodStorage = resources.Population.currentQuantity;
                                 maxFoodStorage = resources.Population.currentQuantity * 2;
                                 if (resources.Food.currentQuantity > 10) {
-                                    foodRateOfChange += (resources.Food.currentQuantity - 10) * 0.5 * (0.9 ** buildings.Smokehouse.count);
+                                    foodRateOfChange += (resources.Food.currentQuantity - 10) * traitVal('carnivore', 0, '=') * (0.9 ** buildings.Smokehouse.count);
                                 }
                             }
                             if (game.global.race['artifical']) {
@@ -11219,7 +11220,7 @@
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
-            if (!checkEvolutionResult()) {
+            if (settings.masterScriptToggle && !checkEvolutionResult()) {
                 return;
             }
             state.goal = "Standard";
