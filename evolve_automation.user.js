@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.105.5
+// @version      3.3.1.106
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -265,8 +265,8 @@
         get autoStorageEnabled() { return settings['res_storage' + this.id] }
         get storagePriority() { return settingsRaw['res_storage_p_' + this.id] }
         get storeOverflow() { return settings['res_storage_o_' + this.id] }
-        get _autoCratesMax() { return settings['res_crates_m_' + this.id] }
-        get _autoContainersMax() { return settings['res_containers_m_' + this.id] }
+        get minStorage() { return settings['res_min_store' + this.id] }
+        get maxStorage() { return settings['res_max_store' + this.id] }
         get marketPriority() { return settingsRaw['res_buy_p_' + this.id] }
         get autoBuyEnabled() { return settings['buy' + this.id] }
         get autoBuyRatio() { return settings['res_buy_r_' + this.id] }
@@ -378,10 +378,10 @@
 
         isUseful() {
             // Spending accumulated resources
-            if (settings.autoStorage && !this.storeOverflow && this.currentQuantity > this.storageRequired && this.currentCrates + this.currentContainers > 0 && this.calculateRateOfChange({buy: false, all: true}) < 0) {
+            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow && this.currentQuantity > this.storageRequired && (this.currentCrates + this.currentContainers) > 0) {
                 return false;
             }
-            return this.storageRatio < 0.99 || this.isDemanded() || this.rateMods['eject'] > 0 || this.rateMods['supply'] > 0 || (this.storeOverflow && (this.currentCrates < this.autoCratesMax || this.currentContainers < this.autoContainersMax));
+            return this.storageRatio < 0.99 || this.isDemanded() || this.rateMods['eject'] > 0 || this.rateMods['supply'] > 0 || (this.storeOverflow && this.currentQuantity < this.maxStorage);
         }
 
         getProduction(source, locArg) {
@@ -469,14 +469,6 @@
                 return Number.MAX_SAFE_INTEGER; // Won't ever fill with current rate.
             }
             return (Math.min(this.maxQuantity, this.storageRequired) - this.currentQuantity) / totalRateOfCharge;
-        }
-
-        get autoCratesMax() {
-            return this._autoCratesMax < 0 ? Number.MAX_SAFE_INTEGER : this._autoCratesMax;
-        }
-
-        get autoContainersMax() {
-            return this._autoContainersMax < 0 ? Number.MAX_SAFE_INTEGER : this._autoContainersMax;
         }
 
         tryCraftX(count) {
@@ -904,7 +896,8 @@
 
         getUselessSupport() {
             // Starbase and Habitats are exceptions, they're always useful
-            if (this === buildings.GatewayStarbase || this === buildings.AlphaHabitat) {
+            if (this === buildings.GatewayStarbase || this === buildings.AlphaHabitat ||
+               (this === buildings.SpaceNavBeacon && game.global.race['orbit_decayed'])) {
                 return null;
             }
 
@@ -1029,7 +1022,8 @@
             if (!buildings.GasSpaceDockProbe.isOptionsCached()
                 || game.global.tech['genesis'] >= 5 && !buildings.GasSpaceDockShipSegment.isOptionsCached()
                 || game.global.tech['genesis'] === 6 && !buildings.GasSpaceDockPrepForLaunch.isOptionsCached()
-                || game.global.tech['genesis'] >= 7 && !buildings.GasSpaceDockLaunch.isOptionsCached()) {
+                || game.global.tech['genesis'] >= 7 && !buildings.GasSpaceDockLaunch.isOptionsCached()
+                || game.global.tech['geck'] >= 1 && !buildings.GasSpaceDockGECK.isOptionsCached()) {
                 return false;
             }
 
@@ -1754,6 +1748,7 @@
     // State variables
     var state = {
         forcedUpdate: false,
+        gameTicked: false,
         scriptTick: 1,
         multiplierTick: 0,
         buildingToggles: 0,
@@ -6009,8 +6004,8 @@
             hellBolsterPatrolPercentTop: 50,
             hellBolsterPatrolPercentBottom: 20,
             hellBolsterPatrolRating: 300,
-            hellAttractorTopThreat: 3000,
-            hellAttractorBottomThreat: 1300,
+            hellAttractorTopThreat: 9000,
+            hellAttractorBottomThreat: 6000,
         }
 
         applySettings(def, reset);
@@ -6022,7 +6017,7 @@
             showSettings: true,
             autoPrestige: false,
             tickRate: 4,
-            tickTimeout: typeof unsafeWindow !== "object", // By default enabled on Chrome, and disabled on FF
+            tickSchedule: false,
             autoAssembleGene: false,
             researchRequest: true,
             researchRequestSpace: false,
@@ -6166,7 +6161,7 @@
             storageLimitPreMad: true,
             storageSafeReassign: true,
             storageAssignExtra: true,
-            storagePrioritizedOnly: true,
+            storageAssignPart: false
         }
 
         for (let i = 0; i < StorageManager.priorityList.length; i++) {
@@ -6176,8 +6171,8 @@
             def['res_storage' + id] = true; // autoStorageEnabled
             def['res_storage_p_' + id] = i; // storagePriority
             def['res_storage_o_' + id] = false; // storeOverflow
-            def['res_crates_m_' + id] = -1; // _autoCratesMax
-            def['res_containers_m_' + id] = -1; // _autoContainersMax
+            def['res_min_store' + id] = 1; // minStorage
+            def['res_max_store' + id] = -1; // maxStorage
         }
 
         // Enable overflow for endgame resources
@@ -6465,10 +6460,10 @@
             def['droid_w_' + id] = weighting;
             def['droid_pr_' + id] = priority;
         };
-        setDroidProduct("Adamantite", 10, 1);
+        setDroidProduct("Adamantite", 15, 1);
         setDroidProduct("Aluminium", 1, 1);
-        setDroidProduct("Uranium", 10, -1);
-        setDroidProduct("Coal", 10, -1);
+        setDroidProduct("Uranium", 5, -1);
+        setDroidProduct("Coal", 5, -1);
 
         applySettings(def, reset);
     }
@@ -6750,6 +6745,7 @@
         migrateSetting("queueRequest", "prioritizeQueue", (v) => v ? "savereq" : "ignore");
         migrateSetting("triggerRequest", "prioritizeTriggers", (v) => v ? "savereq" : "ignore");
         migrateSetting("govManage", "autoGovernment", (v) => v);
+        migrateSetting("storagePrioritizedOnly", "storageAssignPart", (v) => !v);
         // Migrate setting as override, in case if someone actualy use it
         if (settingsRaw.hasOwnProperty("genesAssembleGeneAlways")) {
             if (settingsRaw.overrides.genesAssembleGeneAlways) {
@@ -6771,7 +6767,9 @@
         // Garbage collection
         Object.values(crafter).forEach(job => { delete settingsRaw['job_p_' + job._originalId], delete settingsRaw['job_b1_' + job._originalId], delete settingsRaw['job_b2_' + job._originalId], delete settingsRaw['job_b3_' + job._originalId] });
         // Remove deprecated post-overrides settings
-        ["prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "genesAssembleGeneAlways", "buildingsConflictQueue", "buildingsConflictRQueue", "buildingsConflictPQueue", "fleet_outer_pr_spc_hell", "fleet_outer_pr_spc_dwarf", "prestigeEnabledBarracks", "bld_s2_city-garrison", "prestigeAscensionSkipCustom", "prestigeBioseedGECK"]
+        ["res_containers_m_", "res_crates_m_"].forEach(id => Object.values(resources)
+          .forEach(res => { delete settingsRaw[id + res.id], delete settingsRaw.overrides[id + res.id] }));
+        ["prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "genesAssembleGeneAlways", "buildingsConflictQueue", "buildingsConflictRQueue", "buildingsConflictPQueue", "fleet_outer_pr_spc_hell", "fleet_outer_pr_spc_dwarf", "prestigeEnabledBarracks", "bld_s2_city-garrison", "prestigeAscensionSkipCustom", "prestigeBioseedGECK", "tickTimeout"]
           .forEach(id => { delete settingsRaw[id], delete settingsRaw.overrides[id] });
     }
 
@@ -7741,7 +7739,7 @@
                                 minFoodStorage = resources.Population.currentQuantity;
                                 maxFoodStorage = resources.Population.currentQuantity * 2;
                                 if (resources.Food.currentQuantity > 10) {
-                                    foodRateOfChange += (resources.Food.currentQuantity - 10) * 0.5 * (0.9 ** buildings.Smokehouse.count);
+                                    foodRateOfChange += (resources.Food.currentQuantity - 10) * traitVal('carnivore', 0, '=') * (0.9 ** buildings.Smokehouse.count);
                                 }
                             }
                             if (game.global.race['artifical']) {
@@ -8724,6 +8722,7 @@
                         state.goal = 'Reset';
                         return;
                     }
+                    KeyManager.set(false, false, false);
                     buildings.SiriusAscend.click();
                 }
                 return;
@@ -8742,6 +8741,7 @@
                         state.goal = 'Reset';
                         return;
                     }
+                    KeyManager.set(false, false, false);
                     buildings.RedTerraform.click();
                 }
                 return;
@@ -8791,7 +8791,6 @@
         }
 
         getVueById('sshifter')?.setShape(settings.shifterGenus);
-        updateTabs(true);
     }
 
     function autoAssembleGene() {
@@ -9809,28 +9808,26 @@
         }
 
         if (settings.storageLimitPreMad && isEarlyGame()) {
-          // Only build pre-mad containers when steel storage is over 80%
-          if (resources.Steel.storageRatio < 0.8) {
-              numberOfContainersWeCanBuild = 0;
-          }
-          // Only build pre-mad crates when already have Plywood for next level of library
-          if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.cost["Plywood"] > resources.Plywood.currentQuantity && resources.Steel.maxQuantity >= resources.Steel.storageRequired) {
-              numberOfCratesWeCanBuild = 0;
-          }
+            // Only build pre-mad containers when steel is excessing
+
+            if (resources.Steel.storageRequired > resources.Steel.currentQuantity && resources.Steel.storageRatio < 0.9) {
+                numberOfContainersWeCanBuild = 0;
+            }
+            // Only build pre-mad crates when already have Plywood for next level of library
+            if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.cost["Plywood"] > resources.Plywood.currentQuantity) {
+                numberOfCratesWeCanBuild = 0;
+            }
         }
 
         // Build crates
-        // This check needed for cases when there's still empty crates, but they can't be used die to limits.
-        if (resources.Crates.currentQuantity === 0 || resources.Containers.storageRatio === 1) {
-            let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(missingStorage / poly.crateValue()));
-            StorageManager.constructCrate(cratesToBuild);
+        let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(missingStorage / poly.crateValue()));
+        StorageManager.constructCrate(cratesToBuild);
 
-            resources.Crates.currentQuantity += cratesToBuild;
-            for (let res in resources.Crates.cost) {
-                resources[res].currentQuantity -= resources.Crates.cost[res] * cratesToBuild;
-            }
-            missingStorage -= cratesToBuild * poly.crateValue();
+        resources.Crates.currentQuantity += cratesToBuild;
+        for (let res in resources.Crates.cost) {
+            resources[res].currentQuantity -= resources.Crates.cost[res] * cratesToBuild;
         }
+        missingStorage -= cratesToBuild * poly.crateValue();
 
         // And containers, if still needed
         if (missingStorage > 0) {
@@ -9846,7 +9843,7 @@
         return missingStorage < storageToBuild;
     }
 
-    function autoStorageBuildings() {
+    function autoStorage() {
         if (haveTask("bal_storage") || !StorageManager.initStorage()) {
             return;
         }
@@ -9854,6 +9851,7 @@
         let crateVolume = poly.crateValue();
         let containerVolume = poly.containerValue();
         if (crateVolume <= 0 || containerVolume <= 0) {
+            // Shouldn't ever happen, but better check than sorry. Trying to adjust storages thinking that crates are worthless could end pretty bad.
             return;
         }
 
@@ -9862,28 +9860,47 @@
             return;
         }
 
-        // Set storage multiplier for resources, for market goods, overflow, and buffer
-        let resMods = {};
-        let marketEnabled = !game.global.race['no_trade'] && settings.autoMarket;
+        // Init base storage and multipliers
+        let totalCrates = resources.Crates.currentQuantity;
+        let totalContainers = resources.Containers.currentQuantity;
+        let storageAdjustments = {}, resMods = {}, resCurrent = {}, resOverflow = {}, resMin = {}, resRequired = {};
         for (let resource of storageList){
             let res = resource.id;
 
             if (!settings.storageAssignExtra) {
-                resMods[res] = resource.storeOverflow ? 1.03 : 1;
+                resMods[res] = 1;
             } else {
-                let sellAllowed = marketEnabled && resource.autoSellEnabled && resource.autoSellRatio > 0;
+                let sellAllowed = !game.global.race['no_trade'] && settings.autoMarket && resource.autoSellEnabled && resource.autoSellRatio > 0;
                 resMods[res] = sellAllowed ? 1.03 / resource.autoSellRatio : 1.03;
             }
+
+            if (resource.storeOverflow) {
+                resOverflow[res] = resource.currentQuantity * 1.03;
+            }
+            resRequired[res] = resource.storageRequired;
+            resCurrent[res] = resource.currentQuantity;
+            resMin[res] = resource.minStorage;
+
+            storageAdjustments[res] = {crate: 0, container: 0, amount: resource.maxQuantity - (resource.currentCrates * crateVolume + resource.currentContainers * containerVolume)};
+            totalCrates += resource.currentCrates;
+            totalContainers += resource.currentContainers;
         }
 
         let buildingsList = [];
+        let storageEntries = storageList.map((res) => [res.id, []]);
         const addList = list => {
-            let resGroups = Object.fromEntries(storageList.map((res) => [res.id, []]));
+            let resGroups = Object.fromEntries(storageEntries);
             list.forEach(obj => storageList.find(res => obj.cost[res.id] && resGroups[res.id].push(obj)));
             Object.entries(resGroups).forEach(([res, list]) => list.sort((a, b) => b.cost[res] - a.cost[res]));
             buildingsList.push(...Object.values(resGroups).flat());
         }
 
+        // TODO: Configurable priority?
+        if (settings.storageSafeReassign) {
+            addList([{cost: resCurrent, isList: true}]);
+        }
+        addList([{cost: resMin, isList: true}]);
+        addList([{cost: resOverflow, isList: true}]);
         addList(state.queuedTargetsAll);
         addList(state.triggerTargets);
         if (FleetManagerOuter.nextShipExpandable && settings.prioritizeOuterFleet !== "ignore") {
@@ -9892,53 +9909,22 @@
         addList(state.unlockedTechs);
         addList(ProjectManager.priorityList.filter(b => b.isUnlocked() && b.autoBuildEnabled));
         addList(BuildingManager.priorityList.filter(p => p.isUnlocked() && p.autoBuildEnabled));
-
-        let totalCrates = resources.Crates.currentQuantity;
-        let totalContainers = resources.Containers.currentQuantity;
-        let storageAdjustments = {};
-        for (let resource of storageList){
-            let res = resource.id;
-
-            // Overflow enables safe reassign for resource, otherwise all extra resources will be just dumped away
-            if (settings.storageSafeReassign || resource.storeOverflow) {
-                storageAdjustments[res] = {crate: resource.currentCrates, container: resource.currentContainers, amount: resource.maxQuantity};
-                let freeStorage = resource.maxQuantity - resource.currentQuantity * resMods[res];
-                // Check for minimum containers here
-                if (resource.currentContainers > 0 && (freeStorage > containerVolume || resource.currentContainers > resource.autoContainersMax)){
-                    let extraContainers = Math.max(resource.currentContainers - resource.autoContainersMax, Math.min(resource.currentContainers, Math.floor(freeStorage / containerVolume)));
-
-                    storageAdjustments[res].amount -= extraContainers * containerVolume;
-                    storageAdjustments[res].container -= extraContainers;
-                    totalContainers += extraContainers;
-                    freeStorage -= extraContainers * containerVolume;
-                }
-                // Check for minimum crates here
-                if (resource.currentCrates > 0 && (freeStorage > crateVolume || resource.currentCrates > resource.autoCratesMax)){
-                    let extraCrates = Math.max(resource.currentCrates - resource.autoCratesMax, Math.min(resource.currentCrates, Math.floor(freeStorage / crateVolume)));
-
-                    storageAdjustments[res].amount -= extraCrates * crateVolume;
-                    storageAdjustments[res].crate -= extraCrates;
-                    totalCrates += extraCrates;
-                }
-            } else {
-                storageAdjustments[res] = {crate: 0, container: 0, amount: resource.maxQuantity - (resource.currentCrates * crateVolume + resource.currentContainers * containerVolume)};
-                totalCrates += resource.currentCrates;
-                totalContainers += resource.currentContainers;
-            }
+        if (settings.storageAssignPart) {
+            addList([{cost: resRequired, isList: true}]);
         }
 
         let storageToBuild = 0;
-
         // Calculate required storages
         nextBuilding:
-        for (let building of buildingsList) {
+        for (let item of buildingsList) {
             let currentAssign = {};
             let remainingCrates = totalCrates;
             let remainingContainers = totalContainers;
 
-            for (let res in building.cost) {
+            for (let res in item.cost) {
                 let resource = resources[res];
-                let quantity = building.cost[res];
+                let quantity = item.cost[res];
+                let mod = item.isList ? 1 : resMods[res];
 
                 if (!storageAdjustments[res]) {
                     if (resource.maxQuantity >= quantity) {
@@ -9948,30 +9934,35 @@
                         // Non-expandable, storage not met - ignore building
                         continue nextBuilding;
                     }
-                } else if (storageAdjustments[res].amount >= quantity * resMods[res]) {
+                } else if (storageAdjustments[res].amount >= quantity * mod) {
                     // Expandable, storage met - we're good
                     continue;
                 }
+                if (!item.isList && resource.maxStorage >= 0 && resource.maxStorage < quantity * mod) {
+                    continue nextBuilding;
+                }
                 // Expandable, storage not met - try to assign
-                let missingStorage = quantity * resMods[res] - storageAdjustments[res].amount;
-                currentAssign[res] = {crate: 0, container: 0};
-                if (remainingCrates > 0) {
-                    let assignCrates = Math.min(Math.ceil(missingStorage / crateVolume), remainingCrates, resource.autoCratesMax - storageAdjustments[res].crate);
-                    remainingCrates -= assignCrates;
-                    missingStorage -= assignCrates * crateVolume;
-                    currentAssign[res].crate = assignCrates;
-                }
-                if (missingStorage > 0 && remainingContainers > 0) {
-                    let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), remainingContainers, resource.autoContainersMax - storageAdjustments[res].container);
-                    remainingContainers -= assignContainer;
-                    missingStorage -= assignContainer * containerVolume;
-                    currentAssign[res].container = assignContainer;
-                }
-                if (missingStorage > 0) {
-                    // Not enough storage, skip building
-                    if (storageAdjustments[res].crate < resource.autoCratesMax || storageAdjustments[res].container < resource.autoContainersMax) {
+                let missingStorage = Math.min((resource.maxStorage >= 0 ? resource.maxStorage : Number.MAX_SAFE_INTEGER), quantity * mod) - storageAdjustments[res].amount;
+                let availableStorage = (remainingCrates * crateVolume) + (remainingContainers * containerVolume);
+                if (item.isList || missingStorage <= availableStorage) {
+                    currentAssign[res] = {crate: 0, container: 0};
+                    if (remainingCrates > 0) {
+                        let assignCrates = Math.min(Math.ceil(missingStorage / crateVolume), remainingCrates);
+                        remainingCrates -= assignCrates;
+                        missingStorage -= assignCrates * crateVolume;
+                        currentAssign[res].crate = assignCrates;
+                    }
+                    if (missingStorage > 0 && remainingContainers > 0) {
+                        let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), remainingContainers);
+                        remainingContainers -= assignContainer;
+                        missingStorage -= assignContainer * containerVolume;
+                        currentAssign[res].container = assignContainer;
+                    }
+                    if (missingStorage > 0) {
                         storageToBuild = Math.max(storageToBuild, missingStorage);
                     }
+                } else {
+                    storageToBuild = Math.max(storageToBuild, missingStorage - availableStorage);
                     continue nextBuilding;
                 }
             }
@@ -9983,28 +9974,6 @@
             }
             totalCrates = remainingCrates;
             totalContainers = remainingContainers;
-        }
-
-        for (let id in storageAdjustments) {
-            let resource = resources[id];
-            if (resource.storeOverflow && Math.max(1, resource.currentQuantity) * resMods[id] > storageAdjustments[id].amount) {
-                let missingStorage = Math.max(1, resource.currentQuantity) * resMods[id] - storageAdjustments[id].amount;
-                if (totalCrates > 0) {
-                    let assignCrates = Math.min(Math.ceil(missingStorage / crateVolume), totalCrates, resource.autoCratesMax - storageAdjustments[id].crate);
-                    totalCrates -= assignCrates;
-                    missingStorage -= assignCrates * crateVolume;
-                    storageAdjustments[id].crate += assignCrates;
-                }
-                if (missingStorage > 0 && totalContainers > 0) {
-                    let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), totalContainers, resource.autoContainersMax - storageAdjustments[id].container);
-                    totalContainers -= assignContainer;
-                    missingStorage -= assignContainer * containerVolume;
-                    storageAdjustments[id].container += assignContainer;
-                }
-                if (missingStorage > 0 && (storageAdjustments[id].crate < resource.autoCratesMax || storageAdjustments[id].container < resource.autoContainersMax)) {
-                    storageToBuild = Math.max(storageToBuild, missingStorage);
-                }
-            }
         }
 
         // Missing storage, try to build more
@@ -10044,208 +10013,6 @@
                 resources.Containers.currentQuantity += containerDelta;
             }
         }
-    }
-
-    function autoStorage() {
-        if (haveTask("bal_storage") || !StorageManager.initStorage()) {
-            return;
-        }
-
-        let storageList = StorageManager.priorityList.filter(r => r.isUnlocked() && r.isManagedStorage() && (r !== resources.Food || !game.global.race['artifical']));
-        if (storageList.length === 0) {
-            return;
-        }
-
-        let crateVolume = poly.crateValue();
-        let containerVolume = poly.containerValue();
-        if (crateVolume <= 0 || containerVolume <= 0) {
-            return;
-        }
-        let totalCrates = resources.Crates.currentQuantity;
-        let totalContainers = resources.Containers.currentQuantity;
-        let storageAdjustments = [];
-
-        // Init storageAdjustments, we need to do it saparately, as loop below can jump to the and of array
-        for (let i = 0; i < storageList.length; i++){
-            storageAdjustments.push({resource: storageList[i], adjustCrates: 0, adjustContainers: 0});
-        }
-
-        let totalStorageMissing = 0;
-
-        // Calculate storages
-        for (let i = 0; i < storageList.length; i++){
-            let resource = storageList[i];
-            let adjustment = storageAdjustments[i];
-            let calculatedCrates = resource.currentCrates + adjustment.adjustCrates;
-            let calculatedContainers = resource.currentContainers + adjustment.adjustContainers;
-            let cratesStorage = calculatedCrates * crateVolume;
-            let containersStorage = calculatedContainers * containerVolume;
-            let extraStorage = cratesStorage + containersStorage;
-            let rawStorage = resource.maxQuantity - extraStorage;
-            let freeStorage = resource.maxQuantity - resource.currentQuantity;
-            let extraStorageRequired = resource.storageRequired - rawStorage;
-
-            // If we're overflowing, and want to store more - just request one more crate volume
-            if (resource.storeOverflow) {
-                extraStorageRequired = Math.max(1, extraStorageRequired, resource.currentQuantity * 1.03 - rawStorage);
-            }
-
-            // We don't need any extra storage here, and don't care about wasting, just remove everything and go to next resource
-            if (!settings.storageSafeReassign && extraStorageRequired <= 0){
-                totalCrates += calculatedCrates;
-                totalContainers += calculatedContainers;
-                adjustment.adjustCrates = resource.currentCrates * -1;
-                adjustment.adjustContainers = resource.currentContainers * -1;
-                continue;
-            }
-
-            // Check if have extra containers here
-            if (containersStorage > 0 && ((extraStorage - containerVolume) > extraStorageRequired || calculatedContainers > resource.autoContainersMax)){
-                let removedContainers = Math.max(calculatedContainers - resource.autoContainersMax, Math.min(calculatedContainers, Math.floor((extraStorage - extraStorageRequired) / containerVolume)));
-
-                if (settings.storageSafeReassign || resource.storeOverflow) {
-                    let emptyContainers = Math.floor(freeStorage / containerVolume);
-                    removedContainers = Math.min(removedContainers, emptyContainers);
-                }
-
-                totalContainers += removedContainers;
-                adjustment.adjustContainers -= removedContainers;
-                calculatedContainers -= removedContainers;
-                extraStorage -= removedContainers * containerVolume;
-                freeStorage -= removedContainers * containerVolume;
-            }
-
-            // Check if have extra crates here
-            if (cratesStorage > 0 && ((extraStorage - crateVolume) > extraStorageRequired || calculatedCrates > resource.autoCratesMax)){
-                let removedCrates = Math.max(calculatedCrates - resource.autoCratesMax, Math.min(calculatedCrates, Math.floor((extraStorage - extraStorageRequired) / crateVolume)));
-
-                if (settings.storageSafeReassign || resource.storeOverflow) {
-                    let emptyCrates = Math.floor(freeStorage / crateVolume);
-                    removedCrates = Math.min(removedCrates, emptyCrates);
-                }
-
-                totalCrates += removedCrates;
-                adjustment.adjustCrates -= removedCrates;
-                extraStorage -= removedCrates * crateVolume;
-                //freeStorage -= removedCrates * crateVolume;
-            }
-
-            let missingStorage = extraStorageRequired - extraStorage;
-
-            // Check if we're missing storage on this resource
-            if (missingStorage > 0){
-                let maxCratesToUnassign = resource.autoCratesMax - calculatedCrates;
-                let maxContainersToUnassign = resource.autoContainersMax - calculatedContainers;
-                let availableStorage = Math.min(maxCratesToUnassign, totalCrates) * crateVolume + Math.min(maxContainersToUnassign, totalContainers) * containerVolume;
-
-                // We don't have enough containers, let's try to unassign something less prioritized
-                if (availableStorage < missingStorage){
-                    for (let j = storageList.length-1; j > i; j--){
-                        let otherFreeStorage = storageList[j].maxQuantity - storageList[j].currentQuantity + (storageAdjustments[j].adjustCrates * crateVolume) + (storageAdjustments[j].adjustContainers * containerVolume);
-                        let otherCalculatedCrates = storageList[j].currentCrates + storageAdjustments[j].adjustCrates;
-                        let otherCalculatedContainers = storageList[j].currentContainers + storageAdjustments[j].adjustContainers;
-
-                        // Unassign crates
-                        if (maxCratesToUnassign > 0 && otherCalculatedCrates > 0) {
-                            let missingCrates = Math.ceil(missingStorage / crateVolume);
-                            let cratesToUnassign = Math.min(otherCalculatedCrates, missingCrates, maxCratesToUnassign);
-
-                            if (settings.storageSafeReassign || storageList[j].storeOverflow) {
-                                let emptyCrates = Math.floor(otherFreeStorage / crateVolume);
-                                cratesToUnassign = Math.min(cratesToUnassign, emptyCrates);
-                            }
-
-                            storageAdjustments[j].adjustCrates -= cratesToUnassign;
-                            totalCrates += cratesToUnassign;
-                            maxCratesToUnassign -= cratesToUnassign;
-                            missingStorage -= cratesToUnassign * crateVolume;
-                            otherFreeStorage -= cratesToUnassign * crateVolume;
-                        }
-
-                        // Unassign containers, if we still need them
-                        if (maxContainersToUnassign > 0 && otherCalculatedContainers > 0 && missingStorage > 0){
-                            let missingContainers = Math.ceil(missingStorage / containerVolume);
-                            let containersToUnassign = Math.min(otherCalculatedContainers, missingContainers, maxContainersToUnassign);
-
-                            if (settings.storageSafeReassign || storageList[j].storeOverflow) {
-                                let emptyContainers = Math.floor(otherFreeStorage / containerVolume);
-                                containersToUnassign = Math.min(containersToUnassign, emptyContainers);
-                            }
-
-                            storageAdjustments[j].adjustContainers -= containersToUnassign;
-                            totalContainers += containersToUnassign;
-                            maxContainersToUnassign -= containersToUnassign;
-                            missingStorage -= containersToUnassign * containerVolume;
-                            //otherFreeStorage -= containersToUnassign * containerVolume;
-                        }
-
-                        // If we got all we needed - get back to assigning
-                        if (missingStorage <= 0){
-                            break;
-                        }
-                    }
-                }
-                // Restore missing storage, in case if was changed during unassignment
-                missingStorage = extraStorageRequired - extraStorage;
-
-                // Add crates
-                if (totalCrates > 0) {
-                    let missingCrates = Math.ceil(missingStorage / crateVolume);
-                    let allowedCrates = resource.autoCratesMax - calculatedCrates;
-                    let addCrates = Math.min(totalCrates, allowedCrates, missingCrates);
-                    totalCrates -= addCrates;
-                    adjustment.adjustCrates += addCrates;
-                    missingStorage -= addCrates * crateVolume;
-                }
-
-                // Add containers
-                if (totalContainers > 0 && missingStorage > 0){
-                    let missingContainers = Math.ceil(missingStorage / containerVolume);
-                    let allowedContainers = resource.autoContainersMax - calculatedContainers;
-                    let addContainers = Math.min(totalContainers, allowedContainers, missingContainers);
-                    totalContainers -= addContainers;
-                    adjustment.adjustContainers += addContainers;
-                    missingStorage -= addContainers * containerVolume;
-                }
-
-                if (missingStorage > 0){
-                    totalStorageMissing += missingStorage;
-                }
-            }
-        }
-
-        // Build more storage if we didn't had enough
-        if (totalStorageMissing > 0){
-            expandStorage(totalStorageMissing);
-        }
-
-        // Go to clicking, unassign first
-        storageAdjustments.forEach(adjustment => {
-            if (adjustment.adjustCrates < 0) {
-                StorageManager.unassignCrate(adjustment.resource, adjustment.adjustCrates * -1);
-                adjustment.resource.maxQuantity -= adjustment.adjustCrates * -1 * crateVolume;
-                resources.Crates.currentQuantity += adjustment.adjustCrates * -1;
-            }
-            if (adjustment.adjustContainers < 0) {
-                StorageManager.unassignContainer(adjustment.resource, adjustment.adjustContainers * -1);
-                adjustment.resource.maxQuantity -= adjustment.adjustContainers * -1 * containerVolume;
-                resources.Containers.currentQuantity += adjustment.adjustContainers * -1;
-            }
-        });
-
-        // And now assign
-        storageAdjustments.forEach(adjustment => {
-            if (adjustment.adjustCrates > 0) {
-                StorageManager.assignCrate(adjustment.resource, adjustment.adjustCrates);
-                adjustment.resource.maxQuantity += adjustment.adjustCrates * crateVolume;
-                resources.Crates.currentQuantity -= adjustment.adjustCrates;
-            }
-            if (adjustment.adjustContainers > 0) {
-                StorageManager.assignContainer(adjustment.resource, adjustment.adjustContainers);
-                adjustment.resource.maxQuantity += adjustment.adjustContainers * containerVolume;
-                resources.Containers.currentQuantity -= adjustment.adjustContainers;
-            }
-        });
     }
 
     // TODO: Mutate out of nasty traits
@@ -11166,6 +10933,7 @@
         return true;
     }
 
+    // TODO: quntium lab
     function updateTabs(update) {
         let oldHash = state.tabHash;
         state.tabHash = 0 // Not really a hash, but it should never go down, that's enough to track unlocks. (Except market after mutation in terrifying, 1000 weight should prevent all possible issues)
@@ -11224,7 +10992,7 @@
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
-            if (!checkEvolutionResult()) {
+            if (settings.masterScriptToggle && !checkEvolutionResult()) {
                 return;
             }
             state.goal = "Standard";
@@ -11232,9 +11000,6 @@
                 updateTriggerSettingsContent();
             }
         }
-
-        // Redraw tabs once they unlocked
-        updateTabs(true);
 
         // Reset required storage and prioritized resources
         for (let id in resources) {
@@ -11646,9 +11411,10 @@
     }
 
     function automate() {
-        if (state.goal === "GameOverMan" || state.forcedUpdate) {
+        if (state.goal === "GameOverMan" || state.forcedUpdate || !state.gameTicked) {
             return;
         }
+        state.gameTicked = false;
         if (state.scriptTick < Number.MAX_SAFE_INTEGER) {
             state.scriptTick++;
         } else {
@@ -11661,6 +11427,11 @@
         updateScriptData(); // Sync exposed data with script variables
         updateOverrides();  // Apply settings overrides as soon as possible
         finalizeScriptData(); // Second part of updating data, applying settings
+
+        // Redraw tabs once they unlocked
+        if (updateTabs(true)) {
+            return;
+        }
 
         // TODO: Properly sepparate updateState between updateScriptData and finalizeScriptData
         updateState();
@@ -11713,11 +11484,7 @@
         }
         if (settings.autoStorage) {
             // Called before autoJobs, autoFleet and autoPower - so they wont mess with quantum
-            if (settings.storagePrioritizedOnly) {
-                autoStorageBuildings();
-            } else {
-                autoStorage();
-            }
+            autoStorage();
         }
         if (!settings.autoTrigger || !autoTrigger()) {
             // Only go to autoResearch and autoBuild if triggers not building anything at this very moment, to ensure they won't steal reasources from triggers
@@ -11968,7 +11735,8 @@
             get: setCallback(() => craftCost),
             set: setCallback(v => {
                 craftCost = v;
-                if (settings.tickTimeout) {
+                state.gameTicked = true;
+                if (settings.tickSchedule) {
                     setTimeout(automate);
                 } else {
                     automate();
@@ -13115,7 +12883,7 @@
         currentNode.empty().off("*");
 
         addSettingsNumber(currentNode, "tickRate", "脚本运算频率", "每达到相应时刻后脚本就进行一次运算。游戏每250毫秒达到一个时刻，因此设为4以后脚本将每秒运算一次。您可以将此值调低以使脚本更快运行，也可以将此值调高来避免卡顿。时刻数值需要为正整数。");
-        addSettingsToggle(currentNode, "tickTimeout", "计划脚本时刻", "启用后脚本时刻将在游戏本体时刻后进行，而不是同时进行。这将使游戏本体和脚本时刻分别运算，使游戏运行更顺畅，但可能导致卡顿。如果启用后碰到例如脚本运算频率不正常的情况，则可以考虑关闭该项。");
+        addSettingsToggle(currentNode, "tickSchedule", "计划脚本时刻", "启用后脚本时刻将在游戏本体时刻后进行，而不是同时进行。这将使游戏本体和脚本时刻分别运算，使游戏运行更顺畅，但可能导致卡顿。如果启用后碰到例如脚本运算频率不正常的情况，则可以考虑关闭该项。");
 
         addSettingsHeader1(currentNode, "优先级");
         let priority = [{val: "ignore", label: "忽略", hint: "什么都不做"},
@@ -14589,7 +14357,7 @@
         addSettingsToggle(currentNode, "storageLimitPreMad", "限制核爆重置之前阶段的存储", "限制核爆重置之前阶段的存储来节省资源和相应时间");
         addSettingsToggle(currentNode, "storageSafeReassign", "只在板条箱或集装箱有空余时进行重新分配", "直到相应的板条箱或集装箱未装有相应资源时才考虑将它重新分配给其他资源，以防止资源溢出浪费");
         addSettingsToggle(currentNode, "storageAssignExtra", "是否分配缓冲用的存储", "以超过需要数值的3%进行分配，以保证能达到所需要的数值，以避免脚本其他功能的干扰。");
-        addSettingsToggle(currentNode, "storagePrioritizedOnly", "根据每种建筑分配存储", "根据启用的建筑每一个的花费来分配存储，而不是考虑总量来分配。可以优先对触发器或队列等所需要的资源分配存储，并可以跳过超过储量上限的建筑。实验性的功能。");
+        addSettingsToggle(currentNode, "storageAssignPart", "是否部分分配存储", "启用后，脚本即使分配板条箱及集装箱后相应资源并不足以建造新建筑，也可以提前进行分配。它可以提前存储资源以备后用，但也可能导致其他资源板条箱及集装箱不足。\n如果同时启用“只在板条箱或集装箱有空余时进行重新分配”，特定情况下可能导致进度彻底卡死。\n如果未同时启用“只在板条箱或集装箱有空余时进行重新分配”，则可能会导致资源浪费。");
 
         currentNode.append(`
           <table style="width:100%">
@@ -14597,8 +14365,8 @@
               <th class="has-text-warning" style="width:35%">资源名称</th>
               <th class="has-text-warning" style="width:15%">是否启用</th>
               <th class="has-text-warning" style="width:15%">是否对溢出部分分配存储</th>
-              <th class="has-text-warning" style="width:15%">最大板条箱</th>
-              <th class="has-text-warning" style="width:15%">最大集装箱</th>
+              <th class="has-text-warning" style="width:15%">最小存储</th>
+              <th class="has-text-warning" style="width:15%">最大存储</th>
               <th style="width:5%"></th>
             </tr>
             <tbody id="script_storageTableBody"></tbody>
@@ -14627,10 +14395,10 @@
             addTableToggle(storageElement, "res_storage_o_" + resource.id);
 
             storageElement = storageElement.next();
-            addTableInput(storageElement, "res_crates_m_" + resource.id);
+            addTableInput(storageElement, "res_min_store" + resource.id);
 
             storageElement = storageElement.next();
-            addTableInput(storageElement, "res_containers_m_" + resource.id);
+            addTableInput(storageElement, "res_max_store" + resource.id);
         }
 
         tableBodyNode.sortable({
@@ -16264,6 +16032,7 @@
                 hc += Math.floor(traitVal("cannibalize", 0) / 5);
             }
         }
+        hc *= traitVal("high_pop", 2, 1);
         if (getGovernor() === 'sports') {
             hc *= 1.5;
         }
