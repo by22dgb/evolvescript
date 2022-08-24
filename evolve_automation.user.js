@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.106
+// @version      3.3.1.106.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -4299,6 +4299,7 @@
     var FleetManagerOuter = {
         _fleetVueBinding: "shipPlans",
         _fleetVue: undefined,
+        _scoutBlueprint: {class: "corvette", armor: "neutronium", weapon: "plasma", engine: "tie", power: "fusion", sensor: "quantum"},
 
         nextShipCost: null,
         nextShipAffordable: false,
@@ -4378,7 +4379,7 @@
             return true;
         },
 
-        build(ship, region) {
+        design(ship) {
             let yard = game.global.space.shipyard;
             for (let [type, part] of Object.entries(ship)) {
                 if (type !== 'name' && yard.blueprint[type] !== part) {
@@ -4392,12 +4393,16 @@
             if (this._fleetVue.powerText().includes("danger")) {
                 return false;
             }
+            return true;
+        },
 
+        build(ship, region) {
             let cost = poly.shipCosts(ship);
             for (let res in cost) {
                 resources[res].currentQuantity -= cost[res];
             }
 
+            let yard = game.global.space.shipyard;
             if (yard.sort) {
                 $("#shipPlans .b-checkbox").eq(1).click()
                 this._fleetVue.build();
@@ -6500,6 +6505,7 @@
             fleetOuterCrew: 30,
             fleetOuterShips: "custom",
             fleetOuterMinSyndicate: 0.1,
+            fleetScanEris: true,
             fleetMaxCover: true,
             fleetEmbassyKnowledge: 6000000,
             fleetAlienGiftKnowledge: 6500000,
@@ -6509,8 +6515,8 @@
             // Default outer regions weighting
             fleet_outer_pr_spc_moon: 1, // Iridium
             fleet_outer_pr_spc_red: 3, // Titanium
-            fleet_outer_pr_spc_gas: 0,
-            fleet_outer_pr_spc_gas_moon: 0,
+            fleet_outer_pr_spc_gas: 0, // Helium
+            fleet_outer_pr_spc_gas_moon: 0, // Oil
             fleet_outer_pr_spc_belt: 1, // Iridium
             fleet_outer_pr_spc_titan: 5, // Adamantite
             fleet_outer_pr_spc_enceladus: 3, // Quantium
@@ -7102,6 +7108,7 @@
                     planet.achieve++;
                 }
             }
+            // TODO: Pick Oceanic for Madagascar Tree
         }
 
         // Now calculate weightings
@@ -10217,19 +10224,30 @@
         }
 
         let yard = game.global.space.shipyard;
-        let newShip = settings.fleetOuterShips === "user" ? yard.blueprint : m.getBlueprint();
-        if (!m.isShipAffordable(newShip) || WarManager.currentCityGarrison - m.ClassCrew[newShip.class] < settings.fleetOuterCrew) {
-            return;
+        let erisScout = settings.fleetScanEris && game.global.tech['eris'] === 1 && m.syndicate("spc_eris", true, true).s < 50;
+        let newShip = erisScout ? m._scoutBlueprint :
+          settings.fleetOuterShips === "user" ? yard.blueprint :
+          m.getBlueprint()
+
+        if (settings.prioritizeOuterFleet !== "ignore" && !m.design(newShip)) {
+            return; // Wrong blueprint
         }
 
-        let regionsToProtect = m.Regions
+        if (!m.isShipAffordable(newShip) || WarManager.currentCityGarrison - m.ClassCrew[newShip.class] < (erisScout ? 0 : settings.fleetOuterCrew)) {
+            return; // No resources or crew
+        }
+
+        let regionsToProtect = erisScout ? ["spc_eris"] : m.Regions
           .filter(reg => m.isUnlocked(reg) && m.getWeighting(reg) > 0 && m.syndicate(reg, false, true) < (1 - settings.fleetOuterMinSyndicate))
           .sort((a, b) => ((1 - m.syndicate(b, false, true)) * m.getWeighting(b))
                         - ((1 - m.syndicate(a, false, true)) * m.getWeighting(a)));
         if (regionsToProtect.length < 1) {
-            return;
+            return; // Nothing to protect
         }
 
+        if (settings.prioritizeOuterFleet === "ignore" && !m.design(newShip)) {
+            return; // Wrong blueprint
+        }
         if (m.build(newShip, regionsToProtect[0])) {
             let name = game.loc(`outer_shipyard_class_${newShip.class}`);
             let targetRef = game.actions.space[regionsToProtect[0]].info.name;
@@ -13738,6 +13756,7 @@
         addStandardHeading(currentNode, "Outer Solar");
         addSettingsNumber(currentNode, "fleetOuterCrew", "Minimum idle soldiers", "Only build ships when amount of idle soldiers above give number.");
         addSettingsNumber(currentNode, "fleetOuterMinSyndicate", "Minimum syndicate", "Send ships only to regions with syndicate activity above given level.");
+        addSettingsToggle(currentNode, "fleetScanEris", "Scan Eris", "Send single corvette with Quantum Scaner to Eris, ignores region weighting.");
 
         let shipOptions = [{val: "none", label: "None", hint: "Ship buildign disabled"},
                            {val: "user", label: "Current design", hint: "Build whatever currently set in Ship Yard"},
