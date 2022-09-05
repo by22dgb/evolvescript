@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.106.2
+// @version      3.3.1.106.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -4904,7 +4904,10 @@
         },
 
         managedPriorityList() {
-            let ret = this.priorityList.filter(job => job.isManaged());
+            let ret = [];
+            if (settings.autoJobs) {
+                ret = this.priorityList.filter(job => job.isManaged());
+            }
             if (settings.autoCraftsmen) {
                 ret = ret.concat(this.craftingJobs.filter(job => job.isManaged()));
             }
@@ -7572,7 +7575,7 @@
         if (m.hellPatrols < targetHellPatrols) m.addHellPatrol(targetHellPatrols - m.hellPatrols);
     }
 
-    function autoJobs() {
+    function autoJobs(craftOnly) {
         let jobList = JobManager.managedPriorityList();
 
         // No jobs unlocked yet
@@ -7596,7 +7599,10 @@
         let jobAdjustments = [];
 
         // We're only crafting when we have twice amount of workers than needed.
-        if (settings.autoCraftsmen && availableEmployees > availableCraftsmen * 2) {
+        if (craftOnly) {
+            availableCraftsmen = availableEmployees;
+            availableEmployees = 0;
+        } else if (settings.autoCraftsmen && availableEmployees >= availableCraftsmen * (farmerIndex === -1 ? 1 : 2)) {
             availableEmployees -= availableCraftsmen;
         } else {
             availableCraftsmen = 0;
@@ -8009,7 +8015,7 @@
 
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
         // Unless we're already assigning to default, and don't want it to be changed now
-        if (settings.jobSetDefault && minDefault === 0) {
+        if (!craftOnly && settings.jobSetDefault && minDefault === 0) {
             /*if (jobs.Forager.isManaged() && requiredJobs[jobList.indexOf(jobs.Forager)] > 0) {
                 jobs.Forager.setAsDefault();
             } else*/
@@ -8544,11 +8550,12 @@
         }
 
         let remainingPlants = GrapheneManager.maxOperating();
+        let fuelAdjust = [];
 
         let sortedFuel = Object.values(GrapheneManager.Fuels).sort((a, b) => b.cost.resource.storageRatio < 0.995 || a.cost.resource.storageRatio < 0.995 ? b.cost.resource.storageRatio - a.cost.resource.storageRatio : b.cost.resource.rateOfChange - a.cost.resource.rateOfChange);
         for (let fuel of sortedFuel) {
             if (remainingPlants === 0) {
-                return;
+                break;
             }
 
             let resource = fuel.cost.resource;
@@ -8571,11 +8578,14 @@
 
             let deltaFuel = maxFueledForConsumption - currentFuelCount;
             if (deltaFuel !== 0) {
-                GrapheneManager.increaseFuel(fuel, deltaFuel);
+                fuelAdjust.push({res: fuel, delta: deltaFuel});
             }
 
             remainingPlants -= currentFuelCount + deltaFuel;
         }
+
+        fuelAdjust.forEach(fuel => fuel.delta < 0 && GrapheneManager.decreaseFuel(fuel.res, fuel.delta * -1));
+        fuelAdjust.forEach(fuel => fuel.delta > 0 && GrapheneManager.increaseFuel(fuel.res, fuel.delta));
     }
 
     // TODO: Allow configuring priorities between eject\supply\nanite
@@ -9807,12 +9817,11 @@
 
         if (settings.storageLimitPreMad && isEarlyGame()) {
             // Only build pre-mad containers when steel is excessing
-
-            if (resources.Steel.storageRequired > resources.Steel.currentQuantity && resources.Steel.storageRatio < 0.9) {
+            if (resources.Steel.storageRatio < 0.8) {
                 numberOfContainersWeCanBuild = 0;
             }
             // Only build pre-mad crates when already have Plywood for next level of library
-            if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.cost["Plywood"] > resources.Plywood.currentQuantity) {
+            if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.cost["Plywood"] > resources.Plywood.currentQuantity && resources.Steel.maxQuantity >= resources.Steel.storageRequired) {
                 numberOfCratesWeCanBuild = 0;
             }
         }
@@ -9841,6 +9850,7 @@
         return missingStorage < storageToBuild;
     }
 
+    // TODO: Implement preserving of old layout, to reduce flickering
     function autoStorage() {
         if (haveTask("bal_storage") || !StorageManager.initStorage()) {
             return;
@@ -11506,6 +11516,8 @@
         }
         if (settings.autoJobs) {
             autoJobs();
+        } else if (settings.autoCraftsmen) {
+            autoJobs(true);
         }
         if (settings.autoFleet) {
             if (game.global.race['truepath']) {
@@ -15504,7 +15516,7 @@
             createSettingToggle(togglesNode, 'autoGalaxyMarket', 'Manages galaxy trade routes');
             createSettingToggle(togglesNode, 'autoResearch', 'Performs research when minimum requirements are met.');
             createSettingToggle(togglesNode, 'autoJobs', 'Assigns jobs in a priority order with multiple breakpoints. Starts with a few jobs each and works up from there. Will try to put a minimum number on lumber / stone then fill up capped jobs first.');
-            createSettingToggle(togglesNode, 'autoCraftsmen', 'With this option autoJobs will also manage craftsmens.');
+            createSettingToggle(togglesNode, 'autoCraftsmen', 'Manage foundry workers, switching between resources at given ratio.');
             createSettingToggle(togglesNode, 'autoAlchemy', 'Manages alchemic transmutations');
             createSettingToggle(togglesNode, 'autoPylon', 'Manages pylon rituals');
             createSettingToggle(togglesNode, 'autoQuarry', 'Manages rock quarry stone to chrysotile ratio for smoldering races');
