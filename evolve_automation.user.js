@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.106.3
+// @version      3.3.1.106.4
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -375,7 +375,9 @@
 
         isUseful() {
             // Spending accumulated resources
-            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow && this.currentQuantity > this.storageRequired && (this.currentCrates + this.currentContainers) > 0) {
+            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow &&
+              ((this.currentCrates > 0 && this.maxQuantity - StorageManager.crateValue > this.storageRequired) ||
+               (this.currentContainers > 0 && this.maxQuantity - StorageManager.containerValue > this.storageRequired))) {
                 return false;
             }
             return this.storageRatio < 0.99 || this.isDemanded() || this.rateMods['eject'] > 0 || this.rateMods['supply'] > 0 || (this.storeOverflow && this.currentQuantity < this.maxStorage);
@@ -1883,6 +1885,7 @@
     }
 
     var jobs = {
+        Unemployed: new Job("unemployed", "Unemployed", {inf: true}),
         Colonist: new Job("colonist", "Colonist"),
         Hunter: new Job("hunter", "Hunter", {smart: true, inf: true}),
         Farmer: new Job("farmer", "Farmer", {smart: true, inf: true}),
@@ -1904,7 +1907,6 @@
         Archaeologist: new Job("archaeologist", "Archaeologist"),
         Banker: new Job("banker", "Banker", {smart: true}),
         Priest: new Job("priest", "Priest"),
-        Unemployed: new Job("unemployed", "Unemployed", {inf: true}),
     }
 
     // Non-manual crafts should be on top
@@ -3748,6 +3750,8 @@
 
     var StorageManager = {
         priorityList: [],
+        crateValue: 0,
+        containerValue: 0,
         _storageVueBinding: "createHead",
         _storageVue: undefined,
 
@@ -6108,7 +6112,7 @@
             tradeRouteSellExcess: true,
             minimumMoney: 0,
             minimumMoneyPercentage: 0,
-            marketMinIngredients: 0.001,
+            marketMinIngredients: 0,
         }
 
         for (let i = 0; i < MarketManager.priorityList.length; i++) {
@@ -9827,43 +9831,42 @@
         }
 
         // Build crates
-        let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(missingStorage / poly.crateValue()));
+        let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(missingStorage / StorageManager.crateValue));
         StorageManager.constructCrate(cratesToBuild);
 
         resources.Crates.currentQuantity += cratesToBuild;
         for (let res in resources.Crates.cost) {
             resources[res].currentQuantity -= resources.Crates.cost[res] * cratesToBuild;
         }
-        missingStorage -= cratesToBuild * poly.crateValue();
+        missingStorage -= cratesToBuild * StorageManager.crateValue;
 
         // And containers, if still needed
         if (missingStorage > 0) {
-            let containersToBuild = Math.min(Math.floor(numberOfContainersWeCanBuild), Math.ceil(missingStorage / poly.containerValue()));
+            let containersToBuild = Math.min(Math.floor(numberOfContainersWeCanBuild), Math.ceil(missingStorage / StorageManager.containerValue));
             StorageManager.constructContainer(containersToBuild);
 
             resources.Containers.currentQuantity += containersToBuild;
             for (let res in resources.Containers.cost) {
                 resources[res].currentQuantity -= resources.Containers.cost[res] * containersToBuild;
             }
-            missingStorage -= containersToBuild * poly.containerValue();
+            missingStorage -= containersToBuild * StorageManager.containerValue;
         }
         return missingStorage < storageToBuild;
     }
 
     // TODO: Implement preserving of old layout, to reduce flickering
     function autoStorage() {
-        if (haveTask("bal_storage") || !StorageManager.initStorage()) {
+        let m = StorageManager;
+        if (haveTask("bal_storage") || !m.initStorage()) {
             return;
         }
 
-        let crateVolume = poly.crateValue();
-        let containerVolume = poly.containerValue();
-        if (crateVolume <= 0 || containerVolume <= 0) {
+        if (m.crateValue <= 0 || m.containerValue <= 0) {
             // Shouldn't ever happen, but better check than sorry. Trying to adjust storages thinking that crates are worthless could end pretty bad.
             return;
         }
 
-        let storageList = StorageManager.priorityList.filter(r => r.isUnlocked() && r.isManagedStorage());
+        let storageList = m.priorityList.filter(r => r.isUnlocked() && r.isManagedStorage());
         if (storageList.length === 0) {
             return;
         }
@@ -9889,7 +9892,7 @@
             resCurrent[res] = resource.currentQuantity;
             resMin[res] = resource.minStorage;
 
-            storageAdjustments[res] = {crate: 0, container: 0, amount: resource.maxQuantity - (resource.currentCrates * crateVolume + resource.currentContainers * containerVolume)};
+            storageAdjustments[res] = {crate: 0, container: 0, amount: resource.maxQuantity - (resource.currentCrates * m.crateValue + resource.currentContainers * m.containerValue)};
             totalCrates += resource.currentCrates;
             totalContainers += resource.currentContainers;
         }
@@ -9951,19 +9954,19 @@
                 }
                 // Expandable, storage not met - try to assign
                 let missingStorage = Math.min((resource.maxStorage >= 0 ? resource.maxStorage : Number.MAX_SAFE_INTEGER), quantity * mod) - storageAdjustments[res].amount;
-                let availableStorage = (remainingCrates * crateVolume) + (remainingContainers * containerVolume);
+                let availableStorage = (remainingCrates * m.crateValue) + (remainingContainers * m.containerValue);
                 if (item.isList || missingStorage <= availableStorage) {
                     currentAssign[res] = {crate: 0, container: 0};
                     if (remainingCrates > 0) {
-                        let assignCrates = Math.min(Math.ceil(missingStorage / crateVolume), remainingCrates);
+                        let assignCrates = Math.min(Math.ceil(missingStorage / m.crateValue), remainingCrates);
                         remainingCrates -= assignCrates;
-                        missingStorage -= assignCrates * crateVolume;
+                        missingStorage -= assignCrates * m.crateValue;
                         currentAssign[res].crate = assignCrates;
                     }
                     if (missingStorage > 0 && remainingContainers > 0) {
-                        let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), remainingContainers);
+                        let assignContainer = Math.min(Math.ceil(missingStorage / m.containerValue), remainingContainers);
                         remainingContainers -= assignContainer;
-                        missingStorage -= assignContainer * containerVolume;
+                        missingStorage -= assignContainer * m.containerValue;
                         currentAssign[res].container = assignContainer;
                     }
                     if (missingStorage > 0) {
@@ -9978,7 +9981,7 @@
             for (let id in currentAssign) {
                 storageAdjustments[id].crate += currentAssign[id].crate;
                 storageAdjustments[id].container += currentAssign[id].container;
-                storageAdjustments[id].amount += currentAssign[id].crate * crateVolume + currentAssign[id].container * containerVolume;
+                storageAdjustments[id].amount += currentAssign[id].crate * m.crateValue + currentAssign[id].container * m.containerValue;
             }
             totalCrates = remainingCrates;
             totalContainers = remainingContainers;
@@ -9996,13 +9999,13 @@
             let crateDelta = storageAdjustments[id].crate - resource.currentCrates;
             let containerDelta = storageAdjustments[id].container - resource.currentContainers;
             if (crateDelta < 0) {
-                StorageManager.unassignCrate(resource, crateDelta * -1);
-                resource.maxQuantity += crateDelta * crateVolume;
+                m.unassignCrate(resource, crateDelta * -1);
+                resource.maxQuantity += crateDelta * m.crateValue;
                 resources.Crates.currentQuantity -= crateDelta;
             }
             if (containerDelta < 0) {
-                StorageManager.unassignContainer(resource, containerDelta * -1);
-                resource.maxQuantity += containerDelta * containerVolume;
+                m.unassignContainer(resource, containerDelta * -1);
+                resource.maxQuantity += containerDelta * m.containerValue;
                 resources.Containers.currentQuantity -= containerDelta;
             }
         }
@@ -10011,13 +10014,13 @@
             let crateDelta = storageAdjustments[id].crate - resource.currentCrates;
             let containerDelta = storageAdjustments[id].container - resource.currentContainers;
             if (crateDelta > 0) {
-                StorageManager.assignCrate(resource, crateDelta);
-                resource.maxQuantity += crateDelta * crateVolume;
+                m.assignCrate(resource, crateDelta);
+                resource.maxQuantity += crateDelta * m.crateValue;
                 resources.Crates.currentQuantity += crateDelta;
             }
             if (containerDelta > 0) {
-                StorageManager.assignContainer(resource, containerDelta);
-                resource.maxQuantity += containerDelta * containerVolume;
+                m.assignContainer(resource, containerDelta);
+                resource.maxQuantity += containerDelta * m.containerValue;
                 resources.Containers.currentQuantity += containerDelta;
             }
         }
@@ -11025,6 +11028,8 @@
             resources[id].storageRequired = 1;
             resources[id].requestedQuantity = 0;
         }
+        StorageManager.crateValue = poly.crateValue();
+        StorageManager.containerValue = poly.containerValue();
         updatePriorityTargets();  // Set queuedTargets and triggerTargets
         ProjectManager.updateProjects(); // Set obj.cost, uses triggerTargets
         calculateRequiredStorages(); // Uses obj.cost
