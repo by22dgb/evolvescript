@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.106.4
+// @version      3.3.1.107.0
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -2958,7 +2958,7 @@
         },
 
         initIndustry() {
-            return this.isUnlocked() && !haveTask("trash");
+            return this.isUnlocked();
         },
 
         isConsumable(res) {
@@ -7239,30 +7239,28 @@
             return;
         }
 
-        if (!haveTask("merc")) {
-            let mercenaryCost = m.mercenaryCost;
-            let mercenariesHired = 0;
-            let mercenaryMax = m.maxSoldiers - settings.foreignHireMercDeadSoldiers;
-            let maxCost = state.moneyMedian * settings.foreignHireMercCostLowerThanIncome;
-            let minMoney = Math.max(resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100, Math.min(resources.Money.maxQuantity - maxCost, (settings.storageAssignExtra ? resources.Money.storageRequired / 1.03 : resources.Money.storageRequired)));
-            if (state.goal === "Reset") { // Get as much as possible before reset
-                mercenaryMax = m.maxSoldiers;
-                minMoney = 0;
-                maxCost = Number.MAX_SAFE_INTEGER;
-            }
-            while (m.currentSoldiers < mercenaryMax && resources.Money.currentQuantity >= mercenaryCost &&
-                  (resources.Money.spareQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
-                m.hireMercenary()) {
-                mercenariesHired++;
-                mercenaryCost = m.mercenaryCost;
-            }
+        let mercenaryCost = m.mercenaryCost;
+        let mercenariesHired = 0;
+        let mercenaryMax = m.maxSoldiers - settings.foreignHireMercDeadSoldiers;
+        let maxCost = state.moneyMedian * settings.foreignHireMercCostLowerThanIncome;
+        let minMoney = Math.max(resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100, Math.min(resources.Money.maxQuantity - maxCost, (settings.storageAssignExtra ? resources.Money.storageRequired / 1.03 : resources.Money.storageRequired)));
+        if (state.goal === "Reset") { // Get as much as possible before reset
+            mercenaryMax = m.maxSoldiers;
+            minMoney = 0;
+            maxCost = Number.MAX_SAFE_INTEGER;
+        }
+        while (m.currentSoldiers < mercenaryMax && resources.Money.currentQuantity >= mercenaryCost &&
+              (resources.Money.spareQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
+            m.hireMercenary()) {
+            mercenariesHired++;
+            mercenaryCost = m.mercenaryCost;
+        }
 
-            // Log the interaction
-            if (mercenariesHired === 1) {
-                GameLog.logSuccess("mercenary", `Hired a mercenary to join the garrison.`, ['combat']);
-            } else if (mercenariesHired > 1) {
-                GameLog.logSuccess("mercenary", `Hired ${mercenariesHired} mercenaries to join the garrison.`, ['combat']);
-            }
+        // Log the interaction
+        if (mercenariesHired === 1) {
+            GameLog.logSuccess("mercenary", `Hired a mercenary to join the garrison.`, ['combat']);
+        } else if (mercenariesHired > 1) {
+            GameLog.logSuccess("mercenary", `Hired ${mercenariesHired} mercenaries to join the garrison.`, ['combat']);
         }
     }
 
@@ -8042,7 +8040,7 @@
     }
 
     function autoTax() {
-        if (resources.Morale.incomeAdusted || haveTask("tax")) {
+        if (resources.Morale.incomeAdusted) {
             return;
         }
 
@@ -9857,7 +9855,7 @@
     // TODO: Implement preserving of old layout, to reduce flickering
     function autoStorage() {
         let m = StorageManager;
-        if (haveTask("bal_storage") || !m.initStorage()) {
+        if (!m.initStorage()) {
             return;
         }
 
@@ -11398,6 +11396,16 @@
                     continue; // Some argument not valid, skip condition
                 }
             }
+        }
+
+        if (haveTask("bal_storage")) {
+            overrides["autoStorage"] = false;
+        }
+        if (haveTask("trash")) {
+            overrides["autoEject"] = false;
+        }
+        if (haveTask("tax")) {
+            overrides["autoTax"] = false;
         }
 
         // Apply overrides
@@ -15505,18 +15513,18 @@
 
             createSettingToggle(togglesNode, 'autoPrestige', 'Allows script to finish current run after reaching configured goal. Prestige Type is recommended to be set even with manual resetting, as script uses that to make various decisions such as picking theology techs, or skipping buildings leading in wrong direction.');
             createSettingToggle(togglesNode, 'autoEvolution', 'Runs through the evolution part of the game through to founding a settlement. In Auto Achievements mode will target races that you don\'t have extinction\\greatness achievements for yet.');
-            createSettingToggle(togglesNode, 'autoFight', 'Sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type.');
+            createSettingToggle(togglesNode, 'autoFight', 'Manage spies, and sends troops to battle whenever Soldiers are full and there are no wounded. Adds to your offensive battalion and switches attack type when offensive rating is greater than the rating cutoff for that attack type. Will not manage spies when Spy Operator governor task is active.');
             createSettingToggle(togglesNode, 'autoHell', 'Sends soldiers to hell and sends them out on patrols. Adjusts maximum number of powered attractors based on threat.');
-            createSettingToggle(togglesNode, 'autoMech', 'Builds most effective large mechs for current spire floor. Least effective will be scrapped to make room for new ones.', createMechInfo, removeMechInfo);
+            createSettingToggle(togglesNode, 'autoMech', 'Builds most effective large mechs for current spire floor. Least effective will be scrapped to make room for new ones. Will not build or scrap anything when Mech Constructor governor task is active.', createMechInfo, removeMechInfo);
             createSettingToggle(togglesNode, 'autoFleet', 'Manages Andromeda fleet to supress piracy');
-            createSettingToggle(togglesNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%.');
+            createSettingToggle(togglesNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%. Disabled when Tax-Morale Balance governor task is active.');
             createSettingToggle(togglesNode, 'autoGovernment', 'Manage changes of government and governor when they becomes available. Governor will be selected once, and won\'t be reassigned, unless manually fired.');
             createSettingToggle(togglesNode, 'autoCraft', 'Automatically produce craftable resources, thresholds when it happens depends on current demands and stocks.', createCraftToggles, removeCraftToggles);
             createSettingToggle(togglesNode, 'autoTrigger', 'Purchase triggered buildings, projects, and researches once conditions met');
             createSettingToggle(togglesNode, 'autoBuild', 'Construct buildings based on their weightings(user configured), and various rules(e.g. it won\'t build building which have no support to run)', createBuildingToggles, removeBuildingToggles);
             createSettingToggle(togglesNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(togglesNode, 'autoPower', 'Manages power based on a priority order of buildings. Also disables currently useless buildings to save up resources.');
-            createSettingToggle(togglesNode, 'autoStorage', 'Assigns crates and containers to resources needed for buildings enabled for Auto Build, queued buildings, researches, and enabled projects', createStorageToggles, removeStorageToggles);
+            createSettingToggle(togglesNode, 'autoStorage', 'Assigns crates and containers to resources needed for buildings enabled for Auto Build, queued buildings, researches, and enabled projects. Disabled when Crate/Container Manager governor task is active.', createStorageToggles, removeStorageToggles);
             createSettingToggle(togglesNode, 'autoMarket', 'Allows for automatic buying and selling of resources once specific ratios are met. Also allows setting up trade routes until a minimum specified money per second is reached. The will trade in and out in an attempt to maximize your trade routes.', createMarketToggles, removeMarketToggles);
             createSettingToggle(togglesNode, 'autoGalaxyMarket', 'Manages galaxy trade routes');
             createSettingToggle(togglesNode, 'autoResearch', 'Performs research when minimum requirements are met.');
@@ -15531,7 +15539,7 @@
             createSettingToggle(togglesNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
             createSettingToggle(togglesNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max.');
             createSettingToggle(togglesNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings. Also manages Mimic genus.');
-            createSettingToggle(togglesNode, 'autoEject', 'Eject excess resources to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements.', createEjectToggles, removeEjectToggles);
+            createSettingToggle(togglesNode, 'autoEject', 'Eject excess resources to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements. Disabled when Mass Ejector Optimizer governor task is active.', createEjectToggles, removeEjectToggles);
             createSettingToggle(togglesNode, 'autoSupply', 'Send excess resources to Spire. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over ejector.', createSupplyToggles, removeSupplyToggles);
             createSettingToggle(togglesNode, 'autoNanite', 'Consume resources to produce Nanite. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over supplies and ejector.');
 
