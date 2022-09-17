@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.0
+// @version      3.3.1.107.1
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -375,7 +375,7 @@
 
         isUseful() {
             // Spending accumulated resources
-            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow &&
+            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow && this.currentQuantity > this.minStorage &&
               ((this.currentCrates > 0 && this.maxQuantity - StorageManager.crateValue > this.storageRequired) ||
                (this.currentContainers > 0 && this.maxQuantity - StorageManager.containerValue > this.storageRequired))) {
                 return false;
@@ -9611,7 +9611,6 @@
                     }
                 }
             }
-
 
             for (let j = 0; j < building.consumption.length; j++) {
                 let resourceType = building.consumption[j];
