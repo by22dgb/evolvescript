@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.106.2
+// @version      3.3.1.107.1
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -378,7 +378,9 @@
 
         isUseful() {
             // Spending accumulated resources
-            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow && this.currentQuantity > this.storageRequired && (this.currentCrates + this.currentContainers) > 0) {
+            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow && this.currentQuantity > this.minStorage &&
+              ((this.currentCrates > 0 && this.maxQuantity - StorageManager.crateValue > this.storageRequired) ||
+               (this.currentContainers > 0 && this.maxQuantity - StorageManager.containerValue > this.storageRequired))) {
                 return false;
             }
             return this.storageRatio < 0.99 || this.isDemanded() || this.rateMods['eject'] > 0 || this.rateMods['supply'] > 0 || (this.storeOverflow && this.currentQuantity < this.maxStorage);
@@ -1892,6 +1894,7 @@
     }
 
     var jobs = {
+        Unemployed: new Job("unemployed", "失业人口", {inf: true}),
         Colonist: new Job("colonist", "行星居民"),
         Hunter: new Job("hunter", "猎人", {smart: true, inf: true}),
         Farmer: new Job("farmer", "农民", {smart: true, inf: true}),
@@ -1913,7 +1916,6 @@
         Archaeologist: new Job("archaeologist", "考古学家"),
         Banker: new Job("banker", "银行家", {smart: true}),
         Priest: new Job("priest", "牧师"),
-        Unemployed: new Job("unemployed", "失业人口", {inf: true}),
     }
 
     // Non-manual crafts should be on top
@@ -2965,7 +2967,7 @@
         },
 
         initIndustry() {
-            return this.isUnlocked() && !haveTask("trash");
+            return this.isUnlocked();
         },
 
         isConsumable(res) {
@@ -3757,6 +3759,8 @@
 
     var StorageManager = {
         priorityList: [],
+        crateValue: 0,
+        containerValue: 0,
         _storageVueBinding: "createHead",
         _storageVue: undefined,
 
@@ -4913,7 +4917,10 @@
         },
 
         managedPriorityList() {
-            let ret = this.priorityList.filter(job => job.isManaged());
+            let ret = [];
+            if (settings.autoJobs) {
+                ret = this.priorityList.filter(job => job.isManaged());
+            }
             if (settings.autoCraftsmen) {
                 ret = ret.concat(this.craftingJobs.filter(job => job.isManaged()));
             }
@@ -6114,7 +6121,7 @@
             tradeRouteSellExcess: true,
             minimumMoney: 0,
             minimumMoneyPercentage: 0,
-            marketMinIngredients: 0.001,
+            marketMinIngredients: 0,
         }
 
         for (let i = 0; i < MarketManager.priorityList.length; i++) {
@@ -7241,30 +7248,28 @@
             return;
         }
 
-        if (!haveTask("merc")) {
-            let mercenaryCost = m.mercenaryCost;
-            let mercenariesHired = 0;
-            let mercenaryMax = m.maxSoldiers - settings.foreignHireMercDeadSoldiers;
-            let maxCost = state.moneyMedian * settings.foreignHireMercCostLowerThanIncome;
-            let minMoney = Math.max(resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100, Math.min(resources.Money.maxQuantity - maxCost, (settings.storageAssignExtra ? resources.Money.storageRequired / 1.03 : resources.Money.storageRequired)));
-            if (state.goal === "Reset") { // Get as much as possible before reset
-                mercenaryMax = m.maxSoldiers;
-                minMoney = 0;
-                maxCost = Number.MAX_SAFE_INTEGER;
-            }
-            while (m.currentSoldiers < mercenaryMax && resources.Money.currentQuantity >= mercenaryCost &&
-                  (resources.Money.spareQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
-                m.hireMercenary()) {
-                mercenariesHired++;
-                mercenaryCost = m.mercenaryCost;
-            }
+        let mercenaryCost = m.mercenaryCost;
+        let mercenariesHired = 0;
+        let mercenaryMax = m.maxSoldiers - settings.foreignHireMercDeadSoldiers;
+        let maxCost = state.moneyMedian * settings.foreignHireMercCostLowerThanIncome;
+        let minMoney = Math.max(resources.Money.maxQuantity * settings.foreignHireMercMoneyStoragePercent / 100, Math.min(resources.Money.maxQuantity - maxCost, (settings.storageAssignExtra ? resources.Money.storageRequired / 1.03 : resources.Money.storageRequired)));
+        if (state.goal === "Reset") { // Get as much as possible before reset
+            mercenaryMax = m.maxSoldiers;
+            minMoney = 0;
+            maxCost = Number.MAX_SAFE_INTEGER;
+        }
+        while (m.currentSoldiers < mercenaryMax && resources.Money.currentQuantity >= mercenaryCost &&
+              (resources.Money.spareQuantity - mercenaryCost > minMoney || mercenaryCost < maxCost) &&
+            m.hireMercenary()) {
+            mercenariesHired++;
+            mercenaryCost = m.mercenaryCost;
+        }
 
-            // Log the interaction
-            if (mercenariesHired === 1) {
-                GameLog.logSuccess("mercenary", `雇佣了 1 名雇佣兵。`, ['combat']);
-            } else if (mercenariesHired > 1) {
-                GameLog.logSuccess("mercenary", `雇佣了 ${mercenariesHired} 名雇佣兵。`, ['combat']);
-            }
+        // Log the interaction
+        if (mercenariesHired === 1) {
+            GameLog.logSuccess("mercenary", `雇佣了 1 名雇佣兵。`, ['combat']);
+        } else if (mercenariesHired > 1) {
+            GameLog.logSuccess("mercenary", `雇佣了 ${mercenariesHired} 名雇佣兵。`, ['combat']);
         }
     }
 
@@ -7581,7 +7586,7 @@
         if (m.hellPatrols < targetHellPatrols) m.addHellPatrol(targetHellPatrols - m.hellPatrols);
     }
 
-    function autoJobs() {
+    function autoJobs(craftOnly) {
         let jobList = JobManager.managedPriorityList();
 
         // No jobs unlocked yet
@@ -7605,7 +7610,10 @@
         let jobAdjustments = [];
 
         // We're only crafting when we have twice amount of workers than needed.
-        if (settings.autoCraftsmen && availableEmployees > availableCraftsmen * 2) {
+        if (craftOnly) {
+            availableCraftsmen = availableEmployees;
+            availableEmployees = 0;
+        } else if (settings.autoCraftsmen && availableEmployees >= availableCraftsmen * (farmerIndex === -1 ? 1 : 2)) {
             availableEmployees -= availableCraftsmen;
         } else {
             availableCraftsmen = 0;
@@ -8018,7 +8026,7 @@
 
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
         // Unless we're already assigning to default, and don't want it to be changed now
-        if (settings.jobSetDefault && minDefault === 0) {
+        if (!craftOnly && settings.jobSetDefault && minDefault === 0) {
             /*if (jobs.Forager.isManaged() && requiredJobs[jobList.indexOf(jobs.Forager)] > 0) {
                 jobs.Forager.setAsDefault();
             } else*/
@@ -8041,7 +8049,7 @@
     }
 
     function autoTax() {
-        if (resources.Morale.incomeAdusted || haveTask("tax")) {
+        if (resources.Morale.incomeAdusted) {
             return;
         }
 
@@ -8553,11 +8561,12 @@
         }
 
         let remainingPlants = GrapheneManager.maxOperating();
+        let fuelAdjust = [];
 
         let sortedFuel = Object.values(GrapheneManager.Fuels).sort((a, b) => b.cost.resource.storageRatio < 0.995 || a.cost.resource.storageRatio < 0.995 ? b.cost.resource.storageRatio - a.cost.resource.storageRatio : b.cost.resource.rateOfChange - a.cost.resource.rateOfChange);
         for (let fuel of sortedFuel) {
             if (remainingPlants === 0) {
-                return;
+                break;
             }
 
             let resource = fuel.cost.resource;
@@ -8580,11 +8589,14 @@
 
             let deltaFuel = maxFueledForConsumption - currentFuelCount;
             if (deltaFuel !== 0) {
-                GrapheneManager.increaseFuel(fuel, deltaFuel);
+                fuelAdjust.push({res: fuel, delta: deltaFuel});
             }
 
             remainingPlants -= currentFuelCount + deltaFuel;
         }
+
+        fuelAdjust.forEach(fuel => fuel.delta < 0 && GrapheneManager.decreaseFuel(fuel.res, fuel.delta * -1));
+        fuelAdjust.forEach(fuel => fuel.delta > 0 && GrapheneManager.increaseFuel(fuel.res, fuel.delta));
     }
 
     // TODO: Allow configuring priorities between eject\supply\nanite
@@ -9609,7 +9621,6 @@
                 }
             }
 
-
             for (let j = 0; j < building.consumption.length; j++) {
                 let resourceType = building.consumption[j];
                 // If resource rate is negative then we are gaining resources. So, only check if we are consuming resources
@@ -9816,53 +9827,52 @@
 
         if (settings.storageLimitPreMad && isEarlyGame()) {
             // Only build pre-mad containers when steel is excessing
-
-            if (resources.Steel.storageRequired > resources.Steel.currentQuantity && resources.Steel.storageRatio < 0.9) {
+            if (resources.Steel.storageRatio < 0.8) {
                 numberOfContainersWeCanBuild = 0;
             }
             // Only build pre-mad crates when already have Plywood for next level of library
-            if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.cost["Plywood"] > resources.Plywood.currentQuantity) {
+            if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.cost["Plywood"] > resources.Plywood.currentQuantity && resources.Steel.maxQuantity >= resources.Steel.storageRequired) {
                 numberOfCratesWeCanBuild = 0;
             }
         }
 
         // Build crates
-        let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(missingStorage / poly.crateValue()));
+        let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(missingStorage / StorageManager.crateValue));
         StorageManager.constructCrate(cratesToBuild);
 
         resources.Crates.currentQuantity += cratesToBuild;
         for (let res in resources.Crates.cost) {
             resources[res].currentQuantity -= resources.Crates.cost[res] * cratesToBuild;
         }
-        missingStorage -= cratesToBuild * poly.crateValue();
+        missingStorage -= cratesToBuild * StorageManager.crateValue;
 
         // And containers, if still needed
         if (missingStorage > 0) {
-            let containersToBuild = Math.min(Math.floor(numberOfContainersWeCanBuild), Math.ceil(missingStorage / poly.containerValue()));
+            let containersToBuild = Math.min(Math.floor(numberOfContainersWeCanBuild), Math.ceil(missingStorage / StorageManager.containerValue));
             StorageManager.constructContainer(containersToBuild);
 
             resources.Containers.currentQuantity += containersToBuild;
             for (let res in resources.Containers.cost) {
                 resources[res].currentQuantity -= resources.Containers.cost[res] * containersToBuild;
             }
-            missingStorage -= containersToBuild * poly.containerValue();
+            missingStorage -= containersToBuild * StorageManager.containerValue;
         }
         return missingStorage < storageToBuild;
     }
 
+    // TODO: Implement preserving of old layout, to reduce flickering
     function autoStorage() {
-        if (haveTask("bal_storage") || !StorageManager.initStorage()) {
+        let m = StorageManager;
+        if (!m.initStorage()) {
             return;
         }
 
-        let crateVolume = poly.crateValue();
-        let containerVolume = poly.containerValue();
-        if (crateVolume <= 0 || containerVolume <= 0) {
+        if (m.crateValue <= 0 || m.containerValue <= 0) {
             // Shouldn't ever happen, but better check than sorry. Trying to adjust storages thinking that crates are worthless could end pretty bad.
             return;
         }
 
-        let storageList = StorageManager.priorityList.filter(r => r.isUnlocked() && r.isManagedStorage());
+        let storageList = m.priorityList.filter(r => r.isUnlocked() && r.isManagedStorage());
         if (storageList.length === 0) {
             return;
         }
@@ -9888,7 +9898,7 @@
             resCurrent[res] = resource.currentQuantity;
             resMin[res] = resource.minStorage;
 
-            storageAdjustments[res] = {crate: 0, container: 0, amount: resource.maxQuantity - (resource.currentCrates * crateVolume + resource.currentContainers * containerVolume)};
+            storageAdjustments[res] = {crate: 0, container: 0, amount: resource.maxQuantity - (resource.currentCrates * m.crateValue + resource.currentContainers * m.containerValue)};
             totalCrates += resource.currentCrates;
             totalContainers += resource.currentContainers;
         }
@@ -9950,19 +9960,19 @@
                 }
                 // Expandable, storage not met - try to assign
                 let missingStorage = Math.min((resource.maxStorage >= 0 ? resource.maxStorage : Number.MAX_SAFE_INTEGER), quantity * mod) - storageAdjustments[res].amount;
-                let availableStorage = (remainingCrates * crateVolume) + (remainingContainers * containerVolume);
+                let availableStorage = (remainingCrates * m.crateValue) + (remainingContainers * m.containerValue);
                 if (item.isList || missingStorage <= availableStorage) {
                     currentAssign[res] = {crate: 0, container: 0};
                     if (remainingCrates > 0) {
-                        let assignCrates = Math.min(Math.ceil(missingStorage / crateVolume), remainingCrates);
+                        let assignCrates = Math.min(Math.ceil(missingStorage / m.crateValue), remainingCrates);
                         remainingCrates -= assignCrates;
-                        missingStorage -= assignCrates * crateVolume;
+                        missingStorage -= assignCrates * m.crateValue;
                         currentAssign[res].crate = assignCrates;
                     }
                     if (missingStorage > 0 && remainingContainers > 0) {
-                        let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), remainingContainers);
+                        let assignContainer = Math.min(Math.ceil(missingStorage / m.containerValue), remainingContainers);
                         remainingContainers -= assignContainer;
-                        missingStorage -= assignContainer * containerVolume;
+                        missingStorage -= assignContainer * m.containerValue;
                         currentAssign[res].container = assignContainer;
                     }
                     if (missingStorage > 0) {
@@ -9977,7 +9987,7 @@
             for (let id in currentAssign) {
                 storageAdjustments[id].crate += currentAssign[id].crate;
                 storageAdjustments[id].container += currentAssign[id].container;
-                storageAdjustments[id].amount += currentAssign[id].crate * crateVolume + currentAssign[id].container * containerVolume;
+                storageAdjustments[id].amount += currentAssign[id].crate * m.crateValue + currentAssign[id].container * m.containerValue;
             }
             totalCrates = remainingCrates;
             totalContainers = remainingContainers;
@@ -9995,13 +10005,13 @@
             let crateDelta = storageAdjustments[id].crate - resource.currentCrates;
             let containerDelta = storageAdjustments[id].container - resource.currentContainers;
             if (crateDelta < 0) {
-                StorageManager.unassignCrate(resource, crateDelta * -1);
-                resource.maxQuantity += crateDelta * crateVolume;
+                m.unassignCrate(resource, crateDelta * -1);
+                resource.maxQuantity += crateDelta * m.crateValue;
                 resources.Crates.currentQuantity -= crateDelta;
             }
             if (containerDelta < 0) {
-                StorageManager.unassignContainer(resource, containerDelta * -1);
-                resource.maxQuantity += containerDelta * containerVolume;
+                m.unassignContainer(resource, containerDelta * -1);
+                resource.maxQuantity += containerDelta * m.containerValue;
                 resources.Containers.currentQuantity -= containerDelta;
             }
         }
@@ -10010,13 +10020,13 @@
             let crateDelta = storageAdjustments[id].crate - resource.currentCrates;
             let containerDelta = storageAdjustments[id].container - resource.currentContainers;
             if (crateDelta > 0) {
-                StorageManager.assignCrate(resource, crateDelta);
-                resource.maxQuantity += crateDelta * crateVolume;
+                m.assignCrate(resource, crateDelta);
+                resource.maxQuantity += crateDelta * m.crateValue;
                 resources.Crates.currentQuantity += crateDelta;
             }
             if (containerDelta > 0) {
-                StorageManager.assignContainer(resource, containerDelta);
-                resource.maxQuantity += containerDelta * containerVolume;
+                m.assignContainer(resource, containerDelta);
+                resource.maxQuantity += containerDelta * m.containerValue;
                 resources.Containers.currentQuantity += containerDelta;
             }
         }
@@ -11024,6 +11034,8 @@
             resources[id].storageRequired = 1;
             resources[id].requestedQuantity = 0;
         }
+        StorageManager.crateValue = poly.crateValue();
+        StorageManager.containerValue = poly.containerValue();
         updatePriorityTargets();  // Set queuedTargets and triggerTargets
         ProjectManager.updateProjects(); // Set obj.cost, uses triggerTargets
         calculateRequiredStorages(); // Uses obj.cost
@@ -11394,6 +11406,16 @@
             }
         }
 
+        if (haveTask("bal_storage")) {
+            overrides["autoStorage"] = false;
+        }
+        if (haveTask("trash")) {
+            overrides["autoEject"] = false;
+        }
+        if (haveTask("tax")) {
+            overrides["autoTax"] = false;
+        }
+
         // Apply overrides
         Object.assign(settings, settingsRaw, overrides);
 
@@ -11515,6 +11537,8 @@
         }
         if (settings.autoJobs) {
             autoJobs();
+        } else if (settings.autoCraftsmen) {
+            autoJobs(true);
         }
         if (settings.autoFleet) {
             if (game.global.race['truepath']) {
@@ -13000,7 +13024,6 @@
 
         // MAD
         addSettingsHeader1(currentNode, "核爆重置");
-        addSettingsToggle(currentNode, "prestigeMADIgnoreArpa", "特定时期之前不建造ARPA项目", "研究相互毁灭或竞争国家出现之前，不建造ARPA项目，不会影响软泥种族");
         addSettingsToggle(currentNode, "prestigeMADWait", "是否等待人口达到最大", "等待市民和士兵达到最大以后再进行重置，以尽可能多地获得质粒");
         addSettingsNumber(currentNode, "prestigeMADPopulation", "人口阈值", "达到相应数量的市民和士兵后，才进行核爆重置");
 
@@ -15604,23 +15627,23 @@
 
             createSettingToggle(togglesNode, 'autoPrestige', '自动威望重置', '达到相应目标后自动进行威望重置。建议哪怕是手动进行重置，也最好设置威望重置类型，脚本在判断神学研究分支或是否忽略特定建筑等情况时，也会考虑威望重置类型来做决定。');
             createSettingToggle(togglesNode, 'autoEvolution', '自动进化', '自动进行进化阶段。如果选择自动完成成就，则会优先考虑还未完成过毁灭类成就或者伟大类成就的种族。');
-            createSettingToggle(togglesNode, 'autoFight', '自动战斗', '当士兵已满员且没有伤兵时让他们进行战斗。当战斗评级足够以后，会自动切换战役类型。');
+            createSettingToggle(togglesNode, 'autoFight', '自动战斗', '自动管理间谍，并且当士兵已满员且没有伤兵时让他们进行战斗。当战斗评级足够以后，会自动切换战役类型。当总督任务为间谍行动时不会自动管理间谍。');
             createSettingToggle(togglesNode, 'autoHell', '自动地狱维度', '将士兵派往地狱维度并自动分配巡逻队。根据恶魔生物数量自动调节吸引器信标的数量。');
-            createSettingToggle(togglesNode, 'autoMech', '自动机甲', '建造效率最高的大型机甲。将根据当前的情况调整机甲配置。', createMechInfo, removeMechInfo);
+            createSettingToggle(togglesNode, 'autoMech', '自动机甲', '建造效率最高的大型机甲。将根据当前的情况调整机甲配置。当总督任务为构建机甲时不会自动建造和解体机甲。', createMechInfo, removeMechInfo);
             createSettingToggle(togglesNode, 'autoFleet', '自动仙女座舰队', '自动分配仙女座星系的舰队以压制海盗活动');
-            createSettingToggle(togglesNode, 'autoTax', '自动税率', '如果当前的士气高于上限，则会自动调整税率。会尽可能将士气保持在100%以上。');
+            createSettingToggle(togglesNode, 'autoTax', '自动税率', '如果当前的士气高于上限，则会自动调整税率。会尽可能将士气保持在100%以上。当总督任务为税收士气平衡时不启用。');
             createSettingToggle(togglesNode, 'autoGovernment', '自动社会体制', '自动调整社会体制和总督。总督在任命后不会自动解任。');
             createSettingToggle(togglesNode, 'autoCraft', '自动锻造', '自动将资源转换为锻造物，进行转换的阈值根据当前需求和储量而定。', createCraftToggles, removeCraftToggles);
             createSettingToggle(togglesNode, 'autoTrigger', '自动触发器', '满足条件时，购买相应的建筑，项目或者研究');
             createSettingToggle(togglesNode, 'autoBuild', '自动建筑', '根据玩家设置的权重自动建造建筑，同时需要满足一定条件(例如：不会在支持不够时建造消耗相应支持的建筑)', createBuildingToggles, removeBuildingToggles);
             createSettingToggle(togglesNode, 'autoARPA', '自动ARPA', '自动建造玩家允许建造的ARPA项目。', createArpaToggles, removeArpaToggles);
             createSettingToggle(togglesNode, 'autoPower', '自动供能', '根据建筑的优先级自动管理供能。同时会自动关闭无用的建筑，以节省资源。');
-            createSettingToggle(togglesNode, 'autoStorage', '自动存储', '自动分配箱子来管理自动建造、队列中的建筑、研究、以及ARPA项目所需的资源存储。', createStorageToggles, removeStorageToggles);
+            createSettingToggle(togglesNode, 'autoStorage', '自动存储', '自动分配箱子来管理自动建造、队列中的建筑、研究、以及ARPA项目所需的资源存储。当总督任务为板条箱/集装箱管理时不启用。', createStorageToggles, removeStorageToggles);
             createSettingToggle(togglesNode, 'autoMarket', '自动市场', '当资源到达某个比例以后自动买卖相应资源。也可以设置自动使用贸易路线进行交易，并且可以设置交易时最小的资金收入。将尽可能使用所有的贸易路线。', createMarketToggles, removeMarketToggles);
             createSettingToggle(togglesNode, 'autoGalaxyMarket', '自动星际贸易', '自动管理星际贸易路线');
             createSettingToggle(togglesNode, 'autoResearch', '自动研究', '当满足相应条件时自动进行研究。');
             createSettingToggle(togglesNode, 'autoJobs', '自动工作', '以相应优先级和多个阈值来自动分配工作。将先满足第一阈值后，再考虑第二阈值，然后再考虑最终阈值。在考虑其他工作前会先考虑伐木工人和石工数量。');
-            createSettingToggle(togglesNode, 'autoCraftsmen', '自动工匠', '自动分配工匠。');
+            createSettingToggle(togglesNode, 'autoCraftsmen', '自动工匠', '自动分配工匠，按照指定的权重进行锻造。');
             createSettingToggle(togglesNode, 'autoAlchemy', '自动炼金术', '自动管理炼金术转化');
             createSettingToggle(togglesNode, 'autoPylon', '自动水晶塔', '自动管理水晶塔符文');
             createSettingToggle(togglesNode, 'autoQuarry', '自动温石棉控制', '烈焰种族自动管理石头和温石棉的比例');
@@ -15630,7 +15653,7 @@
             createSettingToggle(togglesNode, 'autoGraphenePlant', '自动石墨烯厂', '自动管理石墨烯厂的燃料。无法手动控制，会自动使用需求最少的燃料。');
             createSettingToggle(togglesNode, 'autoAssembleGene', '自动组装基因', '当知识满了以后，自动进行基因重组。');
             createSettingToggle(togglesNode, 'autoMinorTrait', '自动次要基因', '根据相应的权重，自动使用基因购买次要特质。也可以控制拟态特质选择的种群。');
-            createSettingToggle(togglesNode, 'autoEject', '自动质量喷射', '将多余的资源用于黑洞质量喷射。普通资源将在接近上限时用于喷射，锻造物将在超过需求时用于喷射。', createEjectToggles, removeEjectToggles);
+            createSettingToggle(togglesNode, 'autoEject', '自动质量喷射', '将多余的资源用于黑洞质量喷射。普通资源将在接近上限时用于喷射，锻造物将在超过需求时用于喷射。当总督任务为质量喷射时不启用。', createEjectToggles, removeEjectToggles);
             createSettingToggle(togglesNode, 'autoSupply', '自动补给', '将多余的资源用于补给。普通资源将在接近上限时用于补给，锻造物将在超过需求时用于补给。优先级高于质量喷射器。', createSupplyToggles, removeSupplyToggles);
             createSettingToggle(togglesNode, 'autoNanite', '自动纳米体', '将资源转化为纳米体。普通资源将在接近上限时用于转化，锻造物将在超过需求时用于转化。优先级高于补给和质量喷射器。');
 
