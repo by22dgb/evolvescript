@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.2
+// @version      3.3.1.107.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -7400,17 +7400,20 @@
         for (let foreign of sm.foreignActive) {
             if (foreign.policy === "Occupy" && !foreign.gov.occ) {
                 let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, foreign.id);
-                if (soldiersMin <= m.maxCityGarrison) {
+                if (soldiersMin <= (settings.autoHell && m._hellVue ? m.maxSoldiers - m.hellReservedSoldiers : m.maxCityGarrison)) {
                     currentTarget = foreign;
                     requiredBattalion = Math.max(soldiersMin, Math.min(m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, foreign.id) - 1));
                     requiredTactic = 4;
-                    break;
+                    if (m.availableGarrison < (requiredBattalion / 2 + getOccCosts()) && m.availableGarrison < m.maxCityGarrison) {
+                        return; // Wait for more soldiers
+                    } else {
+                        break;
+                    }
                 }
             }
         }
-
-        // Nothing to attack, or we want to occupy, and need more soldiers
-        if (!currentTarget || (requiredTactic === 4 && m.availableGarrison < getOccCosts() * 2 && m.availableGarrison < m.maxCityGarrison)) {
+        // Nothing to attack
+        if (!currentTarget) {
             return;
         }
 
@@ -7425,11 +7428,10 @@
                     break;
                 }
             }
-        }
-
-        // Not enough healthy soldiers, keep resting
-        if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
-            return;
+            // Not enough healthy soldiers, keep resting
+            if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
+                return;
+            }
         }
 
         // Occupy can pull soldiers from ships, let's make sure it won't happen
@@ -7437,7 +7439,7 @@
             // If it occupied currently - we'll get enough soldiers just by unoccupying it
             m.release(currentTarget.id);
         }
-        if (requiredTactic === 4 && m.crew > 0) {
+        if (requiredTactic === 4) {
             let missingSoldiers = getOccCosts() - (m.currentCityGarrison - requiredBattalion);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
@@ -10995,7 +10997,7 @@
         }
 
         if (update && state.tabHash !== oldHash){
-            let mainVue = $('#mainColumn > div:first-child')[0].__vue__;
+            let mainVue = win.$('#mainColumn > div:first-child')[0].__vue__;
             mainVue.s.civTabs = 7;
             mainVue.s.tabLoad = false;
             mainVue.toggleTabLoad();
@@ -12813,7 +12815,7 @@
         currentNode.empty().off("*");
 
         addSettingsNumber(currentNode, "tickRate", "Script tick rate", "Script runs once per this amount of game ticks. Game tick every 250ms, thus with rate 4 script will run once per second. You can set it lower to make script act faster, or increase it if you have performance issues. Tick rate should be a positive integer.");
-        addSettingsToggle(currentNode, "tickSchedule", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof. It also can cause weird bugs, such of sudden jumps of tick rate or double-processing of same game tick. Unstable experimental option, use at your own risk.");
+        addSettingsToggle(currentNode, "tickSchedule", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof - that can make tick rate float inconsistently, and cause weird bugs. Unstable experimental option, use at your own risk.");
 
         addSettingsHeader1(currentNode, "Prioritization");
         let priority = [{val: "ignore", label: "Ignore", hint: "Does nothing"},
@@ -16089,7 +16091,7 @@
     }
 
     function getOccCosts() {
-        return game.global.civic.govern.type === "federation" ? 15 : 20;
+        return traitVal('high_pop', 0, 1) * (game.global.civic.govern.type === "federation" ? 15 : 20);
     }
 
     function getGovName(govIndex) {
