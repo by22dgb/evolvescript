@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.3
+// @version      3.3.1.107.4
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -7928,12 +7928,12 @@
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
                     }
-                    if (job === jobs.Surveyor) {
+                    if (job === jobs.HellSurveyor) {
                         if (jobMax[j] === undefined) {
                             if (game.global.portal.fortress.threat > 9000 && resources.Population.storageRatio < 1) {
                                 jobMax[j] = 0;
                             } else if (!resources.Infernite.isUseful()) {
-                                jobMax[j] = resources.Infernite.getBusyWorkers("job_hell_surveyor", jobs.Surveyor.count);
+                                jobMax[j] = resources.Infernite.getBusyWorkers("job_hell_surveyor", jobs.HellSurveyor.count);
                             } else {
                                 jobMax[j] = Number.MAX_SAFE_INTEGER;
                             }
@@ -14686,7 +14686,7 @@
     }
 
     function updateProductionTableMiningDrone(currentNode) {
-        addStandardHeading(currentNode, "Mining Drone");
+        addStandardHeading(currentNode, "Mining Droid");
 
         currentNode.append(`
           <table style="width:100%">
