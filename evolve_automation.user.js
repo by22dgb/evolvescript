@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.4
+// @version      3.3.1.107.5
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -319,7 +319,7 @@
                 this.tradeRoutes = this.instance.trade;
                 this.tradeBuyPrice = game.tradeBuyPrice(this._id);
                 this.tradeSellPrice = game.tradeSellPrice(this._id);
-                let tradeDiff = game.breakdown.p.consume[this._id].Trade || 0;
+                let tradeDiff = game.breakdown.p.consume[this._id]?.Trade || 0;
                 if (tradeDiff > 0) {
                     this.rateMods['buy'] = tradeDiff * -1;
                 } else if (tradeDiff < 0) {
@@ -388,7 +388,7 @@
         getProduction(source, locArg) {
             let produced = 0;
             let labelFound = false;
-            for (let [label, value] of Object.entries(game.breakdown.p[this._id])) {
+            for (let [label, value] of Object.entries(game.breakdown.p[this._id] ?? {})) {
                 if (value.indexOf("%") === -1) {
                     if (labelFound) {
                         break;
@@ -10652,7 +10652,7 @@
 
         // Parse global production modifiers
         state.globalProductionModifier = 1;
-        for (let mod of Object.values(game.breakdown.p.Global)) {
+        for (let mod of Object.values(game.breakdown.p.Global ?? {})) {
             state.globalProductionModifier *= 1 + (parseFloat(mod) || 0) / 100;
         }
     }
@@ -10669,7 +10669,7 @@
 
         // Money is special. They aren't defined as tradable, but still affected by trades
         if (settings.autoMarket) {
-            let tradeDiff = game.breakdown.p.consume["Money"].Trade || 0;
+            let tradeDiff = game.breakdown.p.consume["Money"]?.Trade || 0;
             if (tradeDiff > 0) {
                 resources.Money.rateMods['buy'] = tradeDiff * -1;
             } else if (tradeDiff < 0) {
