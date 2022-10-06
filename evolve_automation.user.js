@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.5
+// @version      3.3.1.107.6
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -7730,9 +7730,8 @@
                 let currentEmployees = requiredJobs[j] ?? 0;
                 availableEmployees += currentEmployees;
 
-                let minEmployees = job.isDefault() ? minDefault : 0;
                 let demonicLumber = (job === jobs.Hunter && isDemonRace() && isLumberRace()) ? true : false;
-                let jobsToAssign = Math.min(availableEmployees, Math.max(minEmployees, currentEmployees, job.breakpointEmployees(i)));
+                let jobsToAssign = Math.min(availableEmployees, Math.max(currentEmployees, job.breakpointEmployees(i)));
 
                 if (job.isSmartEnabled) {
                     if (job === jobs.Farmer || job === jobs.Hunter) {
@@ -7795,7 +7794,7 @@
                             }
                         }
                         if (demonicLumber) {
-                            jobsToAssign = Math.min(availableEmployees, Math.max(minEmployees, currentEmployees, minFarmers, Math.min(jobMax[j], jobs.Lumberjack.breakpointEmployees(i))));
+                            jobsToAssign = Math.min(availableEmployees, Math.max(currentEmployees, minFarmers, Math.min(jobMax[j], jobs.Lumberjack.breakpointEmployees(i))));
                         } else {
                             jobsToAssign = Math.min(jobsToAssign, minFarmers);
                         }
@@ -7940,6 +7939,10 @@
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
                     }
+                }
+
+                if (job.isDefault() && jobsToAssign < minDefault) {
+                    jobsToAssign = Math.min(availableEmployees, minDefault);
                 }
 
                 jobsToAssign = Math.max(0, jobsToAssign);
