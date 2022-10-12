@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.6
+// @version      3.3.1.107.7
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -5233,7 +5233,11 @@
             this._state.x100 = undefined;
             this._state.x25 = undefined;
             this._state.x10 = undefined;
-            if (!game.global.settings.mKeys) {
+
+            let keys = Object.values(evolve.global.settings.keyMap);
+            let uniq = keys.filter((v, i, a) => a.indexOf(v) === i);
+
+            if (!game.global.settings.mKeys || keys.length !== uniq.length) {
                 this._mode = "none";
             } else if (this._allFn && ['x100', 'x25', 'x10'].every(key => ['Shift', 'Control', 'Alt', 'Meta'].includes(game.global.settings.keyMap[key]))) {
                 this._mode = "all";
@@ -15434,7 +15438,7 @@
         // Build content
         let modalHeader = $('#scriptModalHeader');
         modalHeader.empty().off("*");
-        modalHeader.append(`<span>${modalTitle}</span>`);
+        modalHeader.append(`<span style="user-select: text">${modalTitle}</span>`);
 
         let modalBody = $('#scriptModalBody');
         modalBody.empty().off("*");
