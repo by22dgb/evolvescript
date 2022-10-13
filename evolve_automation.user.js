@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.1
+// @version      3.3.1.107.7
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -322,7 +322,7 @@
                 this.tradeRoutes = this.instance.trade;
                 this.tradeBuyPrice = game.tradeBuyPrice(this._id);
                 this.tradeSellPrice = game.tradeSellPrice(this._id);
-                let tradeDiff = game.breakdown.p.consume[this._id].Trade || 0;
+                let tradeDiff = game.breakdown.p.consume[this._id]?.Trade || 0;
                 if (tradeDiff > 0) {
                     this.rateMods['buy'] = tradeDiff * -1;
                 } else if (tradeDiff < 0) {
@@ -377,19 +377,21 @@
         }
 
         isUseful() {
+            /* This check always cause issues, i'll just disable it for now
             // Spending accumulated resources
-            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow && this.currentQuantity > this.minStorage &&
+            if (settings.autoStorage && settings.storageSafeReassign && !this.storeOverflow && this.currentQuantity > this.minStorage && this.currentQuantity > this.storageRequired &&
               ((this.currentCrates > 0 && this.maxQuantity - StorageManager.crateValue > this.storageRequired) ||
                (this.currentContainers > 0 && this.maxQuantity - StorageManager.containerValue > this.storageRequired))) {
                 return false;
             }
+            */
             return this.storageRatio < 0.99 || this.isDemanded() || this.rateMods['eject'] > 0 || this.rateMods['supply'] > 0 || (this.storeOverflow && this.currentQuantity < this.maxStorage);
         }
 
         getProduction(source, locArg) {
             let produced = 0;
             let labelFound = false;
-            for (let [label, value] of Object.entries(game.breakdown.p[this._id])) {
+            for (let [label, value] of Object.entries(game.breakdown.p[this._id] ?? {})) {
                 if (value.indexOf("%") === -1) {
                     if (labelFound) {
                         break;
@@ -5240,7 +5242,11 @@
             this._state.x100 = undefined;
             this._state.x25 = undefined;
             this._state.x10 = undefined;
-            if (!game.global.settings.mKeys) {
+
+            let keys = Object.values(evolve.global.settings.keyMap);
+            let uniq = keys.filter((v, i, a) => a.indexOf(v) === i);
+
+            if (!game.global.settings.mKeys || keys.length !== uniq.length) {
                 this._mode = "none";
             } else if (this._allFn && ['x100', 'x25', 'x10'].every(key => ['Shift', 'Control', 'Alt', 'Meta'].includes(game.global.settings.keyMap[key]))) {
                 this._mode = "all";
@@ -7407,17 +7413,20 @@
         for (let foreign of sm.foreignActive) {
             if (foreign.policy === "Occupy" && !foreign.gov.occ) {
                 let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, foreign.id);
-                if (soldiersMin <= m.maxCityGarrison) {
+                if (soldiersMin <= (settings.autoHell && m._hellVue ? m.maxSoldiers - m.hellReservedSoldiers : m.maxCityGarrison)) {
                     currentTarget = foreign;
                     requiredBattalion = Math.max(soldiersMin, Math.min(m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, foreign.id) - 1));
                     requiredTactic = 4;
-                    break;
+                    if (m.availableGarrison < (requiredBattalion / 2 + getOccCosts()) && m.availableGarrison < m.maxCityGarrison) {
+                        return; // Wait for more soldiers
+                    } else {
+                        break;
+                    }
                 }
             }
         }
-
-        // Nothing to attack, or we want to occupy, and need more soldiers
-        if (!currentTarget || (requiredTactic === 4 && m.availableGarrison < getOccCosts() * 2 && m.availableGarrison < m.maxCityGarrison)) {
+        // Nothing to attack
+        if (!currentTarget) {
             return;
         }
 
@@ -7432,11 +7441,10 @@
                     break;
                 }
             }
-        }
-
-        // Not enough healthy soldiers, keep resting
-        if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
-            return;
+            // Not enough healthy soldiers, keep resting
+            if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
+                return;
+            }
         }
 
         // Occupy can pull soldiers from ships, let's make sure it won't happen
@@ -7444,7 +7452,7 @@
             // If it occupied currently - we'll get enough soldiers just by unoccupying it
             m.release(currentTarget.id);
         }
-        if (requiredTactic === 4 && m.crew > 0) {
+        if (requiredTactic === 4) {
             let missingSoldiers = getOccCosts() - (m.currentCityGarrison - requiredBattalion);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
@@ -7735,9 +7743,8 @@
                 let currentEmployees = requiredJobs[j] ?? 0;
                 availableEmployees += currentEmployees;
 
-                let minEmployees = job.isDefault() ? minDefault : 0;
                 let demonicLumber = (job === jobs.Hunter && isDemonRace() && isLumberRace()) ? true : false;
-                let jobsToAssign = Math.min(availableEmployees, Math.max(minEmployees, currentEmployees, job.breakpointEmployees(i)));
+                let jobsToAssign = Math.min(availableEmployees, Math.max(currentEmployees, job.breakpointEmployees(i)));
 
                 if (job.isSmartEnabled) {
                     if (job === jobs.Farmer || job === jobs.Hunter) {
@@ -7800,7 +7807,7 @@
                             }
                         }
                         if (demonicLumber) {
-                            jobsToAssign = Math.min(availableEmployees, Math.max(minEmployees, currentEmployees, minFarmers, Math.min(jobMax[j], jobs.Lumberjack.breakpointEmployees(i))));
+                            jobsToAssign = Math.min(availableEmployees, Math.max(currentEmployees, minFarmers, Math.min(jobMax[j], jobs.Lumberjack.breakpointEmployees(i))));
                         } else {
                             jobsToAssign = Math.min(jobsToAssign, minFarmers);
                         }
@@ -7933,18 +7940,22 @@
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
                     }
-                    if (job === jobs.Surveyor) {
+                    if (job === jobs.HellSurveyor) {
                         if (jobMax[j] === undefined) {
                             if (game.global.portal.fortress.threat > 9000 && resources.Population.storageRatio < 1) {
                                 jobMax[j] = 0;
                             } else if (!resources.Infernite.isUseful()) {
-                                jobMax[j] = resources.Infernite.getBusyWorkers("job_hell_surveyor", jobs.Surveyor.count);
+                                jobMax[j] = resources.Infernite.getBusyWorkers("job_hell_surveyor", jobs.HellSurveyor.count);
                             } else {
                                 jobMax[j] = Number.MAX_SAFE_INTEGER;
                             }
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
                     }
+                }
+
+                if (job.isDefault() && jobsToAssign < minDefault) {
+                    jobsToAssign = Math.min(availableEmployees, minDefault);
                 }
 
                 jobsToAssign = Math.max(0, jobsToAssign);
@@ -10657,7 +10668,7 @@
 
         // Parse global production modifiers
         state.globalProductionModifier = 1;
-        for (let mod of Object.values(game.breakdown.p.Global)) {
+        for (let mod of Object.values(game.breakdown.p.Global ?? {})) {
             state.globalProductionModifier *= 1 + (parseFloat(mod) || 0) / 100;
         }
     }
@@ -10674,7 +10685,7 @@
 
         // Money is special. They aren't defined as tradable, but still affected by trades
         if (settings.autoMarket) {
-            let tradeDiff = game.breakdown.p.consume["Money"].Trade || 0;
+            let tradeDiff = game.breakdown.p.consume["Money"]?.Trade || 0;
             if (tradeDiff > 0) {
                 resources.Money.rateMods['buy'] = tradeDiff * -1;
             } else if (tradeDiff < 0) {
@@ -11002,7 +11013,7 @@
         }
 
         if (update && state.tabHash !== oldHash){
-            let mainVue = $('#mainColumn > div:first-child')[0].__vue__;
+            let mainVue = win.$('#mainColumn > div:first-child')[0].__vue__;
             mainVue.s.civTabs = 7;
             mainVue.s.tabLoad = false;
             mainVue.toggleTabLoad();
@@ -15542,7 +15553,7 @@
         // Build content
         let modalHeader = $('#scriptModalHeader');
         modalHeader.empty().off("*");
-        modalHeader.append(`<span>${modalTitle}</span>`);
+        modalHeader.append(`<span style="user-select: text">${modalTitle}</span>`);
 
         let modalBody = $('#scriptModalBody');
         modalBody.empty().off("*");
@@ -16202,7 +16213,7 @@
     }
 
     function getOccCosts() {
-        return game.global.civic.govern.type === "federation" ? 15 : 20;
+        return traitVal('high_pop', 0, 1) * (game.global.civic.govern.type === "federation" ? 15 : 20);
     }
 
     function getGovName(govIndex) {
