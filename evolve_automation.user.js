@@ -7605,6 +7605,7 @@
 
         let crewMissing = game.global.civic.crew.max - game.global.civic.crew.workers;
         let minDefault = crewMissing > 0 ? crewMissing + 1 : 0;
+        let isSetDefault = (crewMissing === 0);
 
         let requiredJobs = [];
         let jobAdjustments = [];
@@ -7951,6 +7952,9 @@
                 requiredJobs[j] = jobsToAssign;
                 jobAdjustments[j] = jobsToAssign - job.count;
                 availableEmployees -= jobsToAssign;
+                if(job.isDefault() && jobsToAssign === 0) {
+                    isSetDefault = true;
+                }
             }
 
             // No more workers available
@@ -8026,7 +8030,7 @@
 
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
         // Unless we're already assigning to default, and don't want it to be changed now
-        if (!craftOnly && settings.jobSetDefault && minDefault === 0) {
+        if (!craftOnly && settings.jobSetDefault && isSetDefault) {
             /*if (jobs.Forager.isManaged() && requiredJobs[jobList.indexOf(jobs.Forager)] > 0) {
                 jobs.Forager.setAsDefault();
             } else*/
