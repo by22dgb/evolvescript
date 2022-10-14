@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.7
+// @version      3.3.1.107.8
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -5237,8 +5237,10 @@
             let keys = Object.values(evolve.global.settings.keyMap);
             let uniq = keys.filter((v, i, a) => a.indexOf(v) === i);
 
-            if (!game.global.settings.mKeys || keys.length !== uniq.length) {
+            if (!game.global.settings.mKeys) {
                 this._mode = "none";
+            } else if (keys.length !== uniq.length) {
+                this._mode = "unset";
             } else if (this._allFn && ['x100', 'x25', 'x10'].every(key => ['Shift', 'Control', 'Alt', 'Meta'].includes(game.global.settings.keyMap[key]))) {
                 this._mode = "all";
             } else {
@@ -5274,7 +5276,7 @@
                   [this._eventProp[map.x10]]: this._state.x10 = x10
                 };
                 this._allFn(fakeEvent);
-            } else if (this._mode === "each") {
+            } else if (this._mode === "each" || this._mode === "unset") {
                 this.setKey("x100", x100);
                 this.setKey("x25", x25);
                 this.setKey("x10", x10);
@@ -5282,7 +5284,7 @@
         },
 
         *click(amount) {
-            if (this._mode === "none") {
+            if (this._mode === "none"  || this._mode === "unset") {
                 while (amount > 0) {
                     yield amount -= 1;
                 }
@@ -11417,6 +11419,7 @@
         if (haveTask("tax")) {
             overrides["autoTax"] = false;
         }
+        overrides["tickRate"] = Math.min(240, Math.max(1, Math.round((overrides["tickRate"] ?? settingsRaw["tickRate"])*2))/2);
 
         // Apply overrides
         Object.assign(settings, settingsRaw, overrides);
