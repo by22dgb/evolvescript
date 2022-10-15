@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.8
+// @version      3.3.1.107.9
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1778,6 +1778,7 @@
         goal: "Standard",
 
         missionBuildingList: [],
+        tooltips: {},
         filterRegExp: null,
         evolutionTarget: null,
     };
@@ -8367,12 +8368,14 @@
         let factoryAdjustments = {};
         for (let i = 0; i < allProducts.length; i++) {
             let production = allProducts[i];
+            state.tooltips["iFactory" + production.id] = `Disabled<br>`;
             if (production.unlocked && production.enabled) {
                 if (production.weighting > 0) {
                     let priority = production.resource.isDemanded() ? Math.max(production.priority, 100) : production.priority;
                     if (priority !== 0) {
                         priorityGroups[priority] = priorityGroups[priority] ?? [];
                         priorityGroups[priority].push(production);
+                        state.tooltips["iFactory" + production.id] = `Low priority<br>`;
                     }
                 }
                 factoryAdjustments[production.id] = 0;
@@ -8394,21 +8397,31 @@
 
                 for (let j = products.length - 1; j >= 0 && remainingFactories > 0; j--) {
                     let production = products[j];
+                    state.tooltips["iFactory" + production.id] = ``;
 
                     let calculatedRequiredFactories = Math.min(remainingFactories, Math.max(1, Math.floor(factoriesToDistribute / totalPriorityWeight * production.weighting)));
                     let actualRequiredFactories = calculatedRequiredFactories;
 
                     if (!production.resource.isUseful()) {
                         actualRequiredFactories = 0;
+                        state.tooltips["iFactory" + production.id] += `Resource capped<br>`;
                     }
 
                     for (let resourceCost of production.cost) {
                         if (!resourceCost.resource.isUnlocked()) {
                             continue;
                         }
-                        if (!production.resource.isDemanded() && ((!settings.useDemanded && resourceCost.resource.isDemanded()) || resourceCost.resource.storageRatio < settings.productionFactoryMinIngredients)) {
-                            actualRequiredFactories = 0;
-                            break;
+                        if (!production.resource.isDemanded()) {
+                            if (!settings.useDemanded && resourceCost.resource.isDemanded()) {
+                                actualRequiredFactories = 0;
+                                state.tooltips["iFactory" + production.id] += `${resourceCost.resource.name} is demanded<br>`;
+                                break;
+                            }
+                            if (resourceCost.resource.storageRatio < settings.productionFactoryMinIngredients) {
+                                actualRequiredFactories = 0;
+                                state.tooltips["iFactory" + production.id] += `${resourceCost.resource.name} under min materials ratio<br>`;
+                                break;
+                            }
                         }
                         if (resourceCost.resource.storageRatio < 0.8){
                             let previousCost = FactoryManager.currentProduction(production) * resourceCost.quantity;
@@ -8421,12 +8434,16 @@
                                 rate += resourceCost.resource.currentQuantity;
                             }
                             let affordableAmount = Math.floor(rate / resourceCost.quantity);
+                            if (affordableAmount < 1) {
+                                state.tooltips["iFactory" + production.id] += `Too low ${resourceCost.resource.name} income<br>`;
+                            }
                             actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
                         }
                     }
 
                     // If we're going for bioseed - try to balance neutronium\nanotubes ratio
                     if (settings.prestigeBioseedConstruct && settings.prestigeType === "bioseed" && production === FactoryManager.Productions.NanoTube && resources.Neutronium.currentQuantity < (game.global.race['truepath'] ? 500 : 250)) {
+                        state.tooltips["iFactory" + production.id] += `${(game.global.race['truepath'] ? 500 : 250)} ${resources.Neutronium.name} reserved<br>`;
                         actualRequiredFactories = 0;
                     }
 
@@ -11045,6 +11062,7 @@
         calculateRequiredStorages(); // Uses obj.cost
         prioritizeDemandedResources(); // Set res.requestedQuantity, uses queuedTargets and triggerTargets
 
+        state.tooltips = {};
         state.moneyIncomes.push(resources.Money.rateOfChange);
         state.moneyIncomes.shift();
         state.moneyMedian = average(state.moneyIncomes);
@@ -11340,6 +11358,9 @@
             return;
         } else if (infusionStep[dataId]) {
             $(node).find('.costList .res-Blood_Stone').append(` (+${infusionStep[dataId]})`);
+            return;
+        } else if (state.tooltips[dataId]) {
+            $(node).append(`<div style="border-top: solid .0625rem #999">${state.tooltips[dataId]}</div>`);
             return;
         }
 
@@ -12126,8 +12147,8 @@
         "!==": (a, b) => a !== b,
         "AND": (a, b) => a && b,
         "OR": (a, b) => a || b,
-        "NOR": (a, b) => !(a || b),
         "NAND": (a, b) => !(a && b),
+        "NOR": (a, b) => !(a || b),
         "XOR": (a, b) => !a != !b,
         "XNOR": (a, b) => !a == !b,
         "AND!": (a, b) => a && !b,
