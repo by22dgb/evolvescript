@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.9
+// @version      3.3.1.107.10
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -992,15 +992,15 @@
         }
     }
 
-    class ForgeHorseshoe extends Action {
-        get count() {
-            return resources.Horseshoe.currentQuantity;
-        }
-    }
+    class ResourceAction extends Action {
+        constructor(name, tab, id, location, flags, res) {
+            super(name, tab, id, location, flags);
 
-    class Assembly extends Action {
+            this.resource = resources[res];
+        }
+
         get count() {
-            return resources.Population.currentQuantity;
+            return this.resource.currentQuantity;
         }
     }
 
@@ -1931,8 +1931,8 @@
         Stone: new Action("Stone", "city", "stone", ""),
         Chrysotile: new Action("Chrysotile", "city", "chrysotile", ""),
         Slaughter: new Action("Slaughter", "city", "slaughter", ""),
-        ForgeHorseshoe: new ForgeHorseshoe("Horseshoe", "city", "horseshoe", "", {housing: true, garrison: true}),
-        SlaveMarket: new Action("Slave Market", "city", "slave_market", ""),
+        ForgeHorseshoe: new ResourceAction("Horseshoe", "city", "horseshoe", "", {housing: true, garrison: true}, "Horseshoe"),
+        SlaveMarket: new ResourceAction("Slave Market", "city", "slave_market", "", null, "Slave"),
         SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
         House: new Action("Cabin", "city", "basic_housing", "", {housing: true}),
         Cottage: new Action("Cottage", "city", "cottage", "", {housing: true}),
@@ -1947,7 +1947,7 @@
         Mill: new Action("Windmill", "city", "mill", "", {smart: true}),
         Windmill: new Action("Windmill (Evil)", "city", "windmill", ""),
         Silo: new Action("Grain Silo", "city", "silo", ""),
-        Assembly: new Assembly("Assembly", "city", "assembly", "", {housing: true}),
+        Assembly: new ResourceAction("Assembly", "city", "assembly", "", {housing: true}, "Population"),
         Barracks: new Action("Barracks", "city", "garrison", "", {garrison: true}),
         Hospital: new Action("Hospital", "city", "hospital", ""),
         BootCamp: new Action("Boot Camp", "city", "boot_camp", ""),
@@ -2005,7 +2005,7 @@
         RedTerraformer: new Action("Red Terraformer (Orbit Decay)", "space", "terraformer", "spc_red"),
         RedAtmoTerraformer: new Action("Red Terraformer (Orbit Decay, Complete)", "space", "atmo_terraformer", "spc_red"),
         RedTerraform: new Action("Red Terraform (Orbit Decay)", "space", "terraform", "spc_red"),
-        RedAssembly: new Assembly("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", {housing: true}),
+        RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", {housing: true}, "Population"),
         RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red", {housing: true}),
         RedPylon: new Action("Red Pylon (Cataclysm)", "space", "pylon", "spc_red"),
         RedVrCenter: new Action("Red VR Center", "space", "vr_center", "spc_red"),
@@ -2019,7 +2019,7 @@
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
-        RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}),
+        RedForgeHorseshoe: new ResourceAction("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}, "Horseshoe"),
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
@@ -2430,7 +2430,7 @@
           () => 0 // Sphinx not usable after solving
       ],[
           () => game.global.race['artifical'],
-          (building) => building instanceof Assembly && resources.Population.storageRatio === 1,
+          (building) => (building === buildings.Assembly || building === buildings.RedAssembly) && resources.Population.storageRatio === 1,
           () => "",
           () => 0 // No empty housings
       ],[
@@ -2471,7 +2471,7 @@
                   if (resources.Slave.currentQuantity >= resources.Slave.maxQuantity) {
                       return "Slave pens already full";
                   }
-                  if (resources.Money.currentQuantity + resources.Money.rateOfChange < resources.Money.maxQuantity && resources.Money.rateOfChange < 25000){
+                  if (resources.Money.currentQuantity + resources.Money.rateOfChange < resources.Money.maxQuantity && resources.Money.rateOfChange < settings.slaveIncome){
                       return "Buying slaves only with excess money";
                   }
               }
@@ -2582,7 +2582,7 @@
           () => settings.buildingWeightingMADUseless
       ],[
           () => true,
-          (building) => building !== buildings.ForgeHorseshoe && building !== buildings.RedForgeHorseshoe && building.count === 0,
+          (building) => !(building instanceof ResourceAction) && building.count === 0,
           () => "New building",
           () => settings.buildingWeightingNew
       ],[
@@ -2652,7 +2652,7 @@
           () => settings.buildingWeightingNeedStorage
       ],[
           () => resources.Population.maxQuantity > 50 && resources.Population.storageRatio < 0.9,
-          (building) => building.is.housing && building !== buildings.Alien1Consulate && !(building instanceof Assembly),
+          (building) => building.is.housing && building !== buildings.Alien1Consulate && !(building instanceof ResourceAction),
           () => "No more houses needed",
           () => settings.buildingWeightingUselessHousing
       ],[
@@ -6205,6 +6205,7 @@
             autoMinorTrait: false,
             shifterGenus: "ignore",
             buildingShrineType: "know",
+            slaveIncome: 25000,
             jobScalePop: true
         };
 
@@ -8236,6 +8237,9 @@
                         }
 
                         let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
+                        if (affordableAmount < maxAllowedUnits && resource !== resources.StarPower) {
+                            state.tooltips["smelterFuels" + fuel.id.toLowerCase()] = `Too low ${resource.name} income<br>`;
+                        }
                         maxAllowedUnits = Math.min(maxAllowedUnits, affordableAmount);
                     }
                 }
@@ -8297,6 +8301,9 @@
                 }
 
                 let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
+                if (affordableAmount < maxAllowedSteel) {
+                    state.tooltips["smelterMatssteel"] = `Too low ${resource.name} income<br>`;
+                }
                 maxAllowedSteel = Math.min(maxAllowedSteel, affordableAmount);
             }
         }
@@ -14415,6 +14422,7 @@
                              {val: "know", label: "Knowledge", hint: "Build only Knowledge Shrines"},
                              {val: "tax", label: "Tax", hint: "Build only Tax Shrines"}];
         addSettingsSelect(currentNode, "buildingShrineType", "Magnificent shrine", "Auto Build shrines only at moons of chosen shrine", shrineOptions);
+        addSettingsNumber(currentNode, "slaveIncome", "Minimum income to buy slave", "Script will use Slave Market only when money is capped, or have income above given number");
         addSettingsToggle(currentNode, "jobScalePop", "High Pop job scale", "Auto Job will automatically scaly breakpoints to match population increase");
 
         currentNode.append(`
