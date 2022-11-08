@@ -2333,6 +2333,11 @@
           (note) => note,
           () => 0
       ],[
+          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension",
+          (building) => building === buildings.GateEastTower || building === buildings.GateWestTower,
+          () => "Not needed for Ascension prestige",
+          () => 0
+      ],[
           () => buildings.GateEastTower.isUnlocked() && buildings.GateWestTower.isUnlocked() && poly.hellSupression("gate").supress < settings.buildingTowerSuppression / 100,
           (building) => building === buildings.GateEastTower || building === buildings.GateWestTower,
           () => "Too low gate supression",
@@ -13874,9 +13879,9 @@
     function updateFleetAndromeda(currentNode, secondaryPrefix) {
         addStandardHeading(currentNode, "Andromeda");
         addSettingsToggle(currentNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ships distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is not required: all your dreadnoughts still will be used even without this option.");
-        addSettingsNumber(currentNode, "fleetEmbassyKnowledge", "Mininum knowledge for Embassy", "Building Embassy increases maximum piracy up to 100, script won't Auto Build it until this knowledge cap is reached.");
-        addSettingsNumber(currentNode, "fleetAlienGiftKnowledge", "Mininum knowledge for Alien Gift", "Researching Alien Gift increases maximum piracy up to 250, script won't Auto Research it until this knowledge cap is reached.");
-        addSettingsNumber(currentNode, "fleetAlien2Knowledge", "Mininum knowledge for Alien 2 Assault", "Assaulting Alien 2 increases maximum piracy up to 500, script won't do it until this knowledge cap is reached. Regardless of set value it won't ever try to assault until you have big enough fleet to do it without loses.");
+        addSettingsNumber(currentNode, "fleetEmbassyKnowledge", "Minimum knowledge for Embassy", "Building Embassy increases maximum piracy up to 100, script won't Auto Build it until this knowledge cap is reached.");
+        addSettingsNumber(currentNode, "fleetAlienGiftKnowledge", "Minimum knowledge for Alien Gift", "Researching Alien Gift increases maximum piracy up to 250, script won't Auto Research it until this knowledge cap is reached.");
+        addSettingsNumber(currentNode, "fleetAlien2Knowledge", "Minimum knowledge for Alien 2 Assault", "Assaulting Alien 2 increases maximum piracy up to 500, script won't do it until this knowledge cap is reached. Regardless of set value it won't ever try to assault until you have big enough fleet to do it without loses.");
 
         let assaultOptions = [{val: "ignore", label: "Manual assault", hint: "Won't ever launch assault mission on Chthonian"},
                               {val: "high", label: "High casualties", hint: "Unlock Chthonian using mixed fleet, high casualties (1250+ total fleet power, 500 will be lost)"},
