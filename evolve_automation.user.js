@@ -12253,7 +12253,8 @@
           [{val: "rname", label: "Race Name", hint: "Ingame name of current race as string."},
            {val: "tpfleet", label: "Fleet Size", hint: "Amount of ships in True Path fleet as number."},
            {val: "satcost", label: "Satellite Cost", hint: "Money cost of next Swarm Satellite"},
-           {val: "bcar", label: "Broken Cars", hint: "Amount of broken Surveyour Carports"}]},
+           {val: "bcar", label: "Broken Cars", hint: "Amount of broken Surveyour Carports"},
+           {val: "alevel", label: "Active challenges", hint: "Amount of active challenges"}]},
     }
     const argMap = {
         race: (r) => r === "species" || r === "gods" || r === "old_gods" ? game.global.race[r] :
@@ -12265,7 +12266,8 @@
         other: (o) => o === "rname" ? game.races[game.global.race.species].name :
                       o === "tpfleet" ? (game.global.space?.shipyard?.ships?.length ?? 0) :
                       o === "satcost" ? (buildings.SunSwarmSatellite.cost.Money ?? 0) :
-                      o === "bcar" ? (game.global.portal.carport?.damaged ?? 0) : -1,
+                      o === "bcar" ? (game.global.portal.carport?.damaged ?? 0) :
+                      o === "alevel" ? (game.alevel() - 1) : -1,
     }
     // TODO: Make trigger use all this checks, migration will be a bit tedius, but doable
     const checkTypes = {
