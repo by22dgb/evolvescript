@@ -13087,7 +13087,7 @@
         updateRaceWarning();
 
         addSettingsToggle(currentNode, "evolutionAutoUnbound", "Allow unbound races", "Allow Auto Achievement to pick biome restricted races on unsuited biomes, after getting unbound.");
-        addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Have no effect after getting mass exintion perk.");
+        addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Has no effect after getting mass extinction perk.");
 
         // Challenges
         for (let i = 0; i < challenges.length; i++) {
