@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.7
+// @version      3.3.1.107.10
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -995,15 +995,15 @@
         }
     }
 
-    class ForgeHorseshoe extends Action {
-        get count() {
-            return resources.Horseshoe.currentQuantity;
-        }
-    }
+    class ResourceAction extends Action {
+        constructor(name, tab, id, location, flags, res) {
+            super(name, tab, id, location, flags);
 
-    class Assembly extends Action {
+            this.resource = resources[res];
+        }
+
         get count() {
-            return resources.Population.currentQuantity;
+            return this.resource.currentQuantity;
         }
     }
 
@@ -1787,6 +1787,7 @@
         goal: "Standard",
 
         missionBuildingList: [],
+        tooltips: {},
         filterRegExp: null,
         evolutionTarget: null,
     };
@@ -1939,8 +1940,8 @@
         Stone: new Action("Stone", "city", "stone", ""),
         Chrysotile: new Action("Chrysotile", "city", "chrysotile", ""),
         Slaughter: new Action("Slaughter", "city", "slaughter", ""),
-        ForgeHorseshoe: new ForgeHorseshoe("Horseshoe", "city", "horseshoe", "", {housing: true, garrison: true}),
-        SlaveMarket: new Action("Slave Market", "city", "slave_market", ""),
+        ForgeHorseshoe: new ResourceAction("Horseshoe", "city", "horseshoe", "", {housing: true, garrison: true}, "Horseshoe"),
+        SlaveMarket: new ResourceAction("Slave Market", "city", "slave_market", "", null, "Slave"),
         SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
         House: new Action("Cabin", "city", "basic_housing", "", {housing: true}),
         Cottage: new Action("Cottage", "city", "cottage", "", {housing: true}),
@@ -1955,7 +1956,7 @@
         Mill: new Action("Windmill", "city", "mill", "", {smart: true}),
         Windmill: new Action("Windmill (Evil)", "city", "windmill", ""),
         Silo: new Action("Grain Silo", "city", "silo", ""),
-        Assembly: new Assembly("Assembly", "city", "assembly", "", {housing: true}),
+        Assembly: new ResourceAction("Assembly", "city", "assembly", "", {housing: true}, "Population"),
         Barracks: new Action("Barracks", "city", "garrison", "", {garrison: true}),
         Hospital: new Action("Hospital", "city", "hospital", ""),
         BootCamp: new Action("Boot Camp", "city", "boot_camp", ""),
@@ -2013,7 +2014,7 @@
         RedTerraformer: new Action("Red Terraformer (Orbit Decay)", "space", "terraformer", "spc_red"),
         RedAtmoTerraformer: new Action("Red Terraformer (Orbit Decay, Complete)", "space", "atmo_terraformer", "spc_red"),
         RedTerraform: new Action("Red Terraform (Orbit Decay)", "space", "terraform", "spc_red"),
-        RedAssembly: new Assembly("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", {housing: true}),
+        RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", {housing: true}, "Population"),
         RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red", {housing: true}),
         RedPylon: new Action("Red Pylon (Cataclysm)", "space", "pylon", "spc_red"),
         RedVrCenter: new Action("Red VR Center", "space", "vr_center", "spc_red"),
@@ -2027,7 +2028,7 @@
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
-        RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}),
+        RedForgeHorseshoe: new ResourceAction("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}, "Horseshoe"),
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
@@ -2341,6 +2342,11 @@
           (note) => note,
           () => 0
       ],[
+          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension",
+          (building) => building === buildings.GateEastTower || building === buildings.GateWestTower,
+          () => "飞升重置不需要建造",
+          () => 0
+      ],[
           () => buildings.GateEastTower.isUnlocked() && buildings.GateWestTower.isUnlocked() && poly.hellSupression("gate").supress < settings.buildingTowerSuppression / 100,
           (building) => building === buildings.GateEastTower || building === buildings.GateWestTower,
           () => "安全指数不足",
@@ -2438,7 +2444,7 @@
           () => 0 // Sphinx not usable after solving
       ],[
           () => game.global.race['artifical'],
-          (building) => building instanceof Assembly && resources.Population.storageRatio === 1,
+          (building) => (building === buildings.Assembly || building === buildings.RedAssembly) && resources.Population.storageRatio === 1,
           () => "",
           () => 0 // No empty housings
       ],[
@@ -2479,7 +2485,7 @@
                   if (resources.Slave.currentQuantity >= resources.Slave.maxQuantity) {
                       return "奴隶围栏已满";
                   }
-                  if (resources.Money.currentQuantity + resources.Money.rateOfChange < resources.Money.maxQuantity && resources.Money.rateOfChange < 25000){
+                  if (resources.Money.currentQuantity + resources.Money.rateOfChange < resources.Money.maxQuantity && resources.Money.rateOfChange < settings.slaveIncome){
                       return "只使用多余的资金购买奴隶";
                   }
               }
@@ -2590,7 +2596,7 @@
           () => settings.buildingWeightingMADUseless
       ],[
           () => true,
-          (building) => building !== buildings.ForgeHorseshoe && building !== buildings.RedForgeHorseshoe && building.count === 0,
+          (building) => !(building instanceof ResourceAction) && building.count === 0,
           () => "新解锁建筑",
           () => settings.buildingWeightingNew
       ],[
@@ -2660,7 +2666,7 @@
           () => settings.buildingWeightingNeedStorage
       ],[
           () => resources.Population.maxQuantity > 50 && resources.Population.storageRatio < 0.9,
-          (building) => building.is.housing && building !== buildings.Alien1Consulate && !(building instanceof Assembly),
+          (building) => building.is.housing && building !== buildings.Alien1Consulate && !(building instanceof ResourceAction),
           () => "无需更多住房",
           () => settings.buildingWeightingUselessHousing
       ],[
@@ -5246,8 +5252,10 @@
             let keys = Object.values(evolve.global.settings.keyMap);
             let uniq = keys.filter((v, i, a) => a.indexOf(v) === i);
 
-            if (!game.global.settings.mKeys || keys.length !== uniq.length) {
+            if (!game.global.settings.mKeys) {
                 this._mode = "none";
+            } else if (keys.length !== uniq.length) {
+                this._mode = "unset";
             } else if (this._allFn && ['x100', 'x25', 'x10'].every(key => ['Shift', 'Control', 'Alt', 'Meta'].includes(game.global.settings.keyMap[key]))) {
                 this._mode = "all";
             } else {
@@ -5283,7 +5291,7 @@
                   [this._eventProp[map.x10]]: this._state.x10 = x10
                 };
                 this._allFn(fakeEvent);
-            } else if (this._mode === "each") {
+            } else if (this._mode === "each" || this._mode === "unset") {
                 this.setKey("x100", x100);
                 this.setKey("x25", x25);
                 this.setKey("x10", x10);
@@ -5291,7 +5299,7 @@
         },
 
         *click(amount) {
-            if (this._mode === "none") {
+            if (this._mode === "none"  || this._mode === "unset") {
                 while (amount > 0) {
                     yield amount -= 1;
                 }
@@ -6211,6 +6219,7 @@
             autoMinorTrait: false,
             shifterGenus: "ignore",
             buildingShrineType: "know",
+            slaveIncome: 25000,
             jobScalePop: true
         };
 
@@ -8242,6 +8251,9 @@
                         }
 
                         let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
+                        if (affordableAmount < maxAllowedUnits && resource !== resources.StarPower) {
+                            state.tooltips["smelterFuels" + fuel.id.toLowerCase()] = `${resource.name}产量不足<br>`;
+                        }
                         maxAllowedUnits = Math.min(maxAllowedUnits, affordableAmount);
                     }
                 }
@@ -8303,6 +8315,9 @@
                 }
 
                 let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
+                if (affordableAmount < maxAllowedSteel) {
+                    state.tooltips["smelterMatssteel"] = `${resource.name}产量不足<br>`;
+                }
                 maxAllowedSteel = Math.min(maxAllowedSteel, affordableAmount);
             }
         }
@@ -8374,12 +8389,14 @@
         let factoryAdjustments = {};
         for (let i = 0; i < allProducts.length; i++) {
             let production = allProducts[i];
+            state.tooltips["iFactory" + production.id] = `未启用<br>`;
             if (production.unlocked && production.enabled) {
                 if (production.weighting > 0) {
                     let priority = production.resource.isDemanded() ? Math.max(production.priority, 100) : production.priority;
                     if (priority !== 0) {
                         priorityGroups[priority] = priorityGroups[priority] ?? [];
                         priorityGroups[priority].push(production);
+                        state.tooltips["iFactory" + production.id] = `优先级更低<br>`;
                     }
                 }
                 factoryAdjustments[production.id] = 0;
@@ -8401,21 +8418,31 @@
 
                 for (let j = products.length - 1; j >= 0 && remainingFactories > 0; j--) {
                     let production = products[j];
+                    state.tooltips["iFactory" + production.id] = ``;
 
                     let calculatedRequiredFactories = Math.min(remainingFactories, Math.max(1, Math.floor(factoriesToDistribute / totalPriorityWeight * production.weighting)));
                     let actualRequiredFactories = calculatedRequiredFactories;
 
                     if (!production.resource.isUseful()) {
                         actualRequiredFactories = 0;
+                        state.tooltips["iFactory" + production.id] += `资源达到上限<br>`;
                     }
 
                     for (let resourceCost of production.cost) {
                         if (!resourceCost.resource.isUnlocked()) {
                             continue;
                         }
-                        if (!production.resource.isDemanded() && ((!settings.useDemanded && resourceCost.resource.isDemanded()) || resourceCost.resource.storageRatio < settings.productionFactoryMinIngredients)) {
-                            actualRequiredFactories = 0;
-                            break;
+                        if (!production.resource.isDemanded()) {
+                            if (!settings.useDemanded && resourceCost.resource.isDemanded()) {
+                                actualRequiredFactories = 0;
+                                state.tooltips["iFactory" + production.id] += `需要${resourceCost.resource.name}<br>`;
+                                break;
+                            }
+                            if (resourceCost.resource.storageRatio < settings.productionFactoryMinIngredients) {
+                                actualRequiredFactories = 0;
+                                state.tooltips["iFactory" + production.id] += `${resourceCost.resource.name}低于保底储量<br>`;
+                                break;
+                            }
                         }
                         if (resourceCost.resource.storageRatio < 0.8){
                             let previousCost = FactoryManager.currentProduction(production) * resourceCost.quantity;
@@ -8428,12 +8455,16 @@
                                 rate += resourceCost.resource.currentQuantity;
                             }
                             let affordableAmount = Math.floor(rate / resourceCost.quantity);
+                            if (affordableAmount < 1) {
+                                state.tooltips["iFactory" + production.id] += `${resourceCost.resource.name}产量不足<br>`;
+                            }
                             actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
                         }
                     }
 
                     // If we're going for bioseed - try to balance neutronium\nanotubes ratio
                     if (settings.prestigeBioseedConstruct && settings.prestigeType === "bioseed" && production === FactoryManager.Productions.NanoTube && resources.Neutronium.currentQuantity < (game.global.race['truepath'] ? 500 : 250)) {
+                        state.tooltips["iFactory" + production.id] += `保留${(game.global.race['truepath'] ? 500 : 250)}${resources.Neutronium.name}<br>`;
                         actualRequiredFactories = 0;
                     }
 
@@ -11052,6 +11083,7 @@
         calculateRequiredStorages(); // Uses obj.cost
         prioritizeDemandedResources(); // Set res.requestedQuantity, uses queuedTargets and triggerTargets
 
+        state.tooltips = {};
         state.moneyIncomes.push(resources.Money.rateOfChange);
         state.moneyIncomes.shift();
         state.moneyMedian = average(state.moneyIncomes);
@@ -11348,6 +11380,9 @@
         } else if (infusionStep[dataId]) {
             $(node).find('.costList .res-Blood_Stone').append(` (+${infusionStep[dataId]})`);
             return;
+        } else if (state.tooltips[dataId]) {
+            $(node).append(`<div style="border-top: solid .0625rem #999">${state.tooltips[dataId]}</div>`);
+            return;
         }
 
         let match = null;
@@ -11426,6 +11461,7 @@
         if (haveTask("tax")) {
             overrides["autoTax"] = false;
         }
+        overrides["tickRate"] = Math.min(240, Math.max(1, Math.round((overrides["tickRate"] ?? settingsRaw["tickRate"])*2))/2);
 
         // Apply overrides
         Object.assign(settings, settingsRaw, overrides);
@@ -12238,8 +12274,8 @@
         "!==": (a, b) => a !== b,
         "AND": (a, b) => a && b,
         "OR": (a, b) => a || b,
-        "NOR": (a, b) => !(a || b),
         "NAND": (a, b) => !(a && b),
+        "NOR": (a, b) => !(a || b),
         "XOR": (a, b) => !a != !b,
         "XNOR": (a, b) => !a == !b,
         "AND!": (a, b) => a && !b,
@@ -12332,7 +12368,8 @@
           [{val: "rname", label: "种族名称", hint: "以字符串形式返回当前种族的名称。"},
            {val: "tpfleet", label: "舰队规模", hint: "以数值形式返回智械黎明模式中舰船的数量。"},
            {val: "satcost", label: "蜂群卫星花费", hint: "建造蜂群卫星的资金花费"},
-           {val: "bcar", label: "勘探车损坏数量", hint: "勘探车损坏的数量"}]},
+           {val: "bcar", label: "勘探车损坏数量", hint: "勘探车损坏的数量"},
+           {val: "alevel", label: "激活挑战数量", hint: "激活挑战的数量"}]},
     }
     const argMap = {
         race: (r) => r === "species" || r === "gods" || r === "old_gods" ? game.global.race[r] :
@@ -12344,7 +12381,8 @@
         other: (o) => o === "rname" ? game.races[game.global.race.species].name :
                       o === "tpfleet" ? (game.global.space?.shipyard?.ships?.length ?? 0) :
                       o === "satcost" ? (buildings.SunSwarmSatellite.cost.Money ?? 0) :
-                      o === "bcar" ? (game.global.portal.carport?.damaged ?? 0) : -1,
+                      o === "bcar" ? (game.global.portal.carport?.damaged ?? 0) :
+                      o === "alevel" ? (game.alevel() - 1) : -1,
     }
     // TODO: Make trigger use all this checks, migration will be a bit tedius, but doable
     const checkTypes = {
@@ -14506,6 +14544,7 @@
                              {val: "know", label: "知识", hint: "只建造提升知识的圣地"},
                              {val: "tax", label: "税收", hint: "只建造提升税收的圣地"}];
         addSettingsSelect(currentNode, "buildingShrineType", "圣地种类偏好", "只在对应月相时建造相应的圣地", shrineOptions);
+        addSettingsNumber(currentNode, "slaveIncome", "购买奴隶的最低收入", "脚本只在资金达到上限，或者是资金收入达到相应数值时购买奴隶");
         addSettingsToggle(currentNode, "jobScalePop", "拥有人口众多特质时自动工作倍率提升", "自动工作将自动将相应阈值乘以该倍率，以匹配人口数量");
 
         currentNode.append(`
