@@ -1768,7 +1768,7 @@
 
         maxSpaceMiners: Number.MAX_SAFE_INTEGER,
         globalProductionModifier: 1,
-        moneyIncomes: new Array(11).fill(0),
+        moneyIncomes: [],
         moneyMedian: 0,
         soulGemIncomes: [{sec: 0, gems: 0}],
         soulGemLast: Number.MAX_SAFE_INTEGER,
@@ -11075,9 +11075,11 @@
         prioritizeDemandedResources(); // Set res.requestedQuantity, uses queuedTargets and triggerTargets
 
         state.tooltips = {};
-        state.moneyIncomes.push(resources.Money.rateOfChange);
         state.moneyIncomes.shift();
-        state.moneyMedian = average(state.moneyIncomes);
+        for (let i = state.moneyIncomes.length; i < 11; i++) {
+            state.moneyIncomes.push(resources.Money.rateOfChange);
+        }
+        state.moneyMedian = [...state.moneyIncomes].sort((a,b) => a - b)[5];
 
         // This comes from the "const towerSize = (function(){" in portal.js in the game code
         let towerSize = 1000;
@@ -12254,7 +12256,8 @@
            {val: "tpfleet", label: "Fleet Size", hint: "Amount of ships in True Path fleet as number."},
            {val: "satcost", label: "Satellite Cost", hint: "Money cost of next Swarm Satellite"},
            {val: "bcar", label: "Broken Cars", hint: "Amount of broken Surveyour Carports"},
-           {val: "alevel", label: "Active challenges", hint: "Amount of active challenges"}]},
+           {val: "alevel", label: "Active challenges", hint: "Amount of active challenges"},
+           {val: "tknow", label: "Tech Knowledge", hint: "Knowledge needed for most expensive unlocked research"}]},
     }
     const argMap = {
         race: (r) => r === "species" || r === "gods" || r === "old_gods" ? game.global.race[r] :
@@ -12267,7 +12270,8 @@
                       o === "tpfleet" ? (game.global.space?.shipyard?.ships?.length ?? 0) :
                       o === "satcost" ? (buildings.SunSwarmSatellite.cost.Money ?? 0) :
                       o === "bcar" ? (game.global.portal.carport?.damaged ?? 0) :
-                      o === "alevel" ? (game.alevel() - 1) : -1,
+                      o === "alevel" ? (game.alevel() - 1) :
+                      o === "tknow" ? (state.knowledgeRequiredByTechs) : -1,
     }
     // TODO: Make trigger use all this checks, migration will be a bit tedius, but doable
     const checkTypes = {
