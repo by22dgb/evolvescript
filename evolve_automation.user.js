@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.10
+// @version      3.3.1.107.11
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -1777,7 +1777,7 @@
 
         maxSpaceMiners: Number.MAX_SAFE_INTEGER,
         globalProductionModifier: 1,
-        moneyIncomes: new Array(11).fill(0),
+        moneyIncomes: [],
         moneyMedian: 0,
         soulGemIncomes: [{sec: 0, gems: 0}],
         soulGemLast: Number.MAX_SAFE_INTEGER,
@@ -10005,7 +10005,7 @@
                 let availableStorage = (remainingCrates * m.crateValue) + (remainingContainers * m.containerValue);
                 if (item.isList || missingStorage <= availableStorage) {
                     currentAssign[res] = {crate: 0, container: 0};
-                    if (remainingCrates > 0) {
+                    if (missingStorage > 0 && remainingCrates > 0) {
                         let assignCrates = Math.min(Math.ceil(missingStorage / m.crateValue), remainingCrates);
                         remainingCrates -= assignCrates;
                         missingStorage -= assignCrates * m.crateValue;
@@ -11084,9 +11084,11 @@
         prioritizeDemandedResources(); // Set res.requestedQuantity, uses queuedTargets and triggerTargets
 
         state.tooltips = {};
-        state.moneyIncomes.push(resources.Money.rateOfChange);
         state.moneyIncomes.shift();
-        state.moneyMedian = average(state.moneyIncomes);
+        for (let i = state.moneyIncomes.length; i < 11; i++) {
+            state.moneyIncomes.push(resources.Money.rateOfChange);
+        }
+        state.moneyMedian = [...state.moneyIncomes].sort((a,b) => a - b)[5];
 
         // This comes from the "const towerSize = (function(){" in portal.js in the game code
         let towerSize = 1000;
@@ -12369,7 +12371,8 @@
            {val: "tpfleet", label: "舰队规模", hint: "以数值形式返回智械黎明模式中舰船的数量。"},
            {val: "satcost", label: "蜂群卫星花费", hint: "建造蜂群卫星的资金花费"},
            {val: "bcar", label: "勘探车损坏数量", hint: "勘探车损坏的数量"},
-           {val: "alevel", label: "激活挑战数量", hint: "激活挑战的数量"}]},
+           {val: "alevel", label: "激活挑战数量", hint: "激活挑战的数量"},
+           {val: "tknow", label: "研究所需知识", hint: "已解锁的研究中知识需求最高的数量"}]},
     }
     const argMap = {
         race: (r) => r === "species" || r === "gods" || r === "old_gods" ? game.global.race[r] :
@@ -12382,7 +12385,8 @@
                       o === "tpfleet" ? (game.global.space?.shipyard?.ships?.length ?? 0) :
                       o === "satcost" ? (buildings.SunSwarmSatellite.cost.Money ?? 0) :
                       o === "bcar" ? (game.global.portal.carport?.damaged ?? 0) :
-                      o === "alevel" ? (game.alevel() - 1) : -1,
+                      o === "alevel" ? (game.alevel() - 1) :
+                      o === "tknow" ? (state.knowledgeRequiredByTechs) : -1,
     }
     // TODO: Make trigger use all this checks, migration will be a bit tedius, but doable
     const checkTypes = {
@@ -12409,7 +12413,7 @@
         ResearchComplete:  { fn: (r) => techIds[r].isResearched(), ...argType.research, desc: "如果研究已完成，则返回真值", title:"研究是否完成" },
         ResourceUnlocked: { fn: (r) => resources[r].isUnlocked(), ...argType.resource, desc: "如果资源已解锁，则返回真值", title:"资源是否解锁" },
         ResourceQuantity: { fn: (r) => resources[r].currentQuantity, ...argType.resource, desc: "以数值形式返回当前资源或支持的数量", title:"资源数量" },
-        ResourceStorage: { fn: (r) => resources[r].maxQuantity, ...argType.resource, desc: "以数值形式返回资源或支持上限的数量", title:"资源上限" },
+        ResourceStorage: { fn: (r) => resources[r].maxQuantity, ...argType.resource, desc: "以数值形式返回资源或支持上限的数量，如果是供能，则返回未供能的数量。", title:"资源上限" },
         ResourceIncome: { fn: (r) => resources[r].rateOfChange, ...argType.resource, desc: "以数值形式返回当前资源收入或未使用的支持的数量", title:"资源收入" }, // rateOfChange holds full diff of resource at the moment when overrides checked
         ResourceRatio: { fn: (r) => resources[r].storageRatio, ...argType.resource, desc: "以数值形式返回当前资源与上限比值的数量。0.5意味着资源到达了储量上限的50%，以此类推。", title:"资源比例" },
         ResourceSatisfied: { fn: (r) => resources[r].usefulRatio >= 1, ...argType.resource, desc: "如果当前资源超过了最大花费，则返回真值。", title:"资源是否满足" },
