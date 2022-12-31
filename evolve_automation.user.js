@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.11
+// @version      3.3.1.107.12
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -5240,7 +5240,7 @@
             this._state.x25 = undefined;
             this._state.x10 = undefined;
 
-            let keys = Object.values(evolve.global.settings.keyMap);
+            let keys = Object.values(game.global.settings.keyMap);
             let uniq = keys.filter((v, i, a) => a.indexOf(v) === i);
 
             if (!game.global.settings.mKeys) {
@@ -12174,7 +12174,7 @@
         research: {def: "tech-mad", arg: "list", options: {list: techIds, name: "name", id: "_vueBinding"}},
 
         trait: {def: "kindling_kindred", arg: "list_cb", options: () =>
-          Object.fromEntries(Object.entries(evolve.traits).map(([id, trait]) => [id, {name: trait.name, id: id}]))},
+          Object.fromEntries(Object.entries(game.traits).map(([id, trait]) => [id, {name: trait.name, id: id}]))},
 
         genus: {def: "humanoid", arg: "select_cb", options: () =>
           [{val: "organism", label: game.loc(`race_protoplasm`)},
