@@ -12968,7 +12968,7 @@
         // Bioseed
         addSettingsHeader1(currentNode, "Bioseed");
         addSettingsNumber(currentNode, "prestigeBioseedProbes", "Required probes", "Required number of probes before launching bioseeder ship");
-        addSettingsNumber(currentNode, "prestigeGECK", "Required G.E.C.K", "Required number of G.E.C.K. for Bioseed. Unlike any other buildings G.E.C.K. won't ever be constructed during inappropriate runs, or above this number. To prevent loosing plasmids. It can, however, be built with triggers - you should not build G.E.C.K with triggers, unless you absolutely sure you know what you're doing.");
+        addSettingsNumber(currentNode, "prestigeGECK", "Required G.E.C.K", "Required number of G.E.C.K. for Bioseed. Unlike any other buildings G.E.C.K. won't ever be constructed during inappropriate runs, or above this number. To prevent losing plasmids. It can, however, be built with triggers - you should not build G.E.C.K with triggers, unless you absolutely sure you know what you're doing.");
 
         // Whitehole
         addSettingsHeader1(currentNode, "Whitehole");
