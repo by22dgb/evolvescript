@@ -809,20 +809,29 @@
                 return false
             }
 
+            let doMultiClick = typeof this.is.multiSegmented !== 'undefined' && this.is.multiSegmented == true && settings.buildingsUseMultiClick;
+            let amountToBuild = 1;
+            if (doMultiClick) {
+                amountToBuild = this.gameMax;
+                for (let res in this.cost) {
+                    amountToBuild = Math.min(amountToBuild, Math.floor(resources[res].currentQuantity / this.cost[res]));
+                }
+            }
+
             for (let res in this.cost) {
-                resources[res].currentQuantity -= this.cost[res];
+                resources[res].currentQuantity -= this.cost[res] * amountToBuild;
             }
 
             // Don't log evolution actions and gathering actions
             if (game.global.race.species !== "protoplasm" && !logIgnore.includes(this.id)) {
-                if (this.gameMax < Number.MAX_SAFE_INTEGER && this.count + 1 < this.gameMax) {
-                    GameLog.logSuccess("multi_construction", poly.loc('build_success', [`${this.title} (${this.count + 1})`]), ['queue', 'building_queue']);
+                if (this.gameMax < Number.MAX_SAFE_INTEGER && this.count + amountToBuild < this.gameMax) {
+                    GameLog.logSuccess("multi_construction", poly.loc('build_success', [`${this.title} (${this.count + amountToBuild})`]), ['queue', 'building_queue']);
                 } else {
                     GameLog.logSuccess("construction", poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
                 }
             }
 
-            KeyManager.set(false, false, false);
+            KeyManager.set(doMultiClick, doMultiClick, doMultiClick);
 
             // Hide active popper from action, so it won't rewrite it
             let popper = $('#popper');
@@ -833,6 +842,8 @@
             } else {
                 this.vue.action();
             }
+
+            KeyManager.set(false, false, false);
 
             return true;
         }
@@ -2002,7 +2013,7 @@
         RedMission: new Action("Red Mission", "space", "red_mission", "spc_red"),
         RedSpaceport: new Action("Red Spaceport", "space", "spaceport", "spc_red"),
         RedTower: new Action("Red Space Control", "space", "red_tower", "spc_red"),
-        RedTerraformer: new Action("Red Terraformer (Orbit Decay)", "space", "terraformer", "spc_red"),
+        RedTerraformer: new Action("Red Terraformer (Orbit Decay)", "space", "terraformer", "spc_red", {multiSegmented: true}),
         RedAtmoTerraformer: new Action("Red Terraformer (Orbit Decay, Complete)", "space", "atmo_terraformer", "spc_red"),
         RedTerraform: new Action("Red Terraform (Orbit Decay)", "space", "terraform", "spc_red"),
         RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", {housing: true}, "Population"),
@@ -2037,7 +2048,7 @@
         GasSpaceDock: new SpaceDock("Gas Space Dock", "space", "star_dock", "spc_gas"),
         GasSpaceDockProbe: new ModalAction("Space Dock Probe", "starDock", "probes", ""),
         GasSpaceDockGECK: new ModalAction("Space Dock G.E.C.K.", "starDock", "geck", ""),
-        GasSpaceDockShipSegment: new ModalAction("Space Dock Bioseeder Ship", "starDock", "seeder", ""),
+        GasSpaceDockShipSegment: new ModalAction("Space Dock Bioseeder Ship", "starDock", "seeder", "", {multiSegmented: true}),
         GasSpaceDockPrepForLaunch: new ModalAction("Space Dock Prep Ship", "starDock", "prep_ship", ""),
         GasSpaceDockLaunch: new ModalAction("Space Dock Launch Ship", "starDock", "launch_ship", ""),
 
@@ -2055,10 +2066,10 @@
         DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", "spc_dwarf"),
         DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", "spc_dwarf"),
         DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", "spc_dwarf"),
-        DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
+        DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf", {multiSegmented: true}),
         DwarfWorldController: new Action("Dwarf World Collider (Complete)", "space", "world_controller", "spc_dwarf", {knowledge: true}),
         DwarfShipyard: new Action("Dwarf Ship Yard", "space", "shipyard", "spc_dwarf"),
-        DwarfMassRelay: new Action("Dwarf Mass Relay", "space", "mass_relay", "spc_dwarf"),
+        DwarfMassRelay: new Action("Dwarf Mass Relay", "space", "mass_relay", "spc_dwarf", {multiSegmented: true}),
         DwarfMassRelayComplete: new Action("Dwarf Mass Relay (Complete)", "space", "m_relay", "spc_dwarf"),
 
         TitanMission: new Action("Titan Mission", "space", "titan_mission", "spc_titan"),
@@ -2072,7 +2083,7 @@
         TitanGraphene: new Action("Titan Graphene Plant", "space", "g_factory", "spc_titan"),
         TitanSAM: new Action("Titan SAM Site", "space", "sam", "spc_titan"),
         TitanDecoder: new Action("Titan Decoder", "space", "decoder", "spc_titan"),
-        TitanAI: new Action("Titan AI Core", "space", "ai_core", "spc_titan"),
+        TitanAI: new Action("Titan AI Core", "space", "ai_core", "spc_titan", {multiSegmented: true}),
         TitanAIComplete: new Action("Titan AI Core (Complete)", "space", "ai_core2", "spc_titan"),
         TitanAIColonist: new Action("Titan AI Colonist", "space", "ai_colonist", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
@@ -2113,9 +2124,9 @@
         ProximaTransferStation: new Action("Proxima Transfer Station", "interstellar", "xfer_station", "int_proxima"),
         ProximaCargoYard: new Action("Proxima Cargo Yard", "interstellar", "cargo_yard", "int_proxima"),
         ProximaCruiser: new Action("Proxima Patrol Cruiser", "interstellar", "cruiser", "int_proxima", {garrison: true}),
-        ProximaDyson: new Action("Proxima Dyson Sphere (Adamantite)", "interstellar", "dyson", "int_proxima"),
-        ProximaDysonSphere: new Action("Proxima Dyson Sphere (Bolognium)", "interstellar", "dyson_sphere", "int_proxima"),
-        ProximaOrichalcumSphere: new Action("Proxima Dyson Sphere (Orichalcum)", "interstellar", "orichalcum_sphere", "int_proxima"),
+        ProximaDyson: new Action("Proxima Dyson Sphere (Adamantite)", "interstellar", "dyson", "int_proxima", {multiSegmented: true}),
+        ProximaDysonSphere: new Action("Proxima Dyson Sphere (Bolognium)", "interstellar", "dyson_sphere", "int_proxima", {multiSegmented: true}),
+        ProximaOrichalcumSphere: new Action("Proxima Dyson Sphere (Orichalcum)", "interstellar", "orichalcum_sphere", "int_proxima", {multiSegmented: true}),
 
         NebulaMission: new Action("Nebula Mission", "interstellar", "nebula_mission", "int_nebula"),
         NebulaNexus: new Action("Nebula Nexus", "interstellar", "nexus", "int_nebula"),
@@ -2129,19 +2140,19 @@
 
         Blackhole: new Action("Blackhole Mission", "interstellar", "blackhole_mission", "int_blackhole"),
         BlackholeFarReach: new Action("Blackhole Farpoint", "interstellar", "far_reach", "int_blackhole", {knowledge: true}),
-        BlackholeStellarEngine: new Action("Blackhole Stellar Engine", "interstellar", "stellar_engine", "int_blackhole"),
+        BlackholeStellarEngine: new Action("Blackhole Stellar Engine", "interstellar", "stellar_engine", "int_blackhole", {multiSegmented: true}),
         BlackholeMassEjector: new Action("Blackhole Mass Ejector", "interstellar", "mass_ejector", "int_blackhole"),
 
         BlackholeJumpShip: new Action("Blackhole Jump Ship", "interstellar", "jump_ship", "int_blackhole"),
         BlackholeWormholeMission: new Action("Blackhole Wormhole Mission", "interstellar", "wormhole_mission", "int_blackhole"),
-        BlackholeStargate: new Action("Blackhole Stargate", "interstellar", "stargate", "int_blackhole"),
+        BlackholeStargate: new Action("Blackhole Stargate", "interstellar", "stargate", "int_blackhole", {multiSegmented: true}),
         BlackholeStargateComplete: new Action("Blackhole Stargate (Complete)", "interstellar", "s_gate", "int_blackhole"),
 
         SiriusMission: new Action("Sirius Mission", "interstellar", "sirius_mission", "int_sirius"),
         SiriusAnalysis: new Action("Sirius B Analysis", "interstellar", "sirius_b", "int_sirius"),
-        SiriusSpaceElevator: new Action("Sirius Space Elevator", "interstellar", "space_elevator", "int_sirius"),
-        SiriusGravityDome: new Action("Sirius Gravity Dome", "interstellar", "gravity_dome", "int_sirius"),
-        SiriusAscensionMachine: new Action("Sirius Ascension Machine", "interstellar", "ascension_machine", "int_sirius"),
+        SiriusSpaceElevator: new Action("Sirius Space Elevator", "interstellar", "space_elevator", "int_sirius", {multiSegmented: true}),
+        SiriusGravityDome: new Action("Sirius Gravity Dome", "interstellar", "gravity_dome", "int_sirius", {multiSegmented: true}),
+        SiriusAscensionMachine: new Action("Sirius Ascension Machine", "interstellar", "ascension_machine", "int_sirius", {multiSegmented: true}),
         SiriusAscensionTrigger: new Action("Sirius Ascension Machine (Complete)", "interstellar", "ascension_trigger", "int_sirius", {smart: true}),
         SiriusAscend: new Action("Sirius Ascend", "interstellar", "ascend", "int_sirius"),
         SiriusThermalCollector: new Action("Sirius Thermal Collector", "interstellar", "thermal_collector", "int_sirius"),
@@ -2209,8 +2220,8 @@
         RuinsAncientPillars: new Pillar("Ruins Ancient Pillars", "portal", "ancient_pillars", "prtl_ruins"),
 
         GateMission: new Action("Gate Mission", "portal", "gate_mission", "prtl_gate"),
-        GateEastTower: new Action("Gate East Tower", "portal", "east_tower", "prtl_gate"),
-        GateWestTower: new Action("Gate West Tower", "portal", "west_tower", "prtl_gate"),
+        GateEastTower: new Action("Gate East Tower", "portal", "east_tower", "prtl_gate", {multiSegmented: true}),
+        GateWestTower: new Action("Gate West Tower", "portal", "west_tower", "prtl_gate", {multiSegmented: true}),
         GateTurret: new Action("Gate Turret", "portal", "gate_turret", "prtl_gate"),
         GateInferniteMine: new Action("Gate Infernite Mine", "portal", "infernite_mine", "prtl_gate"),
 
@@ -6323,6 +6334,7 @@
             buildingTowerSuppression: 100,
             buildingsTransportGem: false,
             buildingsBestFreighter: false,
+            buildingsUseMultiClick: false,
             buildingEnabledAll: true,
             buildingStateAll: true
         }
@@ -12254,6 +12266,7 @@
         other: {def: "rname", arg: "select_cb", options: () =>
           [{val: "rname", label: "Race Name", hint: "Ingame name of current race as string."},
            {val: "tpfleet", label: "Fleet Size", hint: "Amount of ships in True Path fleet as number."},
+           {val: "mrelay", label: "Mass Relay charge", hint: "Charge percentage of the Mass Relay (0 = 0%, 0.5 = 50%, 1 = 100%"},
            {val: "satcost", label: "Satellite Cost", hint: "Money cost of next Swarm Satellite"},
            {val: "bcar", label: "Broken Cars", hint: "Amount of broken Surveyour Carports"},
            {val: "alevel", label: "Active challenges", hint: "Amount of active challenges"},
@@ -12268,6 +12281,7 @@
                      game.global.city.calendar[d],
         other: (o) => o === "rname" ? game.races[game.global.race.species].name :
                       o === "tpfleet" ? (game.global.space?.shipyard?.ships?.length ?? 0) :
+                      o === "mrelay" ? (game.global.space?.m_relay?.charged / 10000.0 ?? 0) :
                       o === "satcost" ? (buildings.SunSwarmSatellite.cost.Money ?? 0) :
                       o === "bcar" ? (game.global.portal.carport?.damaged ?? 0) :
                       o === "alevel" ? (game.alevel() - 1) :
@@ -15029,6 +15043,7 @@
         addSettingsToggle(currentNode, "buildingsLimitPowered", "Limit amount of powered buildings", "With this option enabled Max Build will prevent powering extra building. Can be useful to disable buildings with overrided settings.");
         addSettingsToggle(currentNode, "buildingsTransportGem", "Build cheapest Supplies transport", "By default script chooses between Lake Transport and Lake Bireme Warship comparing their 'Supplies Per Support', with this option enabled it will compare 'Supplies Per Soulgems' instead.");
         addSettingsToggle(currentNode, "buildingsBestFreighter", "Build most efficient freighters", "With this option enabled script will compare 'Money Storage per Crew' of Freighter and Super Freighter, and only build the best one. Without this option no restrictions will be applied. Works only when both ships are buildable.");
+        addSettingsToggle(currentNode, "buildingsUseMultiClick", "Bulk build multi-segmented buildings", "With this option enabled, the script will build as many segments as are affordable at once, instead of one per tick.");
         addSettingsNumber(currentNode, "buildingTowerSuppression", "Minimum suppression for Towers", "East Tower and West Tower won't be built until minimum suppression is reached");
 
         currentNode.append(`
