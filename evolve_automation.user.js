@@ -1683,6 +1683,96 @@
         }
     }
 
+    class MutableTrait {
+        constructor(traitName) {
+            this.traitName = traitName;
+            this.baseCost = Math.abs(game.traits[traitName].val);
+            this.isPositive = game.traits[traitName].val >= 0;
+        }
+
+        get gainEnabled() { return settings["mutableTrait_gain_" + this.traitName] }
+        get purgeEnabled() { return settings["mutableTrait_purge_" + this.traitName] }
+        get priority() { return settingsRaw["mutableTrait_p_" + this.traitName] }
+
+        canGain() {
+            return this.gainEnabled && !this.purgeEnabled
+            && game.global.race[this.traitName] === undefined
+            && this.canMutate("gain")
+        }
+
+        canPurge() {
+            return this.purgeEnabled && !this.gainEnabled
+            && this.canMutate("purge")
+            && game.global.race[this.traitName] !== undefined
+            && !(game.global.race.species === "sludge" && this.traitName === "ooze")
+            && !(game.global.race["ss_traits"] && game.global.race.ss_traits.includes(this.traitName))
+            && !(game.global.race["iTraits"] && game.global.race.iTraits.hasOwnProperty(this.traitName));
+        }
+
+        canMutate(action) {
+            let currentPlasmids = resources[game.global.race.universe === "antimatter" ? "Antiplasmid" : "Plasmid"].currentQuantity;
+            return !(game.global.race.species === "sludge" && game.global.race["modified"])
+            && currentPlasmids - this.mutationCost(action) >= MutableTraitManager.minimumPlasmidsToPreserve
+            && this.mutationCost(action) <= currentPlasmids;
+        }
+
+        mutationCost(action) { return this.baseCost * 5 * (mutationCostMultipliers[game.global.race.species] ? mutationCostMultipliers[game.global.race.species][action] : 1) }
+    }
+
+    class MajorTrait extends MutableTrait {
+        constructor(traitName) {
+            super(traitName);
+            this.type = "major";
+            const ownerRace = Object.entries(game.races).filter(([id, race]) => id !== "custom" && race.traits[traitName] !== undefined).map(([id, race]) =>({id:id, genus:race.type}))[0] ?? [];
+            this.source = (ownerRace && ownerRace.id) ? ownerRace.id : specialRaceTraits[traitName] ?? "";
+            this.racesThatCanGain = (Object.entries(game.races).filter(([id, race]) => race.type === ownerRace.genus).map(([id, race]) => id)).flat();
+            this.genus = ownerRace.genus;
+
+            if (this.source === 'reindeer') {
+                this.genus = 'herbivore';
+            }
+        }
+
+        get gainEnabled() { return super.gainEnabled }
+        get purgeEnabled() { return super.purgeEnabled }
+        get priority() { return super.priority }
+
+        canGain() {
+            return super.canGain()
+            && game.global.genes["mutation"] >= 3
+            && this.racesThatCanGain.includes(game.global.race.species);
+            // TODO dumb <-> smart are conflicting, check arpa.js:1869
+        }
+
+        canPurge() {
+            return super.canPurge()
+            && game.global.genes["mutation"] >= 1;
+        }
+    }
+
+    class GenusTrait extends MutableTrait {
+        constructor(traitName) {
+            super(traitName);
+            this.type = "genus";
+            const genus = Object.entries(poly.genus_traits).filter(([id, traits]) => traits[traitName] !== undefined).map(([id, traits]) => id);
+            this.source = genus.length ? genus[0] : specialRaceTraits[traitName] ?? "";
+            this.genus = this.source;
+        }
+
+        get gainEnabled() { return super.gainEnabled }
+        get purgeEnabled() { return super.purgeEnabled }
+        get priority() { return super.priority }
+
+        canGain() {
+            return false;
+        }
+
+        canPurge() {
+            return super.canPurge()
+            && game.global.genes["mutation"] >= 2;
+        }
+    }
+
     // Script constants
 
     // Fibonacci numbers starting from "5"
@@ -1739,7 +1829,9 @@
     const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", apocalypse: "AI Apocalypse", ascension: "Ascension", demonic: "Infusion", terraform: "Terraform"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
-    const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech", "magic"];
+    const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "trait", "weighting", "ejector", "planet", "mech", "magic"];
+    const mutationCostMultipliers = { "sludge" : {"gain" : 2, "purge" : 10}, "custom": {"gain" : 10, "purge" : 10} }
+    const specialRaceTraits = { beast_of_burden : "reindeer", photosynth: "plant" }
 
     // Lookup tables, will be filled on init
     var techIds = {};
@@ -2698,6 +2790,36 @@
         buyTrait(traitName) {
             getVueById(this._traitVueBinding)?.gene(traitName);
         }
+    }
+
+    var MutableTraitManager = {
+        priorityList: [],
+        _traitVueBinding: "geneticBreakdown",
+
+        isUnlocked() {
+            return haveTech("genetics", 3) && game.global.genes['mutation'];
+        },
+
+        sortByPriority() {
+            this.priorityList.sort((a, b) => a.priority - b.priority);
+        },
+
+        sortByGenus() {
+            this.priorityList.sort((a, b) => Object.keys(poly.genus_traits).indexOf(a.genus) - Object.keys(poly.genus_traits).indexOf(b.genus) || a.type < b.type);
+        },
+
+        gainTrait(traitName) {
+            getVueById(this._traitVueBinding)?.gain(traitName);
+        },
+
+        purgeTrait(traitName) {
+            getVueById(this._traitVueBinding)?.purge(traitName);
+        },
+
+        get minimumPlasmidsToPreserve() {
+            return Math.max(0, settings["minimumPlasmidsToPreserve"], settings["doNotGoBelowPlasmidSoftcap"] ? game.global.race.Phage.count + 250 : 0)
+        }
+
     }
 
     var QuarryManager = {
@@ -5349,7 +5471,8 @@
             mercenary: "Mercenaries",
             mech_build: "Mech Build",
             mech_scrap: "Mech Scrap",
-            outer_fleet: "True Path Fleet"
+            outer_fleet: "True Path Fleet",
+            mutation: "Mutations",
         },
 
         logSuccess(loggingType, text, tags) {
@@ -6238,6 +6361,34 @@
         MinorTraitManager.sortByPriority();
     }
 
+    function resetMutableTraitSettings(reset) {
+        MutableTraitManager.priorityList = Object.entries(game.traits)
+        .filter(([id, trait]) => (trait.type === "major" || trait.type === "genus") && id !== "xenophobic" && id !== "soul_eater")
+        .map(([id, trait]) => trait.type === "major" ? new MajorTrait(id) : new GenusTrait(id));
+
+        let def = {
+            autoMutateTraits: false,
+            doNotGoBelowPlasmidSoftcap: true,
+            minimumPlasmidsToPreserve: 0,
+        };
+
+        if (reset) {
+            MutableTraitManager.sortByGenus();
+        }
+
+        for (let i = 0; i < MutableTraitManager.priorityList.length; i++) {
+            let trait = MutableTraitManager.priorityList[i];
+            let id = trait.traitName;
+
+            def["mutableTrait_gain_" + id] = false; // auto add disabled
+            def["mutableTrait_purge_" + id] = false; // auto remove disabled
+            def["mutableTrait_p_" + id] = i; // priority
+        }
+
+        applySettings(def, reset);
+        MutableTraitManager.sortByPriority();
+    }
+
     function resetJobSettings(reset) {
         JobManager.priorityList = Object.values(jobs);
         let def = {
@@ -6729,6 +6880,7 @@
         resetLoggingSettings(false);
         resetTriggerSettings(false);
         resetMinorTraitSettings(false);
+        resetMutableTraitSettings(false);
 
         // Validate overrides types, and fix if needed
         for (let key in settingsRaw.overrides) {
@@ -10077,7 +10229,6 @@
         }
     }
 
-    // TODO: Mutate out of nasty traits
     function autoMinorTrait() {
         let m = MinorTraitManager;
         if (!m.isUnlocked()) {
@@ -10104,6 +10255,33 @@
                 resources.Genes.currentQuantity -= traitCost;
             }
         });
+    }
+
+    function autoMutateTrait() {
+        let m = MutableTraitManager;
+        if (!m.isUnlocked()) {
+            return;
+        }
+
+        let inAntimatter = game.global.race.universe === "antimatter";
+
+        for (const trait of m.priorityList) {
+            if (trait.canGain()) {
+                let mutationCost = trait.mutationCost('gain');
+                m.gainTrait(trait.traitName);
+                GameLog.logSuccess("mutation", `Mutating in ${game.loc("trait_" + trait.traitName + "_name")} for ${mutationCost} ${inAntimatter ? " Anti-Plasmids" : "Plasmids"}`);
+                resources[inAntimatter ? "Antiplasmid" : "Plasmid"].currentQuantity -= mutationCost;
+                return; // only mutate one trait per tick, to reduce lag
+            }
+
+            if (trait.canPurge()) {
+                let mutationCost = trait.mutationCost('purge');
+                m.purgeTrait(trait.traitName);
+                GameLog.logSuccess("mutation", `Mutating out ${game.loc("trait_" + trait.traitName + "_name")} for ${mutationCost} ${inAntimatter ? " Anti-Plasmids" : "Plasmids"}`);
+                resources[inAntimatter ? "Antiplasmid" : "Plasmid"].currentQuantity -= mutationCost;
+                return; // only mutate one trait per tick, to reduce lag
+            }
+        }
     }
 
     function adjustTradeRoutes() {
@@ -11640,6 +11818,9 @@
         if (settings.autoMinorTrait) {
             autoShapeshift(); // Shifting genus can remove techs, bildings, resources, etc. Leaving broken preloaded buttons behind. This thing need to be at the very end, to prevent clicking anything before redrawing tabs
         }
+        if (settings.autoMutateTraits) {
+            autoMutateTrait();
+        }
 
         KeyManager.finish();
         state.soulGemLast = resources.Soul_Gem.currentQuantity;
@@ -11977,7 +12158,7 @@
         buildGovernmentSettings(scriptContentNode, "");
         buildEvolutionSettings();
         buildPlanetSettings();
-        buildMinorTraitSettings();
+        buildTraitSettings();
         buildTriggerSettings();
         buildResearchSettings();
         buildWarSettings(scriptContentNode, "");
@@ -14413,25 +14594,28 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
-    function buildMinorTraitSettings() {
-        let sectionId = "minorTrait";
+    function buildTraitSettings() {
+        let sectionId = "trait";
         let sectionName = "Traits";
 
         let resetFunction = function() {
             resetMinorTraitSettings(true);
+            resetMutableTraitSettings(true);
             updateSettingsFromState();
-            updateMinorTraitSettingsContent();
+            updateTraitSettingsContent();
 
             resetCheckbox("autoMinorTrait");
+            resetCheckbox("autoMutateTraits");
         };
 
-        buildSettingsSection(sectionId, sectionName, resetFunction, updateMinorTraitSettingsContent);
+        buildSettingsSection(sectionId, sectionName, resetFunction, updateTraitSettingsContent);
     }
 
-    function updateMinorTraitSettingsContent() {
+    function updateTraitSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
-        let currentNode = $('#script_minorTraitContent');
+        let currentNode = $('#script_traitContent');
+
         currentNode.empty().off("*");
 
         let genusOptions = [{val: "ignore", label: "Ignore", hint: "Do not shift genus"},
@@ -14450,6 +14634,8 @@
         addSettingsNumber(currentNode, "slaveIncome", "Minimum income to buy slave", "Script will use Slave Market only when money is capped, or have income above given number");
         addSettingsToggle(currentNode, "jobScalePop", "High Pop job scale", "Auto Job will automatically scaly breakpoints to match population increase");
 
+        // Minor Traits
+        addStandardHeading(currentNode, "Minor Traits");
         currentNode.append(`
           <table style="width:100%">
             <tr>
@@ -14498,7 +14684,97 @@
             },
         });
 
+        // Trait Mutations
+
+        addStandardHeading(currentNode, "Trait Mutation");
+        addSettingsToggle(currentNode, "doNotGoBelowPlasmidSoftcap", "Do not go below Plasmid softcap", "Script will not mutate if the number of remaining plasmids or anti plamids would be lower than the softcap (250 + Phage)");
+        addSettingsNumber(currentNode, "minimumPlasmidsToPreserve", "Minimum Plasmids / Anti-Plasmids to preserve", "Script will not mutate if the number of remaining plasmids or anti plamids would be lower than this value");
+
+        currentNode.append(`
+        <table style="width:100%">
+        <tr>
+            <th class="has-text-warning" style="width:30%">Species / Genus</th>
+            <th class="has-text-warning" style="width:20%">Trait</th>
+            <th class="has-text-warning" style="width:10%">Cost</th>
+            <th class="has-text-warning" style="width:10%">Add</th>
+            <th class="has-text-warning" style="width:10%">Remove</th>
+            <th class="has-text-warning" style="width:20%"></th>
+        </tr>
+        <tbody id="script_mutateTraitTableBody"></tbody>
+        </table>`);
+
+        let mutateTraitTableBodyNode = $("#script_mutateTraitTableBody");
+        newTableBodyText = "";
+
+        for (let i = 0; i < MutableTraitManager.priorityList.length; i++) {
+            const trait = MutableTraitManager.priorityList[i];
+            newTableBodyText += `<tr value="${trait.traitName}" class="script-draggable"><td id="script_mutableTrait_${trait.traitName}" style="width:30%"></td><td style="width:20%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:20%"><span class="script-lastcolumn"></span></td></tr>`;
+        }
+        mutateTraitTableBodyNode.append($(newTableBodyText));
+
+        // Build all other mutableTraits settings rows
+        for (let i = 0; i < MutableTraitManager.priorityList.length; i++) {
+            const trait = MutableTraitManager.priorityList[i];
+            let mutableTraitElement = $("#script_mutableTrait_" + trait.traitName);
+
+            mutableTraitElement.append(buildTableLabel(trait.source === "" ? "-" : game.loc((trait.type === "major" ? "race_" : "genelab_genus_") + trait.source), trait.type === "major" ? "Major" : "Genus", trait.type === "genus" ? "has-text-special" : "has-text"));
+
+            mutableTraitElement = mutableTraitElement.next();
+            mutableTraitElement.append(buildTableLabel(game.loc("trait_" + trait.traitName + "_name"), game.loc("trait_" + trait.traitName), trait.isPositive ? "has-text-success" : "has-text-danger"));
+
+            mutableTraitElement = mutableTraitElement.next();
+            mutableTraitElement.append(buildTableLabel(`${trait.baseCost * 5}`, `${trait.baseCost * 5 * mutationCostMultipliers['custom']['gain']} for Custom${trait.traitName !== 'ooze' ? " and Sludge" : ""}`));
+
+            mutableTraitElement = mutableTraitElement.next();
+
+            let isGainableTrait = trait.type === "major" && trait.traitName !== "frail" && trait.traitName !== "ooze"; // TODO check if beast_of_burden can be gained by other races during winter event.
+            if (isGainableTrait) {
+                addTableToggle(mutableTraitElement, "mutableTrait_gain_" + trait.traitName);
+            }
+
+            mutableTraitElement = mutableTraitElement.next();
+            addTableToggle(mutableTraitElement, "mutableTrait_purge_" + trait.traitName);
+
+            if (!isGainableTrait) {
+                continue;
+            }
+
+            makeToggleSwitchesMutuallyExclusive($(".script_mutableTrait_gain_" + trait.traitName), "mutableTrait_gain_" + trait.traitName, $(".script_mutableTrait_purge_" + trait.traitName), "mutableTrait_purge_" + trait.traitName);
+        }
+
+        mutateTraitTableBodyNode.sortable({
+            items: "tr:not(.unsortable)",
+            helper: sorterHelper,
+            update: function() {
+                let mutableTraitNames = mutateTraitTableBodyNode.sortable("toArray", {attribute: "value"});
+                for (let i = 0; i < mutableTraitNames.length; i++) {
+                    settingsRaw["mutableTrait_p_" + mutableTraitNames[i]] = i;
+                }
+
+                MutableTraitManager.sortByPriority();
+                updateSettingsFromState();
+            },
+        });
+
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
+    }
+
+    function makeToggleSwitchesMutuallyExclusive(switch1, settingsKey1, switch2, settingsKey2)
+    {
+        switch1.on("change", function() {
+            if (switch1.prop("checked") && switch2.prop("checked")) {
+                switch2.prop("checked", false);
+                settingsRaw[settingsKey2] = false;
+                updateSettingsFromState();
+            }
+        });
+        switch2.on("change", function() {
+            if (switch1.prop("checked") && switch2.prop("checked")) {
+                switch1.prop("checked", false);
+                settingsRaw[settingsKey1] = false;
+                updateSettingsFromState();
+            }
+        });
     }
 
     function buildMagicSettings() {
@@ -15607,6 +15883,7 @@
             createSettingToggle(togglesNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
             createSettingToggle(togglesNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max.');
             createSettingToggle(togglesNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings. Also manages Mimic genus.');
+            createSettingToggle(togglesNode, 'autoMutateTraits', 'Mutate in or out major and genus traits. WARNING: This will spend spend Plasmids and Anti-Plasmids.');
             createSettingToggle(togglesNode, 'autoEject', 'Eject excess resources to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements. Disabled when Mass Ejector Optimizer governor task is active.', createEjectToggles, removeEjectToggles);
             createSettingToggle(togglesNode, 'autoSupply', 'Send excess resources to Spire. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over ejector.', createSupplyToggles, removeSupplyToggles);
             createSettingToggle(togglesNode, 'autoNanite', 'Consume resources to produce Nanite. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over supplies and ejector.');
@@ -16292,6 +16569,8 @@
         universeAffix: function(e){switch(e=e||game.global.race.universe){case"evil":return"e";case"antimatter":return"a";case"heavy":return"h";case"micro":return"m";case"magic":return"mg";default:return"l"}},
         // function shipCosts(bp) from truepath.js
         shipCosts: function(e){let a={},r=1,u=1,n=1;switch(e.class){case"corvette":a.Money=25e5,a.Aluminium=5e5,r=1,u=1,n=2;break;case"frigate":a.Money=5e6,a.Aluminium=125e4,r=1.1,u=1.09,n=1.5;break;case"destroyer":a.Money=15e6,a.Aluminium=35e5,r=1.2,u=1.18,n=1.2;break;case"cruiser":a.Money=5e7,a.Adamantite=1e6,r=1.3,u=1.25;break;case"battlecruiser":a.Money=125e6,a.Adamantite=26e5,r=1.35,u=1.3,n=.8;break;case"dreadnought":a.Money=5e8,a.Adamantite=8e6,r=1.4,u=1.35,n=.5}switch(e.armor){case"steel":a.Steel=Math.round(35e4**r);break;case"alloy":a.Alloy=Math.round(25e4**r);break;case"neutronium":a.Neutronium=Math.round(1e4**r)}switch(e.engine){case"ion":a.Titanium=Math.round(75e3**u);break;case"tie":a.Titanium=Math.round(15e4**u);break;case"pulse":a.Titanium=Math.round(125e3**u);break;case"photon":a.Titanium=Math.round(21e4**u);break;case"vacuum":a.Titanium=Math.round(3e5**u)}switch(e.power){case"solar":case"diesel":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(4e4**r),a.Iridium=Math.round(15e3**u);break;case"fission":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(5e4**r),a.Iridium=Math.round(3e4**u);break;case"fusion":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(5e4**r),a.Iridium=Math.round(4e4**u);break;case"elerium":a["dreadnought"===e.class?"Orichalcum":"Copper"]=Math.round(6e4**r),a.Iridium=Math.round(55e3**u)}switch(e.sensor){case"radar":a.Money=Math.round(a.Money**1.05);break;case"lidar":a.Money=Math.round(a.Money**1.12);break;case"quantum":a.Money=Math.round(a.Money**1.25)}switch(e.weapon){case"railgun":a.Iron=Math.round(25e3**r);break;case"laser":a.Iridium=Math.round(a.Iridium**1.05),a.Nano_Tube=Math.round(12e3**r);break;case"p_laser":a.Iridium=Math.round(a.Iridium**1.035),a.Nano_Tube=Math.round(12e3**r);break;case"plasma":a.Iridium=Math.round(a.Iridium**1.1),a.Nano_Tube=Math.round(2e4**r);break;case"phaser":a.Iridium=Math.round(a.Iridium**1.15),a.Quantium=Math.round(18e3**r);break;case"disruptor":a.Iridium=Math.round(a.Iridium**1.2),a.Quantium=Math.round(35e3**r)}let i=0;for(let a of game.global.space.shipyard.ships){a.class === e.class && i++};let o=1+(i-2)/25*n;return Object.keys(a).forEach(function(e){i<2?a[e]=Math.ceil(a[e]*(0===i?.75:.9)):i>2&&(a[e]=Math.ceil(a[e]*o))}),a},
+        // export const const genus_traits from species.js (added spores:1 to fungi manually)
+        genus_traits: {humanoid:{adaptable:1,wasteful:1},carnivore:{carnivore:1,beast:1,cautious:1},herbivore:{herbivore:1,instinct:1},small:{small:1,weak:1},giant:{large:1,strong:1},reptilian:{cold_blooded:1,scales:1},avian:{hollow_bones:1,rigid:1},insectoid:{high_pop:1,fast_growth:1,high_metabolism:1},plant:{sappy:1,asymmetrical:1},fungi:{detritivore:1,spongy:1,spores:1},aquatic:{submerged:1,low_light:1},fey:{elusive:1,iron_allergy:1},heat:{smoldering:1,cold_intolerance:1},polar:{chilled:1,heat_intolerance:1},sand:{scavenger:1,nomadic:1},demonic:{immoral:1,evil:1,soul_eater:1},angelic:{blissful:1,pompous:1,holy:1},synthetic:{artifical:1,powered:1}},
 
     // Reimplemented:
         // export function crateValue() from resources.js
