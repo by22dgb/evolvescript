@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.107.13
+// @version      3.3.1.107.14
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -984,6 +984,12 @@
         }
     }
 
+    class CityAction extends Action {
+        get instance() {
+            return game.global.city[this._id];
+        }
+    }
+
     class Pillar extends Action {
         get count() {
             return this.isUnlocked() ? this.definition.count() : 0;
@@ -1222,7 +1228,10 @@
             }
 
             getVueById(this._vueBinding).action();
-            GameLog.logSuccess("research", poly.loc('research_success', [techIds[this.definition.id].title]), ['queue', 'research_queue']);
+
+            let def = this.definition;
+            let title = typeof def.title === 'function' ? def.title() : def.title;
+            GameLog.logSuccess("research", poly.loc('research_success', [title]), ['queue', 'research_queue']);
             return true;
         }
 
@@ -2124,7 +2133,7 @@
         RedMine: new Action("Red Mine", "space", "red_mine", "spc_red"),
         RedFabrication: new Action("Red Fabrication", "space", "fabrication", "spc_red"),
         RedFactory: new Action("Red Factory", "space", "red_factory", "spc_red"),
-        RedNaniteFactory: new Action("Red Nanite Factory (Cataclysm)", "space", "nanite_factory", "spc_red"),
+        RedNaniteFactory: new CityAction("Red Nanite Factory (Cataclysm)", "space", "nanite_factory", "spc_red"),
         RedBiodome: new Action("Red Biodome", "space", "biodome", "spc_red"),
         RedUniversity: new Action("Red University (Orbit Decay)", "space", "red_university", "spc_red", {knowledge: true}),
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
@@ -2422,7 +2431,7 @@
           () => "Miners disabled in Andromeda",
           () => 0
       ],[
-          () => game.global.tech.piracy,
+          () => haveTech('piracy'),
           (building) => building === buildings.StargateDefensePlatform && buildings.StargateDefensePlatform.count * 20 >= (game.global.race['instinct'] ? 0.09 : 0.1) * game.global.tech.piracy,
           () => "Piracy fully supressed",
           () => 0
@@ -2535,12 +2544,12 @@
           (other) => `${other.title} gives more Max Supplies`,
           () => 0 // Find what's better - Port or Base
       ],[
-          () => buildings.SpireWaygate.isUnlocked() && haveTech("waygate", 2),
+          () => haveTech("waygate", 2),
           (building) => building === buildings.SpireWaygate,
           () => "",
           () => 0 // We can't limit waygate using gameMax, as max here doesn't constant. It's start with 10, but after building count reduces down to 1
       ],[
-          () => buildings.SpireSphinx.isUnlocked() && haveTech("hell_spire", 8),
+          () => haveTech("hell_spire", 8),
           (building) => building === buildings.SpireSphinx,
           () => "",
           () => 0 // Sphinx not usable after solving
@@ -2757,7 +2766,7 @@
           () => "No more Meditation Space needed",
           () => settings.buildingWeightingZenUseless
       ],[
-          () => buildings.GateTurret.isUnlocked() && poly.hellSupression("gate").rating >= 7500,
+          () => buildings.GateTurret.isUnlocked() && poly.hellSupression("gate").rating > (7501 + game.armyRating(traitVal('high_pop', 0, 1), "hellArmy", 0) * traitVal('holy', 1, '+')),
           (building) => building === buildings.GateTurret,
           () => "Gate demons fully supressed",
           () => settings.buildingWeightingGateTurret
@@ -2955,7 +2964,9 @@
         },
 
         maxConsumeCraftable(resource) {
-            return resource.currentQuantity - (resource.storageRequired * this.storageShift);
+            let extraIncome = resource.rateOfChange;
+            let extraStore = resource.currentQuantity - (resource.storageRequired * this.storageShift);
+            return Math.max(extraIncome, extraStore);
         },
 
         maxConsumeForRatio(resource, keepRatio) {
@@ -3054,13 +3065,15 @@
         },
 
         maxConsumeCraftable(resource) {
-            return (resource.currentQuantity - (resource.storageRequired * this.storageShift)) / this.supplyOut(resource.id);
+            let extraIncome = resource.calculateRateOfChange({buy: false, nanite: true});
+            let extraStore = resource.currentQuantity - (resource.storageRequired * this.storageShift);
+            return Math.max(extraIncome, extraStore) / this.supplyOut(resource.id);
         },
 
         maxConsumeForRatio(resource, keepRatio) {
-            let extraIncome = resource.calculateRateOfChange({buy: false, nanite: true}) / this.supplyOut(resource.id);
-            let extraStore = (resource.storageRatio - keepRatio) * resource.maxQuantity / this.supplyOut(resource.id);
-            return Math.max(extraIncome, extraStore);
+            let extraIncome = resource.calculateRateOfChange({buy: false, nanite: true});
+            let extraStore = (resource.storageRatio - keepRatio) * resource.maxQuantity;
+            return Math.max(extraIncome, extraStore) / this.supplyOut(resource.id);
         },
 
         consumeMore(id, count) {
@@ -3152,7 +3165,9 @@
         },
 
         maxConsumeCraftable(resource) {
-            return resource.currentQuantity - (resource.storageRequired * this.storageShift);
+            let extraIncome = resource.calculateRateOfChange({buy: false, supply: true, nanite: true});
+            let extraStore = resource.currentQuantity - (resource.storageRequired * this.storageShift);
+            return Math.max(extraIncome, extraStore);
         },
 
         maxConsumeForRatio(resource, keepRatio) {
@@ -5191,6 +5206,10 @@
                     project.weighting = 0;
                     project.extraDescription = "Active trigger, processing...<br>";
                 }
+                if (!project.isAffordable(true)) {
+                    project.weighting = 0;
+                    project.extraDescription = "Not enough storage<br>";
+                }
 
                 if (settings.arpaScaleWeighting) {
                     project.weighting /= 1 - (0.01 * project.progress);
@@ -5549,6 +5568,7 @@
         buildings.BlackholeStellarEngine.gameMax = 100;
         buildings.DwarfWorldCollider.gameMax = 1859;
         buildings.DwarfShipyard.gameMax = 1;
+        buildings.DwarfMassRelay.gameMax = 100;
         buildings.DwarfMassRelayComplete.gameMax = 1;
         buildings.TitanAI.gameMax = 100;
         buildings.TitanAIComplete.gameMax = 1;
@@ -5562,7 +5582,6 @@
         buildings.SiriusGravityDome.gameMax = 100;
         buildings.SiriusAscensionMachine.gameMax = 100;
         buildings.SiriusAscensionTrigger.gameMax = 1;
-        buildings.SiriusAscend.gameMax = 1;
         buildings.PitSoulForge.gameMax = 1;
         buildings.GateEastTower.gameMax = 1;
         buildings.GateWestTower.gameMax = 1;
@@ -6442,8 +6461,8 @@
         setBreakpoints(jobs.Scientist, 3, 6, -1);
         setBreakpoints(jobs.Entertainer, 2, 5, -1);
         setBreakpoints(jobs.HellSurveyor, 1, 1, -1);
-        setBreakpoints(jobs.SpaceMiner, 1, 1, -1);
-        setBreakpoints(jobs.Archaeologist, 1, 0, -1);
+        setBreakpoints(jobs.SpaceMiner, 1, 3, -1);
+        setBreakpoints(jobs.Archaeologist, 1, 1, -1);
         setBreakpoints(jobs.Banker, 3, 5, -1);
         setBreakpoints(jobs.Priest, 0, 0, -1);
         setBreakpoints(jobs.Unemployed, 0, 0, 0);
@@ -6856,7 +6875,7 @@
             if (!settingsRaw.hasOwnProperty("autoPrestige")) {
                 settingsRaw.autoPrestige = true;
                 ["job_b1_farmer", "job_b2_farmer", "job_b3_farmer", "job_b1_hunter", "job_b2_hunter", "job_b3_hunter"]
-                  .forEach(id => settingsRaw[id] = -1);
+                  .forEach(id => delete settingsRaw[id]);
             }
             if (!settingsRaw.hasOwnProperty("buildingsLimitPowered")) {
                 settingsRaw.buildingsLimitPowered = false;
@@ -7364,31 +7383,32 @@
                 continue;
             }
 
-            let afforableAmount = Number.MAX_SAFE_INTEGER;
+            let affordableAmount = Number.MAX_SAFE_INTEGER;
             for (let res in craftable.cost) {
                 let resource = resources[res];
                 let quantity = craftable.cost[res];
 
+                affordableAmount = Math.min(affordableAmount, Math.ceil((resource.currentQuantity - (resource.maxQuantity * craftable.craftPreserve)) / quantity));
+
                 if (craftable.isDemanded()) { // Craftable demanded, get as much as we can
                     let maxUse = (resource.currentQuantity < resource.maxQuantity * (craftable.craftPreserve + 0.05))
                       ? resource.currentQuantity : resource.spareQuantity;
-                    afforableAmount = Math.min(afforableAmount, maxUse / quantity);
+                    affordableAmount = Math.min(affordableAmount, maxUse / quantity);
                 } else if (resource.isDemanded() || (!resource.isCapped() && resource.usefulRatio < craftable.usefulRatio)) { // Don't use demanded resources
                     continue craftLoop;
                 } else if (craftable.currentQuantity < craftable.storageRequired) { // Craftable is required, use all spare resources
-                    afforableAmount = Math.min(afforableAmount, resource.spareQuantity / quantity);
+                    affordableAmount = Math.min(affordableAmount, resource.spareQuantity / quantity);
                 } else if (resource.currentQuantity >= resource.storageRequired || resource.isCapped()) { // Resource not required - consume income
-                    afforableAmount = Math.min(afforableAmount, Math.ceil(resource.rateOfChange / ticksPerSecond() / quantity),
-                       Math.ceil((resource.currentQuantity - (resource.maxQuantity * craftable.craftPreserve)) / quantity));
+                    affordableAmount = Math.min(affordableAmount, Math.ceil(resource.rateOfChange / ticksPerSecond() / quantity));
                 } else { // Resource is required, and craftable not required. Don't craft anything.
                     continue craftLoop;
                 }
             }
-            afforableAmount = Math.floor(afforableAmount);
-            if (afforableAmount >= 1) {
-                craftable.tryCraftX(afforableAmount);
+            affordableAmount = Math.floor(affordableAmount);
+            if (affordableAmount >= 1) {
+                craftable.tryCraftX(affordableAmount);
                 for (let res in craftable.cost) {
-                    resources[res].currentQuantity -= craftable.cost[res] * afforableAmount;
+                    resources[res].currentQuantity -= craftable.cost[res] * affordableAmount;
                 }
             }
         }
@@ -8850,6 +8870,9 @@
                         } else if (resource.storageRatio > keepRatio) {
                             let maxConsume = Math.floor(m.maxConsumeForRatio(resource, keepRatio));
                             allowedConsume = Math.max(0, allowedConsume, maxConsume);
+                        } else if (resource.storageRatio >= 0.999 && keepRatio >= 1) {
+                            let maxConsume = Math.floor(m.maxConsumeForRatio(resource, resource.storageRatio));
+                            allowedConsume = Math.max(0, allowedConsume, maxConsume);
                         }
                     }
 
@@ -9388,8 +9411,8 @@
             // Build building
             if (building.click()) {
                 // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
-                // Same for gems when we're saving them
-                if (building.consumption.length > 0 || (building.cost["Soul_Gem"] && settings.prestigeType === "whitehole" && settings.prestigeWhiteholeSaveGems)) {
+                // Same for gems when we're saving them, and missions as they tends to unlock new stuff
+                if (building.consumption.length > 0 || building.isMission() || (building.cost["Soul_Gem"] && settings.prestigeType === "whitehole" && settings.prestigeWhiteholeSaveGems)) {
                     return;
                 }
                 // Mark all processed building as unaffordable for remaining loop, so they won't appear as conflicting
@@ -9422,7 +9445,7 @@
         }
 
         // Don't use Dark Bomb if not enabled
-        if (itemId == "tech-dark_bomb" && (!settings.prestigeDemonicBomb || settings.prestigeType !== "infusion")) {
+        if (itemId === "tech-dark_bomb" && (!settings.prestigeDemonicBomb || settings.prestigeType !== "infusion")) {
             return "Dark Bomb disabled";
         }
 
@@ -9662,7 +9685,7 @@
                         maxStateOn = Math.min(maxStateOn, healthySquads /*, maxLanders*/ );
                     }
                 }
-                // Do not enable Ascension Machine whire we're waiting for pillar
+                // Do not enable Ascension Machine while we're waiting for pillar
                 if (building === buildings.SiriusAscensionTrigger && (!isPillarFinished() || settings.prestigeType !== 'ascension')) {
                     maxStateOn = 0;
                 }
@@ -9710,10 +9733,9 @@
                 if (building === buildings.RuinsGuardPost) {
                     if (isHellSupressUseful()) {
                         let postRating = game.armyRating(traitVal('high_pop', 0, 1), "hellArmy", 0) * traitVal('holy', 1, '+');
-                        // 1 extra power to compensate rounding errors, 100 extra to compensate heling drinf of rage races
-                        let postAdjust = ((game.global.race['rage'] ? 5100 : 5001) - poly.hellSupression("ruins").rating) / postRating;
+                        let postAdjust = (5001 - poly.hellSupression("ruins").rating) / postRating;
                         if (haveTech('hell_gate')) {
-                            postAdjust = Math.max(postAdjust, ((game.global.race['rage'] ? 7600 : 7501) - poly.hellSupression("gate").rating) / postRating);
+                            postAdjust = Math.max(postAdjust, (7501 - poly.hellSupression("gate").rating) / postRating);
                         }
                         // We're reserving just one soldier for Guard Posts, so let's increase them by 1
                         maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
@@ -10956,7 +10978,11 @@
                 }
             }
             for (let res in obj.cost) {
-                resources[res].storageRequired = Math.max(obj.cost[res] * bufferMult, resources[res].storageRequired);
+                let assumeCost = obj.cost[res] * bufferMult;
+                if (resources[res].maxQuantity < assumeCost && !resources[res].hasStorage()) {
+                    assumeCost = (obj.cost[res] + resources[res].maxQuantity) / 2;
+                }
+                resources[res].storageRequired = Math.max(assumeCost, resources[res].storageRequired);
             }
         }
     }
@@ -10967,6 +10993,10 @@
         // Otherwise they might start build up knowledge cap just to afford themselves, increasing required
         // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
         state.knowledgeRequiredByTechs = Math.max(0, ...state.unlockedTechs.map(tech => tech.cost["Knowledge"] ?? 0));
+
+        if (buildings.GorddonEmbassy.isAutoBuildable()) {
+            state.knowledgeRequiredByTechs = Math.max(state.knowledgeRequiredByTechs, settings.fleetEmbassyKnowledge);
+        }
 
         // Get list of all objects and techs, and find biggest numbers for each resource
         if (FleetManagerOuter.nextShipExpandable && settings.prioritizeOuterFleet !== "ignore") {
@@ -11198,11 +11228,11 @@
         return true;
     }
 
-    // TODO: quntium lab
+    // TODO: quantium lab
     function updateTabs(update) {
         let oldHash = state.tabHash;
         state.tabHash = 0 // Not really a hash, but it should never go down, that's enough to track unlocks. (Except market after mutation in terrifying, 1000 weight should prevent all possible issues)
-          + (game.global.race['smoldering'] && $("#iQuarry").length === 0 ? buildings.RockQuarry.count : 0) // Chrysotile production
+          + (game.global.race['smoldering'] && buildings.RockQuarry.count ? 1 : 0) // Chrysotile production
           + (game.global.race['shapeshifter'] ? 1 : 0) // Shifter UI
           + (game.global.settings.showMarket ? 1000 : 0) // Market tab unlocked
           + (game.global.galaxy.trade ? 1 : 0) // Galaxy trades unlocked
@@ -11830,7 +11860,7 @@
             autoPrestige(); // Called after autoBattle to not launch attacks right before reset, killing soldiers
         }
         if (settings.autoMinorTrait) {
-            autoShapeshift(); // Shifting genus can remove techs, bildings, resources, etc. Leaving broken preloaded buttons behind. This thing need to be at the very end, to prevent clicking anything before redrawing tabs
+            autoShapeshift(); // Shifting genus can remove techs, buildings, resources, etc. Leaving broken preloaded buttons behind. This thing need to be at the very end, to prevent clicking anything before redrawing tabs
         }
         if (settings.autoMutateTraits) {
             autoMutateTrait();
@@ -13073,7 +13103,7 @@
         currentNode.empty().off("*");
 
         addSettingsNumber(currentNode, "tickRate", "Script tick rate", "Script runs once per this amount of game ticks. Game tick every 250ms, thus with rate 4 script will run once per second. You can set it lower to make script act faster, or increase it if you have performance issues. Tick rate should be a positive integer.");
-        addSettingsToggle(currentNode, "tickSchedule", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof - that can make tick rate float inconsistently, and cause weird bugs. Unstable experimental option, use at your own risk.");
+        addSettingsToggle(currentNode, "tickSchedule", "Schedule script ticks", "When enabled script will schedule its ticks to run after game ticks, instead of executing both at once. Splitting of long task allows browser to update UI in between of game and script ticks, making game run smoother, but less throttling-proof - that can make tick rate float inconsistently.");
 
         addSettingsHeader1(currentNode, "Prioritization");
         let priority = [{val: "ignore", label: "Ignore", hint: "Does nothing"},
@@ -13981,18 +14011,15 @@
         let currentNode = $(`#script_${secondaryPrefix}hellContent`);
         currentNode.empty().off("*");
 
-        // Entering Hell
         addSettingsHeader1(currentNode, "Entering Hell");
         addSettingsNumber(currentNode, "hellHomeGarrison", "Soldiers to stay out of hell", "Home garrison maximum");
         addSettingsNumber(currentNode, "hellMinSoldiers", "Minimum soldiers to be available for hell (pull out if below)", "Don't enter hell if not enough soldiers, or get out if already in");
         addSettingsNumber(currentNode, "hellMinSoldiersPercent", "Alive soldier percentage for entering hell", "Don't enter hell if too many soldiers are dead, but don't get out");
 
-        // Hell Garrison
         addSettingsHeader1(currentNode, "Hell Garrison");
         addSettingsNumber(currentNode, "hellTargetFortressDamage", "Target wall damage per siege (overestimates threat)", "Actual damage will usually be lower due to patrols and drones");
         addSettingsNumber(currentNode, "hellLowWallsMulti", "Garrison bolster factor for damaged walls", "Multiplies target defense rating by this when close to 0 wall integrity, half as much increase at half integrity");
 
-        // Patrol size
         addSettingsHeader1(currentNode, "Patrol Size");
         addSettingsToggle(currentNode, "hellHandlePatrolSize", "Automatically adjust patrol size", "Sets patrol attack rating based on current threat, lowers it depending on buildings, increases it to the minimum rating, and finally increases it based on dead soldiers. Handling patrol count has to be turned on.");
         addSettingsNumber(currentNode, "hellPatrolMinRating", "Minimum patrol attack rating", "Will never go below this");
@@ -14093,7 +14120,7 @@
 
     function updateFleetAndromeda(currentNode, secondaryPrefix) {
         addStandardHeading(currentNode, "Andromeda");
-        addSettingsToggle(currentNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ships distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is not required: all your dreadnoughts still will be used even without this option.");
+        addSettingsToggle(currentNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ships distribution to fully supress piracy in prioritized regions. Some potential defense will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is not required: all your dreadnoughts still will be used even without this option.");
         addSettingsNumber(currentNode, "fleetEmbassyKnowledge", "Minimum knowledge for Embassy", "Building Embassy increases maximum piracy up to 100, script won't Auto Build it until this knowledge cap is reached.");
         addSettingsNumber(currentNode, "fleetAlienGiftKnowledge", "Minimum knowledge for Alien Gift", "Researching Alien Gift increases maximum piracy up to 250, script won't Auto Research it until this knowledge cap is reached.");
         addSettingsNumber(currentNode, "fleetAlien2Knowledge", "Minimum knowledge for Alien 2 Assault", "Assaulting Alien 2 increases maximum piracy up to 500, script won't do it until this knowledge cap is reached. Regardless of set value it won't ever try to assault until you have big enough fleet to do it without loses.");
