@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.2
+// @version      3.3.1.108.3
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -583,7 +583,10 @@
             }
 
             this.currentQuantity = game.global.city.power;
-            this.rateOfChange = game.global.city.power;
+            if (haveTask("replicate")) {
+                this.currentQuantity += game.global.race.replicator.pow;
+            }
+            this.rateOfChange = this.currentQuantity;
 
             this.maxQuantity = 0;
             if (game.global.race.powered) {
