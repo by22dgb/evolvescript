@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.3
+// @version      3.3.1.108.4
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -8788,7 +8788,7 @@
                     jobsToAssign -= requiredWorkers[j];
                 }
                 if (jobsToAssign > 0 && job instanceof BasicJob) {
-                    let servantsToAssign = Math.min(availableServants, Math.ceil(jobsToAssign / servantMod));
+                    let servantsToAssign = Math.min(availableServants, Math.floor(jobsToAssign / servantMod));
                     requiredServants[j] += servantsToAssign;
                     availableServants -= servantsToAssign;
                     jobsToAssign -= servantsToAssign * servantMod;
@@ -8831,15 +8831,15 @@
                 requiredServants[jobDetails.index] = 0;
             });
 
-            if (defaultIndex !== -1 && minDefault > requiredWorkers[defaultIndex]) {
+            if (splitJobs.find(s => s.index === defaultIndex) && minDefault > requiredWorkers[defaultIndex]) {
                 let restoreDef = Math.min(minDefault, availableWorkers);
                 requiredWorkers[defaultIndex] = restoreDef;
                 availableWorkers += restoreDef;
             }
-            let currentFarmers = (requiredWorkers[farmerIndex] + requiredServants[farmerIndex]);
-            if (farmerIndex !== -1 && minFarmers > currentFarmers) {
+            let currentFarmers = (requiredWorkers[farmerIndex] + requiredServants[farmerIndex] * servantMod);
+            if (splitJobs.find(s => s.index === farmerIndex) && minFarmers > currentFarmers) {
                 let missingFarmers = minFarmers - currentFarmers;
-                let servantsToAssign = Math.min(availableServants, Math.ceil(missingFarmers / servantMod));
+                let servantsToAssign = Math.min(availableServants, Math.floor(missingFarmers / servantMod));
                 requiredServants[farmerIndex] += servantsToAssign;
                 availableServants -= servantsToAssign;
                 missingFarmers -= servantsToAssign * servantMod;
@@ -8898,7 +8898,7 @@
         }
 
         state.lastPopulationCount = resources.Population.currentQuantity;
-        state.lastFarmerCount = jobList[farmerIndex]?.count ?? 0;
+        state.lastFarmerCount = farmerIndex === -1 ? 0 : (requiredWorkers[farmerIndex] + requiredServants[farmerIndex] * servantMod);
 
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
         // Unless we're already assigning to default, and don't want it to be changed now
