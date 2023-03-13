@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.4
+// @version      3.3.1.108.5
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -840,7 +840,7 @@
         }
 
         isAutoBuildable() {
-            return settings.autoBuild && this.isUnlocked() && this.autoBuildEnabled && this._weighting > 0 && this.count < this.autoMax;
+            return this.isUnlocked() && this.autoBuildEnabled && this._weighting > 0 && this.count < this.autoMax;
         }
 
         // export function checkPowerRequirements(c_action) from actions.js
@@ -4658,7 +4658,7 @@
             let soldiers = 0;
 
             // Assign soldiers to assault forge once other requirements are met
-            if (buildings.PitAssaultForge.isUnlocked() && buildings.PitAssaultForge.isAutoBuildable()) {
+            if (settings.autoBuild && buildings.PitAssaultForge.isAutoBuildable()) {
                 let missingRes = Object.entries(buildings.PitAssaultForge.cost).find(([id, amount]) => resources[id].currentQuantity < amount);
                 if (!missingRes) {
                     soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
@@ -5618,7 +5618,7 @@
                     project.weighting = 0;
                     project.extraDescription = "AutoBuild disabled<br>";
                 }
-                if (project.count >= project.autoMax && (project !== projects.ManaSyphon || isPrestigeAllowed("vacuum"))) {
+                if (project.count >= project.autoMax && (project !== projects.ManaSyphon || !isPrestigeAllowed("vacuum"))) {
                     project.weighting = 0;
                     project.extraDescription = "Maximum amount reached<br>";
                 }
@@ -6300,6 +6300,7 @@
         priorityList.push(buildings.OilPower);
         priorityList.push(buildings.FissionPower);
         priorityList.push(buildings.TauFusionGenerator);
+        priorityList.push(buildings.TauGas2AlienSpaceStation);
 
         priorityList.push(buildings.RuinsHellForge);
         priorityList.push(buildings.RuinsInfernoPower);
@@ -6652,7 +6653,6 @@
         priorityList.push(buildings.TauGas2Name8);
         priorityList.push(buildings.TauGas2AlienSurvey);
         priorityList.push(buildings.TauGas2AlienStation);
-        priorityList.push(buildings.TauGas2AlienSpaceStation);
         priorityList.push(buildings.TauGas2MatrioshkaBrain);
         priorityList.push(buildings.TauGas2IgnitionDevice);
         priorityList.push(buildings.TauGas2IgniteGasGiant);
@@ -10690,7 +10690,7 @@
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
             // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
             // And also let autoMech do minimum preparation, so we won't stuck with near zero potential
-            let buildAllowed = !(settings.autoMech && MechManager.isActive) && !(settings.autoPrestige && settings.prestigeType === "demonic" && settings.prestigeDemonicFloor - buildings.SpireTower.count <= buildings.SpireMechBay.count);
+            let buildAllowed = settings.autoBuild && !(settings.autoMech && MechManager.isActive) && !(settings.autoPrestige && settings.prestigeType === "demonic" && settings.prestigeDemonicFloor - buildings.SpireTower.count <= buildings.SpireMechBay.count);
 
             // Check is we allowed to build specific building, and have money for it
             const canBuild = (building, checkSmart) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= (building.cost["Money"] ?? 0) && (!checkSmart || building.isSmartManaged());
@@ -11252,6 +11252,7 @@
     function autoFleetOuter() {
         let m = FleetManagerOuter;
         if (!m.initFleet()) {
+            m.nextShipMsg = `No ships needed yet`;
             m.updateNextShip();
             return;
         }
@@ -11592,7 +11593,7 @@
             }
         }
 
-        let canExpandBay = settings.mechBaysFirst && buildings.SpireMechBay.isAutoBuildable() && (buildings.SpireMechBay.isAffordable(true) || (buildings.SpirePurifier.isAutoBuildable() && buildings.SpirePurifier.isAffordable(true) && buildings.SpirePurifier.stateOffCount === 0));
+        let canExpandBay = settings.autoBuild && settings.mechBaysFirst && buildings.SpireMechBay.isAutoBuildable() && (buildings.SpireMechBay.isAffordable(true) || (buildings.SpirePurifier.isAutoBuildable() && buildings.SpirePurifier.isAffordable(true) && buildings.SpirePurifier.stateOffCount === 0));
         let mechScrap = settings.mechScrap;
         if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity && !prolongActive && resources.Supply.rateOfChange >= settings.mechMinSupply) {
             // We can build purifier or bay once we'll have enough resources, do not rebuild old mechs
@@ -12370,16 +12371,16 @@
         if (obj === buildings.BadlandsAttractor) {
             let influx = 5 * (1 + (obj.stateOnCount * 0.22));
             let gem_chance = game.global.stats.achieve.technophobe?.l >= 5 ? 9000 : 10000;
-            if (game.global.race.universe === 'evil' && resources.Dark.currentQuantity > 1){
+            if (game.global.race.universe === 'evil' && resources.Dark.currentQuantity > 1) {
                 let de = resources.Dark.currentQuantity * (1 + resources.Harmony.currentQuantity * 0.01);
                 gem_chance -= Math.round(Math.log2(de) * 2);
             }
-            for (let i = obj.stateOnCount; i > 0; i--){
-                gem_chance = Math.round(gem_chance * 0.92);
-            }
+            gem_chance = Math.round(gem_chance * (0.945 ** obj.stateOnCount));
             gem_chance = Math.round(gem_chance * traitVal('ghostly', 2, '-'));
+            gem_chance = Math.max(10, gem_chance);
             let drop = (1 / gem_chance) * 100;
-            notes.push(`~${getNiceNumber(drop)}% chance to find ${resources.Soul_Gem.title} in encounter (Pity ignored)`);
+            // Drop chance of unreleased yet 1.3.3, no tooltip avaialable for current prod
+            //notes.push(`~${getNiceNumber(drop)}% chance to find ${resources.Soul_Gem.title}`);
             notes.push(`Up to ~${getNiceNumber(influx*10)}-${getNiceNumber(influx*50)} demons spawned per day`);
         }
         if (obj === buildings.Smokehouse) {
