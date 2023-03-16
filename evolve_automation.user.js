@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.5
+// @version      3.3.1.108.6
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -10571,7 +10571,10 @@
                 }
                 // Womling stuff
                 if (building === buildings.TauRedWomlingFarm) {
-                    let crop_per_farm = haveTech("womling_pop", 1) ? 18 : 12;
+                    let crop_per_farm = haveTech("womling_pop") ? 16 : 12;
+                    if (haveTech("womling_gene")) {
+                        crop_per_farm += 4;
+                    }
                     maxStateOn = Math.min(maxStateOn, Math.ceil(resources.Womlings_Support.maxQuantity / crop_per_farm));
                 }
                 if (building === buildings.TauRedOverseer) {
@@ -12375,12 +12378,11 @@
                 let de = resources.Dark.currentQuantity * (1 + resources.Harmony.currentQuantity * 0.01);
                 gem_chance -= Math.round(Math.log2(de) * 2);
             }
-            gem_chance = Math.round(gem_chance * (0.945 ** obj.stateOnCount));
+            gem_chance = Math.round(gem_chance * (0.948 ** obj.stateOnCount));
             gem_chance = Math.round(gem_chance * traitVal('ghostly', 2, '-'));
-            gem_chance = Math.max(10, gem_chance);
+            gem_chance = Math.max(12, gem_chance);
             let drop = (1 / gem_chance) * 100;
-            // Drop chance of unreleased yet 1.3.3, no tooltip avaialable for current prod
-            //notes.push(`~${getNiceNumber(drop)}% chance to find ${resources.Soul_Gem.title}`);
+            notes.push(`~${getNiceNumber(drop)}% chance to find ${resources.Soul_Gem.title}`);
             notes.push(`Up to ~${getNiceNumber(influx*10)}-${getNiceNumber(influx*50)} demons spawned per day`);
         }
         if (obj === buildings.Smokehouse) {
