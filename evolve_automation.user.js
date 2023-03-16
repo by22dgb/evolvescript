@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.6
+// @version      3.3.1.108.7
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -5820,8 +5820,9 @@
             this._state.x25 = undefined;
             this._state.x10 = undefined;
 
-            let keys = Object.values(game.global.settings.keyMap);
-            let uniq = keys.filter((v, i, a) => a.indexOf(v) === i);
+            let map = game.global.settings.keyMap;
+            let keys = Object.values(map);
+            let uniq = ['x100', 'x25', 'x10'].every(key => keys.indexOf(map[key]) === keys.lastIndexOf(map[key]));
 
             if (!game.global.settings.mKeys) {
                 this._mode = "none";
@@ -5870,7 +5871,12 @@
         },
 
         *click(amount) {
-            if (this._mode === "none"  || this._mode === "unset") {
+            if (this._mode === "none") {
+                while (amount > 0) {
+                    yield amount -= 1;
+                }
+            } else if (this._mode === "unset") {
+                this.set(false, false, false);
                 while (amount > 0) {
                     yield amount -= 1;
                 }
