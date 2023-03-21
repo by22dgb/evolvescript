@@ -6785,6 +6785,7 @@
         let def = {
             autoTax: false,
             autoGovernment: false,
+            generalRequestedTaxRate: -1,
             generalMinimumTaxRate: 20,
             generalMinimumMorale: 105,
             generalMaximumMorale: 500,
@@ -8939,6 +8940,22 @@
 
         let maxTaxRate = poly.taxCap(false);
         let minTaxRate = poly.taxCap(true);
+
+        if (settings.generalRequestedTaxRate != -1) {
+            var requestedTaxRateCappedToLimits = Math.min(Math.max(settings.generalRequestedTaxRate, minTaxRate), maxTaxRate);
+            KeyManager.set(false, false, false);
+            while(currentTaxRate > requestedTaxRateCappedToLimits) {
+                taxVue.sub();
+                currentTaxRate--;
+            }
+            while(currentTaxRate < requestedTaxRateCappedToLimits) {
+                taxVue.add();
+                currentTaxRate++;
+            }
+            resources.Morale.incomeAdusted = true;
+            return;
+        }
+
         if (resources.Money.storageRatio < 0.9 && !game.global.race['banana']) {
             minTaxRate = Math.max(minTaxRate, settings.generalMinimumTaxRate);
         }
@@ -14123,6 +14140,7 @@
         let currentNode = $(`#script_${secondaryPrefix}governmentContent`);
         currentNode.empty().off("*");
 
+        addSettingsNumber(currentNode, "generalRequestedTaxRate", "Forced tax rate", "Set tax rate as close to this value as possible, ignores morale. Set to -1 to disable this option");
         addSettingsNumber(currentNode, "generalMinimumTaxRate", "Minimum allowed tax rate", "Minimum tax rate for autoTax. Will still go below this amount if money storage is full");
         addSettingsNumber(currentNode, "generalMinimumMorale", "Minimum allowed morale", "Use this to set a minimum allowed morale. Remember that less than 100% can cause riots and weather can cause sudden swings");
         addSettingsNumber(currentNode, "generalMaximumMorale", "Maximum allowed morale", "Use this to set a maximum allowed morale. The tax rate will be raised to lower morale to this maximum");
