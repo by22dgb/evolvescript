@@ -12214,7 +12214,9 @@
           + (game.global.tech.isolation ? 1 : 0) // Solar tabs gone
           + (game.global.tech.m_ignite ? 1 : 0) // Ignition Device built
           + (buildings.TauStarRingworld.count >= 1000 ? 1 : 0) // Ringworld built
-          + (game.global.tech.tau_gas2 >= 5 ? 1 : 0); // Alien Space Station built
+          + (game.global.tech.tau_gas2 >= 5 ? 1 : 0) // Alien Space Station built
+          + (game.global.tech.replicator ? 1 : 0) // Matter Replicator unlocked
+          + (game.global.tauceti.tau_factory?.count > 0 ? 1 : 0); // Factory built in lone survivor
 
         if (game.global.settings.showShipYard) { // TP Ship Yard
           state.tabHash += 1
