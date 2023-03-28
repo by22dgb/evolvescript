@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.7
+// @version      3.3.1.108.8
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
 // @author       Fafnir
 // @author       TMVictor
 // @author       Vollch
+// @author       schoeggu
 // @match        https://g8hh.github.io/evolve/
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
@@ -1985,6 +1986,7 @@
     const mutationCostMultipliers = {sludge: {gain: 2, purge: 10}, custom: {gain: 10, purge: 10}};
     const specialRaceTraits = {beast_of_burden: "reindeer", photosynth: "plant"};
     const conflictingTraits = [["dumb", "smart"]];
+    const replicableResources = ['Food', 'Lumber', 'Chrysotile', 'Stone', 'Crystal', 'Furs', 'Copper', 'Iron', 'Aluminium', 'Cement', 'Coal', 'Oil', 'Uranium', 'Steel', 'Titanium', 'Alloy', 'Polymer', 'Iridium', 'Helium_3', 'Deuterium', 'Neutronium', 'Adamantite', 'Infernite', 'Elerium', 'Nano_Tube', 'Graphene', 'Stanene', 'Bolognium', 'Unobtainium', 'Vitreloy', 'Orichalcum', 'Water', 'Plywood', 'Brick', 'Wrought_Iron', 'Sheet_Metal', 'Mythril', 'Aerogel', 'Nanoweave', 'Scarletite', 'Quantium'];
 
     // Lookup tables, will be filled on init
     var techIds = {};
@@ -3907,6 +3909,36 @@
 
             for (let m of KeyManager.click(count)) {
                 this._industryVue.subItem(production.id);
+            }
+        }
+    }
+
+    var ReplicatorManager = {
+        _industryVueBinding: "iReplicator",
+        _industryVue: undefined,
+
+        Productions: addProps(normalizeProperties(
+            replicableResources.map(resId => resources[resId]).reduce((a, res) => ({ ...a, [res.id]: {id: res.id, resource: res, unlocked: () => res.isUnlocked(), cost: []}}), {})),
+            (p) => p.resource.id,
+          [{s: 'replicator_', p: "enabled"},
+           {s: 'replicator_w_', p: "weighting"},
+           {s: 'replicator_p_', p: "priority"}]),
+
+        initIndustry() {
+            if (!haveTech('replicator')) {
+                return false;
+            }
+
+            this._industryVue = getVueById(this._industryVueBinding);
+            if (this._industryVue === undefined) {
+                return false;
+            }
+            return true;
+        },
+
+        setResource(res) {
+            if (this._industryVue.avail(res)) {
+                this._industryVue.setVal(res);
             }
         }
     }
@@ -6794,6 +6826,7 @@
         let def = {
             autoTax: false,
             autoGovernment: false,
+            generalRequestedTaxRate: -1,
             generalMinimumTaxRate: 20,
             generalMinimumMorale: 105,
             generalMaximumMorale: 500,
@@ -7187,6 +7220,7 @@
             autoCraft: false,
             autoFactory: false,
             autoMiningDroid: false,
+            autoReplicator: false,
             productionChrysotileWeight: 2,
             productionAdamantiteWeight: 1,
             productionExtWeight_common: 1,
@@ -7196,6 +7230,8 @@
             productionSmelting: "required",
             productionSmeltingIridium: 0.5,
             productionFactoryMinIngredients: 0,
+            replicatorResource: 'Stone',
+            replicatorAssignGovernorTask: true
         }
 
         // Foundry
@@ -7245,6 +7281,15 @@
         setDroidProduct("Aluminium", 1, 1);
         setDroidProduct("Uranium", 5, -1);
         setDroidProduct("Coal", 5, -1);
+
+        // Matter Replicator
+        const setReplicatorProduct = (item, enabled, weighting, priority) => {
+            let id = ReplicatorManager.Productions[item].id;
+            def['replicator_' + id] = enabled;
+            def['replicator_w_' + id] = weighting;
+            def['replicator_p_' + id] = priority;
+        };
+        Object.values(ReplicatorManager.Productions).forEach(production => setReplicatorProduct(production.id, true, 1, 1));
 
         applySettings(def, reset);
     }
@@ -8450,7 +8495,7 @@
 
                 // Check workshop
                 let craftBuilding = job === crafter.Scarletite ? buildings.RuinsHellForge :
-                                    job === crafter.Quantium ? (haveTech("isolation") ? buildings.TauDiseaseLab : buildings.EnceladusZeroGLab) : 
+                                    job === crafter.Quantium ? (haveTech("isolation") ? buildings.TauDiseaseLab : buildings.EnceladusZeroGLab) :
                                     null;
                 if (!craftBuilding && !autoCraft) {
                     // Other jobs need to be checked only if we have servants to assign
@@ -8948,6 +8993,22 @@
 
         let maxTaxRate = poly.taxCap(false);
         let minTaxRate = poly.taxCap(true);
+
+        if (settings.generalRequestedTaxRate != -1) {
+            var requestedTaxRateCappedToLimits = Math.min(Math.max(settings.generalRequestedTaxRate, minTaxRate), maxTaxRate);
+            KeyManager.set(false, false, false);
+            while(currentTaxRate > requestedTaxRateCappedToLimits) {
+                taxVue.sub();
+                currentTaxRate--;
+            }
+            while(currentTaxRate < requestedTaxRateCappedToLimits) {
+                taxVue.add();
+                currentTaxRate++;
+            }
+            resources.Morale.incomeAdusted = true;
+            return;
+        }
+
         if (resources.Money.storageRatio < 0.9 && !game.global.race['banana']) {
             minTaxRate = Math.max(minTaxRate, settings.generalMinimumTaxRate);
         }
@@ -9608,6 +9669,82 @@
         Object.keys(consumeAdjustments).forEach((id) => consumeAdjustments[id] -= m.currentConsume(id));
         Object.entries(consumeAdjustments).forEach(([id, delta]) => delta < 0 && m.consumeLess(id, delta * -1));
         Object.entries(consumeAdjustments).forEach(([id, delta]) => delta > 0 && m.consumeMore(id, delta));
+    }
+
+    function autoReplicator() {
+        // No replicator; no auto autoreplicator
+        if (!ReplicatorManager.initIndustry()) {
+            return;
+        }
+
+        let allProducts = Object.values(ReplicatorManager.Productions);
+
+        // Sort groups by priorities
+        let priorityGroups = {};
+        for (let i = 0; i < allProducts.length; i++) {
+            let production = allProducts[i];
+            if (production.unlocked && production.enabled) {
+                if (production.weighting > 0) {
+                    let priority = production.resource.isDemanded() ? Math.max(production.priority, 100) : production.priority;
+                    priority *= !production.resource.isUseful() ? 0 : production.priority;
+                    if (priority !== 0) {
+                        priorityGroups[priority] = priorityGroups[priority] ?? [];
+                        priorityGroups[priority].push(production);
+                    }
+                }
+            }
+        }
+
+        let priorityList = Object.keys(priorityGroups).sort((a, b) => b - a).map(key => priorityGroups[key]);
+        if (priorityGroups["-1"] && priorityList.length > 1) {
+            priorityList.splice(priorityList.indexOf(priorityGroups["-1"], 1));
+            priorityList[0].push(...priorityGroups["-1"]);
+        }
+
+        // Set the replicator to whatever has 1. the highest priority and 2. the highest weighting. Should be improved in the future
+        if (priorityList.length > 0 && priorityList[0].length > 0) {
+            var selectedResource = priorityList[0].sort((a, b) => a.weighting - b.weighting)[0];
+            ReplicatorManager.setResource(selectedResource.id);
+        }
+
+
+        // Enable matter replicator task
+
+        if (!settings.replicatorAssignGovernorTask) {
+            return;
+        }
+
+        // Cannot assign if there is no governor, or matter replicator has not been reserached
+        if (getGovernor() === "none" || !haveTech("replicator")) {
+            return;
+        }
+
+        var replicatorTaskIndex = Object.values(game.global.race.governor.tasks).findIndex(task => task === 'replicate');
+
+        // If the replicator task is not yet assigned, assign it to the first free slot
+        if (replicatorTaskIndex == -1) {
+            replicatorTaskIndex = Object.values(game.global.race.governor.tasks).findIndex(task => task === 'none');
+
+            //No free task slots, cannot assign
+            if (replicatorTaskIndex == -1) {
+                return;
+            }
+
+            getVueById("govOffice").setTask('replicate', replicatorTaskIndex);
+        }
+
+        if (game.global.race.governor.config.replicate.pow.on == false) {
+            win.document.querySelector('#govOffice .options').getElementsByClassName('tConfig')[8].childNodes[1].childNodes[0].childNodes[0].click() // Enable auto power management
+        }
+        if (game.global.race.governor.config.replicate.res.que) {
+            win.document.querySelector('#govOffice .options').getElementsByClassName('tConfig')[8].childNodes[2].childNodes[0].childNodes[0].click() // Disable focus queue
+        }
+        if (game.global.race.governor.config.replicate.res.neg) {
+            win.document.querySelector('#govOffice .options').getElementsByClassName('tConfig')[8].childNodes[2].childNodes[1].childNodes[0].click() // Disable negative focus
+        }
+        if (game.global.race.governor.config.replicate.res.cap) {
+            win.document.querySelector('#govOffice .options').getElementsByClassName('tConfig')[8].childNodes[2].childNodes[2].childNodes[0].click() // Disable switch on cap
+        }
     }
 
     function autoPrestige() {
@@ -12087,7 +12224,9 @@
           + (game.global.tech.isolation ? 1 : 0) // Solar tabs gone
           + (game.global.tech.m_ignite ? 1 : 0) // Ignition Device built
           + (buildings.TauStarRingworld.count >= 1000 ? 1 : 0) // Ringworld built
-          + (game.global.tech.tau_gas2 >= 5 ? 1 : 0); // Alien Space Station built
+          + (game.global.tech.tau_gas2 >= 5 ? 1 : 0) // Alien Space Station built
+          + (game.global.tech.replicator ? 1 : 0) // Matter Replicator unlocked
+          + (game.global.tauceti.tau_factory?.count > 0 ? 1 : 0); // Factory built in lone survivor
 
         if (game.global.settings.showShipYard) { // TP Ship Yard
           state.tabHash += 1
@@ -12663,6 +12802,9 @@
         if (settings.autoStorage) {
             // Called before autoJobs, autoFleet and autoPower - so they wont mess with quantum
             autoStorage();
+        }
+        if (settings.autoReplicator) {
+            autoReplicator();
         }
         if (!settings.autoTrigger || !autoTrigger()) {
             // Only go to autoResearch and autoBuild if triggers not building anything at this very moment, to ensure they won't steal reasources from triggers
@@ -14239,6 +14381,7 @@
         let currentNode = $(`#script_${secondaryPrefix}governmentContent`);
         currentNode.empty().off("*");
 
+        addSettingsNumber(currentNode, "generalRequestedTaxRate", "强制税率", "尽可能将税率设为该数值，忽略士气。设为-1则忽略该选项");
         addSettingsNumber(currentNode, "generalMinimumTaxRate", "最低允许税率", "自动税率使用的最低税率。如果资金满了，将可能低于此数值。");
         addSettingsNumber(currentNode, "generalMinimumMorale", "最低允许士气", "设置最低允许的士气。少于100%士气可能引起税收抵制，请尽量不要设置到100%以下。另外请记得天气的影响");
         addSettingsNumber(currentNode, "generalMaximumMorale", "最高允许士气", "设置最高允许的士气。如果士气超过此数值，将提高税率");
@@ -15920,6 +16063,7 @@
         updateProductionTableFoundry(currentNode);
         updateProductionTableFactory(currentNode);
         updateProductionTableMiningDrone(currentNode);
+        updateProductionTableReplicator(currentNode);
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -16122,6 +16266,52 @@
             productionElement = productionElement.next();
             addTableInput(productionElement, "droid_pr_" + production.resource.id);
         }
+    }
+
+    function updateProductionTableReplicator(currentNode) {
+        addStandardHeading(currentNode, "复制器");
+
+        addSettingsToggle(currentNode, 'replicatorAssignGovernorTask', '分配总督任务', '启用后将自动把总督任务设置为调度复制器，自动调节使用的电力。')
+
+        currentNode.append(`
+        <table style="width:100%">
+          <tr>
+            <th class="has-text-warning" style="width:35%">资源名称</th>
+            <th class="has-text-warning" style="width:20%">是否启用</th>
+            <th class="has-text-warning" style="width:20%">权重</th>
+            <th class="has-text-warning" style="width:20%">优先级</th>
+            <th style="width:5%"></th>
+          </tr>
+          <tbody id="script_productionTableBodyReplicator"></tbody>
+        </table>`);
+
+      let tableBodyNode = $('#script_productionTableBodyReplicator');
+      let newTableBodyText = "";
+
+      let replicatorProducts = Object.values(ReplicatorManager.Productions);
+
+      for (let i = 0; i < replicatorProducts.length; i++) {
+          let production = replicatorProducts[i];
+          newTableBodyText += `<tr><td id="script_replicator_${production.resource.id}" style="width:35%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:20%"></td><td style="width:5%"></td></tr>`;
+      }
+      tableBodyNode.append($(newTableBodyText));
+
+      // Build all other productions settings rows
+      for (let i = 0; i < replicatorProducts.length; i++) {
+          let production = replicatorProducts[i];
+          let productionElement = $('#script_replicator_' + production.resource.id);
+
+          productionElement.append(buildTableLabel(production.resource.name));
+
+          productionElement = productionElement.next();
+          addTableToggle(productionElement, "replicator_" + production.resource.id);
+
+          productionElement = productionElement.next();
+          addTableInput(productionElement, "replicator_w_" + production.resource.id);
+
+          productionElement = productionElement.next();
+          addTableInput(productionElement, "replicator_p_" + production.resource.id);
+      }
     }
 
     function updateMagicPylon(currentNode) {
@@ -16950,6 +17140,7 @@
             createSettingToggle(togglesNode, 'autoEject', '自动质量喷射', '将多余的资源用于黑洞质量喷射。普通资源将在接近上限时用于喷射，锻造物将在超过需求时用于喷射。当总督任务为质量喷射时不启用。', createEjectToggles, removeEjectToggles);
             createSettingToggle(togglesNode, 'autoSupply', '自动补给', '将多余的资源用于补给。普通资源将在接近上限时用于补给，锻造物将在超过需求时用于补给。优先级高于质量喷射器。', createSupplyToggles, removeSupplyToggles);
             createSettingToggle(togglesNode, 'autoNanite', '自动纳米体', '将资源转化为纳米体。普通资源将在接近上限时用于转化，锻造物将在超过需求时用于转化。优先级高于补给和质量喷射器。');
+            createSettingToggle(togglesNode, 'autoReplicator', '自动复制器', '将多余的电力用于复制资源。');
 
             createQuickOptions(togglesNode, "s-quick-prestige-options", "威望重置", buildPrestigeSettings);
 
