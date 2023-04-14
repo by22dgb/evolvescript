@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.8
+// @version      3.3.1.108.9
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -2010,6 +2010,7 @@
 
         lastWasteful: null,
         lastHighPop: null,
+        lastFlier: null,
         lastPopulationCount: 0,
         lastFarmerCount: 0,
 
@@ -5995,7 +5996,9 @@
     }
 
     function updateCraftCost() {
-        if (state.lastWasteful === game.global.race.wasteful && state.lastHighPop === game.global.race.high_pop) {
+        if (state.lastWasteful === game.global.race.wasteful
+                && state.lastHighPop === game.global.race.high_pop
+                && state.lastFlier === game.global.race.flier) {
             return;
         }
         // Construct craftable resource list
@@ -6015,6 +6018,7 @@
         }
         state.lastWasteful = game.global.race.wasteful;
         state.lastHighPop = game.global.race.high_pop;
+        state.lastFlier = game.global.race.flier;
     }
 
     // Gui & Init functions
