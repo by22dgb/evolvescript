@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.9
+// @version      3.3.1.108.10
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1985,6 +1985,7 @@
     var arpaIds = {};
     var jobIds = {};
     var evolutions = {};
+    var imitations = {};
     var races = {};
     var craftablesList = [];
     var foundryList = [];
@@ -6330,6 +6331,9 @@
             // Use fungi as default Valdi genus
             let evolutionPath = (id === "junker" || id === "sludge") ? genusEvolution.fungi : genusEvolution[races[id].genus];
             races[id].evolutionTree = [e.bunker, e[id], ...(evolutionPath ?? [])];
+
+            // add imitate races
+            imitations[id] = new EvolutionAction(`s-${id}`);
         }
     }
 
@@ -6955,6 +6959,7 @@
         let def = {
             autoMinorTrait: false,
             shifterGenus: "ignore",
+            imitateRace: "ignore",
             buildingShrineType: "know",
             slaveIncome: 25000,
             jobScalePop: true
@@ -7810,6 +7815,14 @@
         }
         if (evolutions.organelles.count < 10) {
             evolutions.organelles.click();
+        }
+
+        const userImitateRace = Object.values(imitations).find(race => {
+            return race.id === `s-${settings.imitateRace}`
+        });
+
+        if (game.global.race.evoFinalMenu && userImitateRace) {
+            userImitateRace.click();
         }
     }
 
@@ -14316,6 +14329,21 @@
         }
     }
 
+    function updateImitateWarning() {
+        let race = races[settingsRaw.imitateRace];
+
+        if (race) {
+            const raceAvaialableForImitate = race && game.global.stats.synth[race.id];
+            if (raceAvaialableForImitate) {
+                $("#script_imitate_warning").html(`<span class="has-text-success">You have completed an AI Apocalypse with this race and can imitate it.</span>`);
+            } else {
+                $("#script_imitate_warning").html(`<span class="has-text-danger">Warning! You have NOT completed an AI Apocalypse with this race, and cannot imitate it.</span>`);
+            }
+        } else {
+            $("#script_imitate_warning").empty();
+        }
+    }
+
     function updateEvolutionSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
@@ -14350,6 +14378,29 @@
 
         currentNode.append(`<div><span id="script_race_warning"></span></div>`);
         updateRaceWarning();
+
+        const imitateOptions = [{val: "ignore", label: "Ignore", hint: "Do not imitate race. IMPORTANT: script will stall at evolution if none selected"},
+            ...Object.values(races).map(race => {
+                const label = game.global.stats.synth[race.id] ? race.name : `--${race.name}--`
+
+                return {
+                    val: race.id,
+                    label,
+                    hint: race.desc
+                }
+            })];
+
+        addSettingsSelect(currentNode, "imitateRace", "Imitate race", "Imitate selected race, if available.", imitateOptions).on('change', 'select', function() {
+            state.evolutionTarget = null;
+            updateImitateWarning();
+
+            let content = document.querySelector('#script_evolutionSettings .script-content');
+            content.style.height = null;
+            content.style.height = content.offsetHeight + "px"
+        });
+
+        currentNode.append(`<div><span id="script_imitate_warning"></span></div>`);
+        updateImitateWarning();
 
         addSettingsToggle(currentNode, "evolutionAutoUnbound", "Allow unbound races", "Allow Auto Achievement to pick biome restricted races on unsuited biomes, after getting unbound.");
         addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Has no effect after getting mass extinction perk.");
