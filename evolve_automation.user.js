@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.10
+// @version      3.3.1.108.11
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -7821,8 +7821,16 @@
             return race.id === `s-${settings.imitateRace}`
         });
 
-        if (game.global.race.evoFinalMenu && userImitateRace) {
-            userImitateRace.click();
+        if (game.global.race.evoFinalMenu) {
+            if (userImitateRace) {
+                const selectImitateRace = userImitateRace.click();
+
+                if (!selectImitateRace) {
+                    GameLog.logDanger("special", `${settings.imitateRace} not avaialble for imitation. Please select an available race.`, ['progress', 'achievements']);
+                }
+            } else {
+                GameLog.logDanger("special", `No race selected for imitation. Please select an available race to continue.`, ['progress', 'achievements']);
+            }
         }
     }
 
@@ -14329,21 +14337,6 @@
         }
     }
 
-    function updateImitateWarning() {
-        let race = races[settingsRaw.imitateRace];
-
-        if (race) {
-            const raceAvaialableForImitate = race && game.global.stats.synth[race.id];
-            if (raceAvaialableForImitate) {
-                $("#script_imitate_warning").html(`<span class="has-text-success">You have completed an AI Apocalypse with this race and can imitate it.</span>`);
-            } else {
-                $("#script_imitate_warning").html(`<span class="has-text-danger">Warning! You have NOT completed an AI Apocalypse with this race, and cannot imitate it.</span>`);
-            }
-        } else {
-            $("#script_imitate_warning").empty();
-        }
-    }
-
     function updateEvolutionSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
@@ -14378,29 +14371,6 @@
 
         currentNode.append(`<div><span id="script_race_warning"></span></div>`);
         updateRaceWarning();
-
-        const imitateOptions = [{val: "ignore", label: "Ignore", hint: "Do not imitate race. IMPORTANT: script will stall at evolution if none selected"},
-            ...Object.values(races).map(race => {
-                const label = game.global.stats.synth[race.id] ? race.name : `--${race.name}--`
-
-                return {
-                    val: race.id,
-                    label,
-                    hint: race.desc
-                }
-            })];
-
-        addSettingsSelect(currentNode, "imitateRace", "Imitate race", "Imitate selected race, if available.", imitateOptions).on('change', 'select', function() {
-            state.evolutionTarget = null;
-            updateImitateWarning();
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
-        });
-
-        currentNode.append(`<div><span id="script_imitate_warning"></span></div>`);
-        updateImitateWarning();
 
         addSettingsToggle(currentNode, "evolutionAutoUnbound", "Allow unbound races", "Allow Auto Achievement to pick biome restricted races on unsuited biomes, after getting unbound.");
         addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Has no effect after getting mass extinction perk.");
@@ -15738,6 +15708,21 @@
         buildSettingsSection(sectionId, sectionName, resetFunction, updateTraitSettingsContent);
     }
 
+    function updateImitateWarning() {
+        let race = races[settingsRaw.imitateRace];
+
+        if (race) {
+            const raceAvaialableForImitate = race && game.global.stats.synth[race.id];
+            if (raceAvaialableForImitate) {
+                $("#script_imitate_warning").html(`<span class="has-text-success">You have completed an AI Apocalypse with this race and can imitate it.</span>`);
+            } else {
+                $("#script_imitate_warning").html(`<span class="has-text-danger">Warning! You have NOT completed an AI Apocalypse with this race, and cannot imitate it.</span>`);
+            }
+        } else {
+            $("#script_imitate_warning").empty();
+        }
+    }
+
     function updateTraitSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
@@ -15750,6 +15735,35 @@
                             ...Object.values(game.races).map(r => r.type).filter((g, i, a) => g && g !== "organism" && g !== "synthetic" && a.indexOf(g) === i).map(g => (
                             {val: g, label: game.loc(`genelab_genus_${g}`)}))];
         addSettingsSelect(currentNode, "shifterGenus", "Mimic genus", "Mimic selected genus, if avaialble. If you want to add some conditional overrides to this setting, keep in mind changing genus redraws game page, frequent changes can drastically harm game performance.", genusOptions);
+
+        const imitateOptions = [{
+                val: "ignore",
+                label: "Ignore",
+                hint: "Do not imitate race. IMPORTANT: script will stall at evolution if none selected"
+            },
+            ...Object.values(races)
+                .filter(race => !['junker', 'sludge'].includes(race.id)) // Valdi and Sludge not available for imitation
+                .map(race => {
+                const label = game.global.stats.synth[race.id] ? race.name : `--${race.name}--`
+
+                return {
+                    val: race.id,
+                    label,
+                    hint: race.desc
+                }
+            })];
+
+        addSettingsSelect(currentNode, "imitateRace", "Imitate race", "Imitate selected race, if available.", imitateOptions).on('change', 'select', function() {
+            state.evolutionTarget = null;
+            updateImitateWarning();
+
+            let content = document.querySelector('#script_evolutionSettings .script-content');
+            content.style.height = null;
+            content.style.height = content.offsetHeight + "px"
+        });
+
+        currentNode.append(`<div><span id="script_imitate_warning"></span></div>`);
+        updateImitateWarning();
 
         let shrineOptions = [{val: "any", label: "Any", hint: "Build any Shrines, whenever have resources for it"},
                              {val: "equally", label: "Equally", hint: "Build all Shrines equally"},
