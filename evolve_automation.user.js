@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.9
+// @version      3.3.1.108.11
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -1994,6 +1994,7 @@
     var arpaIds = {};
     var jobIds = {};
     var evolutions = {};
+    var imitations = {};
     var races = {};
     var craftablesList = [];
     var foundryList = [];
@@ -6339,6 +6340,9 @@
             // Use fungi as default Valdi genus
             let evolutionPath = (id === "junker" || id === "sludge") ? genusEvolution.fungi : genusEvolution[races[id].genus];
             races[id].evolutionTree = [e.bunker, e[id], ...(evolutionPath ?? [])];
+
+            // add imitate races
+            imitations[id] = new EvolutionAction(`s-${id}`);
         }
     }
 
@@ -6964,6 +6968,7 @@
         let def = {
             autoMinorTrait: false,
             shifterGenus: "ignore",
+            imitateRace: "ignore",
             buildingShrineType: "know",
             slaveIncome: 25000,
             jobScalePop: true
@@ -7819,6 +7824,22 @@
         }
         if (evolutions.organelles.count < 10) {
             evolutions.organelles.click();
+        }
+
+        const userImitateRace = Object.values(imitations).find(race => {
+            return race.id === `s-${settings.imitateRace}`
+        });
+
+        if (game.global.race.evoFinalMenu) {
+            if (userImitateRace) {
+                const selectImitateRace = userImitateRace.click();
+
+                if (!selectImitateRace) {
+                    GameLog.logDanger("special", `${settings.imitateRace}无法用于仿制。请选择可用的种族。`, ['progress', 'achievements']);
+                }
+            } else {
+                GameLog.logDanger("special", `未选择仿制的种族。请选择一个种族以继续。`, ['progress', 'achievements']);
+            }
         }
     }
 
@@ -15803,6 +15824,21 @@
         buildSettingsSection(sectionId, sectionName, resetFunction, updateTraitSettingsContent);
     }
 
+    function updateImitateWarning() {
+        let race = races[settingsRaw.imitateRace];
+
+        if (race) {
+            const raceAvaialableForImitate = race && game.global.stats.synth[race.id];
+            if (raceAvaialableForImitate) {
+                $("#script_imitate_warning").html(`<span class="has-text-success">您用该种族进行过人工智能觉醒，可以仿制它的特质。</span>`);
+            } else {
+                $("#script_imitate_warning").html(`<span class="has-text-danger">注意！您还没有用该种族进行过人工智能觉醒，无法仿制它的特质。</span>`);
+            }
+        } else {
+            $("#script_imitate_warning").empty();
+        }
+    }
+
     function updateTraitSettingsContent() {
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
@@ -15815,6 +15851,35 @@
                             ...Object.values(game.races).map(r => r.type).filter((g, i, a) => g && g !== "organism" && g !== "synthetic" && a.indexOf(g) === i).map(g => (
                             {val: g, label: game.loc(`genelab_genus_${g}`)}))];
         addSettingsSelect(currentNode, "shifterGenus", "拟态种群", "拟态特质选择相应种群。如果您想要对此项进行进阶设置，请注意切换拟态特质将刷新游戏页面，切换过于频繁将影响游戏运行。", genusOptions);
+
+        const imitateOptions = [{
+                val: "ignore",
+                label: "忽略",
+                hint: "不仿制种族。重要提示：如果不选择任何种族，脚本将卡在进化阶段"
+            },
+            ...Object.values(races)
+                .filter(race => !['junker', 'sludge'].includes(race.id)) // Valdi and Sludge not available for imitation
+                .map(race => {
+                const label = game.global.stats.synth[race.id] ? race.name : `--${race.name}--`
+
+                return {
+                    val: race.id,
+                    label,
+                    hint: race.desc
+                }
+            })];
+
+        addSettingsSelect(currentNode, "imitateRace", "仿制种族", "仿制所选择的种族。", imitateOptions).on('change', 'select', function() {
+            state.evolutionTarget = null;
+            updateImitateWarning();
+
+            let content = document.querySelector('#script_evolutionSettings .script-content');
+            content.style.height = null;
+            content.style.height = content.offsetHeight + "px"
+        });
+
+        currentNode.append(`<div><span id="script_imitate_warning"></span></div>`);
+        updateImitateWarning();
 
         let shrineOptions = [{val: "any", label: "任意类型", hint: "只要资源足够就建造圣地"},
                              {val: "equally", label: "平均分配", hint: "平均建造所有类型的圣地"},
