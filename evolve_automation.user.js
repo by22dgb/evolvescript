@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.11
+// @version      3.3.1.108.12
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -9,6 +9,7 @@
 // @author       TMVictor
 // @author       Vollch
 // @author       schoeggu
+// @author       davezatch
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
@@ -7301,6 +7302,7 @@
     function resetTriggerSettings(reset) {
         let def = {
             autoTrigger: false,
+            activeTriggerUI: false
         }
 
         applySettings(def, reset);
@@ -12329,6 +12331,48 @@
         if (!buildings.GasSpaceDock.isOptionsCached()) {
             buildings.GasSpaceDock.cacheOptions();
         }
+
+        if (settings.autoTrigger && settings.activeTriggerUI) {
+            $("#active_triggers ul").html(state.triggerTargets.map(trigger => {
+                let triggerName = trigger.name;
+                if (trigger.is && trigger.is.multiSegmented) {
+                    triggerName += ` (${trigger.count} / ${trigger.gameMax})`;
+                }
+
+                if (trigger.instance && trigger.instance.time) {
+                    triggerName += ` (${trigger.instance.time})`;
+                }
+
+                const costs = trigger.cost;
+
+                const costsHTML = Object.keys(costs).map(resource => {
+                    const resourceName = game.global.resource[resource].name;
+                    let className = 'has-text-success';
+
+                    const resourceAmount = game.global.resource[resource].amount,
+                        resourceNeeded = costs[resource];
+
+                    if (resourceAmount < resourceNeeded) {
+                        className = 'has-text-danger';
+                    }
+
+                    const progressBarWidth = (resourceAmount / resourceNeeded) * 100;
+
+                    const isReplicatingClassName = (game.global.race.replicator && game.global.race.replicator.res === resource) ? 'is-replicating' : '';
+
+                    return `<li><div class='active_triggers-resource-row'><div class='active_triggers-resource-text'><span class='${className}'>${resourceName}</span></div><div class="percentage-full-progress-bar-wrapper ${isReplicatingClassName}"><div class="percentage-full-progress-bar" style="width: ${progressBarWidth}%;"></div></div></div></li>`;
+                }).join('');
+
+                return `
+                        <li>
+                            ${triggerName}
+                            <ul class="active_triggers-sub-list">
+                                ${costsHTML}
+                            </ul>
+                        </li>
+                    `;
+            }));
+        }
     }
 
     function verifyGameActions() {
@@ -12992,15 +13036,15 @@
     function addScriptStyle() {
         // background = @html-background, alt = @market-item-background, hover = (alt - 0x111111), border = @primary-border, primary = @primary-color
         let cssData = {
-            dark: {background: "#282f2f", alt: "#0f1414", hover: "#010303", border: "#ccc", primary: "#fff"},
-            light: {background: "#fff", alt: "#ddd", hover: "#ccc", border: "#000", primary: "#000"},
-            night: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff"},
-            darkNight: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#b8b8b8"},
-            redgreen: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff"},
-            gruvboxLight: {background: "#fbf1c7", alt: "#f9f5d7", hover: "#e8e4c6", border: "#3c3836", primary: "#3c3836"},
-            gruvboxDark: {background: "#282828", alt: "#1d2021", hover: "#0c0f10", border: "#3c3836", primary: "#ebdbb2"},
-            orangeSoda: {background: "#131516", alt: "#292929", hover: "#181818", border: "#313638", primary: "#EBDBB2"},
-            dracula: {background: "#282a36", alt: "#1d2021", hover: "#C0F10", border: "#44475a", primary: "#f8f8f2"},
+            dark: {background: "#282f2f", alt: "#0f1414", hover: "#010303", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
+            light: {background: "#fff", alt: "#ddd", hover: "#ccc", border: "#000", primary: "#000", hasTextWarning: '#7a6304'},
+            night: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
+            darkNight: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#b8b8b8", hasTextWarning: '#ffcc00'},
+            redgreen: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
+            gruvboxLight: {background: "#fbf1c7", alt: "#f9f5d7", hover: "#e8e4c6", border: "#3c3836", primary: "#3c3836", hasTextWarning: '#b57614'},
+            gruvboxDark: {background: "#282828", alt: "#1d2021", hover: "#0c0f10", border: "#3c3836", primary: "#ebdbb2", hasTextWarning: '#fabd2f'},
+            orangeSoda: {background: "#131516", alt: "#292929", hover: "#181818", border: "#313638", primary: "#EBDBB2", hasTextWarning: '#F06543'},
+            dracula: {background: "#282a36", alt: "#1d2021", hover: "#C0F10", border: "#44475a", primary: "#f8f8f2", hasTextWarning: '#f1fa8c'},
         };
         let styles = "";
         // Colors for different themes
@@ -13035,6 +13079,17 @@
                 html.${theme} .script-contentactive,
                 html.${theme} .script-collapsible:hover {
                     background-color: ${color.hover};
+                }
+
+                html.${theme} .percentage-full-progress-bar-wrapper {
+                    background-color: ${color.hasTextWarning}15;
+                }
+                html.${theme} .percentage-full-progress-bar {
+                    background-color: ${color.hasTextWarning}75;
+                }
+
+                html.${theme} .percentage-full-progress-bar-wrapper.is-replicating {
+                    background-image: linear-gradient(135deg,${color.hasTextWarning}30 25%,transparent 25%,transparent 50%,${color.hasTextWarning}30 50%,${color.hasTextWarning}30 75%,transparent 75%,transparent);
                 }`;
         };
         styles += `
@@ -13193,6 +13248,67 @@
             .area { width: calc(100% / 6) !important; max-width: 8rem; }
             .offer-item { width: 15% !important; max-width: 7.5rem; }
             .tradeTotal { margin-left: 11.5rem !important; }
+
+            #active_triggers {
+                font-size: 0.9em;
+            }
+
+            #active_triggers ul {
+                list-style-type: none;
+                padding-top: 5px;
+            }
+
+            #active_triggers .active_triggers-sub-list {
+                padding-bottom: 10px;
+                padding-left: 10px;
+                list-style-type: none;
+            }
+
+            #active_triggers .active_triggers-sub-list li {
+                width: 100%;
+            }
+
+            #active_triggers > ul > li:not(:first-child) {
+              margin-top: 10px;
+            }
+
+            #active_triggers .active_triggers-resource-text {
+                display: flex;
+                width: 120px;
+            }
+
+            #active_triggers .active_triggers-resource-text span {
+                margin-left: 5px;
+            }
+
+            #active_triggers .active_triggers-resource-row {
+                display: flex;
+            }
+
+            #active_triggers .active_triggers-resource-row .percentage-full-progress-bar-wrapper {
+                display: flex;
+                margin-right: auto;
+                width: 80px;
+
+                margin-top: 5px;
+                height: 9px;
+                overflow: hidden;
+            }
+
+            .percentage-full-progress-bar-wrapper.is-replicating {
+                background-image: linear-gradient(135deg,rgba(255,255,255,.95) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.95) 50%,rgba(255,255,255,.95) 75%,transparent 75%,transparent);
+                background-size: 20px 20px;
+                animation: progress-bar-stripes 2s linear reverse infinite;
+            }
+
+            @keyframes progress-bar-stripes {
+              0% {
+                background-position: 40px 0;
+              }
+              100% {
+                background-position: 0 0;
+              }
+            }
         `;
 
         // Create style document
@@ -13915,7 +14031,7 @@
         return listNode;
     }
 
-    function addSettingsToggle(node, settingName, labelText, hintText) {
+    function addSettingsToggle(node, settingName, labelText, hintText, enabledCallBack, disabledCallBack) {
         return $(`
           <div class="script_bg_${settingName}" style="margin-top: 5px; width: 90%; display: inline-block; text-align: left;">
             <label title="${hintText}" tabindex="0" class="switch">
@@ -13929,9 +14045,20 @@
             updateSettingsFromState();
 
             $(".script_" + settingName).prop('checked', settingsRaw[settingName]);
+
+            if (settingsRaw[settingName] && enabledCallBack) {
+                enabledCallBack();
+            }
+            if (!settingsRaw[settingName] && disabledCallBack) {
+                disabledCallBack();
+            }
         })
         .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "boolean"}, openOverrideModal)
         .appendTo(node);
+
+        if (settingsRaw[settingName] && enabledCallBack) {
+            enabledCallBack();
+        }
     }
 
     function addSettingsNumber(node, settingName, labelText, hintText) {
@@ -14633,8 +14760,9 @@
             resetTriggerState();
             updateSettingsFromState();
             updateTriggerSettingsContent();
+            removeActiveTriggerUI();
 
-            resetCheckbox("autoTrigger");
+            resetCheckbox("autoTrigger", "activeTriggerUI");
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateTriggerSettingsContent);
@@ -14645,6 +14773,8 @@
 
         let currentNode = $('#script_triggerContent');
         currentNode.empty().off("*");
+
+        addSettingsToggle(currentNode, "activeTriggerUI", "Display active triggers", "Add UI in right column to display currently active triggers and their resources.", buildActiveTriggerUI, removeActiveTriggerUI);
 
         currentNode.append('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
         $("#script_trigger_add").on("click", addTriggerSetting);
@@ -14928,6 +15058,16 @@
         });
 
         return textBox;
+    }
+
+    function buildActiveTriggerUI() {
+        if (settingsRaw.autoTrigger && settingsRaw.activeTriggerUI) {
+            $("#buildQueue").after('<div id="active_triggers-wrapper" class="bldQueue right"><h2 class="has-text-success">Active triggers</h2><div id="active_triggers"><ul></ul></div></div>');
+        }
+    }
+
+    function removeActiveTriggerUI() {
+        $("#active_triggers-wrapper").remove();
     }
 
     function buildResearchSettings() {
@@ -17068,7 +17208,7 @@
             createSettingToggle(togglesNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%. Disabled when Tax-Morale Balance governor task is active.');
             createSettingToggle(togglesNode, 'autoGovernment', 'Manage changes of government and governor when they becomes available. Governor will be selected once, and won\'t be reassigned, unless manually fired.');
             createSettingToggle(togglesNode, 'autoCraft', 'Automatically produce craftable resources, thresholds when it happens depends on current demands and stocks.', createCraftToggles, removeCraftToggles);
-            createSettingToggle(togglesNode, 'autoTrigger', 'Purchase triggered buildings, projects, and researches once conditions met');
+            createSettingToggle(togglesNode, 'autoTrigger', 'Purchase triggered buildings, projects, and researches once conditions met', buildActiveTriggerUI, removeActiveTriggerUI);
             createSettingToggle(togglesNode, 'autoBuild', 'Construct buildings based on their weightings(user configured), and various rules(e.g. it won\'t build building which have no support to run)', createBuildingToggles, removeBuildingToggles);
             createSettingToggle(togglesNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(togglesNode, 'autoPower', 'Manages power based on a priority order of buildings. Also disables currently useless buildings to save up resources.');
