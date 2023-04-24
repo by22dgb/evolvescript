@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.12
+// @version      3.3.1.108.13
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -713,22 +713,6 @@
         get id() {
             // The population node is special and its id will change to the race name
             return game.global.race.species;
-        }
-    }
-
-    class StarPower extends Resource {
-        updateData() {
-            if (!this.isUnlocked()) {
-                return;
-            }
-
-            this.currentQuantity = game.global.city.smelter.Star;
-            this.maxQuantity = game.global.city.smelter.StarCap;
-            this.rateOfChange = this.maxQuantity - this.currentQuantity;
-        }
-
-        isUnlocked() {
-            return haveTech("star_forge", 2);
         }
     }
 
@@ -2006,6 +1990,7 @@
         lastFlier: null,
         lastPopulationCount: 0,
         lastFarmerCount: 0,
+        astroSign: null,
 
         warnDebug: true,
         warnPreload: true,
@@ -2123,7 +2108,6 @@
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
         Supply: new Supply("Supplies", "Supply"),
         Power: new Power("Power", "Power"),
-        StarPower: new StarPower("Star Power", "StarPower"),
         Morale: new Morale("Morale", "Morale"),
         Womlings_Support: new WomlingsSupport("Womlings", "Womlings_Support", "", ""),
         Moon_Support: new Support("Moon Support", "Moon_Support", "space", "spc_moon"),
@@ -3710,7 +3694,6 @@
             Oil: {id: "Oil", unlocked: () => game.global.resource.Oil.display, cost: [new ResourceProductionCost(resources.Oil, 0.35, 2)]},
             Coal: {id: "Coal", unlocked: () => game.global.resource.Coal.display, cost: [new ResourceProductionCost(resources.Coal, () => !isLumberRace() ? 0.15 : 0.25, 2)]},
             Wood: {id: "Wood", unlocked: () => isLumberRace() || game.global.race['evil'], cost: [new ResourceProductionCost(() => game.global.race['evil'] ? game.global.race['soul_eater'] && game.global.race.species !== 'wendigo' ? resources.Food : resources.Furs : resources.Lumber, () => game.global.race['evil'] && !game.global.race['soul_eater'] || game.global.race.species === 'wendigo' ? 1 : 3, 6)]},
-            Star: {id: "Star", unlocked: () => haveTech("star_forge", 2), cost: [new ResourceProductionCost(resources.StarPower, 1, 0)]},
             Inferno: {id: "Inferno", unlocked: () => haveTech("smelting", 8), cost: [new ResourceProductionCost(resources.Coal, 50, 50), new ResourceProductionCost(resources.Oil, 35, 50), new ResourceProductionCost(resources.Infernite, 0.5, 50)]},
         }, [ResourceProductionCost]), (f) => f.id, [{s: "smelter_fuel_p_", p: "priority"}]),
 
@@ -3800,7 +3783,7 @@
         },
 
         maxOperating() {
-            return game.global.city.smelter.cap;
+            return game.global.city.smelter.cap - game.global.city.smelter.Star;
         },
 
         currentFueled() {
@@ -4416,6 +4399,9 @@
             let base = Math.max(50, Math.round((gov.mil / 2) + (gov.hstl / 2) - gov.unrest) + 10);
             if (game.global.race['infiltrator']){
                 base /= 3;
+            }
+            if (state.astroSign === 'scorpio') {
+                base * 0.88;
             }
             return Math.round(base ** spy) + 500;
         },
@@ -7632,7 +7618,7 @@
         // Remove deprecated post-overrides settings
         ["res_containers_m_", "res_crates_m_"].forEach(id => Object.values(resources)
           .forEach(res => { delete settingsRaw[id + res.id], delete settingsRaw.overrides[id + res.id] }));
-        ["prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "genesAssembleGeneAlways", "buildingsConflictQueue", "buildingsConflictRQueue", "buildingsConflictPQueue", "fleet_outer_pr_spc_hell", "fleet_outer_pr_spc_dwarf", "prestigeEnabledBarracks", "bld_s2_city-garrison", "prestigeAscensionSkipCustom", "prestigeBioseedGECK", "tickTimeout", "minorTraitSettingsCollapsed", "fleetOuterMinSyndicate"]
+        ["prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "genesAssembleGeneAlways", "buildingsConflictQueue", "buildingsConflictRQueue", "buildingsConflictPQueue", "fleet_outer_pr_spc_hell", "fleet_outer_pr_spc_dwarf", "prestigeEnabledBarracks", "bld_s2_city-garrison", "prestigeAscensionSkipCustom", "prestigeBioseedGECK", "tickTimeout", "minorTraitSettingsCollapsed", "fleetOuterMinSyndicate", "smelter_fuel_p_Star"]
           .forEach(id => { delete settingsRaw[id], delete settingsRaw.overrides[id] });
     }
 
@@ -8797,6 +8783,7 @@
                             let taxBuffer = (settings.autoTax || haveTask("tax")) && game.global.civic.taxes.tax_rate < poly.taxCap(false) ? 1 : 0;
                             let entertainerMorale = (game.global.tech['theatre'] + traitVal('musical', 0))
                                 * traitVal('emotionless', 0, '-') * traitVal('high_pop', 1, '=')
+                                * (state.astroSign === 'sagittarius' ? 1.05 : 1)
                                 * (game.global.race['lone_survivor'] ? 25 : 1);
                             let moraleExtra = resources.Morale.rateOfChange - resources.Morale.maxQuantity - taxBuffer;
                             jobMax[j] = job.count - Math.floor(moraleExtra / entertainerMorale);
@@ -9226,7 +9213,7 @@
 
                 for (let productionCost of fuel.cost) {
                     let resource = productionCost.resource;
-                    if (resource.storageRatio < 0.8 || resource === resources.StarPower){
+                    if (resource.storageRatio < 0.8) {
                         let remainingRateOfChange = resource.rateOfChange + (m.fueledCount(fuel) * productionCost.quantity);
                         // No need to preserve minimum income when storage is full
                         if (resource.storageRatio < 0.98) {
@@ -9234,7 +9221,7 @@
                         }
 
                         let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
-                        if (affordableAmount < maxAllowedUnits && resource !== resources.StarPower) {
+                        if (affordableAmount < maxAllowedUnits) {
                             state.tooltips["smelterFuels" + fuel.id.toLowerCase()] = `Too low ${resource.name} income<br>`;
                         }
                         maxAllowedUnits = Math.min(maxAllowedUnits, affordableAmount);
@@ -9290,7 +9277,7 @@
         let steelSmeltingConsumption = m.Productions.Steel.cost;
         for (let productionCost of steelSmeltingConsumption) {
             let resource = productionCost.resource;
-            if (resource.storageRatio < 0.8){
+            if (resource.storageRatio < 0.8) {
                 let remainingRateOfChange = resource.rateOfChange + (smelterSteelCount * productionCost.quantity);
                 // No need to preserve minimum income when storage is full
                 if (resource.storageRatio < 0.98) {
@@ -9603,7 +9590,7 @@
             let maxFueledForConsumption = remainingPlants;
             if (!resources.Graphene.isUseful()) {
                 maxFueledForConsumption = 0;
-            } else if (resource.storageRatio < 0.8){
+            } else if (resource.storageRatio < 0.8) {
                 let rateOfChange = resource.rateOfChange + fuel.cost.quantity * currentFuelCount;
                 if (resource.storageRatio < 0.98) {
                     rateOfChange -= fuel.cost.minRateOfChange;
@@ -12324,6 +12311,8 @@
             }
         }
 
+        state.astroSign = poly.astrologySign();
+
         buildings.GateEastTower.gameMax = towerSize;
         buildings.GateWestTower.gameMax = towerSize;
 
@@ -12561,8 +12550,12 @@
             let crew = total / 5;
             notes.push(`Next level will increase ${buildings.AlphaExchange.title} storage by +${getNiceNumber(total)}% (+${getNiceNumber(crew)}% per crew)`);
         }
-        if (obj === buildings.Hospital) {
+        if (obj === buildings.Hospital
+            || (obj === buildings.BootCamp && game.global.race['artifical'])
+            || (obj === buildings.EnceladusBase && game.global.race['orbit_decayed'])) {
             notes.push(`~${getNiceNumber(getHealingRate())} soldiers healed per day`);
+        }
+        if (obj === buildings.Hospital) {
             let growth = 1 / (getGrowthRate() * 4); // Fast loop, 4 times per second
             notes.push(`~${getNiceNumber(growth)} seconds to increase population`);
         }
@@ -15061,6 +15054,8 @@
     }
 
     function buildActiveTriggerUI() {
+        removeActiveTriggerUI();
+
         if (settingsRaw.autoTrigger && settingsRaw.activeTriggerUI) {
             $("#buildQueue").after('<div id="active_triggers-wrapper" class="bldQueue right"><h2 class="has-text-success">Active triggers</h2><div id="active_triggers"><ul></ul></div></div>');
         }
@@ -17638,12 +17633,14 @@
 
     // main.js -> Soldier Healing
     function getHealingRate() {
-        let hc = game.global.race['artifical']
-          ? buildings.BootCamp.count
-          : buildings.Hospital.count;
+        let hc = 
+          (game.global.race['orbit_decayed'] && game.global.race['truepath']) ? buildings.EnceladusBase.stateOnCount :
+          game.global.race['artifical'] ? buildings.BootCamp.count :
+          buildings.Hospital.count;
         if (game.global.race['rejuvenated'] && game.global.stats.achieve['lamentis']){
             hc += Math.min(game.global.stats.achieve.lamentis.l, 5);
         }
+        hc *= (state.astroSign === 'cancer' ? 1.05 : 1);
         hc *= game.global.tech['medic'] || 1;
         hc += (game.global.race['fibroblast'] * 2) || 0;
         if (game.global.city.s_alter?.regen > 0){
@@ -17686,6 +17683,7 @@
         lb += buildings.Hospital.count * (haveTech('reproduction', 2) ? 1 : 0);
         lb += game.global.genes['birth'] ?? 0;
         lb += game.global.race['promiscuous'] ?? 0;
+        lb *= (state.astroSign === 'sagittarius' ? 1.25 : 1);
         lb *= traitVal("high_pop", 2, 1);
         lb *= (game.global.city.biome === 'taiga' ? 1.5 : 1);
         let base = resources.Population.currentQuantity * (game.global.city.ptrait.includes('toxic') ? 1.25 : 1);
@@ -17890,6 +17888,8 @@
 
     var poly = {
     // Taken directly from game code with no functional changes, and minified.
+        // export function astrologySign() from seasons.js
+        astrologySign: function(){let t=new Date;if(0===t.getMonth()&&t.getDate()>=20||1===t.getMonth()&&18>=t.getDate())return"aquarius";if(1===t.getMonth()&&t.getDate()>=19||2===t.getMonth()&&20>=t.getDate())return"pisces";if(2===t.getMonth()&&t.getDate()>=21||3===t.getMonth()&&19>=t.getDate())return"aries";if(3===t.getMonth()&&t.getDate()>=20||4===t.getMonth()&&20>=t.getDate())return"taurus";if(4===t.getMonth()&&t.getDate()>=21||5===t.getMonth()&&21>=t.getDate())return"gemini";else if(5===t.getMonth()&&t.getDate()>=22||6===t.getMonth()&&22>=t.getDate())return"cancer";else if(6===t.getMonth()&&t.getDate()>=23||7===t.getMonth()&&22>=t.getDate())return"leo";else if(7===t.getMonth()&&t.getDate()>=23||8===t.getMonth()&&22>=t.getDate())return"virgo";else if(8===t.getMonth()&&t.getDate()>=23||9===t.getMonth()&&22>=t.getDate())return"libra";else if(9===t.getMonth()&&t.getDate()>=23||10===t.getMonth()&&22>=t.getDate())return"scorpio";else if(10===t.getMonth()&&t.getDate()>=23||11===t.getMonth()&&21>=t.getDate())return"sagittarius";else if(11===t.getMonth()&&t.getDate()>=22||0===t.getMonth()&&19>=t.getDate())return"capricorn";else return"time itself is broken"},
         // export function arpaAdjustCosts(costs) from arpa.js
         arpaAdjustCosts: function(t){return t=function(t){var r=traitVal('creative',1,'-');if(r<1){var a={};return Object.keys(t).forEach(function(e){a[e]=function(){return t[e]()*r}}),a}return t}(t),poly.adjustCosts({cost:t})},
         // function govPrice(gov) from civics.js
