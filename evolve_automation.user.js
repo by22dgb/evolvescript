@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.13
+// @version      3.3.1.108.14
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -6781,6 +6781,7 @@
             prioritizeOuterFleet: "ignore",
             buildingAlwaysClick: false,
             buildingClickPerTick: 50,
+            activeTargetsUI: false
         }
 
         applySettings(def, reset);
@@ -7287,8 +7288,7 @@
 
     function resetTriggerSettings(reset) {
         let def = {
-            autoTrigger: false,
-            activeTriggerUI: false
+            autoTrigger: false
         }
 
         applySettings(def, reset);
@@ -12268,6 +12268,110 @@
         }
     }
 
+    function updateActiveTargetsUI(queuedTargets, type) {
+        if (queuedTargets.length) {
+            $(`#active_targets .target-type-box.${type}`).show();
+        } else {
+            $(`#active_targets .target-type-box.${type}`).hide();
+            return;
+        }
+
+        $(`#active_targets ul.active_targets-list.${type}`).html(queuedTargets.map(target => {
+            let targetName = `<span class="active-target-title name">${target.name}</span>`;
+            let targetTimeLeft = '',
+                targetSegments = '',
+                researchTimeLeft = 0;
+
+            if (target.instance && target.instance.time) {
+                targetTimeLeft = `${target.instance.time}`;
+            }
+
+            const costs = target.cost;
+
+            if (target instanceof Technology) {
+                if ($.isEmptyObject(target.cost)) {
+                    targetTimeLeft = 'Waiting on prerequisite';
+                } else if (target.cost.Knowledge > game.global.resource.Knowledge.max) {
+                    targetTimeLeft = 'Not enough Knowledge';
+                }
+            } else if (type === 'arpa' || target instanceof Project) {
+                targetTimeLeft = `${target.progress}%`;
+            }
+
+            const costsHTML = Object.keys(costs).map(resource => {
+                const resourceName = game.global.resource[resource]?.name || resource;
+                let className = 'has-text-success',
+                    resourceTimeLeft = '';
+
+                const resourceAmount = game.global.resource[resource]?.amount,
+                    resourceNeeded = costs[resource];
+
+                if (resourceAmount < resourceNeeded) {
+                    className = 'has-text-danger';
+
+                    if ((game.global.resource[resource]?.max === -1 || game.global.resource[resource]?.max > resourceNeeded) && game.global.resource[resource]?.diff > 0) {
+                        const timeLeftRaw = (resourceNeeded - resourceAmount) / game.global.resource[resource].diff;
+
+                        if (target instanceof Technology && timeLeftRaw > researchTimeLeft) {
+                            researchTimeLeft = timeLeftRaw;
+                        }
+
+                        resourceTimeLeft = `${poly.timeFormat(timeLeftRaw)}`;
+                    } else {
+                        targetTimeLeft = resourceTimeLeft = 'Never';
+                    }
+                }
+
+                const progressBarWidth = (resourceAmount / resourceNeeded) * 100;
+
+                const isReplicatingClassName = (game.global.race.replicator && game.global.race.replicator.res === resource) ? 'is-replicating' : '';
+
+                return `
+                    <li>
+                        <div class='active_targets-resource-row'>
+                            <div class='active_targets-resource-text'>
+                                <span class='${className}'>${resourceName}</span>
+                            </div>
+                            <div class="percentage-full-progress-bar-wrapper ${isReplicatingClassName}">
+                                <div class="percentage-full-progress-bar" style="width: ${progressBarWidth}%;"></div>
+                            </div>
+                            <div class="active_targets-time-left">${resourceTimeLeft}</div>
+                        </div>
+                    </li>`;
+            }).join('');
+
+            if (target.is && target.is.multiSegmented) {
+                targetSegments = `(${target.count} / ${target.gameMax})`;
+            }
+
+            if (target instanceof Technology && targetTimeLeft === '') {
+                targetTimeLeft = poly.timeFormat(researchTimeLeft);
+            }
+
+            targetName += `<span class="active-target-title time">${targetTimeLeft} <span class="active-target-segments has-text-special">${targetSegments}</span></span>`;
+
+
+            // for finding element in queue
+            let queueid = '';
+            if (type === 'buildings') {
+                queueid = `${target._tab}-${target.id}`;
+            } else if (type === 'arpa') {
+                queueid = `${target._tab}${target.id}`;
+            } else if (type === 'research') {
+                queueid = target.id;
+            }
+
+            return `
+                    <li class="active-target-li">
+                        ${targetName} <span class="active-target-remove-x ${type}" data-queueid="${queueid}">＋</span>
+                        <ul class="active_targets-sub-list">
+                            ${costsHTML}
+                        </ul>
+                    </li>
+                `;
+        }));
+    }
+
     function updateState() {
         if (game.global.race.species === "protoplasm") {
             state.goal = "Evolution";
@@ -12321,46 +12425,43 @@
             buildings.GasSpaceDock.cacheOptions();
         }
 
-        if (settings.autoTrigger && settings.activeTriggerUI) {
-            $("#active_triggers ul").html(state.triggerTargets.map(trigger => {
-                let triggerName = trigger.name;
-                if (trigger.is && trigger.is.multiSegmented) {
-                    triggerName += ` (${trigger.count} / ${trigger.gameMax})`;
+        if (settings.activeTargetsUI) {
+            const queuedTargets = state.queuedTargetsAll;
+
+            const triggersList = state.triggerTargets,
+                buildingsList = [],
+                researchList = [],
+                arpaList = [];
+
+            queuedTargets.forEach(target => {
+                if (target instanceof Technology) {
+                    researchList.push(target);
+                } else if (target instanceof Project) {
+                    arpaList.push(target);
+                } else {
+                    buildingsList.push(target);
+                }
+            });
+
+            updateActiveTargetsUI(triggersList, 'triggers');
+            updateActiveTargetsUI(buildingsList, 'buildings');
+            updateActiveTargetsUI(researchList, 'research');
+            updateActiveTargetsUI(arpaList, 'arpa');
+
+            // remove from queue by clicking 
+            $(".active-target-remove-x").click(function() {
+                const queueId = $(this).data('queueid');
+
+                const $queuedItem = $(".queued").filter((id, el) => {return el.id.indexOf(queueId) > -1});
+
+                if ($queuedItem) {
+                    $queuedItem[0].click();
                 }
 
-                if (trigger.instance && trigger.instance.time) {
-                    triggerName += ` (${trigger.instance.time})`;
-                }
-
-                const costs = trigger.cost;
-
-                const costsHTML = Object.keys(costs).map(resource => {
-                    const resourceName = game.global.resource[resource].name;
-                    let className = 'has-text-success';
-
-                    const resourceAmount = game.global.resource[resource].amount,
-                        resourceNeeded = costs[resource];
-
-                    if (resourceAmount < resourceNeeded) {
-                        className = 'has-text-danger';
-                    }
-
-                    const progressBarWidth = (resourceAmount / resourceNeeded) * 100;
-
-                    const isReplicatingClassName = (game.global.race.replicator && game.global.race.replicator.res === resource) ? 'is-replicating' : '';
-
-                    return `<li><div class='active_triggers-resource-row'><div class='active_triggers-resource-text'><span class='${className}'>${resourceName}</span></div><div class="percentage-full-progress-bar-wrapper ${isReplicatingClassName}"><div class="percentage-full-progress-bar" style="width: ${progressBarWidth}%;"></div></div></div></li>`;
-                }).join('');
-
-                return `
-                        <li>
-                            ${triggerName}
-                            <ul class="active_triggers-sub-list">
-                                ${costsHTML}
-                            </ul>
-                        </li>
-                    `;
-            }));
+                $("#active_targets-wrapper").css('height', 'auto');
+            });
+        } else {
+            $(".active-target-remove-x").off('click');
         }
     }
 
@@ -13030,7 +13131,7 @@
         // background = @html-background, alt = @market-item-background, hover = (alt - 0x111111), border = @primary-border, primary = @primary-color
         let cssData = {
             dark: {background: "#282f2f", alt: "#0f1414", hover: "#010303", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
-            light: {background: "#fff", alt: "#ddd", hover: "#ccc", border: "#000", primary: "#000", hasTextWarning: '#7a6304'},
+            light: {background: "#fff", alt: "#dddddd", hover: "#ccc", border: "#000", primary: "#000", hasTextWarning: '#7a6304'},
             night: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
             darkNight: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#b8b8b8", hasTextWarning: '#ffcc00'},
             redgreen: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
@@ -13083,6 +13184,10 @@
 
                 html.${theme} .percentage-full-progress-bar-wrapper.is-replicating {
                     background-image: linear-gradient(135deg,${color.hasTextWarning}30 25%,transparent 25%,transparent 50%,${color.hasTextWarning}30 50%,${color.hasTextWarning}30 75%,transparent 75%,transparent);
+                }
+
+                html.${theme} #active_targets .target-type-box {
+                    background-color: ${color.alt}75;
                 }`;
         };
         styles += `
@@ -13242,48 +13347,81 @@
             .offer-item { width: 15% !important; max-width: 7.5rem; }
             .tradeTotal { margin-left: 11.5rem !important; }
 
-            #active_triggers {
-                font-size: 0.9em;
+            /* Styles for queued targets UI */
+            #active_targets-wrapper {
+                padding: 1rem;
+                max-height: 70vh;
             }
 
-            #active_triggers ul {
+            #sideQueue #active_targets-wrapper {
+                max-height: 50vh;
+            }
+
+            #active_targets {
+                font-size: 0.9em;
+                max-width: 500px;
+            }
+
+            #active_targets .target-type-box {
+                background-color: #1d2021;
+                margin: 10px 0;
+                padding: 0.5rem 1rem;
+            }
+
+            #active_targets ul {
                 list-style-type: none;
                 padding-top: 5px;
             }
 
-            #active_triggers .active_triggers-sub-list {
-                padding-bottom: 10px;
-                padding-left: 10px;
-                list-style-type: none;
-            }
-
-            #active_triggers .active_triggers-sub-list li {
+            .active_targets-list > li {
+                margin-top: 10px;
                 width: 100%;
             }
 
-            #active_triggers > ul > li:not(:first-child) {
+            .active-target-title {
+                display: inline-block;
+            }
+            .active-target-title.name {
+                width: 40%;
+            }
+            .active-target-title.time {
+                width: 40%;
+            }
+            .active-target-segments {
+                margin-left: 5px;
+                width: calc(20% - 27px);
+            }
+
+            #active_targets .active_targets-sub-list {
+                list-style-type: none;
+            }
+
+            #active_targets .active_targets-sub-list li {
+                width: 100%;
+                padding: 0;
+            }
+
+            #active_targets > ul > li:not(:first-child) {
               margin-top: 10px;
             }
 
-            #active_triggers .active_triggers-resource-text {
+            #active_targets .active_targets-resource-text {
                 display: flex;
-                width: 120px;
+                width: 40%;
             }
 
-            #active_triggers .active_triggers-resource-text span {
-                margin-left: 5px;
+            #active_targets .active_targets-resource-text span {
+                margin-left: 10px;
             }
 
-            #active_triggers .active_triggers-resource-row {
+            #active_targets .active_targets-resource-row {
                 display: flex;
             }
 
-            #active_triggers .active_triggers-resource-row .percentage-full-progress-bar-wrapper {
+            #active_targets .active_targets-resource-row .percentage-full-progress-bar-wrapper {
                 display: flex;
-                margin-right: auto;
-                width: 80px;
-
-                margin-top: 5px;
+                margin: 5px 0 0 0;
+                width: 35%;
                 height: 9px;
                 overflow: hidden;
             }
@@ -13301,6 +13439,32 @@
               100% {
                 background-position: 0 0;
               }
+            }
+
+            #active_targets .active_targets-time-left {
+                width: auto;
+                text-align: left;
+                font-size: 0.8rem;
+                margin-left: 10px;
+            }
+
+            .active-target-remove-x {
+                margin-left: 10px;
+                opacity: 0.5;
+                cursor: pointer;
+                float: right;
+                transform: rotate(45deg);
+                font-size: 1.1rem;
+                line-height: 1rem;
+            }
+
+            .active-target-remove-x:hover {
+                opacity: 1;
+                font-size: 1.2rem;
+            }
+
+            .active-target-remove-x.triggers {
+                display: none;
             }
         `;
 
@@ -14238,12 +14402,14 @@
             resetGeneralSettings(true);
             updateSettingsFromState();
             updateGeneralSettingsContent();
+            removeActiveTargetsUI();
 
             resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "autoAssembleGene");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateGeneralSettingsContent);
+        buildActiveTargetsUI();
     }
 
     function updateGeneralSettingsContent() {
@@ -14274,6 +14440,10 @@
         addSettingsHeader1(currentNode, "Auto clicker");
         addSettingsToggle(currentNode, "buildingAlwaysClick", "Always autoclick resources", "By default script will click only during early stage of autoBuild, to bootstrap production. With this toggled on it will continue clicking forever");
         addSettingsNumber(currentNode, "buildingClickPerTick", "Maximum clicks per tick", "Number of clicks performed at once, each script tick. Will not ever click more than needed to fill storage.");
+
+        addSettingsHeader1(currentNode, "Additional UI");
+        addSettingsToggle(currentNode, "activeTargetsUI", "Display detailed queue", "Add UI in right column to display currently active queued buildings, technologies, and triggers and their resources.", buildActiveTargetsUI, removeActiveTargetsUI);
+
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -14753,9 +14923,8 @@
             resetTriggerState();
             updateSettingsFromState();
             updateTriggerSettingsContent();
-            removeActiveTriggerUI();
 
-            resetCheckbox("autoTrigger", "activeTriggerUI");
+            resetCheckbox("autoTrigger");
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateTriggerSettingsContent);
@@ -14766,8 +14935,6 @@
 
         let currentNode = $('#script_triggerContent');
         currentNode.empty().off("*");
-
-        addSettingsToggle(currentNode, "activeTriggerUI", "Display active triggers", "Add UI in right column to display currently active triggers and their resources.", buildActiveTriggerUI, removeActiveTriggerUI);
 
         currentNode.append('<div style="margin-top: 10px;"><button id="script_trigger_add" class="button">Add New Trigger</button></div>');
         $("#script_trigger_add").on("click", addTriggerSetting);
@@ -15053,16 +15220,51 @@
         return textBox;
     }
 
-    function buildActiveTriggerUI() {
-        removeActiveTriggerUI();
+    function buildActiveTargetsUI() {
+        if (settingsRaw.activeTargetsUI && !$("#active_targets-wrapper").length) {
+            $("#buildQueue").before(`
+                <div id="active_targets-wrapper" class="bldQueue vscroll right">
+                    <h2 class="has-text-success">Detailed Queue</h2>
+                    <div id="active_targets">
+                        <div class="target-type-box triggers" style="display: none;">
+                            <h2>Triggers</h2>
+                            <ul class="active_targets-list triggers"></ul>
+                        </div>
+                        <div class="target-type-box buildings" style="display: none;">
+                            <h2>Buildings</h2>
+                            <ul class="active_targets-list buildings"></ul>
+                        </div>
+                        <div class="target-type-box research" style="display: none;">
+                            <h2>Research</h2>
+                            <ul class="active_targets-list research"></ul>
+                        </div>
+                        <div class="target-type-box arpa" style="display: none;">
+                            <h2>A.R.P.A.</h2>
+                            <ul class="active_targets-list arpa"></ul>
+                        </div>
+                    </div>
+                </div>`);
 
-        if (settingsRaw.autoTrigger && settingsRaw.activeTriggerUI) {
-            $("#buildQueue").after('<div id="active_triggers-wrapper" class="bldQueue right"><h2 class="has-text-success">Active triggers</h2><div id="active_triggers"><ul></ul></div></div>');
+            // game assumes only message and build queue, and hardcodes heights accordingly. This overrides that to ensure scroll bars are added on message queue when active targets queue crowds it out
+            if (typeof ResizeObserver === 'function') {
+                const resizeObserver = new ResizeObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.borderBoxSize) {
+                            const elementHeight = entry.borderBoxSize[0].blockSize;
+                            const totalHeight = `${elementHeight + $(`#buildQueue`).outerHeight()}px`;
+
+                            $("#msgQueue").css('max-height', `calc((100vh - ${totalHeight}) - 6rem)`);
+                        }
+                    }
+                });
+
+                resizeObserver.observe($("#active_targets-wrapper")[0]);
+            }
         }
     }
 
-    function removeActiveTriggerUI() {
-        $("#active_triggers-wrapper").remove();
+    function removeActiveTargetsUI() {
+        $("#active_targets-wrapper").remove();
     }
 
     function buildResearchSettings() {
@@ -17203,7 +17405,7 @@
             createSettingToggle(togglesNode, 'autoTax', 'Adjusts tax rates if your current morale is greater than your maximum allowed morale. Will always keep morale above 100%. Disabled when Tax-Morale Balance governor task is active.');
             createSettingToggle(togglesNode, 'autoGovernment', 'Manage changes of government and governor when they becomes available. Governor will be selected once, and won\'t be reassigned, unless manually fired.');
             createSettingToggle(togglesNode, 'autoCraft', 'Automatically produce craftable resources, thresholds when it happens depends on current demands and stocks.', createCraftToggles, removeCraftToggles);
-            createSettingToggle(togglesNode, 'autoTrigger', 'Purchase triggered buildings, projects, and researches once conditions met', buildActiveTriggerUI, removeActiveTriggerUI);
+            createSettingToggle(togglesNode, 'autoTrigger', 'Purchase triggered buildings, projects, and researches once conditions met');
             createSettingToggle(togglesNode, 'autoBuild', 'Construct buildings based on their weightings(user configured), and various rules(e.g. it won\'t build building which have no support to run)', createBuildingToggles, removeBuildingToggles);
             createSettingToggle(togglesNode, 'autoARPA', 'Builds ARPA projects if user enables them to be built.', createArpaToggles, removeArpaToggles);
             createSettingToggle(togglesNode, 'autoPower', 'Manages power based on a priority order of buildings. Also disables currently useless buildings to save up resources.');
