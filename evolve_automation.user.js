@@ -7595,6 +7595,7 @@
         migrateSetting("storagePrioritizedOnly", "storageAssignPart", (v) => !v);
         migrateSetting("fleetScanEris", "fleet_outer_pr_spc_eris", (v) => v ? 100 : 0);
         migrateSetting("jobDisableCraftsmans", "productionCraftsmen", (v) => v ? "nocraft" : "always");
+        migrateSetting("activeTriggerUI", "activeTargetsUI", (v) => v);
         // Migrate setting as override, in case if someone actualy use it
         if (settingsRaw.hasOwnProperty("genesAssembleGeneAlways")) {
             if (settingsRaw.overrides.genesAssembleGeneAlways) {
