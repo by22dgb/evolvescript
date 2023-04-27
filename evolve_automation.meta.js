@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.11
+// @version      3.3.1.108.14
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -9,6 +9,7 @@
 // @author       TMVictor
 // @author       Vollch
 // @author       schoeggu
+// @author       davezatch
 // @match        https://g8hh.github.io/evolve/
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none

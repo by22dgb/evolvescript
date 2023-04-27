@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.11
+// @version      3.3.1.108.14
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -9,6 +9,7 @@
 // @author       TMVictor
 // @author       Vollch
 // @author       schoeggu
+// @author       davezatch
 // @match        https://g8hh.github.io/evolve/
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
@@ -715,22 +716,6 @@
         get id() {
             // The population node is special and its id will change to the race name
             return game.global.race.species;
-        }
-    }
-
-    class StarPower extends Resource {
-        updateData() {
-            if (!this.isUnlocked()) {
-                return;
-            }
-
-            this.currentQuantity = game.global.city.smelter.Star;
-            this.maxQuantity = game.global.city.smelter.StarCap;
-            this.rateOfChange = this.maxQuantity - this.currentQuantity;
-        }
-
-        isUnlocked() {
-            return haveTech("star_forge", 2);
         }
     }
 
@@ -2014,6 +1999,7 @@
         lastFlier: null,
         lastPopulationCount: 0,
         lastFarmerCount: 0,
+        astroSign: null,
 
         warnDebug: true,
         warnPreload: true,
@@ -2131,7 +2117,6 @@
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
         Supply: new Supply("Supplies", "Supply"),
         Power: new Power("电力", "Power"),
-        StarPower: new StarPower("星辰", "StarPower"),
         Morale: new Morale("士气", "Morale"),
         Womlings_Support: new WomlingsSupport("众鼬", "Womlings_Support", "", ""),
         Moon_Support: new Support("月球支持", "Moon_Support", "space", "spc_moon"),
@@ -3718,7 +3703,6 @@
             Oil: {id: "Oil", unlocked: () => game.global.resource.Oil.display, cost: [new ResourceProductionCost(resources.Oil, 0.35, 2)]},
             Coal: {id: "Coal", unlocked: () => game.global.resource.Coal.display, cost: [new ResourceProductionCost(resources.Coal, () => !isLumberRace() ? 0.15 : 0.25, 2)]},
             Wood: {id: "Wood", unlocked: () => isLumberRace() || game.global.race['evil'], cost: [new ResourceProductionCost(() => game.global.race['evil'] ? game.global.race['soul_eater'] && game.global.race.species !== 'wendigo' ? resources.Food : resources.Furs : resources.Lumber, () => game.global.race['evil'] && !game.global.race['soul_eater'] || game.global.race.species === 'wendigo' ? 1 : 3, 6)]},
-            Star: {id: "Star", unlocked: () => haveTech("star_forge", 2), cost: [new ResourceProductionCost(resources.StarPower, 1, 0)]},
             Inferno: {id: "Inferno", unlocked: () => haveTech("smelting", 8), cost: [new ResourceProductionCost(resources.Coal, 50, 50), new ResourceProductionCost(resources.Oil, 35, 50), new ResourceProductionCost(resources.Infernite, 0.5, 50)]},
         }, [ResourceProductionCost]), (f) => f.id, [{s: "smelter_fuel_p_", p: "priority"}]),
 
@@ -3808,7 +3792,7 @@
         },
 
         maxOperating() {
-            return game.global.city.smelter.cap;
+            return game.global.city.smelter.cap - game.global.city.smelter.Star;
         },
 
         currentFueled() {
@@ -4424,6 +4408,9 @@
             let base = Math.max(50, Math.round((gov.mil / 2) + (gov.hstl / 2) - gov.unrest) + 10);
             if (game.global.race['infiltrator']){
                 base /= 3;
+            }
+            if (state.astroSign === 'scorpio') {
+                base * 0.88;
             }
             return Math.round(base ** spy) + 500;
         },
@@ -6803,6 +6790,7 @@
             prioritizeOuterFleet: "ignore",
             buildingAlwaysClick: false,
             buildingClickPerTick: 50,
+            activeTargetsUI: false
         }
 
         applySettings(def, reset);
@@ -7309,7 +7297,7 @@
 
     function resetTriggerSettings(reset) {
         let def = {
-            autoTrigger: false,
+            autoTrigger: false
         }
 
         applySettings(def, reset);
@@ -7616,6 +7604,7 @@
         migrateSetting("storagePrioritizedOnly", "storageAssignPart", (v) => !v);
         migrateSetting("fleetScanEris", "fleet_outer_pr_spc_eris", (v) => v ? 100 : 0);
         migrateSetting("jobDisableCraftsmans", "productionCraftsmen", (v) => v ? "nocraft" : "always");
+        migrateSetting("activeTriggerUI", "activeTargetsUI", (v) => v);
         // Migrate setting as override, in case if someone actualy use it
         if (settingsRaw.hasOwnProperty("genesAssembleGeneAlways")) {
             if (settingsRaw.overrides.genesAssembleGeneAlways) {
@@ -7639,7 +7628,7 @@
         // Remove deprecated post-overrides settings
         ["res_containers_m_", "res_crates_m_"].forEach(id => Object.values(resources)
           .forEach(res => { delete settingsRaw[id + res.id], delete settingsRaw.overrides[id + res.id] }));
-        ["prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "genesAssembleGeneAlways", "buildingsConflictQueue", "buildingsConflictRQueue", "buildingsConflictPQueue", "fleet_outer_pr_spc_hell", "fleet_outer_pr_spc_dwarf", "prestigeEnabledBarracks", "bld_s2_city-garrison", "prestigeAscensionSkipCustom", "prestigeBioseedGECK", "tickTimeout", "minorTraitSettingsCollapsed", "fleetOuterMinSyndicate"]
+        ["prestigeWhiteholeEjectAllCount", "prestigeWhiteholeDecayRate", "genesAssembleGeneAlways", "buildingsConflictQueue", "buildingsConflictRQueue", "buildingsConflictPQueue", "fleet_outer_pr_spc_hell", "fleet_outer_pr_spc_dwarf", "prestigeEnabledBarracks", "bld_s2_city-garrison", "prestigeAscensionSkipCustom", "prestigeBioseedGECK", "tickTimeout", "minorTraitSettingsCollapsed", "fleetOuterMinSyndicate", "smelter_fuel_p_Star"]
           .forEach(id => { delete settingsRaw[id], delete settingsRaw.overrides[id] });
     }
 
@@ -8804,6 +8793,7 @@
                             let taxBuffer = (settings.autoTax || haveTask("tax")) && game.global.civic.taxes.tax_rate < poly.taxCap(false) ? 1 : 0;
                             let entertainerMorale = (game.global.tech['theatre'] + traitVal('musical', 0))
                                 * traitVal('emotionless', 0, '-') * traitVal('high_pop', 1, '=')
+                                * (state.astroSign === 'sagittarius' ? 1.05 : 1)
                                 * (game.global.race['lone_survivor'] ? 25 : 1);
                             let moraleExtra = resources.Morale.rateOfChange - resources.Morale.maxQuantity - taxBuffer;
                             jobMax[j] = job.count - Math.floor(moraleExtra / entertainerMorale);
@@ -9233,7 +9223,7 @@
 
                 for (let productionCost of fuel.cost) {
                     let resource = productionCost.resource;
-                    if (resource.storageRatio < 0.8 || resource === resources.StarPower){
+                    if (resource.storageRatio < 0.8) {
                         let remainingRateOfChange = resource.rateOfChange + (m.fueledCount(fuel) * productionCost.quantity);
                         // No need to preserve minimum income when storage is full
                         if (resource.storageRatio < 0.98) {
@@ -9241,7 +9231,7 @@
                         }
 
                         let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
-                        if (affordableAmount < maxAllowedUnits && resource !== resources.StarPower) {
+                        if (affordableAmount < maxAllowedUnits) {
                             state.tooltips["smelterFuels" + fuel.id.toLowerCase()] = `${resource.name}产量不足<br>`;
                         }
                         maxAllowedUnits = Math.min(maxAllowedUnits, affordableAmount);
@@ -9297,7 +9287,7 @@
         let steelSmeltingConsumption = m.Productions.Steel.cost;
         for (let productionCost of steelSmeltingConsumption) {
             let resource = productionCost.resource;
-            if (resource.storageRatio < 0.8){
+            if (resource.storageRatio < 0.8) {
                 let remainingRateOfChange = resource.rateOfChange + (smelterSteelCount * productionCost.quantity);
                 // No need to preserve minimum income when storage is full
                 if (resource.storageRatio < 0.98) {
@@ -9610,7 +9600,7 @@
             let maxFueledForConsumption = remainingPlants;
             if (!resources.Graphene.isUseful()) {
                 maxFueledForConsumption = 0;
-            } else if (resource.storageRatio < 0.8){
+            } else if (resource.storageRatio < 0.8) {
                 let rateOfChange = resource.rateOfChange + fuel.cost.quantity * currentFuelCount;
                 if (resource.storageRatio < 0.98) {
                     rateOfChange -= fuel.cost.minRateOfChange;
@@ -12288,6 +12278,110 @@
         }
     }
 
+    function updateActiveTargetsUI(queuedTargets, type) {
+        if (queuedTargets.length) {
+            $(`#active_targets .target-type-box.${type}`).show();
+        } else {
+            $(`#active_targets .target-type-box.${type}`).hide();
+            return;
+        }
+
+        $(`#active_targets ul.active_targets-list.${type}`).html(queuedTargets.map(target => {
+            let targetName = `<span class="active-target-title name">${target.name}</span>`;
+            let targetTimeLeft = '',
+                targetSegments = '',
+                researchTimeLeft = 0;
+
+            if (target.instance && target.instance.time) {
+                targetTimeLeft = `${target.instance.time}`;
+            }
+
+            const costs = target.cost;
+
+            if (target instanceof Technology) {
+                if ($.isEmptyObject(target.cost)) {
+                    targetTimeLeft = '等待前置条件';
+                } else if (target.cost.Knowledge > game.global.resource.Knowledge.max) {
+                    targetTimeLeft = '知识不足';
+                }
+            } else if (type === 'arpa' || target instanceof Project) {
+                targetTimeLeft = `${target.progress}%`;
+            }
+
+            const costsHTML = Object.keys(costs).map(resource => {
+                const resourceName = game.global.resource[resource]?.name || resource;
+                let className = 'has-text-success',
+                    resourceTimeLeft = '';
+
+                const resourceAmount = game.global.resource[resource]?.amount,
+                    resourceNeeded = costs[resource];
+
+                if (resourceAmount < resourceNeeded) {
+                    className = 'has-text-danger';
+
+                    if ((game.global.resource[resource]?.max === -1 || game.global.resource[resource]?.max > resourceNeeded) && game.global.resource[resource]?.diff > 0) {
+                        const timeLeftRaw = (resourceNeeded - resourceAmount) / game.global.resource[resource].diff;
+
+                        if (target instanceof Technology && timeLeftRaw > researchTimeLeft) {
+                            researchTimeLeft = timeLeftRaw;
+                        }
+
+                        resourceTimeLeft = `${poly.timeFormat(timeLeftRaw)}`;
+                    } else {
+                        targetTimeLeft = resourceTimeLeft = '永不';
+                    }
+                }
+
+                const progressBarWidth = (resourceAmount / resourceNeeded) * 100;
+
+                const isReplicatingClassName = (game.global.race.replicator && game.global.race.replicator.res === resource) ? 'is-replicating' : '';
+
+                return `
+                    <li>
+                        <div class='active_targets-resource-row'>
+                            <div class='active_targets-resource-text'>
+                                <span class='${className}'>${resourceName}</span>
+                            </div>
+                            <div class="percentage-full-progress-bar-wrapper ${isReplicatingClassName}">
+                                <div class="percentage-full-progress-bar" style="width: ${progressBarWidth}%;"></div>
+                            </div>
+                            <div class="active_targets-time-left">${resourceTimeLeft}</div>
+                        </div>
+                    </li>`;
+            }).join('');
+
+            if (target.is && target.is.multiSegmented) {
+                targetSegments = `(${target.count} / ${target.gameMax})`;
+            }
+
+            if (target instanceof Technology && targetTimeLeft === '') {
+                targetTimeLeft = poly.timeFormat(researchTimeLeft);
+            }
+
+            targetName += `<span class="active-target-title time">${targetTimeLeft} <span class="active-target-segments has-text-special">${targetSegments}</span></span>`;
+
+
+            // for finding element in queue
+            let queueid = '';
+            if (type === 'buildings') {
+                queueid = `${target._tab}-${target.id}`;
+            } else if (type === 'arpa') {
+                queueid = `${target._tab}${target.id}`;
+            } else if (type === 'research') {
+                queueid = target.id;
+            }
+
+            return `
+                    <li class="active-target-li">
+                        ${targetName} <span class="active-target-remove-x ${type}" data-queueid="${queueid}">＋</span>
+                        <ul class="active_targets-sub-list">
+                            ${costsHTML}
+                        </ul>
+                    </li>
+                `;
+        }));
+    }
+
     function updateState() {
         if (game.global.race.species === "protoplasm") {
             state.goal = "Evolution";
@@ -12331,12 +12425,53 @@
             }
         }
 
+        state.astroSign = poly.astrologySign();
+
         buildings.GateEastTower.gameMax = towerSize;
         buildings.GateWestTower.gameMax = towerSize;
 
         // Space dock is special and has a modal window with more buildings!
         if (!buildings.GasSpaceDock.isOptionsCached()) {
             buildings.GasSpaceDock.cacheOptions();
+        }
+
+        if (settings.activeTargetsUI) {
+            const queuedTargets = state.queuedTargetsAll;
+
+            const triggersList = state.triggerTargets,
+                buildingsList = [],
+                researchList = [],
+                arpaList = [];
+
+            queuedTargets.forEach(target => {
+                if (target instanceof Technology) {
+                    researchList.push(target);
+                } else if (target instanceof Project) {
+                    arpaList.push(target);
+                } else {
+                    buildingsList.push(target);
+                }
+            });
+
+            updateActiveTargetsUI(triggersList, 'triggers');
+            updateActiveTargetsUI(buildingsList, 'buildings');
+            updateActiveTargetsUI(researchList, 'research');
+            updateActiveTargetsUI(arpaList, 'arpa');
+
+            // remove from queue by clicking 
+            $(".active-target-remove-x").click(function() {
+                const queueId = $(this).data('queueid');
+
+                const $queuedItem = $(".queued").filter((id, el) => {return el.id.indexOf(queueId) > -1});
+
+                if ($queuedItem) {
+                    $queuedItem[0].click();
+                }
+
+                $("#active_targets-wrapper").css('height', 'auto');
+            });
+        } else {
+            $(".active-target-remove-x").off('click');
         }
     }
 
@@ -12526,8 +12661,12 @@
             let crew = total / 5;
             notes.push(`下次建造将使${buildings.AlphaExchange.title}的储量上限 +${getNiceNumber(total)}% (每名船员 +${getNiceNumber(crew)}%)`);
         }
+        if (obj === buildings.Hospital
+            || (obj === buildings.BootCamp && game.global.race['artifical'])
+            || (obj === buildings.EnceladusBase && game.global.race['orbit_decayed'])) {
+            notes.push(`每天约治愈 ${getNiceNumber(getHealingRate())} 名伤兵`);
+        }
         if (obj === buildings.Hospital) {
-            notes.push(`约需要 ${getNiceNumber(getHealingRate())} 秒才能治愈一名伤兵`);
             let growth = 1 / (getGrowthRate() * 4); // Fast loop, 4 times per second
             notes.push(`约需要 ${getNiceNumber(growth)} 秒才能新增一位市民`);
         }
@@ -13108,15 +13247,15 @@
     function addScriptStyle() {
         // background = @html-background, alt = @market-item-background, hover = (alt - 0x111111), border = @primary-border, primary = @primary-color
         let cssData = {
-            dark: {background: "#282f2f", alt: "#0f1414", hover: "#010303", border: "#ccc", primary: "#fff"},
-            light: {background: "#fff", alt: "#ddd", hover: "#ccc", border: "#000", primary: "#000"},
-            night: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff"},
-            darkNight: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#b8b8b8"},
-            redgreen: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff"},
-            gruvboxLight: {background: "#fbf1c7", alt: "#f9f5d7", hover: "#e8e4c6", border: "#3c3836", primary: "#3c3836"},
-            gruvboxDark: {background: "#282828", alt: "#1d2021", hover: "#0c0f10", border: "#3c3836", primary: "#ebdbb2"},
-            orangeSoda: {background: "#131516", alt: "#292929", hover: "#181818", border: "#313638", primary: "#EBDBB2"},
-            dracula: {background: "#282a36", alt: "#1d2021", hover: "#C0F10", border: "#44475a", primary: "#f8f8f2"},
+            dark: {background: "#282f2f", alt: "#0f1414", hover: "#010303", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
+            light: {background: "#fff", alt: "#dddddd", hover: "#ccc", border: "#000", primary: "#000", hasTextWarning: '#7a6304'},
+            night: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
+            darkNight: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#b8b8b8", hasTextWarning: '#ffcc00'},
+            redgreen: {background: "#282f2f", alt: "#1b1b1b", hover: "#0a0a0a", border: "#ccc", primary: "#fff", hasTextWarning: '#ffdd57'},
+            gruvboxLight: {background: "#fbf1c7", alt: "#f9f5d7", hover: "#e8e4c6", border: "#3c3836", primary: "#3c3836", hasTextWarning: '#b57614'},
+            gruvboxDark: {background: "#282828", alt: "#1d2021", hover: "#0c0f10", border: "#3c3836", primary: "#ebdbb2", hasTextWarning: '#fabd2f'},
+            orangeSoda: {background: "#131516", alt: "#292929", hover: "#181818", border: "#313638", primary: "#EBDBB2", hasTextWarning: '#F06543'},
+            dracula: {background: "#282a36", alt: "#1d2021", hover: "#C0F10", border: "#44475a", primary: "#f8f8f2", hasTextWarning: '#f1fa8c'},
         };
         let styles = "";
         // Colors for different themes
@@ -13151,6 +13290,21 @@
                 html.${theme} .script-contentactive,
                 html.${theme} .script-collapsible:hover {
                     background-color: ${color.hover};
+                }
+
+                html.${theme} .percentage-full-progress-bar-wrapper {
+                    background-color: ${color.hasTextWarning}15;
+                }
+                html.${theme} .percentage-full-progress-bar {
+                    background-color: ${color.hasTextWarning}75;
+                }
+
+                html.${theme} .percentage-full-progress-bar-wrapper.is-replicating {
+                    background-image: linear-gradient(135deg,${color.hasTextWarning}30 25%,transparent 25%,transparent 50%,${color.hasTextWarning}30 50%,${color.hasTextWarning}30 75%,transparent 75%,transparent);
+                }
+
+                html.${theme} #active_targets .target-type-box {
+                    background-color: ${color.alt}75;
                 }`;
         };
         styles += `
@@ -13309,6 +13463,126 @@
             .area { width: calc(100% / 6) !important; max-width: 8rem; }
             .offer-item { width: 15% !important; max-width: 7.5rem; }
             .tradeTotal { margin-left: 11.5rem !important; }
+
+            /* Styles for queued targets UI */
+            #active_targets-wrapper {
+                padding: 1rem;
+                max-height: 70vh;
+            }
+
+            #sideQueue #active_targets-wrapper {
+                max-height: 50vh;
+            }
+
+            #active_targets {
+                font-size: 0.9em;
+                max-width: 500px;
+            }
+
+            #active_targets .target-type-box {
+                background-color: #1d2021;
+                margin: 10px 0;
+                padding: 0.5rem 1rem;
+            }
+
+            #active_targets ul {
+                list-style-type: none;
+                padding-top: 5px;
+            }
+
+            .active_targets-list > li {
+                margin-top: 10px;
+                width: 100%;
+            }
+
+            .active-target-title {
+                display: inline-block;
+            }
+            .active-target-title.name {
+                width: 40%;
+            }
+            .active-target-title.time {
+                width: 40%;
+            }
+            .active-target-segments {
+                margin-left: 5px;
+                width: calc(20% - 27px);
+            }
+
+            #active_targets .active_targets-sub-list {
+                list-style-type: none;
+            }
+
+            #active_targets .active_targets-sub-list li {
+                width: 100%;
+                padding: 0;
+            }
+
+            #active_targets > ul > li:not(:first-child) {
+              margin-top: 10px;
+            }
+
+            #active_targets .active_targets-resource-text {
+                display: flex;
+                width: 40%;
+            }
+
+            #active_targets .active_targets-resource-text span {
+                margin-left: 10px;
+            }
+
+            #active_targets .active_targets-resource-row {
+                display: flex;
+            }
+
+            #active_targets .active_targets-resource-row .percentage-full-progress-bar-wrapper {
+                display: flex;
+                margin: 5px 0 0 0;
+                width: 35%;
+                height: 9px;
+                overflow: hidden;
+            }
+
+            .percentage-full-progress-bar-wrapper.is-replicating {
+                background-image: linear-gradient(135deg,rgba(255,255,255,.95) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.95) 50%,rgba(255,255,255,.95) 75%,transparent 75%,transparent);
+                background-size: 20px 20px;
+                animation: progress-bar-stripes 2s linear reverse infinite;
+            }
+
+            @keyframes progress-bar-stripes {
+              0% {
+                background-position: 40px 0;
+              }
+              100% {
+                background-position: 0 0;
+              }
+            }
+
+            #active_targets .active_targets-time-left {
+                width: auto;
+                text-align: left;
+                font-size: 0.8rem;
+                margin-left: 10px;
+            }
+
+            .active-target-remove-x {
+                margin-left: 10px;
+                opacity: 0.5;
+                cursor: pointer;
+                float: right;
+                transform: rotate(45deg);
+                font-size: 1.1rem;
+                line-height: 1rem;
+            }
+
+            .active-target-remove-x:hover {
+                opacity: 1;
+                font-size: 1.2rem;
+            }
+
+            .active-target-remove-x.triggers {
+                display: none;
+            }
         `;
 
         // Create style document
@@ -14031,7 +14305,7 @@
         return listNode;
     }
 
-    function addSettingsToggle(node, settingName, labelText, hintText) {
+    function addSettingsToggle(node, settingName, labelText, hintText, enabledCallBack, disabledCallBack) {
         return $(`
           <div class="script_bg_${settingName}" style="margin-top: 5px; width: 90%; display: inline-block; text-align: left;">
             <label title="${hintText}" tabindex="0" class="switch">
@@ -14045,9 +14319,20 @@
             updateSettingsFromState();
 
             $(".script_" + settingName).prop('checked', settingsRaw[settingName]);
+
+            if (settingsRaw[settingName] && enabledCallBack) {
+                enabledCallBack();
+            }
+            if (!settingsRaw[settingName] && disabledCallBack) {
+                disabledCallBack();
+            }
         })
         .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "boolean"}, openOverrideModal)
         .appendTo(node);
+
+        if (settingsRaw[settingName] && enabledCallBack) {
+            enabledCallBack();
+        }
     }
 
     function addSettingsNumber(node, settingName, labelText, hintText) {
@@ -14234,12 +14519,14 @@
             resetGeneralSettings(true);
             updateSettingsFromState();
             updateGeneralSettingsContent();
+            removeActiveTargetsUI();
 
             resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "autoAssembleGene");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateGeneralSettingsContent);
+        buildActiveTargetsUI();
     }
 
     function updateGeneralSettingsContent() {
@@ -14270,6 +14557,10 @@
         addSettingsHeader1(currentNode, "自动点击");
         addSettingsToggle(currentNode, "buildingAlwaysClick", "是否总是自动收集资源", "默认情况下脚本只在游戏初期自动收集资源，开启此项后将一直自动收集资源");
         addSettingsNumber(currentNode, "buildingClickPerTick", "每时刻最高点击次数", "每时刻自动收集资源的点击次数。只在库存未满的范围内有效。");
+
+        addSettingsHeader1(currentNode, "附加界面");
+        addSettingsToggle(currentNode, "activeTargetsUI", "显示详细的队列", "在右侧追加界面，可以显示当前激活的建筑队列，研究队列，触发器以及它们相应的资源。", buildActiveTargetsUI, removeActiveTargetsUI);
+
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -15044,6 +15335,53 @@
         });
 
         return textBox;
+    }
+
+    function buildActiveTargetsUI() {
+        if (settingsRaw.activeTargetsUI && !$("#active_targets-wrapper").length) {
+            $("#buildQueue").before(`
+                <div id="active_targets-wrapper" class="bldQueue vscroll right">
+                    <h2 class="has-text-success">详细的队列</h2>
+                    <div id="active_targets">
+                        <div class="target-type-box triggers" style="display: none;">
+                            <h2>触发器</h2>
+                            <ul class="active_targets-list triggers"></ul>
+                        </div>
+                        <div class="target-type-box buildings" style="display: none;">
+                            <h2>建筑</h2>
+                            <ul class="active_targets-list buildings"></ul>
+                        </div>
+                        <div class="target-type-box research" style="display: none;">
+                            <h2>研究</h2>
+                            <ul class="active_targets-list research"></ul>
+                        </div>
+                        <div class="target-type-box arpa" style="display: none;">
+                            <h2>A.R.P.A.</h2>
+                            <ul class="active_targets-list arpa"></ul>
+                        </div>
+                    </div>
+                </div>`);
+
+            // game assumes only message and build queue, and hardcodes heights accordingly. This overrides that to ensure scroll bars are added on message queue when active targets queue crowds it out
+            if (typeof ResizeObserver === 'function') {
+                const resizeObserver = new ResizeObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.borderBoxSize) {
+                            const elementHeight = entry.borderBoxSize[0].blockSize;
+                            const totalHeight = `${elementHeight + $(`#buildQueue`).outerHeight()}px`;
+
+                            $("#msgQueue").css('max-height', `calc((100vh - ${totalHeight}) - 6rem)`);
+                        }
+                    }
+                });
+
+                resizeObserver.observe($("#active_targets-wrapper")[0]);
+            }
+        }
+    }
+
+    function removeActiveTargetsUI() {
+        $("#active_targets-wrapper").remove();
     }
 
     function buildResearchSettings() {
@@ -17614,12 +17952,14 @@
 
     // main.js -> Soldier Healing
     function getHealingRate() {
-        let hc = game.global.race['artifical']
-          ? buildings.BootCamp.count
-          : buildings.Hospital.count;
+        let hc = 
+          (game.global.race['orbit_decayed'] && game.global.race['truepath']) ? buildings.EnceladusBase.stateOnCount :
+          game.global.race['artifical'] ? buildings.BootCamp.count :
+          buildings.Hospital.count;
         if (game.global.race['rejuvenated'] && game.global.stats.achieve['lamentis']){
             hc += Math.min(game.global.stats.achieve.lamentis.l, 5);
         }
+        hc *= (state.astroSign === 'cancer' ? 1.05 : 1);
         hc *= game.global.tech['medic'] || 1;
         hc += (game.global.race['fibroblast'] * 2) || 0;
         if (game.global.city.s_alter?.regen > 0){
@@ -17662,6 +18002,7 @@
         lb += buildings.Hospital.count * (haveTech('reproduction', 2) ? 1 : 0);
         lb += game.global.genes['birth'] ?? 0;
         lb += game.global.race['promiscuous'] ?? 0;
+        lb *= (state.astroSign === 'sagittarius' ? 1.25 : 1);
         lb *= traitVal("high_pop", 2, 1);
         lb *= (game.global.city.biome === 'taiga' ? 1.5 : 1);
         let base = resources.Population.currentQuantity * (game.global.city.ptrait.includes('toxic') ? 1.25 : 1);
@@ -17866,6 +18207,8 @@
 
     var poly = {
     // Taken directly from game code with no functional changes, and minified.
+        // export function astrologySign() from seasons.js
+        astrologySign: function(){let t=new Date;if(0===t.getMonth()&&t.getDate()>=20||1===t.getMonth()&&18>=t.getDate())return"aquarius";if(1===t.getMonth()&&t.getDate()>=19||2===t.getMonth()&&20>=t.getDate())return"pisces";if(2===t.getMonth()&&t.getDate()>=21||3===t.getMonth()&&19>=t.getDate())return"aries";if(3===t.getMonth()&&t.getDate()>=20||4===t.getMonth()&&20>=t.getDate())return"taurus";if(4===t.getMonth()&&t.getDate()>=21||5===t.getMonth()&&21>=t.getDate())return"gemini";else if(5===t.getMonth()&&t.getDate()>=22||6===t.getMonth()&&22>=t.getDate())return"cancer";else if(6===t.getMonth()&&t.getDate()>=23||7===t.getMonth()&&22>=t.getDate())return"leo";else if(7===t.getMonth()&&t.getDate()>=23||8===t.getMonth()&&22>=t.getDate())return"virgo";else if(8===t.getMonth()&&t.getDate()>=23||9===t.getMonth()&&22>=t.getDate())return"libra";else if(9===t.getMonth()&&t.getDate()>=23||10===t.getMonth()&&22>=t.getDate())return"scorpio";else if(10===t.getMonth()&&t.getDate()>=23||11===t.getMonth()&&21>=t.getDate())return"sagittarius";else if(11===t.getMonth()&&t.getDate()>=22||0===t.getMonth()&&19>=t.getDate())return"capricorn";else return"time itself is broken"},
         // export function arpaAdjustCosts(costs) from arpa.js
         arpaAdjustCosts: function(t){return t=function(t){var r=traitVal('creative',1,'-');if(r<1){var a={};return Object.keys(t).forEach(function(e){a[e]=function(){return t[e]()*r}}),a}return t}(t),poly.adjustCosts({cost:t})},
         // function govPrice(gov) from civics.js
