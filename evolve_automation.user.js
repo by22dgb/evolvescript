@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.14
+// @version      3.3.1.108.15
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -3784,6 +3784,10 @@
 
         maxOperating() {
             return game.global.city.smelter.cap - game.global.city.smelter.Star;
+        },
+
+        extraOperating() {
+            return game.global.city.smelter.Star;
         },
 
         currentFueled() {
@@ -9247,6 +9251,7 @@
             }
             totalSmelters -= remainingSmelters;
         }
+        totalSmelters += m.extraOperating();
 
         let smelterIronCount = m.smeltingCount(m.Productions.Iron);
         let smelterSteelCount = m.smeltingCount(m.Productions.Steel);
