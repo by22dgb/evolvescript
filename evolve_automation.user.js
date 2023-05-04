@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.15
+// @version      3.3.1.108.16
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -9251,6 +9251,7 @@
             }
             totalSmelters -= remainingSmelters;
         }
+
         totalSmelters += m.extraOperating();
 
         let smelterIronCount = m.smeltingCount(m.Productions.Iron);
@@ -10202,7 +10203,7 @@
             // Check queue and trigger conflicts
             let conflict = getCostConflict(building);
             if (conflict) {
-                building.extraDescription += `Conflicts with ${conflict.obj.name} for ${conflict.res.name} (${conflict.obj.cause})<br>`;
+                building.extraDescription += `Conflicts with ${conflict.obj.name} for <ul>${conflict.resList.map(res => {return `<li class="has-text-info">${res}</li>`;}).join('')}</ul> (${conflict.obj.cause})<br>`;
                 continue;
             }
 
@@ -10285,7 +10286,7 @@
                         }
 
                         // If we reached here - then we want to delay with our current building. Return all way back to main loop, and try to build something else
-                        building.extraDescription += `Conflicts with ${other.title} for ${resource.name}<br>`;
+                        building.extraDescription += `Conflicts with ${other.title} for <span class="has-text-info">${resource.name}</span><br>`;
                         continue buildingsLoop;
                     }
                 }
@@ -12363,13 +12364,13 @@
                 queueid = `${target._tab}-${target.id}`;
             } else if (type === 'arpa') {
                 queueid = `${target._tab}${target.id}`;
-            } else if (type === 'research') {
+            } else if (type === 'research' || type === 'triggers') {
                 queueid = target.id;
             }
 
             return `
                     <li class="active-target-li">
-                        ${targetName} <span class="active-target-remove-x ${type}" data-queueid="${queueid}">＋</span>
+                        ${targetName} <span class="active-target-remove-x ${type}" data-queueid="${queueid}" data-type="${type}">＋</span>
                         <ul class="active_targets-sub-list">
                             ${costsHTML}
                         </ul>
@@ -12456,11 +12457,18 @@
 
             // remove from queue by clicking 
             $(".active-target-remove-x").click(function() {
-                const queueId = $(this).data('queueid');
+                const queueId = $(this).data('queueid'),
+                    type = $(this).data('type');
 
                 const $queuedItem = $(".queued").filter((id, el) => {return el.id.indexOf(queueId) > -1});
 
-                if ($queuedItem?.length) {
+                if (type === 'triggers') {
+                    const clickedTrigger = TriggerManager.targetTriggers.find(trigger => trigger.actionId.includes(queueId));
+
+                    if (clickedTrigger !== undefined && clickedTrigger !== null) {
+                        clickedTrigger.complete = true;
+                    }
+                } else if ($queuedItem?.length) {
                     $queuedItem[0].click();
                 }
 
@@ -12628,7 +12636,7 @@
         if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargetsAll.includes(obj) && !state.triggerTargets.includes(obj)) {
             let conflict = getCostConflict(obj);
             if (conflict) {
-                notes.push(`Conflicts with ${conflict.obj.name} for ${conflict.res.name} (${conflict.obj.cause})`);
+                notes.push(`Conflicts with ${conflict.obj.name} for <ul>${conflict.resList.map(res => {return `<li class="has-text-info">${res}</li>`;}).join('')}</ul> (${conflict.obj.cause})`);
             }
         }
 
@@ -13356,7 +13364,7 @@
             /* Styles for queued targets UI */
             #active_targets-wrapper {
                 padding: 1rem;
-                max-height: 70vh;
+                max-height: 50vh;
             }
 
             #sideQueue #active_targets-wrapper {
@@ -13467,10 +13475,6 @@
             .active-target-remove-x:hover {
                 opacity: 1;
                 font-size: 1.2rem;
-            }
-
-            .active-target-remove-x.triggers {
-                display: none;
             }
         `;
 
@@ -17907,6 +17911,8 @@
     }
 
     function getCostConflict(action) {
+        let conflict = {};
+
         for (let priorityTarget of state.conflictTargets) {
             let blockKnowledge = true;
             for (let res in priorityTarget.cost) {
@@ -17917,11 +17923,12 @@
             }
             for (let res in priorityTarget.cost) {
                 if ((res !== "Knowledge" || blockKnowledge) && priorityTarget.cost[res] > resources[res].currentQuantity - action.cost[res]) {
-                    return {res: resources[res], obj: priorityTarget};
+                    const resList = conflict.resList || [];
+                    conflict = {res: resources[res], obj: priorityTarget, resList: [...new Set([...resList, res])]};
                 }
             }
         }
-        return null;
+        return $.isEmptyObject(conflict) ? null : conflict;
     }
 
     function getRealNumber(amountText) {
