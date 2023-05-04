@@ -10203,7 +10203,7 @@
             // Check queue and trigger conflicts
             let conflict = getCostConflict(building);
             if (conflict) {
-                building.extraDescription += `Conflicts with ${conflict.obj.name} for <ul>${conflict.resList.map(res => {return `<li class="has-text-info">${res}</li>`;}).join('')}</ul> (${conflict.obj.cause})<br>`;
+                building.extraDescription += `Conflicts with ${conflict.obj.name} for ${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join(', ')} (${conflict.obj.cause})<br>`;
                 continue;
             }
 
