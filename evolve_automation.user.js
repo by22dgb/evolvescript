@@ -12460,7 +12460,7 @@
 
                 const $queuedItem = $(".queued").filter((id, el) => {return el.id.indexOf(queueId) > -1});
 
-                if ($queuedItem) {
+                if ($queuedItem?.length) {
                     $queuedItem[0].click();
                 }
 
