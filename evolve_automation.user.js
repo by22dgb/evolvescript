@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.16
+// @version      3.3.1.108.17
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -7331,6 +7331,7 @@
             fleetEmbassyKnowledge: 6000000,
             fleetAlienGiftKnowledge: 6500000,
             fleetAlien2Knowledge: 8500000,
+            fleetAlien2Loses: "none",
             fleetChthonianLoses: "low",
 
             // Default outer regions weighting
@@ -11574,7 +11575,15 @@
             }
         } else if (buildings.Alien2Mission.isUnlocked() && resources.Knowledge.maxQuantity >= settings.fleetAlien2Knowledge) {
             let totalPower = allFleets.reduce((sum, ship) => sum + (ship.power * ship.count), 0);
-            if (totalPower >= 650) {
+
+            let doAlien2Assault = false;
+            if (settings.fleetAlien2Loses === "suicide") {
+                doAlien2Assault = totalPower >= 400;
+            } else {
+                doAlien2Assault = totalPower >= 650;
+            }
+
+            if (doAlien2Assault) {
                 assault = {ships: allFleets.map(ship => ship.count), region: "gxy_alien2", mission: buildings.Alien2Mission};
             }
         }
@@ -12275,6 +12284,30 @@
         }
     }
 
+    function getMultiSegmentedTimeLeft(target) {
+        const remainingSegments = target.gameMax - target.count;
+
+        let longestResource = '',
+            longestTimeLeft = 0;
+
+        Object.keys(target.cost).forEach(resource => {
+            const resourceCostTotal = target.cost[resource] * remainingSegments;
+            const resourceTimeLeftRaw = resourceCostTotal / game.global.resource[resource].diff;
+
+            if (resourceTimeLeftRaw > longestTimeLeft && resourceCostTotal > game.global.resource[resource].amount) {
+                longestResource = resource;
+                longestTimeLeft = resourceTimeLeftRaw;
+            }
+        });
+
+        const timeLeft = longestTimeLeft === Infinity ? 'Never' : poly.timeFormat(longestTimeLeft);
+
+        return {
+            resource: longestResource,
+            timeLeft
+        };
+    }
+
     function updateActiveTargetsUI(queuedTargets, type) {
         if (queuedTargets.length) {
             $(`#active_targets .target-type-box.${type}`).show();
@@ -12349,6 +12382,9 @@
 
             if (target.is && target.is.multiSegmented) {
                 targetSegments = `(${target.count} / ${target.gameMax})`;
+
+                const segmentedTimeLeft = getMultiSegmentedTimeLeft(target);
+                targetTimeLeft = `${segmentedTimeLeft.timeLeft} <span class="has-text-danger">(${segmentedTimeLeft.resource})</span>`;
             }
 
             if (target instanceof Technology && targetTimeLeft === '') {
@@ -13402,8 +13438,7 @@
                 width: 40%;
             }
             .active-target-segments {
-                margin-left: 5px;
-                width: calc(20% - 27px);
+                white-space: nowrap;
             }
 
             #active_targets .active_targets-sub-list {
@@ -15528,6 +15563,10 @@
         addSettingsNumber(currentNode, "fleetEmbassyKnowledge", "Minimum knowledge for Embassy", "Building Embassy increases maximum piracy up to 100, script won't Auto Build it until this knowledge cap is reached.");
         addSettingsNumber(currentNode, "fleetAlienGiftKnowledge", "Minimum knowledge for Alien Gift", "Researching Alien Gift increases maximum piracy up to 250, script won't Auto Research it until this knowledge cap is reached.");
         addSettingsNumber(currentNode, "fleetAlien2Knowledge", "Minimum knowledge for Alien 2 Assault", "Assaulting Alien 2 increases maximum piracy up to 500, script won't do it until this knowledge cap is reached. Regardless of set value it won't ever try to assault until you have big enough fleet to do it without loses.");
+
+        let alien2AssaultOptions = [{val: "none", label: "No Losses", hint: "Min fleet strength 650. No losses."},
+                              {val: "suicide", label: "Suicide Mission", hint: "Attack as soon as we hit 400 fleet rating. There will be losses."}];
+        addSettingsSelect(currentNode, "fleetAlien2Loses", "Alien 2 Mission", "Assault Alien 2 when chosen outcome is achievable. You should really keep the default, unless you're speed running and want to take it out ASAP with losses.", alien2AssaultOptions);
 
         let assaultOptions = [{val: "ignore", label: "Manual assault", hint: "Won't ever launch assault mission on Chthonian"},
                               {val: "high", label: "High casualties", hint: "Unlock Chthonian using mixed fleet, high casualties (1250+ total fleet power, 500 will be lost)"},
