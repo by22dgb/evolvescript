@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.17
+// @version      3.3.1.108.18
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1992,6 +1992,7 @@
         lastFarmerCount: 0,
         astroSign: null,
 
+        evoCheckNeeded: true,
         warnDebug: true,
         warnPreload: true,
 
@@ -7137,6 +7138,7 @@
         // Limit max for belt ships, and horseshoes
         def['bld_m_' + buildings.ForgeHorseshoe._vueBinding] = 20;
         def['bld_m_' + buildings.RedForgeHorseshoe._vueBinding] = 20;
+        def['bld_m_' + buildings.TauForgeHorseshoe._vueBinding] = 20;
         def['bld_m_' + buildings.BeltEleriumShip._vueBinding] = 15;
         def['bld_m_' + buildings.BeltIridiumShip._vueBinding] = 15;
 
@@ -12168,6 +12170,11 @@
     }
 
     function checkEvolutionResult() {
+        if (!settings.masterScriptToggle || !state.evoCheckNeeded) {
+            return true;
+        }
+        state.evoCheckNeeded = false;
+
         let needReset = false;
         if (settings.autoEvolution && settings.evolutionBackup) {
             if (settings.userEvolutionTarget === "auto") {
@@ -12431,12 +12438,17 @@
             state.goal = "Evolution";
         } else if (state.goal === "Evolution") {
             // Check what we got after evolution
-            if (settings.masterScriptToggle && !checkEvolutionResult()) {
+            if (!checkEvolutionResult()) {
                 return;
             }
             state.goal = "Standard";
             if (settingsRaw.triggers.length > 0) { // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
                 updateTriggerSettingsContent();
+            }
+        } else if (game.global.city.calendar.day === 1 && (game.global.race.slow || game.global.race.hyper || game.global.race.species === "junker")) {
+            // Fallback check, in case if game reloaded page after evolution
+            if (!checkEvolutionResult()) {
+                return;
             }
         }
 
@@ -12683,7 +12695,7 @@
         if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargetsAll.includes(obj) && !state.triggerTargets.includes(obj)) {
             let conflict = getCostConflict(obj);
             if (conflict) {
-                notes.push(`Conflicts with ${conflict.obj.name} for <ul>${conflict.resList.map(res => {return `<li class="has-text-info">${res}</li>`;}).join('')}</ul> (${conflict.obj.cause})`);
+                notes.push(`Conflicts with ${conflict.obj.name} for ${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join(', ')} (${conflict.obj.cause})`);
             }
         }
 
