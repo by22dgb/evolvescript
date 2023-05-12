@@ -12302,8 +12302,8 @@
             longestTimeLeft = 0;
 
         Object.keys(target.cost).forEach(resource => {
-            const resourceCostTotal = target.cost[resource] * remainingSegments;
-            const resourceTimeLeftRaw = resourceCostTotal / game.global.resource[resource].diff;
+            const resourceCostTotal = (target.cost[resource] * remainingSegments);
+            const resourceTimeLeftRaw = (resourceCostTotal - game.global.resource[resource].amount) / game.global.resource[resource].diff;
 
             if (resourceTimeLeftRaw > longestTimeLeft && resourceCostTotal > game.global.resource[resource].amount) {
                 longestResource = resource;
@@ -12333,7 +12333,7 @@
                 targetSegments = '',
                 researchTimeLeft = 0;
 
-            if (target.count) {
+            if (target.count && !(target.is && target.is.multiSegmented)) {
                 targetName += ` #${target.count + 1}`;
             }
 
