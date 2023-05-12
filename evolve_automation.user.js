@@ -12285,7 +12285,11 @@
     }
 
     function getMultiSegmentedTimeLeft(target) {
-        const remainingSegments = target.gameMax - target.count;
+        let remainingSegments = target.gameMax - target.count;
+
+        if (target instanceof Project) {
+            remainingSegments = (100 - target.progress) / target.currentStep;
+        }
 
         let longestResource = '',
             longestTimeLeft = 0;
@@ -12317,10 +12321,14 @@
         }
 
         $(`#active_targets ul.active_targets-list.${type}`).html(queuedTargets.map(target => {
-            let targetName = `<span class="active-target-title name">${target.name}</span>`;
+            let targetName = target.name;
             let targetTimeLeft = '',
                 targetSegments = '',
                 researchTimeLeft = 0;
+
+            if (target.count) {
+                targetName += ` #${target.count + 1}`;
+            }
 
             if (target.instance && target.instance.time) {
                 targetTimeLeft = `${target.instance.time}`;
@@ -12335,7 +12343,10 @@
                     targetTimeLeft = 'Not enough Knowledge';
                 }
             } else if (type === 'arpa' || target instanceof Project) {
-                targetTimeLeft = `${target.progress}%`;
+                targetName += ` (${target.progress}%)`;
+
+                const segmentedTimeLeft = getMultiSegmentedTimeLeft(target);
+                targetTimeLeft = `${segmentedTimeLeft.timeLeft}</span> <span class="has-text-danger">(${segmentedTimeLeft.resource})</span>`;
             }
 
             const costsHTML = Object.keys(costs).map(resource => {
@@ -12391,7 +12402,7 @@
                 targetTimeLeft = poly.timeFormat(researchTimeLeft);
             }
 
-            targetName += `<span class="active-target-title time">${targetTimeLeft} <span class="active-target-segments has-text-special">${targetSegments}</span></span>`;
+            const targetNameDisplay = `<span class="active-target-title name">${targetName} </span><span class="active-target-title time">${targetTimeLeft} <span class="active-target-segments has-text-special">${targetSegments}</span></span>`;
 
 
             // for finding element in queue
@@ -12406,7 +12417,7 @@
 
             return `
                     <li class="active-target-li">
-                        ${targetName} <span class="active-target-remove-x ${type}" data-queueid="${queueid}" data-type="${type}">＋</span>
+                        ${targetNameDisplay} <span class="active-target-remove-x ${type}" data-queueid="${queueid}" data-type="${type}">＋</span>
                         <ul class="active_targets-sub-list">
                             ${costsHTML}
                         </ul>
