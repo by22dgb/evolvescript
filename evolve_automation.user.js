@@ -12254,7 +12254,10 @@
           + (buildings.TauStarRingworld.count >= 1000 ? 1 : 0) // Ringworld built
           + (game.global.tech.tau_gas2 >= 5 ? 1 : 0) // Alien Space Station built
           + (game.global.tech.replicator ? 1 : 0) // Matter Replicator unlocked
-          + (game.global.tauceti.tau_factory?.count > 0 ? 1 : 0); // Factory built in lone survivor
+          + (game.global.tauceti.tau_factory?.count > 0 ? 1 : 0) // Factory built in lone survivor
+          + (game.global.space.g_factory?.count > 0 ? 1 : 0) // Graphene plant built in lone survivor
+          + (game.global.tauceti.mining_ship?.count > 0 ? 1 : 0); // Extractor ship built
+
 
         if (game.global.settings.showShipYard) { // TP Ship Yard
           state.tabHash += 1
