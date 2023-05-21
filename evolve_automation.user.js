@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.18
+// @version      3.3.1.108.19
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -790,6 +790,12 @@
         get vue() {
             return getVueById(this._vueBinding);
         }
+
+        /* That's a right(ish) way to do, but compared to hardcoded numbers it's a performance tax for... nothing really, as i'll still need to manually declare a lot of things for each new building, and it's already declared for all existing ones. I'll put it on hold for now.
+        get gameMax() {
+            // queue_complete need an initialized instance to read a current count
+            return this.instance && this.definition.queue_complete ? this.instance.count + this.definition.queue_complete() : Number.MAX_SAFE_INTEGER;
+        }*/
 
         get autoMax() {
             // There is a game max. eg. world collider can only be built 1859 times
@@ -6775,7 +6781,6 @@
             autoPrestige: false,
             tickRate: 4,
             tickSchedule: false,
-            autoAssembleGene: false,
             researchRequest: true,
             researchRequestSpace: false,
             missionRequest: true,
@@ -6955,7 +6960,12 @@
             imitateRace: "ignore",
             buildingShrineType: "know",
             slaveIncome: 25000,
-            jobScalePop: true
+            jobScalePop: true,
+
+            autoGenetics: false,
+            geneticsSequence: "none",
+            geneticsBoost: "none",
+            geneticsAssemble: "auto"
         };
 
         for (let i = 0; i < MinorTraitManager.priorityList.length; i++) {
@@ -6972,8 +6982,9 @@
     }
 
     function resetMutableTraitSettings(reset) {
+        let unobtainableTraits = ["xenophobic", "rigid", "soul_eater"];
         MutableTraitManager.priorityList = Object.entries(game.traits)
-          .filter(([id, trait]) => (trait.type === "major" || trait.type === "genus") && id !== "xenophobic" && id !== "soul_eater")
+          .filter(([id, trait]) => (trait.type === "major" || trait.type === "genus") && !unobtainableTraits.includes(id))
           .map(([id, trait]) => trait.type === "major" ? new MajorTrait(id) : new GenusTrait(id))
           .sort((a, b) => Object.keys(poly.genus_traits).indexOf(a.genus) - Object.keys(poly.genus_traits).indexOf(b.genus) || a.type < b.type);
 
@@ -7603,14 +7614,15 @@
         migrateSetting("fleetScanEris", "fleet_outer_pr_spc_eris", (v) => v ? 100 : 0);
         migrateSetting("jobDisableCraftsmans", "productionCraftsmen", (v) => v ? "nocraft" : "always");
         migrateSetting("activeTriggerUI", "activeTargetsUI", (v) => v);
+        migrateSetting("autoAssembleGene", "autoGenetics", (v) => v);
         // Migrate setting as override, in case if someone actualy use it
         if (settingsRaw.hasOwnProperty("genesAssembleGeneAlways")) {
             if (settingsRaw.overrides.genesAssembleGeneAlways) {
-                settingsRaw.overrides.autoAssembleGene = settingsRaw.overrides.genesAssembleGeneAlways.concat(settingsRaw.overrides.autoAssembleGene ?? []);
+                settingsRaw.overrides.geneticsAssemble = settingsRaw.overrides.genesAssembleGeneAlways.concat(settingsRaw.overrides.geneticsAssemble ?? []);
             }
             if (!settingsRaw.genesAssembleGeneAlways) {
-                settingsRaw.overrides.autoAssembleGene = settingsRaw.overrides.autoAssembleGene ?? [];
-                settingsRaw.overrides.autoAssembleGene.push({"type1":"ResearchComplete","arg1":"tech-dna_sequencer","type2":"Boolean","arg2":true,"cmp":"==","ret":false});
+                settingsRaw.overrides.geneticsAssemble = settingsRaw.overrides.geneticsAssemble ?? [];
+                settingsRaw.overrides.geneticsAssemble.push({"type1":"ResearchComplete","arg1":"tech-dna_sequencer","type2":"Boolean","arg2":true,"cmp":"==","ret":"none"});
             }
         }
         if (settingsRaw.hasOwnProperty("prestigeWhiteholeEjectAllCount") && settingsRaw.prestigeWhiteholeEjectAllCount <= 20) {
@@ -8965,8 +8977,7 @@
         state.lastFarmerCount = farmerIndex === -1 ? 0 : (requiredWorkers[farmerIndex] + requiredServants[farmerIndex] * servantMod);
 
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
-        // Unless we're already assigning to default, and don't want it to be changed now
-        if (!craftOnly && settings.jobSetDefault && minDefault === 0) {
+        if (!craftOnly && settings.jobSetDefault) {
             /*if (jobs.Forager.isManaged() && requiredWorkers[jobList.indexOf(jobs.Forager)] > 0) {
                 jobs.Forager.setAsDefault();
             } else*/
@@ -9925,29 +9936,58 @@
         getVueById('sshifter')?.setShape(settings.shifterGenus);
     }
 
-    function autoAssembleGene() {
-        // If we haven't got the assemble gene button or don't have full knowledge then return
-        if (!haveTech("genetics", 6) || resources.Knowledge.currentQuantity < 200000 || resources.Knowledge.isDemanded()) {
-            return;
+    function autoGenetics() {
+        let genetics = game.global.tech.genetics;
+        if (!genetics) {
+            return; // Genetics not researched yet
+        }
+
+        let geneticsVue = getVueById("arpaSequence");
+        let seq = game.global.arpa.sequence;
+        if (!geneticsVue || !seq) {
+            return; // Just in case
+        }
+
+        if ((settings.geneticsSequence === "enabled" && !seq.on) ||
+            (settings.geneticsSequence === "disabled" && seq.on) ||
+            (settings.geneticsSequence === "decode" && seq.on && genetics > 1)) {
+            geneticsVue.toggle();
+        }
+
+        if (genetics < 5) {
+            return; // Boost not researched yet
+        }
+
+        if ((settings.geneticsBoost === "enabled" && !seq.boost) ||
+            (settings.geneticsBoost === "disabled" && seq.boost)) {
+            geneticsVue.booster();
+        }
+
+        if (genetics < 6) {
+            return; // Assembling not researched yet
+        }
+
+        if ((settings.geneticsAssemble === "enabled" && !seq.auto) ||
+            (settings.geneticsAssemble === "disabled" && seq.auto)) {
+            geneticsVue.auto_seq();
+        }
+
+        if (settings.geneticsAssemble !== "auto" || resources.Knowledge.currentQuantity < 200000 || resources.Knowledge.isDemanded()) {
+            return; // Auto assembling disabled, knowledge is too low, or demanded
         }
 
         let nextTickKnowledge = resources.Knowledge.currentQuantity + resources.Knowledge.rateOfChange / ticksPerSecond();
         let overflowKnowledge = nextTickKnowledge - resources.Knowledge.maxQuantity;
-        if (overflowKnowledge < 0) {
-            return;
+        if (overflowKnowledge <= 0) {
+            return; // No overflow yet, we can wait untill next script tick
         }
 
-        let vue = getVueById("arpaSequence");
-        if (vue === undefined) { return false; }
-
         let genesToAssemble = Math.ceil(overflowKnowledge / 200000);
-        if (genesToAssemble > 0) {
-            resources.Knowledge.currentQuantity -= 200000 * genesToAssemble;
-            resources.Genes.currentQuantity += 1 * genesToAssemble;
+        resources.Knowledge.currentQuantity -= 200000 * genesToAssemble;
+        resources.Genes.currentQuantity += 1 * genesToAssemble;
 
-            for (let m of KeyManager.click(genesToAssemble)) {
-                vue.novo();
-            }
+        for (let m of KeyManager.click(genesToAssemble)) {
+            geneticsVue.novo();
         }
     }
 
@@ -12445,7 +12485,7 @@
             if (settingsRaw.triggers.length > 0) { // We've moved from evolution to standard play. There are technology descriptions that we couldn't update until now.
                 updateTriggerSettingsContent();
             }
-        } else if (game.global.city.calendar.day === 1 && (game.global.race.slow || game.global.race.hyper || game.global.race.species === "junker")) {
+        } else if (game.global.stats.days === 1 && (game.global.race.slow || game.global.race.hyper || game.global.race.species === "junker")) {
             // Fallback check, in case if game reloaded page after evolution
             if (!checkEvolutionResult()) {
                 return;
@@ -12869,6 +12909,7 @@
             let conditions = settingsRaw.overrides[key];
             for (let i = 0; i < conditions.length; i++) {
                 let check = conditions[i];
+                let ret = conditions[i].ret;
                 try {
                     if (!checkTypes[check.type1]) {
                         throw `${check.type1} check not found`;
@@ -12881,15 +12922,18 @@
                     if (!checkCompare[check.cmp](var1, var2)) {
                         continue;
                     }
+                    if (check.cmp === "A?B") {
+                        ret = var2;
+                    }
 
-                    if (typeof settingsRaw[key] === typeof check.ret) {
+                    if (typeof settingsRaw[key] === typeof ret) {
                         // Override single value
-                        overrides[key] = check.ret;
+                        overrides[key] = ret;
                         break;
                     } else if (typeof settingsRaw[key] === "object") {
                         // Xor lists
                         xorLists[key] = xorLists[key] ?? [];
-                        xorLists[key].push(check.ret);
+                        xorLists[key].push(ret);
                     } else {
                         throw `Expected type: ${typeof settingsRaw[key]}; Override type: ${typeof check.ret}`;
                     }
@@ -13036,7 +13080,7 @@
         if (!settings.autoTrigger || !autoTrigger()) {
             // Only go to autoResearch and autoBuild if triggers not building anything at this very moment, to ensure they won't steal reasources from triggers
             if (settings.autoResearch) {
-                autoResearch(); // Called before autoBuild and autoAssembleGene - knowledge goes to techs first
+                autoResearch(); // Called before autoBuild and autoGenetics - knowledge goes to techs first
             }
             if (settings.autoBuild || settings.autoARPA) {
                 autoBuild(); // Called after autoStorage to compensate fluctuations of quantum(caused by previous tick's adjustments) levels before weightings
@@ -13057,8 +13101,8 @@
         if (settings.autoMech) {
             autoMech(); // Called after autoBuild, to prevent stealing supplies from mechs
         }
-        if (settings.autoAssembleGene) {
-            autoAssembleGene(); // Called after autoBuild and autoResearch to prevent stealing knowledge from them
+        if (settings.autoGenetics) {
+            autoGenetics(); // Called after autoBuild and autoResearch to prevent stealing knowledge from them
         }
         if (settings.autoMinorTrait) {
             autoMinorTrait(); // Called after auto assemble to utilize new genes right asap
@@ -13771,6 +13815,7 @@
         "XNOR": (a, b) => !a == !b,
         "AND!": (a, b) => a && !b,
         "OR!": (a, b) => a || !b,
+        "A?B": (a, b) => a,
     }
 
     const argType = {
@@ -14031,13 +14076,15 @@
             tableElement = tableElement.next();
             tableElement.append(buildConditionArg(override, 1));
             tableElement = tableElement.next();
-            tableElement.append(buildConditionComparator(override));
+            tableElement.append(buildConditionComparator(override, rebuild));
             tableElement = tableElement.next();
             tableElement.append(buildConditionType(override, 2, rebuild));
             tableElement = tableElement.next();
             tableElement.append(buildConditionArg(override, 2));
             tableElement = tableElement.next();
-            tableElement.append(buildConditionRet(override, type, options));
+            if (override.cmp !== "A?B") {
+                tableElement.append(buildConditionRet(override, type, options));
+            }
             tableElement = tableElement.next();
             tableElement.append(buildConditionRemove(settingName, i, rebuild));
         }
@@ -14175,13 +14222,14 @@
         }) : "";
     }
 
-    function buildConditionComparator(override) {
-        let types = Object.entries(checkCompare).map(([id, fn]) => `<option value="${id}" title="${fn.toString().substr(10)}">${id}</option>`).join();
+    function buildConditionComparator(override, rebuild) {
+        let types = Object.entries(checkCompare).map(([id, fn]) => `<option value="${id}" title="${id === "A?B" ? "Special check, uses Var2 as result if Var1 is truthy" : fn.toString().substr(10)}">${id}</option>`).join();
         return $(`<select style="width: 100%">${types}</select>`)
         .val(override.cmp)
         .on('change', function() {
             override.cmp = this.value;
             updateSettingsFromState();
+            rebuild();
         });
     }
 
@@ -14472,7 +14520,7 @@
             updateGeneralSettingsContent();
             removeActiveTargetsUI();
 
-            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "autoAssembleGene");
+            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
@@ -15921,7 +15969,7 @@
 
         for (let i = 0; i < MarketManager.priorityList.length; i++) {
             const resource = MarketManager.priorityList[i];
-            newTableBodyText += `<tr value="${resource.id}" class="script-draggable"><td id="script_market_${resource.id}" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
+            newTableBodyText += `<tr value="${resource.id}" class="script-draggable"><td id="script_market_${resource.id}" style="width:15%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%;border-right-width:1px"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:10%"></td><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
         }
         tableBodyNode.append($(newTableBodyText));
 
@@ -16111,7 +16159,7 @@
             updateSettingsFromState();
             updateTraitSettingsContent();
 
-            resetCheckbox("autoMinorTrait", "autoMutateTraits");
+            resetCheckbox("autoMinorTrait", "autoMutateTraits", "autoGenetics");
         };
 
         buildSettingsSection(sectionId, sectionName, resetFunction, updateTraitSettingsContent);
@@ -16139,6 +16187,7 @@
 
         currentNode.empty().off("*");
 
+        addStandardHeading(currentNode, "Major Traits");
         let genusOptions = [{val: "ignore", label: "Ignore", hint: "Do not shift genus"},
                             {val: "none", label: game.loc(`genelab_genus_none`)},
                             ...Object.values(game.races).map(r => r.type).filter((g, i, a) => g && g !== "organism" && g !== "synthetic" && a.indexOf(g) === i).map(g => (
@@ -16186,6 +16235,24 @@
 
         // Minor Traits
         addStandardHeading(currentNode, "Minor Traits");
+
+        let sequenceOptions = [{val: "none", label: "Ignore", hint: "Ignored by script, managed by game and player"},
+                               {val: "enabled", label: "Enable", hint: "Sequencer enabled"},
+                               {val: "disabled", label: "Disable", hint: "Sequencer disabled"},
+                               {val: "decode", label: "Decode", hint: "Decode genome only, with no further mutations"}];
+        addSettingsSelect(currentNode, "geneticsSequence", "Sequencer", "Manages genome decoding, and mutations", sequenceOptions);
+
+        let boostOptions = [{val: "none", label: "Ignore", hint: "Ignored by script, managed by game and player"},
+                            {val: "enabled", label: "Enable", hint: "Booster enabled"},
+                            {val: "disabled", label: "Disable", hint: "Booster disabled"}];
+        addSettingsSelect(currentNode, "geneticsBoost", "Sequence Booster", "Manages sequencer booster", boostOptions);
+
+        let assembleOptions = [{val: "none", label: "Ignore", hint: "Ignored by script, managed by game and player"},
+                               {val: "enabled", label: "Enable", hint: "Auto Sequencer enable"},
+                               {val: "disabled", label: "Disable", hint: "Auto Sequencer disable"},
+                               {val: "auto", label: "Script Managed", hint: "Gene assembling managed by script, allowing to dump excess knowledge at faster rate, matching income"}];
+        addSettingsSelect(currentNode, "geneticsAssemble", "Auto Sequence", "Manages genome decoding, and mutations", assembleOptions);
+
         currentNode.append(`
           <table style="width:100%">
             <tr>
@@ -17496,7 +17563,7 @@
             createSettingToggle(togglesNode, 'autoFactory', 'Manages factory production.');
             createSettingToggle(togglesNode, 'autoMiningDroid', 'Manages mining droid production.');
             createSettingToggle(togglesNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
-            createSettingToggle(togglesNode, 'autoAssembleGene', 'Automatically assembles genes only when your knowledge is at max.');
+            createSettingToggle(togglesNode, 'autoGenetics', 'Managed genetics settings, and automatically assembles genes more optimally than ingame sequencer');
             createSettingToggle(togglesNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings. Also manages Mimic genus.');
             createSettingToggle(togglesNode, 'autoMutateTraits', 'Mutate in or out major and genus traits. WARNING: This will spend spend Plasmids and Anti-Plasmids.');
             createSettingToggle(togglesNode, 'autoEject', 'Eject excess resources to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements. Disabled when Mass Ejector Optimizer governor task is active.', createEjectToggles, removeEjectToggles);
@@ -18191,8 +18258,8 @@
         timeFormat: function(e){let i;if(e<0)i=game.loc("time_never");else if((e=+e.toFixed(0))>60){let l=e%60,s=(e-l)/60;if(s>=60){let e=s%60,l=(s-e)/60;if(l>24){i=`${(l-(e=l%24))/24}d ${e}h`}else i=`${l}h ${e=("0"+e).slice(-2)}m`}else i=`${s=("0"+s).slice(-2)}m ${l=("0"+l).slice(-2)}s`}else i=`${e=("0"+e).slice(-2)}s`;return i},
         // export universeAffix(universe) from achieve.js
         universeAffix: function(e){switch(e=e||game.global.race.universe){case"evil":return"e";case"antimatter":return"a";case"heavy":return"h";case"micro":return"m";case"magic":return"mg";default:return"l"}},
-        // export const genus_traits from species.js (added spores:1 to fungi manually)
-        genus_traits: {humanoid:{adaptable:1,wasteful:1},carnivore:{carnivore:1,beast:1,cautious:1},herbivore:{herbivore:1,instinct:1},small:{small:1,weak:1},giant:{large:1,strong:1},reptilian:{cold_blooded:1,scales:1},avian:{hollow_bones:1,rigid:1},insectoid:{high_pop:1,fast_growth:1,high_metabolism:1},plant:{sappy:1,asymmetrical:1},fungi:{detritivore:1,spongy:1,spores:1},aquatic:{submerged:1,low_light:1},fey:{elusive:1,iron_allergy:1},heat:{smoldering:1,cold_intolerance:1},polar:{chilled:1,heat_intolerance:1},sand:{scavenger:1,nomadic:1},demonic:{immoral:1,evil:1,soul_eater:1},angelic:{blissful:1,pompous:1,holy:1},synthetic:{artifical:1,powered:1}},
+        // export const genus_traits from races.js (added spores:1 to fungi manually)
+        genus_traits: {humanoid:{adaptable:1,wasteful:1},carnivore:{carnivore:1,beast:1,cautious:1},herbivore:{herbivore:1,instinct:1},small:{small:1,weak:1},giant:{large:1,strong:1},reptilian:{cold_blooded:1,scales:1},avian:{flier:1,hollow_bones:1,sky_lover:1},insectoid:{high_pop:1,fast_growth:1,high_metabolism:1},plant:{sappy:1,asymmetrical:1},fungi:{detritivore:1,spongy:1,spores:1},aquatic:{submerged:1,low_light:1},fey:{elusive:1,iron_allergy:1},heat:{smoldering:1,cold_intolerance:1},polar:{chilled:1,heat_intolerance:1},sand:{scavenger:1,nomadic:1},demonic:{immoral:1,evil:1,soul_eater:1},angelic:{blissful:1,pompous:1,holy:1},synthetic:{artifical:1,powered:1},eldritch:{psychic:1,tormented:1,darkness:1,unfathomable:1}},
         // export const neg_roll_traits from races.js
         neg_roll_traits: ['diverse','arrogant','angry','lazy','paranoid','greedy','puny','dumb','nearsighted','gluttony','slow','hard_of_hearing','pessimistic','solitary','pyrophobia','skittish','nyctophilia','frail','atrophy','invertebrate','pathetic','invertebrate','unorganized','slow_regen','snowy','mistrustful','fragrant','freespirit','hooved','heavy','gnawer'],
 
