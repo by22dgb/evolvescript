@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.19
+// @version      3.3.1.108.20
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1414,19 +1414,19 @@
             }
 
             // Check pillar
-            if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic")) {
+            if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic" || settings.prestigeType === "witch_ascension")) {
                 weighting += 1000 * Math.max(0, starLevel - (game.global.pillars[this.id] ?? 0));
                 // Check genus pillar for Enlightenment
                 if (this.id !== "custom" && this.id !== "junker" && this.id !== "sludge") {
                     let genusPillar = Math.max(...Object.values(races)
-                      .filter(r => r.id !== "custom" && r.id !== "junker" & r.id !== "sludge")
+                      .filter(r => r.genus === this.genus && r.id !== "custom" && r.id !== "junker" && r.id !== "sludge")
                       .map(r => (game.global.pillars[r.id] ?? 0)));
                     weighting += 10000 * Math.max(0, starLevel - genusPillar);
                 }
             }
 
             // Check greatness\extinction achievement
-            if (["bioseed", "ascension", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType)) {
+            if (["bioseed", "ascension", "witch_ascension", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType)) {
                 checkAchievement(100, "genus_" + this.genus);
             } else if (this.id !== "sludge" || settings.prestigeType !== "mad") {
                 checkAchievement(100, "extinct_" + this.id);
@@ -1504,6 +1504,7 @@
                             checkFeat("organ_harvester");
                             break;
                         case "ascension":
+                        case "witch_ascension":
                         case "demonic":
                             checkFeat("garbage_pie");
                         case "terraform":
@@ -1526,7 +1527,7 @@
                 }
 
                 // Digital Ascension
-                if (settings.prestigeType === "ascension" && settings.challenge_emfield && this.genus === "artifical" && this.id !== "custom") {
+                if ((settings.prestigeType === "ascension" || settings.prestigeType === "witch_ascension") && settings.challenge_emfield && this.genus === "artifical" && this.id !== "custom") {
                     checkFeat("digital_ascension");
                 }
 
@@ -1572,6 +1573,8 @@
                     return game.global.city.biome === 'eden' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
                 case "synthetic":
                     return game.global.stats.achieve[`obsolete`]?.l >= 5 ? 1 : 0;
+                case "eldritch":
+                    return game.global.stats.achieve['nightmare']?.mg ? 1 : 0;
                 case undefined: // Nonexistent custom
                     return 0;
                 default:
@@ -1603,9 +1606,11 @@
                 case "angelic":
                     return "Eden planet";
                 case "synthetic":
-                    return game.loc('achieve_obsolete_desc');
+                    return game.loc('wiki_achieve_obsolete');
+                case "eldritch":
+                    return game.loc('wiki_achieve_nightmare');
                 case undefined: // Nonexistent custom
-                    return game.loc('achieve_ascended_desc');
+                    return game.loc('wiki_achieve_ascended');
                 default:
                     return "";
             }
@@ -1953,6 +1958,11 @@
         [{id:"inflation", trait:"inflation"}],
         [{id:"sludge", trait:"sludge"}],
         [{id:"orbit_decay", trait:"orbit_decay"}],
+        //[{id:"nonstandard", trait:"nonstandard"}],
+        //[{id:"gravity_well", trait:"gravity_well"}],
+        [{id:"witch_hunter", trait:"witch_hunter"}],
+        //[{id:"warlord", trait:"warlord"}],
+        //[{id:"storage_wars", trait:"storage_wars"}],
         [{id:"junker", trait:"junker"}],
         [{id:"cataclysm", trait:"cataclysm"}],
         [{id:"banana", trait:"banana"}],
@@ -1961,7 +1971,7 @@
     ];
     const governors = ["soldier", "criminal", "entrepreneur", "educator", "spiritual", "bluecollar", "noble", "media", "sports", "bureaucrat"];
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...challenges.map(c => "challenge_" + c[0].id)];
-    const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", apocalypse: "AI Apocalypse", ascension: "Ascension", demonic: "Infusion", terraform: "Terraform", matrix: "Matrix", retire: "Retirement", eden: "Eden"};
+    const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", apocalypse: "AI Apocalypse", ascension: "Ascension", witch_ascension: "Witch Ascension", demonic: "Infusion", terraform: "Terraform", matrix: "Matrix", retire: "Retirement", eden: "Eden"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly", "cloning_facility"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "trait", "weighting", "ejector", "planet", "mech", "magic"];
@@ -2038,6 +2048,8 @@
         Population: new Population("Population", "Population"), // We can't store the full elementId because we don't know the name of the population node until later
         Slave: new Resource("Slave", "Slave"),
         Mana: new Resource("Mana", "Mana"),
+        Energy: new Resource("Energy", "Energy"),
+        Sus: new Resource("Suspicion", "Sus"),
         Knowledge: new Resource("Knowledge", "Knowledge"),
         Zen: new Resource("Zen", "Zen"),
         Crates: new Resource("Crates", "Crates"),
@@ -2159,6 +2171,7 @@
         HellSurveyor: new Job("hell_surveyor", "Hell Surveyor", {smart: true}),
         SpaceMiner: new Job("space_miner", "Space Miner", {smart: true}),
         PitMiner: new Job("pit_miner", "Pit Miner"),
+        Torturer: new Job("torturer", "Tormentor", {smart: true}),
         Archaeologist: new Job("archaeologist", "Archaeologist"),
         Banker: new Job("banker", "Banker", {smart: true}),
         Priest: new Job("priest", "Priest"),
@@ -2194,6 +2207,7 @@
         SoulWell: new Action("Soul Well", "city", "soul_well", ""),
         SlavePen: new Action("Slave Pen", "city", "slave_pen", ""),
         Transmitter: new Action("Transmitter", "city", "transmitter", "", {housing: true}),
+        CaptiveHousing: new Action("Captive Housing", "city", "captive_housing", ""),
         Farm: new Action("Farm", "city", "farm", "", {housing: true}),
         CompostHeap: new Action("Compost Heap", "city", "compost", ""),
         Mill: new Action("Windmill", "city", "mill", "", {smart: true}),
@@ -2208,6 +2222,7 @@
         Warehouse: new Action("Container Port", "city", "warehouse", ""),
         Bank: new Action("Bank", "city", "bank", ""),
         Pylon: new Action("Pylon", "city", "pylon", ""),
+        ConcealWard: new Action("Conceal Ward (Witch Hunting)", "city", "conceal_ward", ""),
         Graveyard: new Action ("Graveyard", "city", "graveyard", ""),
         LumberYard: new Action("Lumber Yard", "city", "lumber_yard", ""),
         Sawmill: new Action("Sawmill", "city", "sawmill", ""),
@@ -2254,6 +2269,7 @@
         RedMission: new Action("Red Mission", "space", "red_mission", "spc_red"),
         RedSpaceport: new Action("Red Spaceport", "space", "spaceport", "spc_red"),
         RedTower: new Action("Red Space Control", "space", "red_tower", "spc_red"),
+        RedCaptiveHousing: new CityAction("Red Captive Housing (Cataclysm)", "space", "captive_housing", "spc_red"),
         RedTerraformer: new Action("Red Terraformer (Orbit Decay)", "space", "terraformer", "spc_red", {multiSegmented: true}),
         RedAtmoTerraformer: new Action("Red Terraformer (Orbit Decay, Complete)", "space", "atmo_terraformer", "spc_red"),
         RedTerraform: new Action("Red Terraform (Orbit Decay)", "space", "terraform", "spc_red", {prestige: true}),
@@ -2358,6 +2374,7 @@
         TauOrbitalStation: new Action("Tau Orbital Station", "tauceti", "orbital_station", "tau_home"),
         TauColony: new Action("Tau Colony", "tauceti", "colony", "tau_home", {housing: true}),
         TauHousing: new Action("Tau Housing", "tauceti", "tau_housing", "tau_home", {housing: true}),
+        TauCaptiveHousing: new CityAction("Tau Captive Housing", "tauceti", "captive_housing", "tau_home"),
         TauPylon: new Action("Tau Pylon", "tauceti", "pylon", "tau_home"),
         TauCloning: new ResourceAction("Tau Cloning", "tauceti", "cloning_facility", "tau_home", {housing: true}, "Population"),
         TauForgeHorseshoe: new ResourceAction("Tau Horseshoe", "tauceti", "horseshoe", "tau_home", {housing: true, garrison: true}, "Horseshoe"),
@@ -2526,6 +2543,8 @@
         PitSoulForge: new Action("Pit Soul Forge", "portal", "soul_forge", "prtl_pit"),
         PitGunEmplacement: new Action("Pit Gun Emplacement", "portal", "gun_emplacement", "prtl_pit"),
         PitSoulAttractor: new Action("Pit Soul Attractor", "portal", "soul_attractor", "prtl_pit"),
+        PitSoulCapacitor: new Action("Pit Soul Capacitor (Witch Hunting)", "portal", "soul_capacitor", "prtl_pit"),
+        PitAbsorptionChamber: new Action("Pit Absorption Chamber (Witch Hunting)", "portal", "absorption_chamber", "prtl_pit"),
 
         RuinsMission: new Action("Ruins Mission", "portal", "ruins_mission", "prtl_ruins"),
         RuinsGuardPost: new Action("Ruins Guard Post", "portal", "guard_post", "prtl_ruins", {smart: true}),
@@ -2922,7 +2941,7 @@
           () => "Prestiging not currently allowed",
           () => 0
       ],[
-          () => game.global.race['truepath'] && !isPrestigeAllowed("retire"),
+          () => game.global.race['truepath'] && (!isPrestigeAllowed("retire") || buildings.TauGas2MatrioshkaBrain.count < 1000),
           (building) => building === buildings.TauGas2IgniteGasGiant,
           () => "Prestiging not currently allowed",
           () => 0
@@ -3615,7 +3634,7 @@
         _industryVue: undefined,
 
         Productions: addProps({
-            Farmer: {id: 'farmer', isUnlocked: () => !game.global.race['orbit_decayed'] && !game.global.race['cataclysm'] && !game.global.race['carnivore'] && !game.global.race['soul_eater'] && !game.global.race['artifical']},
+            Farmer: {id: 'farmer', isUnlocked: () => !game.global.race['orbit_decayed'] && !game.global.race['cataclysm'] && !game.global.race['carnivore'] && !game.global.race['soul_eater'] && !game.global.race['artifical'] && !game.global.race['unfathomable']},
             Miner: {id: 'miner', isUnlocked: () => !game.global.race['cataclysm']},
             Lumberjack: {id: 'lumberjack', isUnlocked: () => !game.global.race['orbit_decayed'] && !game.global.race['cataclysm'] && isLumberRace() && !game.global.race['evil']},
             Science: {id: 'science', isUnlocked: () => true},
@@ -6059,6 +6078,8 @@
         buildings.SiriusAscensionMachine.gameMax = 100;
         buildings.SiriusAscensionTrigger.gameMax = 1;
         buildings.PitSoulForge.gameMax = 1;
+        buildings.PitSoulCapacitor.gameMax = 40;
+        buildings.PitAbsorptionChamber.gameMax = 100;
         buildings.GateEastTower.gameMax = 1;
         buildings.GateWestTower.gameMax = 1;
         buildings.RuinsVault.gameMax = 2;
@@ -6298,6 +6319,7 @@
         let mammals = [e.mammals, ...bilateralSymmetry];
 
         let genusEvolution = {
+            eldritch: [e.sentience, e.eldritch, ...bilateralSymmetry],
             aquatic: [e.sentience, e.aquatic, ...bilateralSymmetry],
             insectoid: [e.sentience, e.athropods, ...bilateralSymmetry],
             humanoid: [e.sentience, e.humanoid, ...mammals],
@@ -6392,9 +6414,13 @@
         priorityList.push(buildings.SoulWell); // Soul Eater trait
         priorityList.push(buildings.SlavePen); // Slaver trait
         priorityList.push(buildings.SlaveMarket); // Slaver trait
+        priorityList.push(buildings.CaptiveHousing); // Unfathomable trait
+        priorityList.push(buildings.RedCaptiveHousing); // Unfathomable trait
+        priorityList.push(buildings.TauCaptiveHousing); // Unfathomable trait
         priorityList.push(buildings.Graveyard); // Evil trait
         priorityList.push(buildings.Shrine); // Magnificent trait
         priorityList.push(buildings.CompostHeap); // Detritivore trait
+        priorityList.push(buildings.ConcealWard); // Witch Hunting only
         priorityList.push(buildings.Pylon); // Magic Universe only
         priorityList.push(buildings.RedPylon); // Magic Universe & Cataclysm only
         priorityList.push(buildings.TauPylon); // Magic Universe & True Path only
@@ -6565,6 +6591,8 @@
         priorityList.push(buildings.PortalCarport);
         priorityList.push(buildings.PitGunEmplacement);
         priorityList.push(buildings.PitSoulAttractor);
+        priorityList.push(buildings.PitSoulCapacitor);
+        priorityList.push(buildings.PitAbsorptionChamber);
         priorityList.push(buildings.PortalRepairDroid);
         priorityList.push(buildings.PitMission);
         priorityList.push(buildings.PitAssaultForge);
@@ -6961,6 +6989,7 @@
             buildingShrineType: "know",
             slaveIncome: 25000,
             jobScalePop: true,
+            psychicPower: "auto",
 
             autoGenetics: false,
             geneticsSequence: "none",
@@ -7024,6 +7053,7 @@
             jobQuarryWeighting: 50,
             jobCrystalWeighting: 50,
             jobScavengerWeighting: 5,
+            jobRaiderWeighting: 20,
             jobDisableMiners: true,
         }
 
@@ -7063,6 +7093,7 @@
         setBreakpoints(jobs.Entertainer, 2, 5, -1);
         setBreakpoints(jobs.HellSurveyor, 1, 1, -1);
         setBreakpoints(jobs.SpaceMiner, 1, 3, -1);
+        setBreakpoints(jobs.Torturer, 1, 1, -1);
         setBreakpoints(jobs.Archaeologist, 1, 1, -1);
         setBreakpoints(jobs.Banker, 3, 5, -1);
         setBreakpoints(jobs.Priest, 0, 0, -1);
@@ -8650,60 +8681,70 @@
                 if (job.isSmartEnabled) {
                     if (job === jobs.Farmer || job === jobs.Hunter) {
                         if (jobMax[j] === undefined) {
-                            let foodRateOfChange = resources.Food.rateOfChange;
-                            let minFoodStorage = resources.Food.maxQuantity * 0.2;
-                            let maxFoodStorage = resources.Food.maxQuantity * 0.6;
-                            if (game.global.race['ravenous']) { // Ravenous hunger
-                                minFoodStorage = resources.Population.currentQuantity * 1.5;
-                                maxFoodStorage = resources.Population.currentQuantity * 3;
-                                foodRateOfChange += Math.max(resources.Food.currentQuantity / traitVal('ravenous', 1), 0);
-                            }
-                            if (game.global.race['carnivore']) { // Food spoilage
-                                minFoodStorage = resources.Population.currentQuantity;
-                                maxFoodStorage = resources.Population.currentQuantity * 2;
-                                if (resources.Food.currentQuantity > 10) {
-                                    foodRateOfChange += (resources.Food.currentQuantity - 10) * traitVal('carnivore', 0, '=') * (0.9 ** buildings.Smokehouse.count);
-                                }
-                            }
-                            if (game.global.race['artifical']) {
+                            // Food
+                            if (game.global.race['artifical'] || game.global.race['unfathomable']) {
+                                // Artifical hunters and raiders doesn't produce food
                                 jobMax[j] = 0;
-                            } else  if (resources.Population.currentQuantity > state.lastPopulationCount) {
-                                let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
-                                let farmerChange = job.count - state.lastFarmerCount;
+                            } else {
+                                let foodRateOfChange = resources.Food.rateOfChange;
+                                let minFoodStorage = resources.Food.maxQuantity * 0.2;
+                                let maxFoodStorage = resources.Food.maxQuantity * 0.6;
+                                if (game.global.race['ravenous']) { // Ravenous hunger
+                                    minFoodStorage = resources.Population.currentQuantity * 1.5;
+                                    maxFoodStorage = resources.Population.currentQuantity * 3;
+                                    foodRateOfChange += Math.max(resources.Food.currentQuantity / traitVal('ravenous', 1), 0);
+                                }
+                                if (game.global.race['carnivore']) { // Food spoilage
+                                    minFoodStorage = resources.Population.currentQuantity;
+                                    maxFoodStorage = resources.Population.currentQuantity * 2;
+                                    if (resources.Food.currentQuantity > 10) {
+                                        foodRateOfChange += (resources.Food.currentQuantity - 10) * traitVal('carnivore', 0, '=') * (0.9 ** buildings.Smokehouse.count);
+                                    }
+                                }
 
-                                if (populationChange === farmerChange && foodRateOfChange > 0) {
-                                    jobMax[j] = job.count - populationChange;
+                                if (resources.Population.currentQuantity > state.lastPopulationCount) {
+                                    let populationChange = resources.Population.currentQuantity - state.lastPopulationCount;
+                                    let farmerChange = job.count - state.lastFarmerCount;
+
+                                    if (populationChange === farmerChange && foodRateOfChange > 0) {
+                                        jobMax[j] = job.count - populationChange;
+                                    } else {
+                                        jobMax[j] = job.count;
+                                    }
+                                } else if (resources.Food.isCapped()) {
+                                    // Full food storage, remove all farmers instantly
+                                    jobMax[j] = 0;
+                                } else if (resources.Food.currentQuantity + foodRateOfChange / ticksPerSecond() < minFoodStorage) {
+                                    // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
+                                    if (job.count === 0) { // We can't calculate production with no workers, assign one first
+                                        jobMax[j] = 1;
+                                    } else {
+                                        let foodPerWorker = resources.Food.getProduction("job_" + job.id) / job.count;
+                                        let missingWorkers = Math.ceil(foodRateOfChange / -foodPerWorker) || 0;
+                                        jobMax[j] = Math.max(1, job.count + missingWorkers);
+                                    }
+                                } else if (resources.Food.currentQuantity > maxFoodStorage && foodRateOfChange > 0) {
+                                    // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
+                                    jobMax[j] = job.count - 1;
                                 } else {
+                                    // We're good; leave farmers as they are
                                     jobMax[j] = job.count;
                                 }
-                            } else if (resources.Food.isCapped()) {
-                                // Full food storage, remove all farmers instantly
-                                jobMax[j] = 0;
-                            } else if (resources.Food.currentQuantity + foodRateOfChange / ticksPerSecond() < minFoodStorage) {
-                                // We want food to fluctuate between 0.2 and 0.6 only. We only want to add one per loop until positive
-                                if (job.count === 0) { // We can't calculate production with no workers, assign one first
-                                    jobMax[j] = 1;
-                                } else {
-                                    let foodPerWorker = resources.Food.getProduction("job_" + job.id) / job.count;
-                                    let missingWorkers = Math.ceil(foodRateOfChange / -foodPerWorker) || 0;
-                                    jobMax[j] = Math.max(1, job.count + missingWorkers);
-                                }
-                            } else if (resources.Food.currentQuantity > maxFoodStorage && foodRateOfChange > 0) {
-                                // We want food to fluctuate between 0.2 and 0.6 only. We only want to remove one per loop until negative
-                                jobMax[j] = job.count - 1;
-                            } else {
-                                // We're good; leave farmers as they are
-                                jobMax[j] = job.count;
+                                minFarmers = jobMax[j];
                             }
-                            minFarmers = jobMax[j];
-                            if (job === jobs.Hunter) {
+
+                            // Other byproducts
+                            if (game.global.race['unfathomable']) {
+                                // Raiders brings a lot of different stuff, let's just assume they're always usefull, without wasting time checking all those resources
+                                jobMax[j] = Number.MAX_SAFE_INTEGER;
+                            } else if (job === jobs.Hunter) {
                                 if (resources.Furs.isUnlocked() && (game.global.race['evil'] || game.global.race['artifical'])) {
                                     jobMax[j] = resources.Furs.isUseful() ? Number.MAX_SAFE_INTEGER
-                                      : Math.max(resources.Furs.getBusyWorkers("job_hunter", jobs.Hunter.count));
+                                      : Math.max(jobMax[j], resources.Furs.getBusyWorkers("job_hunter", jobs.Hunter.count));
                                 }
                                 if (demonicLumber) {
                                     jobMax[j] = resources.Lumber.isUseful() ? Number.MAX_SAFE_INTEGER
-                                      : Math.max(resources.Lumber.getBusyWorkers("job_hunter", jobs.Hunter.count));
+                                      : Math.max(jobMax[j], resources.Lumber.getBusyWorkers("job_hunter", jobs.Hunter.count));
                                 }
                             }
                         }
@@ -8745,6 +8786,18 @@
                         if (jobMax[j] === undefined) {
                             jobMax[j] = resources.Crystal.isUseful() ? Number.MAX_SAFE_INTEGER
                               : resources.Crystal.getBusyWorkers("job_crystal_miner", jobs.CrystalMiner.count);
+                        }
+                        jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
+                    }
+                    if (job === jobs.Torturer) {
+                        if (jobMax[j] === undefined) {
+                            let total = 0;
+                            for (let i = 0; i < game.global.city.surfaceDwellers.length; i++) {
+                                total += game.global.city.captive_housing[`race${i}`];
+                                total += game.global.city.captive_housing[`jailrace${i}`];
+                            }
+                            let rank = game.global.stats.achieve.nightmare?.mg ?? 0;
+                            jobMax[j] = Math.ceil(total / (rank / 2));
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
                     }
@@ -8892,6 +8945,7 @@
         }
 
         let splitJobs = [];
+        if (game.global.race['unfathomable'] && farmerIndex !== -1 && settings.jobRaiderWeighting > 0) splitJobs.push({index: farmerIndex, job: jobs.Hunter, weighting: settings.jobRaiderWeighting} );
         if (lumberjackIndex !== -1 && settings.jobLumberWeighting > 0) splitJobs.push({index: lumberjackIndex, job: jobs.Lumberjack, weighting: settings.jobLumberWeighting} );
         if (quarryWorkerIndex !== -1 && settings.jobQuarryWeighting > 0) splitJobs.push({index: quarryWorkerIndex, job: jobs.QuarryWorker, weighting: settings.jobQuarryWeighting});
         if (crystalMinerIndex !== -1 && settings.jobCrystalWeighting > 0) splitJobs.push({index: crystalMinerIndex, job: jobs.CrystalMiner, weighting: settings.jobCrystalWeighting});
@@ -8936,7 +8990,8 @@
                 while ((availableWorkers + availableServants) > 0 && remainingJobs.length > 0) {
                     let jobDetails = remainingJobs.sort(splitSorter)[0];
                     let total = requiredWorkers[jobDetails.index] + (requiredServants[jobDetails.index] * servantMod);
-                    if ((b === 2 || total < jobDetails.job.breakpointEmployees(b)) && !(total >= jobMax[jobDetails.index])) {
+                    let bp = jobDetails.job.getBreakpoint(b) > 0 ? jobDetails.job.breakpointEmployees(b) : 0;
+                    if ((b === 2 || total < bp) && !(total >= jobMax[jobDetails.index])) {
                         if (availableServants > 0) {
                             requiredServants[jobDetails.index]++;
                             availableServants--;
@@ -8989,10 +9044,10 @@
                 jobs.CrystalMiner.setAsDefault();
             } else if (jobs.Scavenger.isManaged() && requiredWorkers[scavengerIndex] > 0) {
                 jobs.Scavenger.setAsDefault();
-            } else if (jobs.Farmer.isManaged()) {
-                jobs.Farmer.setAsDefault();
             } else if (jobs.Hunter.isManaged()) {
                 jobs.Hunter.setAsDefault();
+            } else if (jobs.Farmer.isManaged()) {
+                jobs.Farmer.setAsDefault();
             } else if (jobs.Unemployed.isManaged()) {
                 jobs.Unemployed.setAsDefault();
             }
@@ -9850,6 +9905,17 @@
                     buildings.SiriusAscend.click();
                 }
                 return;
+            case 'witch_ascension':
+                if (isWitchAscensionPrestigeAvailable()) {
+                    if (state.goal !== 'Reset') {
+                        state.goal = 'Reset';
+                        return;
+                    }
+                    KeyManager.set(false, false, false);
+                    buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
+                    state.goal = "GameOverMan";
+                }
+                return;
             case 'demonic':
                 if (isDemonicPrestigeAvailable()) {
                     if (state.goal !== 'Reset') {
@@ -9888,7 +9954,7 @@
     }
 
     function isPrestigeAllowed(type) {
-        return settings.autoPrestige && !(settings.prestigeWaitAT && game.global.settings.at > 0 && (!type || settings.prestigeType === type));
+        return settings.autoPrestige && !(settings.prestigeWaitAT && game.global.settings.at > 0) && (!type || settings.prestigeType === type);
     }
 
     function isCataclysmPrestigeAvailable() {
@@ -9909,6 +9975,10 @@
 
     function isAscensionPrestigeAvailable() {
         return buildings.SiriusAscend.isUnlocked() && isPillarFinished();
+    }
+
+    function isWitchAscensionPrestigeAvailable() {
+        return buildings.PitAbsorptionChamber.count >= 100 && buildings.PitSoulCapacitor.instance.energy >= 100000000 && isPillarFinished();
     }
 
     function isDemonicPrestigeAvailable() {
@@ -9934,6 +10004,72 @@
         }
 
         getVueById('sshifter')?.setShape(settings.shifterGenus);
+    }
+
+    function autoPsychic() {
+        if (settings.psychicPower === "none" || !game.global.race['psychic'] || !game.global.tech['psychic'] || resources.Energy.currentQuantity < 100) {
+            return false;
+        }
+        let vue = null;
+
+        if (settings.psychicPower === "murder" || (settings.psychicPower !== "boost" && game.global.stats.psykill < 10)) {
+            if (resources.Population.currentQuantity > 0 && (vue = getVueById('psychicKill'))) {
+                vue.murder();
+                return; // Always perform 10 murders asap to unlock advanced powers
+            }
+        }
+
+        if (game.global.tech['psychicthrall'] && game.global.tech['unfathomable'] && game.global.race['unfathomable']) {
+            let mindbreak = 0, jailed = 0;
+            for (let i = 0; i < game.global.city.surfaceDwellers.length; i++) {
+                mindbreak += game.global.city.captive_housing[`race${i}`];
+                jailed += game.global.city.captive_housing[`jailrace${i}`];
+            }
+            let cells = game.global.city.captive_housing.raceCap - (mindbreak + jailed);
+
+            if (settings.psychicPower === "auto" || settings.psychicPower === "mind_break") {
+                if ((jailed > 1 || (jailed === 1 && cells === 0)) && (vue = getVueById('psychicMindBreak'))) {
+                    vue.breakMind();
+                    return; // If we have more than one jailed it means that tormenter can't keep up with capture speed for some reason, and need some assistment
+                }
+            }
+
+            if (settings.psychicPower === "auto" || settings.psychicPower === "stun") {
+                if ((game.global.tech.psychicthrall >= 2 && cells > 0) && (vue = getVueById('psychicCapture'))) {
+                    vue.stun();
+                    return; // That's what we really want, new thrall
+                }
+            }
+        }
+
+        const haveRoom = r => r.currentQuantity + (r.calculateRateOfChange({buy: false, all: true}) * 1.5 * 300) < r.maxQuantity;
+        let powers = game.global.race.psychicPowers;
+        if (settings.psychicPower === "auto" || settings.psychicPower === "profit") {
+            if (game.global.tech.psychic >= 3 && haveRoom(resource.Money) && !powers.cash && (vue = getVueById('psychicFinance'))) {
+                vue.boostVal();
+                return; // More money is always welcomed
+            }
+        }
+
+        if (settings.psychicPower === "auto" || settings.psychicPower === "boost") {
+            if (!powers.boostTime) {
+                let boostable = Object.values(resources).filter(r => r.isUnlocked() && r.atomicMass > 0 && haveRoom(r))
+                    .sort((a, b) => b.calculateRateOfChange({buy: false, all: true}) - a.calculateRateOfChange({buy: false, all: true}));
+
+                if (boostable && (vue = getVueById('psychicBoost'))) {
+                    vue.r = boostable.id;
+                    vue.boostVal();
+                    return; // Try to find something that have some good income, and still have a room for more resources
+                }
+            }
+        }
+
+        if (settings.psychicPower === "auto" || settings.psychicPower === "assault") {
+            if (game.global.tech.psychic >= 2 && !powers.assaultTime && (vue = getVueById('psychicAssault'))) {
+                vue.boostVal();
+                return; // Very last option, attack boost
+            }
+        }
     }
 
     function autoGenetics() {
@@ -10424,7 +10560,7 @@
         }
 
         if (itemId !== settings.userResearchTheology_2 && (itemId === "tech-deify" || itemId === "tech-study")) {
-            let longRun = ["ascension", "demonic", "apocalypse", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType);
+            let longRun = ["ascension", "witch_ascension", "demonic", "apocalypse", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType);
             if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && longRun)) {
                 return "Undesirable theology path";
             }
@@ -12295,8 +12431,10 @@
           + (game.global.tech.tau_gas2 >= 5 ? 1 : 0) // Alien Space Station built
           + (game.global.tech.replicator ? 1 : 0) // Matter Replicator unlocked
           + (game.global.tauceti.tau_factory?.count > 0 ? 1 : 0) // Factory built in lone survivor
-          + (game.global.space.g_factory?.count > 0 ? 1 : 0) // Graphene plant built in lone survivor
-          + (game.global.tauceti.mining_ship?.count > 0 ? 1 : 0); // Extractor ship built
+          + (game.global.space.g_factory?.count > 0 ? 1 : 0), // Graphene plant built in lone survivor
+          + (game.global.tauceti.mining_ship?.count > 0 ? 1 : 0), // Extractor ship built
+          + (game.global.tech.psychicthrall ?? 0), // Psychic powers
+          + (game.global.tech.psychic ?? 0) // Psychic powers
 
 
         if (game.global.settings.showShipYard) { // TP Ship Yard
@@ -12912,7 +13050,6 @@
             let conditions = settingsRaw.overrides[key];
             for (let i = 0; i < conditions.length; i++) {
                 let check = conditions[i];
-                let ret = conditions[i].ret;
                 try {
                     if (!checkTypes[check.type1]) {
                         throw `${check.type1} check not found`;
@@ -12925,9 +13062,7 @@
                     if (!checkCompare[check.cmp](var1, var2)) {
                         continue;
                     }
-                    if (check.cmp === "A?B") {
-                        ret = var2;
-                    }
+                    let ret = checkCustom[check.cmp] ? var2 : conditions[i].ret;
 
                     if (typeof settingsRaw[key] === typeof ret) {
                         // Override single value
@@ -12987,7 +13122,7 @@
         let createCustom = document.querySelector("#celestialLab .create button");
         if (createCustom) {
             updateOverrides(); // Game doesn't tick in lab. Update settings here.
-            if (settings.masterScriptToggle && settings.autoPrestige && (settings.prestigeType === "ascension" || settings.prestigeType === "terraform")) {
+            if (settings.masterScriptToggle && settings.autoPrestige && (settings.prestigeType === "ascension" || settings.prestigeType === "witch_ascension" || settings.prestigeType === "terraform")) {
                 state.goal = "GameOverMan";
                 createCustom.click();
                 return;
@@ -13141,6 +13276,7 @@
         }
         if (settings.autoMinorTrait) {
             autoShapeshift(); // Shifting genus can remove techs, buildings, resources, etc. Leaving broken preloaded buttons behind. This thing need to be at the very end, to prevent clicking anything before redrawing tabs
+            autoPsychic();
         }
         if (settings.autoMutateTraits) {
             autoMutateTrait();
@@ -13795,6 +13931,7 @@
         {val: "vacuum", label: "Vacuum Collapse", hint: "Build Mana Syphons until the end"},
         {val: "apocalypse", label: "AI Apocalypse", hint: "Perform AI Apocalypse reset by researching Protocol 66 once available"},
         {val: "ascension", label: "Ascension", hint: "Allows research of Incorporeal Existence and Ascension. Ascension Machine is managed by autoPower. Disable autoPrestige if you want to change custom race. Otherwise current one will be used , or default one if there's no current."},
+        {val: "witch_ascension", label: "Ascension (Witch Hunting)", hint: "Absorb the spirit energy for the purpose of ascension. Disable autoPrestige if you want to change custom race. Otherwise current one will be used , or default one if there's no current."},
         {val: "demonic", label: "Demonic Infusion", hint: "Sacrifice your entire civilization to absorb the essence of a greater demon lord"},
         {val: "terraform", label: "Terraform", hint: "Create new planet by building and powering Terraformer. Atmosphere Terraformer is managed by autoPower. Disable autoPrestige if you want to change custom planet. Otherwise current one will be used , or default one if there's no current. "},
         {val: "matrix", label: "Matrix", hint: "Build a computer simulation and trap your entire civilization in it"},
@@ -13819,6 +13956,12 @@
         "AND!": (a, b) => a && !b,
         "OR!": (a, b) => a || !b,
         "A?B": (a, b) => a,
+        "!A?B": (a, b) => !a,
+    }
+
+    const checkCustom = {
+        "A?B": "Special check, uses Var2 as result if Var1 is truthy",
+        "!A?B": "Special check, uses Var2 as result if Var1 is falsy",
     }
 
     const argType = {
@@ -14085,7 +14228,7 @@
             tableElement = tableElement.next();
             tableElement.append(buildConditionArg(override, 2));
             tableElement = tableElement.next();
-            if (override.cmp !== "A?B") {
+            if (!checkCustom[override.cmp]) {
                 tableElement.append(buildConditionRet(override, type, options));
             }
             tableElement = tableElement.next();
@@ -14226,7 +14369,7 @@
     }
 
     function buildConditionComparator(override, rebuild) {
-        let types = Object.entries(checkCompare).map(([id, fn]) => `<option value="${id}" title="${id === "A?B" ? "Special check, uses Var2 as result if Var1 is truthy" : fn.toString().substr(10)}">${id}</option>`).join();
+        let types = Object.entries(checkCompare).map(([id, fn]) => `<option value="${id}" title="${checkCustom[id] ?? fn.toString().substr(10)}">${id}</option>`).join();
         return $(`<select style="width: 100%">${types}</select>`)
         .val(override.cmp)
         .on('change', function() {
@@ -14614,6 +14757,8 @@
                     confirmationText = "Protocol 66 is unlocked.";
                 } else if (this.value === "ascension" && isAscensionPrestigeAvailable()) {
                     confirmationText = "Ascension machine is built and powered.";
+                } else if (this.value === "witch_ascension" && isWitchAscensionPrestigeAvailable()) {
+                    confirmationText = "Absorption Chamber is built and ready.";
                 } else if (this.value === "demonic" && isDemonicPrestigeAvailable()) {
                     confirmationText = "Required floor is reached, and demon lord is already dead.";
                 } else if (this.value === "terraform" && buildings.RedTerraform.isUnlocked()) {
@@ -16203,7 +16348,6 @@
                 hint: "Do not imitate race. IMPORTANT: script will stall at evolution if none selected"
             },
             ...Object.values(races)
-                .filter(race => !['junker', 'sludge'].includes(race.id)) // Valdi and Sludge not available for imitation
                 .map(race => {
                 const label = game.global.stats.synth[race.id] ? race.name : `--${race.name}--`
 
@@ -16234,6 +16378,13 @@
                              {val: "tax", label: "Tax", hint: "Build only Tax Shrines"}];
         addSettingsSelect(currentNode, "buildingShrineType", "Magnificent shrine", "Auto Build shrines only at moons of chosen shrine", shrineOptions);
         addSettingsNumber(currentNode, "slaveIncome", "Minimum income to buy slave", "Script will use Slave Market only when money is capped, or have income above given number");
+
+        let psychicOptions = [{val: "none", label: "Ignore", hint: "Psychic Powers ignored by script"},
+                              {val: "auto", label: "Script Managed", hint: "Performs one of available actions in this order: Capture, Mind Break, Boost Profits, Boost Resource, Boost Attack Power."},
+                               ...["boost", "murder", "assault", "profit", "stun", "mind_break"].map(p =>
+                               ({val: p, label: game.loc(`psychic_${p}_title`), hint: game.loc(`psychic_${p}_desc`)}))];
+        addSettingsSelect(currentNode, "psychicPower", "Psychic Powers", "Activates selected power with full energy. 10 murders required to research advanced powers will be performed automatically, if needed. Resource for boosting selected by looking for highest income among ones having enough free storage room.", psychicOptions);
+
         addSettingsToggle(currentNode, "jobScalePop", "High Pop job scale", "Auto Job will automatically scaly breakpoints to match population increase");
 
         // Minor Traits
@@ -16806,10 +16957,11 @@
 
         addSettingsToggle(currentNode, "jobSetDefault", "Set default job", "Automatically sets the default job in order of Quarry Worker -> Lumberjack -> Crystal Miner -> Scavenger -> Farmer -> Hunter -> Unemployed");
         addSettingsToggle(currentNode, "jobManageServants", "Manage Servants", "Automatically manage servants, they will be used as substitute of regular workers, sharing same breakpoints and priorities, i.e. for breakpoint 10 script might assign 8 workers and 2 servants, and such.");
-        addSettingsNumber(currentNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
-        addSettingsNumber(currentNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
-        addSettingsNumber(currentNode, "jobCrystalWeighting", "Final Crystal Miner Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
-        addSettingsNumber(currentNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split lumberjacks, quarry workers, crystal miners and scavengers");
+        addSettingsNumber(currentNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split weighted jobs");
+        addSettingsNumber(currentNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split weighted jobs");
+        addSettingsNumber(currentNode, "jobCrystalWeighting", "Final Crystal Miner Weighting", "AFTER allocating breakpoints this weighting will be used to split weighted jobs");
+        addSettingsNumber(currentNode, "jobScavengerWeighting", "Final Scavenger Weighting", "AFTER allocating breakpoints this weighting will be used to split weighted jobs");
+        addSettingsNumber(currentNode, "jobRaiderWeighting", "Final Raider Weighting", "AFTER allocating breakpoints this weighting will be used to split weighted jobs");
         addSettingsToggle(currentNode, "jobDisableMiners", "Disable miners in Andromeda", "Disable Miners and Coal Miners after reaching Andromeda");
 
         currentNode.append(`
@@ -17567,7 +17719,7 @@
             createSettingToggle(togglesNode, 'autoMiningDroid', 'Manages mining droid production.');
             createSettingToggle(togglesNode, 'autoGraphenePlant', 'Manages graphene plant. Not user configurable - just uses least demanded resource for fuel.');
             createSettingToggle(togglesNode, 'autoGenetics', 'Managed genetics settings, and automatically assembles genes more optimally than ingame sequencer');
-            createSettingToggle(togglesNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings. Also manages Mimic genus.');
+            createSettingToggle(togglesNode, 'autoMinorTrait', 'Purchase minor traits using genes according to their weighting settings. Also manages Mimic genus, and Psychic powers.');
             createSettingToggle(togglesNode, 'autoMutateTraits', 'Mutate in or out major and genus traits. WARNING: This will spend spend Plasmids and Anti-Plasmids.');
             createSettingToggle(togglesNode, 'autoEject', 'Eject excess resources to black hole. Normal resources ejected when they close to storage cap, craftables - when above requirements. Disabled when Mass Ejector Optimizer governor task is active.', createEjectToggles, removeEjectToggles);
             createSettingToggle(togglesNode, 'autoSupply', 'Send excess resources to Spire. Normal resources sent when they close to storage cap, craftables - when above requirements. Takes priority over ejector.', createSupplyToggles, removeSupplyToggles);
@@ -17673,6 +17825,12 @@
                 }
                 if (oldStats.sac > 0) {
                     statsData.sacrificed = oldStats.sac;
+                }
+                if (oldStats.murders > 0) {
+                    statsData.murders = oldStats.murders;
+                }
+                if (oldStats.psykill > 0) {
+                    statsData.psykill = oldStats.psykill;
                 }
                 let statsString = `<div class="cstat"><span class="has-text-success">Previous Game</span></div>`;
                 for (let [label, value] of Object.entries(statsData)) {
@@ -18103,7 +18261,7 @@
     }
 
     function isEarlyGame() {
-        if (game.global.race['cataclysm'] || game.global.race['orbit_decayed']) {
+        if (game.global.race['cataclysm'] || game.global.race['orbit_decayed'] || game.global.race['lone_survivor']) {
             return false;
         } else if (game.global.race['truepath'] || game.global.race['sludge']) {
             return !haveTech("high_tech", 7);
