@@ -9142,8 +9142,8 @@
                 currentTransmute += m.currentCount(res.id);
             }
             let manaAvailable = (currentTransmute + resources.Mana.rateOfChange) * settings.magicAlchemyManaUse;
-            let crystalAvailable = currentTransmute / 2 + resources.Crystal.currentQuantity + resources.Crystal.rateOfChange;
-            let maxTransmute = Math.floor(Math.min(manaAvailable, crystalAvailable * 2));
+            let crystalAvailable = currentTransmute * 0.15 + resources.Crystal.currentQuantity + resources.Crystal.rateOfChange;
+            let maxTransmute = Math.floor(Math.min(manaAvailable, crystalAvailable * (1/0.15)));
             activeList.forEach(res => adjustAlchemy[res.id] += Math.floor(maxTransmute * (m.resWeighting(res.id) / totalWeigthing)));
         }
 
