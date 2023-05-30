@@ -2025,6 +2025,7 @@
         moneyIncomes: [],
         moneyMedian: 0,
         soulGemIncomes: [{sec: 0, gems: 0}],
+        soulGemPerHour: 0,
         soulGemLast: Number.MAX_SAFE_INTEGER,
 
         knowledgeRequiredByTechs: 0,
@@ -12548,7 +12549,7 @@
                 if (resourceAmount < resourceNeeded) {
                     className = 'has-text-danger';
 
-                    if ((game.global.resource[resource]?.max === -1 || game.global.resource[resource]?.max > resourceNeeded) && game.global.resource[resource]?.diff > 0) {
+                    if ((game.global.resource[resource]?.max === -1 || game.global.resource[resource]?.max >= resourceNeeded) && game.global.resource[resource]?.diff > 0) {
                         const timeLeftRaw = (resourceNeeded - resourceAmount) / game.global.resource[resource].diff;
 
                         if (target instanceof Technology && timeLeftRaw > researchTimeLeft) {
@@ -12558,6 +12559,12 @@
                         resourceTimeLeft = `${poly.timeFormat(timeLeftRaw)}`;
                     } else {
                         targetTimeLeft = resourceTimeLeft = 'Never';
+                    }
+
+                    if (resource === "Soul_Gem") {
+                        if (state.soulGemPerHour !== 0) {
+                            resourceTimeLeft = `~${poly.timeFormat(((resourceNeeded - resourceAmount) / state.soulGemPerHour) * 3600)}`;
+                        }
                     }
                 }
 
@@ -17811,6 +17818,7 @@
             resources.Soul_Gem.rateOfChange = gems / timePassed;
             let gph = gems / timePassed * 3600;
             if (gph >= 1000) { gph = Math.round(gph); }
+            state.soulGemPerHour = gph;
             $("#resSoul_Gem span:eq(2)").text(`${gems > 0 && currentSec <= 3600 ? '~' : ''}${getNiceNumber(gph)} /h`);
         }
 
