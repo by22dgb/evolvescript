@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.20
+// @version      3.3.1.108.21
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -8963,9 +8963,9 @@
             });
 
             if (splitJobs.find(s => s.index === defaultIndex) && minDefault > requiredWorkers[defaultIndex]) {
-                let restoreDef = Math.min(minDefault, availableWorkers);
-                requiredWorkers[defaultIndex] = restoreDef;
-                availableWorkers += restoreDef;
+                let restoreDef = Math.min(minDefault, availableWorkers) - requiredWorkers[defaultIndex];
+                requiredWorkers[defaultIndex] += restoreDef;
+                availableWorkers -= restoreDef;
             }
             let currentFarmers = (requiredWorkers[farmerIndex] + requiredServants[farmerIndex] * servantMod);
             if (splitJobs.find(s => s.index === farmerIndex) && minFarmers > currentFarmers) {
@@ -10046,7 +10046,7 @@
         const haveRoom = r => r.currentQuantity + (r.calculateRateOfChange({buy: false, all: true}) * 1.5 * 300) < r.maxQuantity;
         let powers = game.global.race.psychicPowers;
         if (settings.psychicPower === "auto" || settings.psychicPower === "profit") {
-            if (game.global.tech.psychic >= 3 && haveRoom(resource.Money) && !powers.cash && (vue = getVueById('psychicFinance'))) {
+            if (game.global.tech.psychic >= 3 && haveRoom(resources.Money) && !powers.cash && (vue = getVueById('psychicFinance'))) {
                 vue.boostVal();
                 return; // More money is always welcomed
             }
@@ -10057,8 +10057,8 @@
                 let boostable = Object.values(resources).filter(r => r.isUnlocked() && r.atomicMass > 0 && haveRoom(r))
                     .sort((a, b) => b.calculateRateOfChange({buy: false, all: true}) - a.calculateRateOfChange({buy: false, all: true}));
 
-                if (boostable && (vue = getVueById('psychicBoost'))) {
-                    vue.r = boostable.id;
+                if (boostable.length > 0 && (vue = getVueById('psychicBoost'))) {
+                    vue.r = boostable[0].id;
                     vue.boostVal();
                     return; // Try to find something that have some good income, and still have a room for more resources
                 }
