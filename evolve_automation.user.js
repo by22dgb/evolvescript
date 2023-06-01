@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.21
+// @version      3.3.1.108.22
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -8963,7 +8963,7 @@
             });
 
             if (splitJobs.find(s => s.index === defaultIndex) && minDefault > requiredWorkers[defaultIndex]) {
-                let restoreDef = Math.min(minDefault, availableWorkers) - requiredWorkers[defaultIndex];
+                let restoreDef = Math.min(availableWorkers, minDefault - requiredWorkers[defaultIndex]);
                 requiredWorkers[defaultIndex] += restoreDef;
                 availableWorkers -= restoreDef;
             }
@@ -10007,14 +10007,24 @@
         getVueById('sshifter')?.setShape(settings.shifterGenus);
     }
 
+    var psychicPowerCost = {
+        murder: [10, 8],
+        boost: [75, 60],
+        assault: [45, 36],
+        profit: [65, 52],
+        mind_break: [80, 64],
+        stun: [100, 80]
+    };
+
     function autoPsychic() {
-        if (settings.psychicPower === "none" || !game.global.race['psychic'] || !game.global.tech['psychic'] || resources.Energy.currentQuantity < 100) {
+        if (settings.psychicPower === "none" || !game.global.race['psychic'] || !game.global.tech['psychic'] || resources.Energy.storageRatio < 1) {
             return false;
         }
         let vue = null;
+        const canAfford = (p) => resources.Energy.currentQuantity >= psychicPowerCost[p][game.global.tech.psychic >= 5 ? 1 : 0];
 
         if (settings.psychicPower === "murder" || (settings.psychicPower !== "boost" && game.global.stats.psykill < 10)) {
-            if (resources.Population.currentQuantity > 0 && (vue = getVueById('psychicKill'))) {
+            if (resources.Population.currentQuantity > 0 && canAfford("murder") && (vue = getVueById('psychicKill'))) {
                 vue.murder();
                 return; // Always perform 10 murders asap to unlock advanced powers
             }
@@ -10029,14 +10039,14 @@
             let cells = game.global.city.captive_housing.raceCap - (mindbreak + jailed);
 
             if (settings.psychicPower === "auto" || settings.psychicPower === "mind_break") {
-                if ((jailed > 1 || (jailed === 1 && cells === 0)) && (vue = getVueById('psychicMindBreak'))) {
+                if ((jailed > 1 || (jailed === 1 && cells === 0)) && canAfford("mind_break") && (vue = getVueById('psychicMindBreak'))) {
                     vue.breakMind();
                     return; // If we have more than one jailed it means that tormenter can't keep up with capture speed for some reason, and need some assistment
                 }
             }
 
             if (settings.psychicPower === "auto" || settings.psychicPower === "stun") {
-                if ((game.global.tech.psychicthrall >= 2 && cells > 0) && (vue = getVueById('psychicCapture'))) {
+                if ((game.global.tech.psychicthrall >= 2 && cells > 0) && canAfford("stun") && (vue = getVueById('psychicCapture'))) {
                     vue.stun();
                     return; // That's what we really want, new thrall
                 }
@@ -10046,19 +10056,19 @@
         const haveRoom = r => r.currentQuantity + (r.calculateRateOfChange({buy: false, all: true}) * 1.5 * 300) < r.maxQuantity;
         let powers = game.global.race.psychicPowers;
         if (settings.psychicPower === "auto" || settings.psychicPower === "profit") {
-            if (game.global.tech.psychic >= 3 && haveRoom(resources.Money) && !powers.cash && (vue = getVueById('psychicFinance'))) {
+            if (game.global.tech.psychic >= 3 && haveRoom(resources.Money) && !powers.cash && canAfford("profit") && (vue = getVueById('psychicFinance'))) {
                 vue.boostVal();
                 return; // More money is always welcomed
             }
         }
 
         if (settings.psychicPower === "auto" || settings.psychicPower === "boost") {
-            if (!powers.boostTime) {
+            if (!powers.boostTime && canAfford("boost")) {
                 let boostable = Object.values(resources).filter(r => r.isUnlocked() && r.atomicMass > 0 && haveRoom(r))
                     .sort((a, b) => b.calculateRateOfChange({buy: false, all: true}) - a.calculateRateOfChange({buy: false, all: true}));
 
                 if (boostable.length > 0 && (vue = getVueById('psychicBoost'))) {
-                    vue.r = boostable[0].id;
+                    $(`#psychicBoost #psyhscrolltarget input[value="${boostable[0].id}"]`).click();
                     vue.boostVal();
                     return; // Try to find something that have some good income, and still have a room for more resources
                 }
@@ -10066,7 +10076,7 @@
         }
 
         if (settings.psychicPower === "auto" || settings.psychicPower === "assault") {
-            if (game.global.tech.psychic >= 2 && !powers.assaultTime && (vue = getVueById('psychicAssault'))) {
+            if (game.global.tech.psychic >= 2 && !powers.assaultTime && canAfford("assault") && (vue = getVueById('psychicAssault'))) {
                 vue.boostVal();
                 return; // Very last option, attack boost
             }
