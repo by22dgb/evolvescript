@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.22
+// @version      3.3.1.108.23
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -5690,6 +5690,10 @@
                     project.weighting = 0;
                     project.extraDescription = "Not enough storage<br>";
                 }
+                if (project === projects.ManaSyphon && settings.prestigeBioseedConstruct && settings.prestigeType === "witch_ascension") {
+                    project.weighting = 0;
+                    project.extraDescription = "Not needed for current prestige<br>";
+                }
 
                 if (settings.arpaScaleWeighting) {
                     project.weighting /= 1 - (0.01 * project.progress);
@@ -6991,6 +6995,7 @@
             slaveIncome: 25000,
             jobScalePop: true,
             psychicPower: "auto",
+            psychicBoostRes: "auto",
 
             autoGenetics: false,
             geneticsSequence: "none",
@@ -10064,11 +10069,19 @@
 
         if (settings.psychicPower === "auto" || settings.psychicPower === "boost") {
             if (!powers.boostTime && canAfford("boost")) {
-                let boostable = Object.values(resources).filter(r => r.isUnlocked() && r.atomicMass > 0 && haveRoom(r))
-                    .sort((a, b) => b.calculateRateOfChange({buy: false, all: true}) - a.calculateRateOfChange({buy: false, all: true}));
+                let boosted = null;
+                if (settings.psychicBoostRes === "auto") {
+                    let boostable = Object.values(resources).filter(r => r.isUnlocked() && r.atomicMass > 0 && haveRoom(r))
+                        .sort((a, b) => b.calculateRateOfChange({buy: false, all: true}) - a.calculateRateOfChange({buy: false, all: true}));
+                    if (boostable.length > 0) {
+                        boosted = boostable[0].id;
+                    }
+                } else {
+                    boosted = settings.psychicBoostRes;
+                }
 
-                if (boostable.length > 0 && (vue = getVueById('psychicBoost'))) {
-                    $(`#psychicBoost #psyhscrolltarget input[value="${boostable[0].id}"]`).click();
+                if (boosted && (vue = getVueById('psychicBoost'))) {
+                    $(`#psychicBoost #psyhscrolltarget input[value="${boosted}"]`).click();
                     vue.boostVal();
                     return; // Try to find something that have some good income, and still have a room for more resources
                 }
@@ -16400,7 +16413,11 @@
                               {val: "auto", label: "Script Managed", hint: "Performs one of available actions in this order: Capture, Mind Break, Boost Profits, Boost Resource, Boost Attack Power."},
                                ...["boost", "murder", "assault", "profit", "stun", "mind_break"].map(p =>
                                ({val: p, label: game.loc(`psychic_${p}_title`), hint: game.loc(`psychic_${p}_desc`)}))];
-        addSettingsSelect(currentNode, "psychicPower", "Psychic Powers", "Activates selected power with full energy. 10 murders required to research advanced powers will be performed automatically, if needed. Resource for boosting selected by looking for highest income among ones having enough free storage room.", psychicOptions);
+        addSettingsSelect(currentNode, "psychicPower", "Psychic Powers", "Activates selected power with full energy. 10 murders required to research advanced powers will be performed automatically, if needed.", psychicOptions);
+
+        let psychicBoost = [{val: "auto", label: "Script Managed", hint: "Resource selected by looking for highest income among ones having enough free storage room."},
+                             ...Object.values(resources).filter(r => r.atomicMass > 0).map(r => ({val: r.id, label: r.title}))];
+        addSettingsSelect(currentNode, "psychicBoostRes", "Boosted Resource", "Resource for Boost Resource Production psychic power.", psychicBoost);
 
         addSettingsToggle(currentNode, "jobScalePop", "High Pop job scale", "Auto Job will automatically scaly breakpoints to match population increase");
 
