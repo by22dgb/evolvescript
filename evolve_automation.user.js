@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.23
+// @version      3.3.1.108.24
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -726,6 +726,27 @@
 
         isUnlocked() {
             return true;
+        }
+    }
+
+    class Thrall extends Resource {
+        updateData() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+            this.currentQuantity = 0;
+            this.rateOfChange = 0;
+            for (let i = 0; i < game.global.city.surfaceDwellers.length; i++) {
+                this.currentQuantity += game.global.city.captive_housing[`race${i}`];
+                this.rateOfChange += game.global.city.captive_housing[`jailrace${i}`];
+            }
+            this.currentQuantity += this.rateOfChange;
+            this.maxQuantity = game.global.city.captive_housing.raceCap;
+        }
+
+        isUnlocked() {
+            return game.global.city.captive_housing ? true : false;
         }
     }
 
@@ -2129,6 +2150,7 @@
         Supply: new Supply("Supplies", "Supply"),
         Power: new Power("Power", "Power"),
         Morale: new Morale("Morale", "Morale"),
+        Thrall: new Thrall("Thrall", "Thrall"),
         Womlings_Support: new WomlingsSupport("Womlings", "Womlings_Support", "", ""),
         Moon_Support: new Support("Moon Support", "Moon_Support", "space", "spc_moon"),
         Red_Support: new Support("Red Support", "Red_Support", "space", "spc_red"),
@@ -10036,22 +10058,18 @@
         }
 
         if (game.global.tech['psychicthrall'] && game.global.tech['unfathomable'] && game.global.race['unfathomable']) {
-            let mindbreak = 0, jailed = 0;
-            for (let i = 0; i < game.global.city.surfaceDwellers.length; i++) {
-                mindbreak += game.global.city.captive_housing[`race${i}`];
-                jailed += game.global.city.captive_housing[`jailrace${i}`];
-            }
-            let cells = game.global.city.captive_housing.raceCap - (mindbreak + jailed);
+            let jailed = resources.Thrall.rateOfChange;
+            let cells = resources.Thrall.storageRatio;
 
             if (settings.psychicPower === "auto" || settings.psychicPower === "mind_break") {
-                if ((jailed > 1 || (jailed === 1 && cells === 0)) && canAfford("mind_break") && (vue = getVueById('psychicMindBreak'))) {
+                if ((jailed > 1 || (jailed === 1 && cells === 1)) && canAfford("mind_break") && (vue = getVueById('psychicMindBreak'))) {
                     vue.breakMind();
                     return; // If we have more than one jailed it means that tormenter can't keep up with capture speed for some reason, and need some assistment
                 }
             }
 
             if (settings.psychicPower === "auto" || settings.psychicPower === "stun") {
-                if ((game.global.tech.psychicthrall >= 2 && cells > 0) && canAfford("stun") && (vue = getVueById('psychicCapture'))) {
+                if ((game.global.tech.psychicthrall >= 2 && cells < 1) && canAfford("stun") && (vue = getVueById('psychicCapture'))) {
                     vue.stun();
                     return; // That's what we really want, new thrall
                 }
