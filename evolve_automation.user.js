@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.25
+// @version      3.3.1.108.26
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1691,7 +1691,7 @@
                 this.complete = true;
                 return true;
             }
-            if (this.actionType === "build" && buildingIds[this.actionId].count >= this.actionCount) {
+            if (this.actionType === "build" && (buildingIds[this.actionId].isMission() ? Number(buildingIds[this.actionId].isComplete()) : buildingIds[this.actionId].count) >= this.actionCount) {
                 this.complete = true;
                 return true;
             }
