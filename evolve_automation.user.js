@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.24
+// @version      3.3.1.108.25
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1712,6 +1712,9 @@
             if (this.requirementType === "built" && (buildingIds[this.requirementId].isMission() ? Number(buildingIds[this.requirementId].isComplete()) : buildingIds[this.requirementId].count) >= this.requirementCount) {
                 return true;
             }
+            if (this.requirementType === "chain" && (this.seq < 1 || TriggerManager.priorityList[this.seq - 1]?.complete)) {
+                return true;
+            }
             return false;
         }
 
@@ -1728,16 +1731,19 @@
                 (oldType === "unlocked" || oldType === "researched")) {
                 return; // Both researches, old ID is still valid, and preserved.
             }
-
             if (this.requirementType === "unlocked" || this.requirementType === "researched") {
                 this.requirementId = "tech-club";
                 this.requirementCount = 0;
                 return;
             }
-
             if (this.requirementType === "built") {
                 this.requirementId = "city-basic_housing";
                 this.requirementCount = 1;
+                return;
+            }
+            if (this.requirementType === "chain") {
+                this.requirementId = "";
+                this.requirementCount = 0;
                 return;
             }
         }
@@ -15346,6 +15352,7 @@
             <option value = "unlocked" title = "This condition is met when technology is shown in research tab">Unlocked</option>
             <option value = "researched" title = "This condition is met when technology is researched">Researched</option>
             <option value = "built" title = "This condition is met when you have 'count' or greater amount of buildings">Built</option>
+            <option value = "chain" title = "This condition is met when above trigger is complete, always true for first trigger in list">Chain</option>
           </select>`);
         typeSelectNode.val(trigger.requirementType);
 
