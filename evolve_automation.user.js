@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.26
+// @version      3.3.1.108.27
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1712,7 +1712,7 @@
             if (this.requirementType === "built" && (buildingIds[this.requirementId].isMission() ? Number(buildingIds[this.requirementId].isComplete()) : buildingIds[this.requirementId].count) >= this.requirementCount) {
                 return true;
             }
-            if (this.requirementType === "chain" && (this.seq < 1 || TriggerManager.priorityList[this.seq - 1]?.complete)) {
+            if (this.requirementType === "chain" && (this.priority < 1 || TriggerManager.priorityList[this.priority - 1]?.complete)) {
                 return true;
             }
             return false;
@@ -5019,8 +5019,11 @@
 
         avail(ship) {
             let yard = game.global.space.shipyard;
+            if (ship.class === "explorer" && (ship.weapon !== "railgun" || ship.sensor !== "quantum")) {
+                return false;
+            }
             for (let [type, part] of Object.entries(ship)) {
-                if (type !== 'name' && (yard.blueprint[type] !== part || ship.class === "explorer" || yard.blueprint.class === "explorer")) {
+                if (type !== "name" && yard.blueprint[type] !== part && !(ship.class === "explorer" && (part === "weapon" || part === "sensor"))) {
                     if (!this._fleetVue.avail(type, this.ShipConfig[type].indexOf(part), part)) {
                         return false;
                     }
