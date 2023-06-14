@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.27
+// @version      3.3.1.108.28
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -430,6 +430,10 @@
             return this.requestedQuantity > this.currentQuantity;
         }
 
+        get income() {
+            return this.calculateRateOfChange({buy: false, all: true});
+        }
+
         get spareQuantity() {
             return this.currentQuantity - this.requestedQuantity;
         }
@@ -493,11 +497,11 @@
             if (workersCount > 0) {
                 let totalIncome = this.getProduction(workersSource, locArg);
                 let resPerWorker = totalIncome / workersCount;
-                let usedIncome = totalIncome - this.calculateRateOfChange({buy: false, all: true});
+                let usedIncome = totalIncome - this.income;
                 if (usedIncome > 0) {
                     newWorkers = Math.ceil(usedIncome / resPerWorker);
                 }
-            } else if (this.calculateRateOfChange({buy: false, all: true}) < 0) {
+            } else if (this.income < 0) {
                 newWorkers = 1;
             }
 
@@ -532,7 +536,7 @@
             if (this.storageRatio > 0.98) {
                 return Number.MIN_SAFE_INTEGER; // Already full.
             }
-            let totalRateOfCharge = this.calculateRateOfChange({buy: false, all: true});
+            let totalRateOfCharge = this.income;
             if (totalRateOfCharge <= 0) {
                 return Number.MAX_SAFE_INTEGER; // Won't ever fill with current rate.
             }
@@ -546,7 +550,7 @@
             if (this.storageRequired <= 1) {
                 return 0;
             }
-            let totalRateOfCharge = this.calculateRateOfChange({buy: false, all: true});
+            let totalRateOfCharge = this.income;
             if (totalRateOfCharge <= 0) {
                 return Number.MAX_SAFE_INTEGER; // Won't ever fill with current rate.
             }
@@ -559,6 +563,13 @@
 
             KeyManager.set(false, false, false);
             vue.craft(this.id, count);
+        }
+    }
+
+    class SoulGem extends Resource {
+        updateData() {
+            super.updateData();
+            this.rateOfChange = state.soulGemPerHour / 3600;
         }
     }
 
@@ -1422,7 +1433,7 @@
             // Locked races always have zero weighting
             let habitability = this.getHabitability();
             if (habitability < (settings.evolutionAutoUnbound ? 0.8 : 1)) {
-                return 0;
+                return -1;
             }
 
             let weighting = 0;
@@ -1435,7 +1446,7 @@
             }
 
             // Check pillar
-            if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic" || settings.prestigeType === "witch_ascension")) {
+            if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic")) {
                 weighting += 1000 * Math.max(0, starLevel - (game.global.pillars[this.id] ?? 0));
                 // Check genus pillar for Enlightenment
                 if (this.id !== "custom" && this.id !== "junker" && this.id !== "sludge") {
@@ -1447,7 +1458,7 @@
             }
 
             // Check greatness\extinction achievement
-            if (["bioseed", "ascension", "witch_ascension", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType)) {
+            if (["bioseed", "ascension", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType)) {
                 checkAchievement(100, "genus_" + this.genus);
             } else if (this.id !== "sludge" || settings.prestigeType !== "mad") {
                 checkAchievement(100, "extinct_" + this.id);
@@ -1525,7 +1536,6 @@
                             checkFeat("organ_harvester");
                             break;
                         case "ascension":
-                        case "witch_ascension":
                         case "demonic":
                             checkFeat("garbage_pie");
                         case "terraform":
@@ -1548,7 +1558,7 @@
                 }
 
                 // Digital Ascension
-                if ((settings.prestigeType === "ascension" || settings.prestigeType === "witch_ascension") && settings.challenge_emfield && this.genus === "artifical" && this.id !== "custom") {
+                if (settings.prestigeType === "ascension" && settings.challenge_emfield && this.genus === "artifical" && this.id !== "custom") {
                     checkFeat("digital_ascension");
                 }
 
@@ -1593,7 +1603,7 @@
                 case "angelic":
                     return game.global.city.biome === 'eden' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
                 case "synthetic":
-                    return game.global.stats.achieve[`obsolete`]?.l >= 5 ? 1 : 0;
+                    return game.global.stats.achieve['obsolete']?.l >= 5 ? 1 : 0;
                 case "eldritch":
                     return game.global.stats.achieve['nightmare']?.mg ? 1 : 0;
                 case undefined: // Nonexistent custom
@@ -1998,7 +2008,7 @@
     ];
     const governors = ["soldier", "criminal", "entrepreneur", "educator", "spiritual", "bluecollar", "noble", "media", "sports", "bureaucrat"];
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...challenges.map(c => "challenge_" + c[0].id)];
-    const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", apocalypse: "AI Apocalypse", ascension: "Ascension", witch_ascension: "Witch Ascension", demonic: "Infusion", terraform: "Terraform", matrix: "Matrix", retire: "Retirement", eden: "Eden"};
+    const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", apocalypse: "AI Apocalypse", ascension: "Ascension", demonic: "Infusion", terraform: "Terraform", matrix: "Matrix", retire: "Retirement", eden: "Eden"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly", "cloning_facility"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "trait", "weighting", "ejector", "planet", "mech", "magic"];
@@ -2123,7 +2133,7 @@
         Horseshoe: new Resource("Horseshoe", "Horseshoe"),
         Nanite: new Resource("Nanite", "Nanite"),
         Genes: new Resource("Genes", "Genes"),
-        Soul_Gem: new Resource("Soul Gem", "Soul_Gem"),
+        Soul_Gem: new SoulGem("Soul Gem", "Soul_Gem"),
 
         // Craftable resources
         Plywood: new Resource("Plywood", "Plywood"),
@@ -2709,7 +2719,7 @@
           (note) => note,
           () => 0
       ],[
-          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension",
+          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension" && !game.global.race['witch_hunter'],
           (building) => building === buildings.GateEastTower || building === buildings.GateWestTower,
           () => "Not needed for Ascension prestige",
           () => 0
@@ -2995,9 +3005,14 @@
           () => "Not needed for Vacuum Collapse prestige",
           () => 0
       ],[
-          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension" && isPillarFinished(),
+          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension" && isPillarFinished() && !game.global.race['witch_hunter'],
           (building) => building === buildings.PitMission || building === buildings.RuinsMission,
           () => "Not needed for Ascension prestige",
+          () => 0
+      ],[
+          () => game.global.race['witch_hunter'] && settings.prestigeType === "ascension",
+          (building) => building === buildings.SpireWaygate,
+          () => "Not needed for Witch Hunter's Ascension prestige",
           () => 0
       ],[
           () => settings.prestigeBioseedConstruct && settings.prestigeType === "terraform",
@@ -5721,7 +5736,7 @@
                     project.weighting = 0;
                     project.extraDescription = "Not enough storage<br>";
                 }
-                if (project === projects.ManaSyphon && settings.prestigeBioseedConstruct && settings.prestigeType === "witch_ascension") {
+                if (project === projects.ManaSyphon && settings.prestigeBioseedConstruct && (settings.prestigeType === "ascension" || settings.prestigeType === "demonic") && game.global.race['witch_hunter']) {
                     project.weighting = 0;
                     project.extraDescription = "Not needed for current prestige<br>";
                 }
@@ -7262,6 +7277,7 @@
             autoPylon: false,
             magicAlchemyManaUse: 0.5,
             productionRitualManaUse: 0.5,
+            productionRitualSafe: true,
         }
 
         // Alchemy
@@ -8908,15 +8924,21 @@
                     // Races with the Intelligent trait get bonus production based on the number of professors and scientists
                     // Only unassign them when knowledge is max if the race is not intelligent
                     // Once we've research shotgun sequencing we get boost and soon autoassemble genes so stop unassigning
-                    if (!game.global.race['intelligent'] && !haveTech("genetics", 5)) {
-                        // Don't assign professors if our knowledge is maxed and professors aren't contributing to our temple bonus
-                        if (job === jobs.Professor && resources.Knowledge.isCapped() && !haveTech("fanaticism", 2)) {
-                            jobsToAssign = 0;
+                    if (job === jobs.Scientist) {
+                        if (jobMax[j] === undefined) {
+                            jobMax[j] = Number.MAX_SAFE_INTEGER;
+                            if (game.global.race.universe !== 'magic' && resources.Knowledge.isCapped() && !game.global.race['intelligent'] && !haveTech("science", 5) && !haveTech("genetics", 5)) {
+                                jobsToAssign = 0;
+                            }
+                            if (game.global.race['witch_hunter']) {
+                                let SusPerWiz = game.global.civic.govern.type === 'magocracy' ? 0.5 : 1;
+                                jobMax[j] = ((99 - resources.Sus.currentQuantity) / SusPerWiz) + (job.count * SusPerWiz);
+                            }
                         }
-                        // Don't assign scientists if our knowledge is maxed and scientists aren't contributing to our knowledge cap
-                        if (job === jobs.Scientist && resources.Knowledge.isCapped() && !haveTech("science", 5)) {
-                            jobsToAssign = 0;
-                        }
+                        jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
+                    }
+                    if (job === jobs.Professor && !game.global.race['intelligent'] && resources.Knowledge.isCapped() && !haveTech("genetics", 5) && !haveTech("fanaticism", 2)) {
+                        jobsToAssign = 0;
                     }
                     if (job === jobs.CementWorker) {
                         if (jobMax[j] === undefined) {
@@ -8938,8 +8960,10 @@
                         if (jobMax[j] === undefined) {
                             if (game.global.portal.fortress.threat > 9000 && resources.Population.storageRatio < 1) {
                                 jobMax[j] = 0;
+                            /* Keep all surveyors active for gems
                             } else if (!resources.Infernite.isUseful()) {
                                 jobMax[j] = resources.Infernite.getBusyWorkers("job_hell_surveyor", jobs.HellSurveyor.count);
+                            */
                             } else {
                                 jobMax[j] = Number.MAX_SAFE_INTEGER;
                             }
@@ -9202,11 +9226,14 @@
         let pylonAdjustments = Object.fromEntries(spells.map(spell => [spell.id, 0]));
         let manaToUse = resources.Mana.rateOfChange * (resources.Mana.storageRatio > 0.99 ? 1 : settings.productionRitualManaUse);
         let usableMana = manaToUse;
+        let maxRituals = (settings.productionRitualSafe && game.global.race['witch_hunter'])
+            ? (jobs.Priest.count * (haveTech("roguemagic", 4) ? 4 : 1))
+            : Number.MAX_SAFE_INTEGER;
 
         let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
         let remainingSpells = spells.filter(spell => spell.weighting > 0 && (spell !== m.Productions.Factory || jobs.CementWorker.count > 0)).sort(spellSorter);
         spellsLoop:
-        while(remainingSpells.length > 0) {
+        while(remainingSpells.length > 0 && maxRituals > 0) {
             let spell = remainingSpells.shift();
             let amount = pylonAdjustments[spell.id];
             let cost = m.costStep(amount);
@@ -9214,6 +9241,7 @@
             if (cost <= manaToUse) {
                 pylonAdjustments[spell.id] = amount + 1;
                 manaToUse -= cost;
+                maxRituals--;
                 // Insert spell back to array keeping it sorted
                 for (let i = remainingSpells.length - 1; i >= 0; i--) {
                     if (spellSorter(spell, remainingSpells[i]) > 0) {
@@ -9876,6 +9904,7 @@
                         state.goal = 'Reset';
                         return;
                     }
+
                     if (madVue.armed) {
                         madVue.arm();
                     }
@@ -9933,33 +9962,46 @@
                 }
                 return;
             case 'ascension':
-                if (isAscensionPrestigeAvailable()) {
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
+                if (game.global.race['witch_hunter']) {
+                    if (isWitchAscensionPrestigeAvailable()) {
+                        if (state.goal !== 'Reset') {
+                            state.goal = 'Reset';
+                            return;
+                        }
+                        KeyManager.set(false, false, false);
+                        buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
+                        state.goal = "GameOverMan";
                     }
-                    KeyManager.set(false, false, false);
-                    buildings.SiriusAscend.click();
-                }
-                return;
-            case 'witch_ascension':
-                if (isWitchAscensionPrestigeAvailable()) {
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
+                } else {
+                    if (isAscensionPrestigeAvailable()) {
+                        if (state.goal !== 'Reset') {
+                            state.goal = 'Reset';
+                            return;
+                        }
+                        KeyManager.set(false, false, false);
+                        buildings.SiriusAscend.click();
                     }
-                    KeyManager.set(false, false, false);
-                    buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
-                    state.goal = "GameOverMan";
                 }
                 return;
             case 'demonic':
-                if (isDemonicPrestigeAvailable()) {
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
+                if (game.global.race['witch_hunter']) {
+                    if (isWitchAscensionPrestigeAvailable(true)) {
+                        if (state.goal !== 'Reset') {
+                            state.goal = 'Reset';
+                            return;
+                        }
+                        KeyManager.set(false, false, false);
+                        buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
+                        state.goal = "GameOverMan";
                     }
-                    techIds["tech-demonic_infusion"].click();
+                } else {
+                    if (isDemonicPrestigeAvailable()) {
+                        if (state.goal !== 'Reset') {
+                            state.goal = 'Reset';
+                            return;
+                        }
+                        techIds["tech-demonic_infusion"].click();
+                    }
                 }
                 return;
             case 'terraform':
@@ -10014,8 +10056,8 @@
         return buildings.SiriusAscend.isUnlocked() && isPillarFinished();
     }
 
-    function isWitchAscensionPrestigeAvailable() {
-        return buildings.PitAbsorptionChamber.count >= 100 && buildings.PitSoulCapacitor.instance.energy >= 100000000 && isPillarFinished();
+    function isWitchAscensionPrestigeAvailable(demonic) {
+        return (!demonic || haveTech("forbidden", 5)) && buildings.PitAbsorptionChamber.count >= 100 && buildings.PitSoulCapacitor.instance.energy >= 100000000 && isPillarFinished();
     }
 
     function isDemonicPrestigeAvailable() {
@@ -10085,7 +10127,7 @@
             }
         }
 
-        const haveRoom = r => r.currentQuantity + (r.calculateRateOfChange({buy: false, all: true}) * 1.5 * 300) < r.maxQuantity;
+        const haveRoom = r => r.currentQuantity + (r.income * 1.5 * 300) < r.maxQuantity;
         let powers = game.global.race.psychicPowers;
         if (settings.psychicPower === "auto" || settings.psychicPower === "profit") {
             if (game.global.tech.psychic >= 3 && haveRoom(resources.Money) && !powers.cash && canAfford("profit") && (vue = getVueById('psychicFinance'))) {
@@ -10099,7 +10141,7 @@
                 let boosted = null;
                 if (settings.psychicBoostRes === "auto") {
                     let boostable = Object.values(resources).filter(r => r.isUnlocked() && r.atomicMass > 0 && haveRoom(r))
-                        .sort((a, b) => b.calculateRateOfChange({buy: false, all: true}) - a.calculateRateOfChange({buy: false, all: true}));
+                        .sort((a, b) => b.income - a.income);
                     if (boostable.length > 0) {
                         boosted = boostable[0].id;
                     }
@@ -10210,7 +10252,7 @@
                 if (resource.storageRatio > resource.autoSellRatio) {
                     maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.currentQuantity - (resource.autoSellRatio * resource.maxQuantity))); // If not full sell up to our sell ratio
                 } else {
-                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.calculateRateOfChange({buy: false, all: true}) * 2 / ticksPerSecond())); // If resource is full then sell up to 2 ticks worth of production
+                    maxAllowedUnits = Math.min(maxAllowedUnits, Math.floor(resource.income * 2 / ticksPerSecond())); // If resource is full then sell up to 2 ticks worth of production
                 }
 
                 if (maxAllowedUnits <= maxMultiplier) {
@@ -10562,6 +10604,10 @@
             return "Progression fork to Retirement reset";
         }
 
+        if (itemId === "tech-outerplane_summon" && settings.prestigeType !== "demonic") {
+            return "Progression fork to Witch Hunter's Demonic Infusion";
+        }
+
         if (itemId === "tech-focus_cure" && settings.prestigeType !== "matrix") {
             return "Progression fork to Matrix reset";
         }
@@ -10611,7 +10657,7 @@
         }
 
         if (itemId !== settings.userResearchTheology_2 && (itemId === "tech-deify" || itemId === "tech-study")) {
-            let longRun = ["ascension", "witch_ascension", "demonic", "apocalypse", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType);
+            let longRun = ["ascension", "demonic", "apocalypse", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType);
             if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && longRun)) {
                 return "Undesirable theology path";
             }
@@ -12560,8 +12606,8 @@
         }
 
         $(`#active_targets ul.active_targets-list.${type}`).html(queuedTargets.map(target => {
-            let targetName = target.name;
-            let targetTimeLeft = '',
+            let targetName = target.name,
+                targetTimeLeft = '',
                 targetSegments = '',
                 researchTimeLeft = 0;
 
@@ -12589,36 +12635,30 @@
             }
 
             const costsHTML = Object.keys(costs).map(resource => {
-                const resourceName = game.global.resource[resource]?.name || resource;
-                let className = 'has-text-success',
+                let res = resources[resource],
+                    className = 'has-text-success',
                     resourceTimeLeft = '';
 
-                const resourceAmount = game.global.resource[resource]?.amount,
-                    resourceNeeded = costs[resource];
-
-                if (resourceAmount < resourceNeeded) {
+                if (res.currentQuantity < costs[resource]) {
                     className = 'has-text-danger';
 
-                    if ((game.global.resource[resource]?.max === -1 || game.global.resource[resource]?.max >= resourceNeeded) && game.global.resource[resource]?.diff > 0) {
-                        const timeLeftRaw = (resourceNeeded - resourceAmount) / game.global.resource[resource].diff;
+                    if (res.maxQuantity >= costs[resource] && res.income > 0) {
+                        const timeLeftRaw = (costs[resource] - res.currentQuantity) / res.income;
 
                         if (target instanceof Technology && timeLeftRaw > researchTimeLeft) {
                             researchTimeLeft = timeLeftRaw;
                         }
 
                         resourceTimeLeft = `${poly.timeFormat(timeLeftRaw)}`;
+                        if (res === resources.Soul_Gem) {
+                            resourceTimeLeft = `~${resourceTimeLeft}`;
+                        }
                     } else {
                         targetTimeLeft = resourceTimeLeft = 'Never';
                     }
-
-                    if (resource === "Soul_Gem") {
-                        if (state.soulGemPerHour !== 0) {
-                            resourceTimeLeft = `~${poly.timeFormat(((resourceNeeded - resourceAmount) / state.soulGemPerHour) * 3600)}`;
-                        }
-                    }
                 }
 
-                const progressBarWidth = (resourceAmount / resourceNeeded) * 100;
+                const progressBarWidth = (res.currentQuantity / costs[resource]) * 100;
 
                 const isReplicatingClassName = (game.global.race.replicator && game.global.race.replicator.res === resource) ? 'is-replicating' : '';
 
@@ -12626,7 +12666,7 @@
                     <li>
                         <div class='active_targets-resource-row'>
                             <div class='active_targets-resource-text'>
-                                <span class='${className}'>${resourceName}</span>
+                                <span class='${className}'>${res.title}</span>
                             </div>
                             <div class="percentage-full-progress-bar-wrapper ${isReplicatingClassName}">
                                 <div class="percentage-full-progress-bar" style="width: ${progressBarWidth}%;"></div>
@@ -13179,7 +13219,7 @@
         let createCustom = document.querySelector("#celestialLab .create button");
         if (createCustom) {
             updateOverrides(); // Game doesn't tick in lab. Update settings here.
-            if (settings.masterScriptToggle && settings.autoPrestige && (settings.prestigeType === "ascension" || settings.prestigeType === "witch_ascension" || settings.prestigeType === "terraform")) {
+            if (settings.masterScriptToggle && settings.autoPrestige && (settings.prestigeType === "ascension" || settings.prestigeType === "terraform")) {
                 state.goal = "GameOverMan";
                 createCustom.click();
                 return;
@@ -13988,7 +14028,6 @@
         {val: "vacuum", label: "Vacuum Collapse", hint: "Build Mana Syphons until the end"},
         {val: "apocalypse", label: "AI Apocalypse", hint: "Perform AI Apocalypse reset by researching Protocol 66 once available"},
         {val: "ascension", label: "Ascension", hint: "Allows research of Incorporeal Existence and Ascension. Ascension Machine is managed by autoPower. Disable autoPrestige if you want to change custom race. Otherwise current one will be used , or default one if there's no current."},
-        {val: "witch_ascension", label: "Ascension (Witch Hunting)", hint: "Absorb the spirit energy for the purpose of ascension. Disable autoPrestige if you want to change custom race. Otherwise current one will be used , or default one if there's no current."},
         {val: "demonic", label: "Demonic Infusion", hint: "Sacrifice your entire civilization to absorb the essence of a greater demon lord"},
         {val: "terraform", label: "Terraform", hint: "Create new planet by building and powering Terraformer. Atmosphere Terraformer is managed by autoPower. Disable autoPrestige if you want to change custom planet. Otherwise current one will be used , or default one if there's no current. "},
         {val: "matrix", label: "Matrix", hint: "Build a computer simulation and trap your entire civilization in it"},
@@ -14812,12 +14851,10 @@
                     confirmationText = "Required mass is reached, and exotic infusion is unlocked.";
                 } else if (this.value === "apocalypse" && isApocalypsePrestigeAvailable()) {
                     confirmationText = "Protocol 66 is unlocked.";
-                } else if (this.value === "ascension" && isAscensionPrestigeAvailable()) {
-                    confirmationText = "Ascension machine is built and powered.";
-                } else if (this.value === "witch_ascension" && isWitchAscensionPrestigeAvailable()) {
-                    confirmationText = "Absorption Chamber is built and ready.";
-                } else if (this.value === "demonic" && isDemonicPrestigeAvailable()) {
-                    confirmationText = "Required floor is reached, and demon lord is already dead.";
+                } else if (this.value === "ascension" && (game.global.race['witch_hunter'] ? isWitchAscensionPrestigeAvailable() : isAscensionPrestigeAvailable())) {
+                    confirmationText = (game.global.race['witch_hunter'] ? "Absorption Chamber is built and ready." : "Ascension machine is built and powered.");
+                } else if (this.value === "demonic" && (game.global.race['witch_hunter'] ? isWitchAscensionPrestigeAvailable(true) : isDemonicPrestigeAvailable())) {
+                    confirmationText = (game.global.race['witch_hunter'] ? "Absorption Chamber is built and ready." : "Required floor is reached, and demon lord is already dead.");
                 } else if (this.value === "terraform" && buildings.RedTerraform.isUnlocked()) {
                     confirmationText = "Terraformer is built and powered.";
                 } else if (this.value === "matrix" && buildings.TauStarBluePill.isUnlocked()) {
@@ -14847,7 +14884,7 @@
 
         addSettingsToggle(currentNode, "prestigeWaitAT", "Use all Accelerated Time", "Delay reset until all accelerated time will be used");
         addSettingsToggle(currentNode, "prestigeMADIgnoreArpa", "Ignore early game A.R.P.A.", "Disables building any A.R.P.A. projects until MAD is researched, or rival have appeared");
-        addSettingsToggle(currentNode, "prestigeBioseedConstruct", "Ignore useless buildings", "Space Dock, Bioseeder Ship and Probes will be constructed only when Bioseed prestige enabled. World Collider won't be constructed during Bioseed. Jump Ship won't be constructed during Whitehole. Stellar Engine won't be constucted during Vacuum Collapse.");
+        addSettingsToggle(currentNode, "prestigeBioseedConstruct", "Ignore useless buildings", "Space Dock, Bioseeder Ship and Probes will be constructed only when Bioseed prestige enabled. World Collider won't be constructed during Bioseed. Jump Ship won't be constructed during Whitehole. Stellar Engine won't be constucted during Vacuum Collapse. Mana Syphon won't be constructed during Witch Hunter's Ascension and Demonic Infusion.");
 
         addSettingsHeader1(currentNode, "Mutual Assured Destruction");
         addSettingsToggle(currentNode, "prestigeMADWait", "Wait for maximum population", "Wait for maximum population and soldiers to maximize plasmids gain");
@@ -16962,6 +16999,7 @@
     function updateMagicPylon(currentNode) {
         addStandardHeading(currentNode, "Pylon");
         addSettingsNumber(currentNode, "productionRitualManaUse", "Mana income used", "Income portion to use on rituals. Setting to 1 is not recommended, as it will halt mana regeneration. Applied only when mana not capped - with capped mana script will always use all income.");
+        addSettingsToggle(currentNode, "productionRitualSafe", "Safe rituals", "Limit max rituals to safe, unsuspicious amount. Have no effect out of Witch Hunter scenario.");
 
         currentNode.append(`
           <table style="width:100%">
@@ -17870,10 +17908,9 @@
                 state.soulGemIncomes = state.soulGemIncomes.splice(i+1);
             }
             let timePassed = currentSec - state.soulGemIncomes[0].sec;
-            resources.Soul_Gem.rateOfChange = gems / timePassed;
             let gph = gems / timePassed * 3600;
-            if (gph >= 1000) { gph = Math.round(gph); }
             state.soulGemPerHour = gph;
+            if (gph >= 1000) { gph = Math.round(gph); }
             $("#resSoul_Gem span:eq(2)").text(`${gems > 0 && currentSec <= 3600 ? '~' : ''}${getNiceNumber(gph)} /h`);
         }
 
@@ -17893,7 +17930,7 @@
                     statsData.murders = oldStats.murders;
                 }
                 if (oldStats.psykill > 0) {
-                    statsData.psykill = oldStats.psykill;
+                    statsData.psymurders = oldStats.psykill;
                 }
                 let statsString = `<div class="cstat"><span class="has-text-success">Previous Game</span></div>`;
                 for (let [label, value] of Object.entries(statsData)) {
