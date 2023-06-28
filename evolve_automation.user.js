@@ -8704,7 +8704,7 @@
         let minerIndex = jobList.indexOf(jobs.Miner);
 
         // Make sure our hooved have miner for horseshoes\assemble
-        if ((hoovedMiner || synthMiner) && !minersDisabled && availableWorkers > 1 && minerIndex !== -1) {
+        if ((hoovedMiner || synthMiner) && !minersDisabled && availableWorkers > 1 && minerIndex !== -1 && jobs.Miner.isSmartEnabled) {
             requiredWorkers[minerIndex] = 1;
             availableWorkers--;
         }
@@ -9211,7 +9211,7 @@
                 totalWeigthing += m.resWeighting(res.id);
                 currentTransmute += m.currentCount(res.id);
             }
-            let manaAvailable = (currentTransmute + resources.Mana.rateOfChange) * settings.magicAlchemyManaUse;
+            let manaAvailable = (currentTransmute + resources.Mana.rateOfChange) * ((!settings.autoPylon && resources.Mana.storageRatio > 0.99) ? 1 : settings.magicAlchemyManaUse);
             let crystalAvailable = currentTransmute * 0.15 + resources.Crystal.currentQuantity + resources.Crystal.rateOfChange;
             let maxTransmute = Math.floor(Math.min(manaAvailable, crystalAvailable * (1/0.15)));
             activeList.forEach(res => adjustAlchemy[res.id] += Math.floor(maxTransmute * (m.resWeighting(res.id) / totalWeigthing)));
@@ -13168,7 +13168,7 @@
                     if (!checkCompare[check.cmp](var1, var2)) {
                         continue;
                     }
-                    let ret = checkCustom[check.cmp] ? var2 : conditions[i].ret;
+                    let ret = checkCustom[check.cmp] ? var2 : check.ret;
 
                     if (typeof settingsRaw[key] === typeof ret) {
                         // Override single value
@@ -13179,7 +13179,7 @@
                         xorLists[key] = xorLists[key] ?? [];
                         xorLists[key].push(ret);
                     } else {
-                        throw `Expected type: ${typeof settingsRaw[key]}; Override type: ${typeof check.ret}`;
+                        throw `Expected type: ${typeof settingsRaw[key]}; Override type: ${typeof ret}`;
                     }
                 } catch (error) {
                     let msg = `Condition ${i+1} for setting ${key} invalid! Fix or remove it. (${error})`;
