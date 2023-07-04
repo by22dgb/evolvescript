@@ -10772,7 +10772,7 @@
                 continue;
             }
             if (building.is.smart && building.autoStateSmart) {
-                if (resources.Power.currentQuantity <= resources.Power.maxQuantity) { // Saving power, unless we can afford everything
+                if (resources.Power.currentQuantity <= resources.Power.maxQuantity || haveTech('replicator')) { // Saving power, unless we can afford everything
                     // Disable Belt Space Stations with no workers
                     if (building === buildings.BeltSpaceStation && game.breakdown.c.Elerium) {
                         let stationStorage = parseFloat(game.breakdown.c.Elerium[game.loc("space_belt_station_title")] ?? 0);
