@@ -3101,7 +3101,7 @@
           () => settings.buildingWeightingUselessHousing
       ],[
           () => game.global.race['orbit_decay'] && !game.global.race['orbit_decayed'],
-          (building) => building._tab === "city" || building._location === "spc_moon",
+          (building) => (building._tab === "city" || building._location === "spc_moon") && !(building instanceof ResourceAction),
           () => "Will be destroyed after impact",
           () => settings.buildingWeightingTemporal
       ],[
@@ -3111,7 +3111,7 @@
           () => 1 + Math.random() // Fluctuate weight to pick random item
       ],[
           () => game.global.race['truepath'] && haveTech('tauceti', 2),
-          (building) => building._tab === "city" || building._tab === "space" || building._tab === "starDock",
+          (building) => (building._tab === "city" || building._tab === "space" || building._tab === "starDock") && !(building instanceof ResourceAction),
           () => "Solar System building",
           () => settings.buildingWeightingSolar
     ]];
