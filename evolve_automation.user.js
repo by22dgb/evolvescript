@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.30
+// @version      3.3.1.108.31
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -837,7 +837,6 @@
         isUnlocked() {
             if ((this._tab === "city" && !game.global.settings.showCity) ||
                 (this._tab === "space" && (!game.global.settings.showSpace && !game.global.settings.showOuter)) ||
-                (this._tav === "starDock" && !game.global.settings.showSpace) ||
                 (this._tab === "interstellar" && !game.global.settings.showDeep) ||
                 (this._tab === "portal" && !game.global.settings.showPortal) ||
                 (this._tab === "galaxy" && !game.global.settings.showGalactic) ||
@@ -1231,6 +1230,10 @@
         }
 
         isUnlocked() {
+            // All ModalActions belongs to starDock tab
+            if (!game.global.settings.showSpace) {
+                return false;
+            }
             // We have to override this as there won't be an element unless the modal window is open
             return this._vue !== undefined;
         }
@@ -14031,7 +14034,6 @@
         {val: "vacuum", label: "Vacuum Collapse", hint: "Build Mana Syphons until the end"},
         {val: "apocalypse", label: "AI Apocalypse", hint: "Perform AI Apocalypse reset by researching Protocol 66 once available"},
         {val: "ascension", label: "Ascension", hint: "Allows research of Incorporeal Existence and Ascension. Ascension Machine is managed by autoPower. Disable autoPrestige if you want to change custom race. Otherwise current one will be used , or default one if there's no current."},
-        {val: "witch_ascension", label: "Ascension (Witch Hunting)", hint: "Absorb the spirit energy for the purpose of ascension. Disable autoPrestige if you want to change custom race. Otherwise current one will be used , or default one if there's no current."},
         {val: "demonic", label: "Demonic Infusion", hint: "Sacrifice your entire civilization to absorb the essence of a greater demon lord"},
         {val: "terraform", label: "Terraform", hint: "Create new planet by building and powering Terraformer. Atmosphere Terraformer is managed by autoPower. Disable autoPrestige if you want to change custom planet. Otherwise current one will be used , or default one if there's no current. "},
         {val: "matrix", label: "Matrix", hint: "Build a computer simulation and trap your entire civilization in it"},
