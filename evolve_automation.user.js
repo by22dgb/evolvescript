@@ -6872,7 +6872,8 @@
             prioritizeOuterFleet: "ignore",
             buildingAlwaysClick: false,
             buildingClickPerTick: 50,
-            activeTargetsUI: false
+            activeTargetsUI: false,
+            displayPrestigeTypeInTopBar: false
         }
 
         applySettings(def, reset);
@@ -13382,8 +13383,6 @@
             autoMutateTrait();
         }
 
-        updatePrestigeInTopBar();
-
         KeyManager.finish();
         state.soulGemLast = resources.Soul_Gem.currentQuantity;
     }
@@ -14768,8 +14767,9 @@
             updateSettingsFromState();
             updateGeneralSettingsContent();
             removeActiveTargetsUI();
+            removePrestigeFromTopBar();
 
-            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige");
+            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "displayPrestigeTypeInTopBar");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
@@ -14808,6 +14808,7 @@
 
         addSettingsHeader1(currentNode, "Additional UI");
         addSettingsToggle(currentNode, "activeTargetsUI", "Display detailed queue", "Add UI in right column to display currently active queued buildings, technologies, and triggers and their resources.", buildActiveTargetsUI, removeActiveTargetsUI);
+        addSettingsToggle(currentNode, "displayPrestigeTypeInTopBar", "Display prestige type in top bar", "Show the currently selected prestige type in the top bar", updatePrestigeInTopBar, updatePrestigeInTopBar);
 
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -17762,6 +17763,13 @@
     }
 
     function updatePrestigeInTopBar() {
+        if (settings.displayPrestigeTypeInTopBar) {
+            addPrestigeToTopBar();
+        }
+        else {
+            removePrestigeFromTopBar();
+        }
+
         let prestigeNode = document.getElementById("s-prestige-type");
         if (prestigeNode == null) { return; } // Element has not yet been added, cannot update
 
@@ -17778,7 +17786,13 @@
         if (planetWrapNode.length === 0) { return; } // The node that we want to add it to doesn't exist yet
 
         planetWrapNode.append($(`<span id="s-prestige-type" style="border-left: 1px solid; margin-left: 1rem; padding-left: 1rem;" ></span>`));
-        updatePrestigeInTopBar();
+    }
+
+    function removePrestigeFromTopBar() {
+        let prestigeNode = document.getElementById("s-prestige-type");
+        if (prestigeNode == null) { return; } // Element has not yet been added, nothing to do
+
+        prestigeNode.remove();
     }
 
     function updateUI() {
@@ -17787,7 +17801,7 @@
 
         createOptionsModal();
         updateOptionsUI();
-        addPrestigeToTopBar();
+        updatePrestigeInTopBar();
 
         let scriptNode = $('#autoScriptContainer');
         if (scriptNode.length === 0) {
