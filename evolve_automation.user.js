@@ -2011,7 +2011,6 @@
     ];
     const governors = ["soldier", "criminal", "entrepreneur", "educator", "spiritual", "bluecollar", "noble", "media", "sports", "bureaucrat"];
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...challenges.map(c => "challenge_" + c[0].id)];
-    const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", apocalypse: "AI Apocalypse", ascension: "Ascension", demonic: "Infusion", terraform: "Terraform", matrix: "Matrix", retire: "Retirement", eden: "Eden"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly", "cloning_facility"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "trait", "weighting", "ejector", "planet", "mech", "magic"];
@@ -14027,14 +14026,14 @@
 
     const prestigeTypes = [
         {val: "none", label: "None", hint: "Endless game"},
-        {val: "mad", label: "Mutual Assured Destruction", hint: "MAD prestige once MAD has been researched and all soldiers are home"},
+        {val: "mad", short_label: "MAD", label: "Mutual Assured Destruction", hint: "MAD prestige once MAD has been researched and all soldiers are home"},
         {val: "bioseed", label: "Bioseed", hint: "Launches the bioseeder ship to perform prestige when required probes have been constructed"},
         {val: "cataclysm", label: "Cataclysm", hint: "Perform cataclysm reset by researching Dial It To 11 once available"},
         {val: "whitehole", label: "Whitehole", hint: "Infuses the blackhole with exotic materials to perform prestige"},
-        {val: "vacuum", label: "Vacuum Collapse", hint: "Build Mana Syphons until the end"},
+        {val: "vacuum", short_label: "Vacuum", label: "Vacuum Collapse", hint: "Build Mana Syphons until the end"},
         {val: "apocalypse", label: "AI Apocalypse", hint: "Perform AI Apocalypse reset by researching Protocol 66 once available"},
         {val: "ascension", label: "Ascension", hint: "Allows research of Incorporeal Existence and Ascension. Ascension Machine is managed by autoPower. Disable autoPrestige if you want to change custom race. Otherwise current one will be used , or default one if there's no current."},
-        {val: "demonic", label: "Demonic Infusion", hint: "Sacrifice your entire civilization to absorb the essence of a greater demon lord"},
+        {val: "demonic", short_label: "Infusion", label: "Demonic Infusion", hint: "Sacrifice your entire civilization to absorb the essence of a greater demon lord"},
         {val: "terraform", label: "Terraform", hint: "Create new planet by building and powering Terraformer. Atmosphere Terraformer is managed by autoPower. Disable autoPrestige if you want to change custom planet. Otherwise current one will be used , or default one if there's no current. "},
         {val: "matrix", label: "Matrix", hint: "Build a computer simulation and trap your entire civilization in it"},
         {val: "retire", label: "Retirement", hint: "Retire and enjoy the easy life."},
@@ -15136,8 +15135,9 @@
         star.addClass("star" + getStarLevel(queuedEvolution));
 
         if (queuedEvolution.prestigeType !== "none") {
-            if (prestigeNames[queuedEvolution.prestigeType]) {
-                prestigeName = `(${prestigeNames[queuedEvolution.prestigeType]})`;
+            let prestige = prestigeTypes.find(prest => prest.val === queuedEvolution.prestigeType);
+            if (prestige) {
+                prestigeName = `(${prestige.short_label ?? prestige.label})`;
                 prestigeClass = "has-text-info";
             } else {
                 prestigeName = "Unrecognized prestige!";
