@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.28
+// @version      3.3.1.108.31
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -249,7 +249,7 @@
         }
 
         get workers() {
-            return game.global.city.foundry[this._originalId];
+            return game.global.city.foundry?.[this._originalId] ?? 0;
         }
 
         get max() {
@@ -840,7 +840,6 @@
         isUnlocked() {
             if ((this._tab === "city" && !game.global.settings.showCity) ||
                 (this._tab === "space" && (!game.global.settings.showSpace && !game.global.settings.showOuter)) ||
-                (this._tav === "starDock" && !game.global.settings.showSpace) ||
                 (this._tab === "interstellar" && !game.global.settings.showDeep) ||
                 (this._tab === "portal" && !game.global.settings.showPortal) ||
                 (this._tab === "galaxy" && !game.global.settings.showGalactic) ||
@@ -1234,6 +1233,10 @@
         }
 
         isUnlocked() {
+            // All ModalActions belongs to starDock tab
+            if (!game.global.settings.showSpace) {
+                return false;
+            }
             // We have to override this as there won't be an element unless the modal window is open
             return this._vue !== undefined;
         }
@@ -2017,7 +2020,6 @@
     ];
     const governors = ["soldier", "criminal", "entrepreneur", "educator", "spiritual", "bluecollar", "noble", "media", "sports", "bureaucrat"];
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...challenges.map(c => "challenge_" + c[0].id)];
-    const prestigeNames = {mad: "核爆重置", bioseed: "播种重置", cataclysm: "大灾变重置", vacuum: "真空坍缩", whitehole: "黑洞重置", apocalypse: "人工智能觉醒", ascension: "飞升重置", demonic: "恶魔灌注", terraform: "星球重塑重置", matrix: "矩阵重置", retire: "隐退重置", eden: "伊甸园重置"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly", "cloning_facility"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "trait", "weighting", "ejector", "planet", "mech", "magic"];
@@ -3110,7 +3112,7 @@
           () => settings.buildingWeightingUselessHousing
       ],[
           () => game.global.race['orbit_decay'] && !game.global.race['orbit_decayed'],
-          (building) => building._tab === "city" || building._location === "spc_moon",
+          (building) => (building._tab === "city" || building._location === "spc_moon") && !(building instanceof ResourceAction),
           () => "撞击后将消失",
           () => settings.buildingWeightingTemporal
       ],[
@@ -3120,7 +3122,7 @@
           () => 1 + Math.random() // Fluctuate weight to pick random item
       ],[
           () => game.global.race['truepath'] && haveTech('tauceti', 2),
-          (building) => building._tab === "city" || building._tab === "space" || building._tab === "starDock",
+          (building) => (building._tab === "city" || building._tab === "space" || building._tab === "starDock") && !(building instanceof ResourceAction),
           () => "太阳系建筑",
           () => settings.buildingWeightingSolar
     ]];
@@ -6879,7 +6881,8 @@
             prioritizeOuterFleet: "ignore",
             buildingAlwaysClick: false,
             buildingClickPerTick: 50,
-            activeTargetsUI: false
+            activeTargetsUI: false,
+            displayPrestigeTypeInTopBar: false
         }
 
         applySettings(def, reset);
@@ -7325,6 +7328,7 @@
             productionExtWeight_uncommon: 1,
             productionExtWeight_rare: 1,
             productionFoundryWeighting: "demanded",
+            productionCraftsmen: "nocraft",
             productionSmelting: "required",
             productionSmeltingIridium: 0.5,
             productionFactoryMinIngredients: 0,
@@ -10781,7 +10785,7 @@
                 continue;
             }
             if (building.is.smart && building.autoStateSmart) {
-                if (resources.Power.currentQuantity <= resources.Power.maxQuantity) { // Saving power, unless we can afford everything
+                if (resources.Power.currentQuantity <= resources.Power.maxQuantity || haveTech('replicator')) { // Saving power, unless we can afford everything
                     // Disable Belt Space Stations with no workers
                     if (building === buildings.BeltSpaceStation && game.breakdown.c.Elerium) {
                         let stationStorage = parseFloat(game.breakdown.c.Elerium[game.loc("space_belt_station_title")] ?? 0);
@@ -14156,20 +14160,22 @@
         node.append(`<div style="margin: 2px; width: 90%; display: inline-block; text-align: left;"><span class="has-text-caution">${headerText}</span></div>`);
     }
 
-    const prestigeOptions = buildSelectOptions([
+    const prestigeTypes = [
         {val: "none", label: "无", hint: "不会自动重置"},
-        {val: "mad", label: "核爆重置", hint: "当研究相互毁灭，且士兵全部存活时，进行核爆重置"},
+        {val: "mad", short_label: "核爆重置", label: "核爆重置", hint: "当研究相互毁灭，且士兵全部存活时，进行核爆重置"},
         {val: "bioseed", label: "播种重置", hint: "当太空探测器数量达到指定值以后，进行播种重置"},
         {val: "cataclysm", label: "大灾变重置", hint: "自动研究把刻度盘拨到11，触发大灾变重置"},
         {val: "whitehole", label: "黑洞重置", hint: "自动选择奇异灌输，触发黑洞重置"},
-        {val: "vacuum", label: "真空坍缩", hint: "自动建造法力虹吸，触发真空坍缩"},
+        {val: "vacuum", short_label: "真空坍缩", label: "真空坍缩", hint: "自动建造法力虹吸，触发真空坍缩"},
         {val: "apocalypse", label: "人工智能觉醒", hint: "自动研究《第66号技术协议》，触发人工智能觉醒"},
         {val: "ascension", label: "飞升重置", hint: "允许研究无形存在和飞升。飞升装置由自动供能进行管理。如果您想要调整自定义种族，请关闭自动重置，否则将使用当前种族，或者在没有当前种族时使用默认种族。"},
-        {val: "demonic", label: "恶魔灌注", hint: "注入恶魔之力，牺牲整个文明，成为恶魔领主"},
+        {val: "demonic", short_label: "恶魔灌注", label: "恶魔灌注", hint: "注入恶魔之力，牺牲整个文明，成为恶魔领主"},
         {val: "terraform", label: "星球重塑重置", hint: "建造并为大气重塑器供能，触发星球重塑重置。大气重塑器由自动供能进行管理。如果您想要调整自定义星球，请关闭自动重置，否则将使用当前星球，或者在没有当前星球时使用默认星球。"},
         {val: "matrix", label: "矩阵重置", hint: "构建电脑模拟程序，让它承载整个文明的重量。"},
         {val: "retire", label: "隐退重置", hint: "隐退，并享受轻松的人生。"},
-        {val: "eden", label: "伊甸园重置", hint: "创造新的伊甸园。"}]);
+        {val: "eden", label: "伊甸园重置", hint: "创造新的伊甸园。"}];
+
+    const prestigeOptions = buildSelectOptions(prestigeTypes);
 
     const checkCompare = {
         "==": (a, b) => a == b,
@@ -14898,8 +14904,9 @@
             updateSettingsFromState();
             updateGeneralSettingsContent();
             removeActiveTargetsUI();
+            removePrestigeFromTopBar();
 
-            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige");
+            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "displayPrestigeTypeInTopBar");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
@@ -14938,6 +14945,7 @@
 
         addSettingsHeader1(currentNode, "附加界面");
         addSettingsToggle(currentNode, "activeTargetsUI", "显示详细的队列", "在右侧追加界面，可以显示当前激活的建筑队列，研究队列，触发器以及它们相应的资源。", buildActiveTargetsUI, removeActiveTargetsUI);
+        addSettingsToggle(currentNode, "displayPrestigeTypeInTopBar", "在顶部显示威望重置类型", "在顶部显示当前的威望重置类型", updatePrestigeInTopBar, updatePrestigeInTopBar);
 
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -15265,8 +15273,9 @@
         star.addClass("star" + getStarLevel(queuedEvolution));
 
         if (queuedEvolution.prestigeType !== "none") {
-            if (prestigeNames[queuedEvolution.prestigeType]) {
-                prestigeName = `(${prestigeNames[queuedEvolution.prestigeType]})`;
+            let prestige = prestigeTypes.find(prest => prest.val === queuedEvolution.prestigeType);
+            if (prestige) {
+                prestigeName = `(${prestige.short_label ?? prestige.label})`;
                 prestigeClass = "has-text-info";
             } else {
                 prestigeName = "威望重置类型无法识别！";
@@ -17890,12 +17899,46 @@
         });
     }
 
+    function updatePrestigeInTopBar() {
+        if (settings.displayPrestigeTypeInTopBar) {
+            addPrestigeToTopBar();
+        }
+        else {
+            removePrestigeFromTopBar();
+        }
+
+        let prestigeNode = document.getElementById("s-prestige-type");
+        if (prestigeNode == null) { return; } // Element has not yet been added, cannot update
+
+        let prestige = prestigeTypes.find(prest => prest.val === settings.prestigeType);
+        prestigeNode.title = prestige.hint;
+        prestigeNode.textContent = prestige.label;
+    }
+
+    function addPrestigeToTopBar() {
+        let nodeId = "s-prestige-type";
+        if (document.getElementById(nodeId) !== null) { return; } // We've already added the info to the top bar
+
+        let planetWrapNode = $("#topBar .planetWrap");
+        if (planetWrapNode.length === 0) { return; } // The node that we want to add it to doesn't exist yet
+
+        planetWrapNode.append($(`<span id="s-prestige-type" style="border-left: 1px solid; margin-left: 1rem; padding-left: 1rem;" ></span>`));
+    }
+
+    function removePrestigeFromTopBar() {
+        let prestigeNode = document.getElementById("s-prestige-type");
+        if (prestigeNode == null) { return; } // Element has not yet been added, nothing to do
+
+        prestigeNode.remove();
+    }
+
     function updateUI() {
         let resetScrollPositionRequired = false;
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
 
         createOptionsModal();
         updateOptionsUI();
+        updatePrestigeInTopBar();
 
         let scriptNode = $('#autoScriptContainer');
         if (scriptNode.length === 0) {
