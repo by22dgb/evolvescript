@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.31
+// @version      3.3.1.108.32
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1151,7 +1151,7 @@
     }
 
     class ResourceAction extends Action {
-        constructor(name, tab, id, location, flags, res) {
+        constructor(name, tab, id, location, res, flags) {
             super(name, tab, id, location, flags);
 
             this.resource = resources[res];
@@ -2232,13 +2232,13 @@
     }
 
     var buildings = {
-        Food: new Action("Food", "city", "food", ""),
-        Lumber: new Action("Lumber", "city", "lumber", ""),
-        Stone: new Action("Stone", "city", "stone", ""),
-        Chrysotile: new Action("Chrysotile", "city", "chrysotile", ""),
-        Slaughter: new Action("Slaughter", "city", "slaughter", ""),
-        ForgeHorseshoe: new ResourceAction("Horseshoe", "city", "horseshoe", "", {housing: true, garrison: true}, "Horseshoe"),
-        SlaveMarket: new ResourceAction("Slave Market", "city", "slave_market", "", null, "Slave"),
+        Food: new ResourceAction("Gather Food", "city", "food", "", "Food"),
+        Lumber: new ResourceAction("Gather Lumber", "city", "lumber", "", "Lumber"),
+        Stone: new ResourceAction("Gather Stone", "city", "stone", "", "Stone"),
+        Chrysotile: new ResourceAction("Gather Chrysotile", "city", "chrysotile", "", "Chrysotile"),
+        Slaughter: new Action("Slaughter the Weak", "city", "slaughter", ""),
+        ForgeHorseshoe: new ResourceAction("Horseshoe", "city", "horseshoe", "", "Horseshoe", {housing: true, garrison: true}),
+        SlaveMarket: new ResourceAction("Slave Market", "city", "slave_market", "", "Slave"),
         SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
         House: new Action("Cabin", "city", "basic_housing", "", {housing: true}),
         Cottage: new Action("Cottage", "city", "cottage", "", {housing: true}),
@@ -2254,7 +2254,7 @@
         Mill: new Action("Windmill", "city", "mill", "", {smart: true}),
         Windmill: new Action("Windmill (Evil)", "city", "windmill", ""),
         Silo: new Action("Grain Silo", "city", "silo", ""),
-        Assembly: new ResourceAction("Assembly", "city", "assembly", "", {housing: true}, "Population"),
+        Assembly: new ResourceAction("Assembly", "city", "assembly", "", "Population", {housing: true}),
         Barracks: new Action("Barracks", "city", "garrison", "", {garrison: true}),
         Hospital: new Action("Hospital", "city", "hospital", ""),
         BootCamp: new Action("Boot Camp", "city", "boot_camp", ""),
@@ -2314,7 +2314,7 @@
         RedTerraformer: new Action("Red Terraformer (Orbit Decay)", "space", "terraformer", "spc_red", {multiSegmented: true}),
         RedAtmoTerraformer: new Action("Red Terraformer (Orbit Decay, Complete)", "space", "atmo_terraformer", "spc_red"),
         RedTerraform: new Action("Red Terraform (Orbit Decay)", "space", "terraform", "spc_red", {prestige: true}),
-        RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", {housing: true}, "Population"),
+        RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", "Population", {housing: true}),
         RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red", {housing: true}),
         RedPylon: new Action("Red Pylon (Cataclysm)", "space", "pylon", "spc_red"),
         RedVrCenter: new Action("Red VR Center", "space", "vr_center", "spc_red"),
@@ -2328,7 +2328,7 @@
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
-        RedForgeHorseshoe: new ResourceAction("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}, "Horseshoe"),
+        RedForgeHorseshoe: new ResourceAction("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", "Horseshoe", {housing: true, garrison: true}),
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
@@ -2417,9 +2417,9 @@
         TauHousing: new Action("Tau Housing", "tauceti", "tau_housing", "tau_home", {housing: true}),
         TauCaptiveHousing: new CityAction("Tau Captive Housing", "tauceti", "captive_housing", "tau_home"),
         TauPylon: new Action("Tau Pylon", "tauceti", "pylon", "tau_home"),
-        TauCloning: new ResourceAction("Tau Cloning", "tauceti", "cloning_facility", "tau_home", {housing: true}, "Population"),
-        TauForgeHorseshoe: new ResourceAction("Tau Horseshoe", "tauceti", "horseshoe", "tau_home", {housing: true, garrison: true}, "Horseshoe"),
-        TauAssembly: new ResourceAction("Tau Assembly", "tauceti", "assembly", "tau_home", {housing: true}, "Population"),
+        TauCloning: new ResourceAction("Tau Cloning", "tauceti", "cloning_facility", "tau_home", "Population", {housing: true}),
+        TauForgeHorseshoe: new ResourceAction("Tau Horseshoe", "tauceti", "horseshoe", "tau_home", "Horseshoe", {housing: true, garrison: true}),
+        TauAssembly: new ResourceAction("Tau Assembly", "tauceti", "assembly", "tau_home", "Population", {housing: true}),
         TauNaniteFactory: new CityAction("Tau Nanite Factory", "tauceti", "nanite_factory", "tau_home"),
         TauFarm: new Action("Tau High-Tech Farm", "tauceti", "tau_farm", "tau_home"),
         TauMiningPit: new Action("Tau Mining Pit", "tauceti", "mining_pit", "tau_home", {smart: true}),
@@ -9087,7 +9087,7 @@
         workerDeltas.forEach((delta, index) => delta < 0 && jobList[index].removeWorkers(delta * -1));
         workerDeltas.forEach((delta, index) => delta > 0 && jobList[index].addWorkers(delta));
 
-        if (settings.jobManageServants) {
+        if (settings.jobManageServants && !$.isEmptyObject(game.global.race.servants?.jobs ?? {})) {
             let servantDeltas = requiredServants.map((req, index) => req - jobList[index].servants);
             servantDeltas.forEach((delta, index) => delta < 0 && jobList[index].removeServants(delta * -1));
             servantDeltas.forEach((delta, index) => delta > 0 && jobList[index].addServants(delta));
@@ -15977,7 +15977,7 @@
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
                             {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
-        addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be build. Infernal mechs won't ever be build.", buildOptions);
+        addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be built. Infernal mechs won't ever be built.", buildOptions);
 
         // TODO: Make auto truly auto - some way to pick best "per x", depends on current bottleneck
         let sizeOptions = [{val: "auto", label: "Damage Per Size", hint: "Select affordable mech with most damage per size on current floor"},
