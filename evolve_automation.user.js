@@ -952,10 +952,13 @@
 
             KeyManager.set(doMultiClick, doMultiClick, doMultiClick);
 
+            if (this.is.prestige) { logPrestige(); }
+
             // Hide active popper from action, so it won't rewrite it
             let popper = $('#popper');
             if (popper.length > 0 && popper.data('id').indexOf(this._vueBinding) === -1) {
                 popper.attr('id', 'TotallyNotAPopper');
+
                 this.vue.action();
                 popper.attr('id', 'popper');
             } else {
@@ -1314,6 +1317,9 @@
                 GameLog.logSuccess("arpa", poly.loc('build_success', [`${this.title} (${this.progress + this.currentStep}%)`]), ['queue', 'building_queue']);
             } else {
                 GameLog.logSuccess("construction", poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
+                if (this.id === "syphon" && this.count == 79) {
+                    logPrestige();
+                }
             }
 
             KeyManager.set(false, false, false);
@@ -6030,6 +6036,15 @@
             mech_scrap: "Mech Scrap",
             outer_fleet: "True Path Fleet",
             mutation: "Mutations",
+            prestige: "Prestige"
+        },
+
+        logInfo(loggingType, text, tags) {
+            if (!settings.logEnabled || !settings["log_" + loggingType]) {
+                return;
+            }
+
+            poly.messageQueue(text, "info", false, tags);
         },
 
         logSuccess(loggingType, text, tags) {
@@ -7408,6 +7423,7 @@
         Object.keys(GameLog.Types).forEach(id => def["log_" + id] = true);
         def["log_mercenary"] = false;
         def["log_multi_construction"] = false;
+        def["log_prestige"] = false;
 
         applySettings(def, reset);
     }
@@ -9897,6 +9913,12 @@
         }
     }
 
+    function logPrestige() {
+        let prestigeType = prestigeTypes.find(prest => prest.val === settings.prestigeType).label;
+        let species = game.global.race.species.charAt(0).toUpperCase() + game.global.race.species.slice(1)
+        GameLog.logInfo("prestige", `Reset: ${prestigeType}, Species: ${species}, Duration: ${game.global.stats.days} days`, ['achievements']);
+    }
+
     function autoPrestige() {
         switch (settings.prestigeType) {
             case 'none':
@@ -9915,6 +9937,7 @@
 
                     if (!settings.prestigeMADWait || (WarManager.currentSoldiers >= WarManager.maxSoldiers && resources.Population.currentQuantity >= resources.Population.maxQuantity && WarManager.currentSoldiers + resources.Population.currentQuantity >= settings.prestigeMADPopulation)) {
                         state.goal = "GameOverMan";
+                        logPrestige();
                         madVue.launch();
                     }
                 }
@@ -9944,6 +9967,7 @@
                     if (settings.autoEvolution) {
                         loadQueuedSettings(); // Cataclysm doesnt't have evolution stage, so we need to load settings here, before reset
                     }
+                    logPrestige();
                     techIds["tech-dial_it_to_11"].click();
                 }
                 return;
@@ -9952,6 +9976,9 @@
                     if (state.goal !== 'Reset') {
                         state.goal = 'Reset';
                         return;
+                    }
+                    if (techIds["tech-exotic_infusion"].isUnlocked()) {
+                        logPrestige();
                     }
                     ["tech-infusion_confirm", "tech-infusion_check", "tech-exotic_infusion"].forEach(id => techIds[id].click());
                 }
@@ -9962,6 +9989,7 @@
                         state.goal = 'Reset';
                         return;
                     }
+                    logPrestige();
                     ["tech-protocol66", "tech-protocol66a"].forEach(id => techIds[id].click());
                 }
                 return;
@@ -9973,6 +10001,7 @@
                             return;
                         }
                         KeyManager.set(false, false, false);
+                        logPrestige();
                         buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
                         state.goal = "GameOverMan";
                     }
@@ -9995,6 +10024,7 @@
                             return;
                         }
                         KeyManager.set(false, false, false);
+                        logPrestige();
                         buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
                         state.goal = "GameOverMan";
                     }
@@ -10004,6 +10034,7 @@
                             state.goal = 'Reset';
                             return;
                         }
+                        logPrestige();
                         techIds["tech-demonic_infusion"].click();
                     }
                 }
