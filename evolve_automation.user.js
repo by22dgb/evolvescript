@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.34
+// @version      3.3.1.109
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -7402,15 +7402,18 @@
         applySettings(def, reset);
     }
 
-    function resetTriggerState() {
-        TriggerManager.priorityList = [];
-    }
-
     function resetTriggerSettings(reset) {
         let def = {
             autoTrigger: false
         }
 
+        if (reset || !settingsRaw.hasOwnProperty("autoTrigger")) {
+            TriggerManager.priorityList = [];
+            TriggerManager.AddTrigger("built", "space-moon_mission", 1, "build", "space-moon_base", 1);
+            TriggerManager.AddTrigger("built", "space-moon_base", 1, "build", "space-iridium_mine", 1);
+            TriggerManager.AddTrigger("built", "space-moon_base", 1, "build", "space-helium_mine", 1);
+            settingsRaw.triggers = JSON.parse(JSON.stringify(TriggerManager.priorityList));
+        }
         applySettings(def, reset);
     }
 
@@ -11806,6 +11809,9 @@
 
         if (m.build(newShip, targetRegion)) {
             GameLog.logSuccess("outer_fleet", `${m.getShipName(newShip)} has been assembled, and dispatched to ${m.getLocName(targetRegion)}.`, ['combat']);
+        } else {
+            m.nextShipMsg = `Invalid design! Next ship(${m.nextShipName}) is missing power`;
+            return;
         }
     }
 
@@ -12485,20 +12491,23 @@
 
         let needReset = false;
         if (settings.autoEvolution && settings.evolutionBackup) {
-            if (settings.userEvolutionTarget === "auto") {
-                let newRace = races[game.global.race.species];
-                if (newRace.getWeighting() <= 0) {
-                    let bestWeighting = Math.max(...Object.values(races).map(r => r.getWeighting()));
-                    if (bestWeighting > 0) {
-                        GameLog.logDanger("special", `${newRace.name} have no unearned achievements for current prestige, soft resetting and trying again.`, ['progress', 'achievements']);
-                        needReset = true;
-                    } else {
-                        GameLog.logWarning("special", `Can't pick a race with unearned achievements for current prestige. Continuing with ${newRace.name}.`, ['progress', 'achievements']);
+            // Sludge and Valdi can't be evolved at random, only intentionally
+            if (game.global.race.species !== "junker" && game.global.race.species !== "sludge") {
+                if (settings.userEvolutionTarget === "auto") {
+                    let newRace = races[game.global.race.species];
+                    if (newRace.getWeighting() <= 0) {
+                        let bestWeighting = Math.max(...Object.values(races).map(r => r.getWeighting()));
+                        if (bestWeighting > 0) {
+                            GameLog.logDanger("special", `${newRace.name} have no unearned achievements for current prestige, soft resetting and trying again.`, ['progress', 'achievements']);
+                            needReset = true;
+                        } else {
+                            GameLog.logWarning("special", `Can't pick a race with unearned achievements for current prestige. Continuing with ${newRace.name}.`, ['progress', 'achievements']);
+                        }
                     }
+                } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
+                    GameLog.logDanger("special", `Wrong race, soft resetting and trying again.`, ['progress']);
+                    needReset = true;
                 }
-            } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
-                GameLog.logDanger("special", `Wrong race, soft resetting and trying again.`, ['progress']);
-                needReset = true;
             }
         }
         if (settings.autoMutateTraits) {
@@ -13927,6 +13936,12 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
+    function resetTabHeight(tab) {
+        let content = document.querySelector(`#script_${tab} .script-content`);
+        content.style.height = null;
+        content.style.height = content.offsetHeight + "px";
+    }
+
     function buildImportExport() {
         let importExportNode = $(".importExport").last();
         if (importExportNode === null) {
@@ -13958,7 +13973,6 @@
                     }
                     console.log("Importing script settings");
                     settingsRaw = saveState;
-                    resetTriggerState();
                     updateStandAloneSettings();
                     updateStateFromSettings();
                     updateSettingsFromState();
@@ -15050,10 +15064,7 @@
           .on('change', 'select', function() {
             state.evolutionTarget = null;
             updateRaceWarning();
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("evolutionSetting");
         });
 
         currentNode.append(`<div><span id="script_race_warning"></span></div>`);
@@ -15189,10 +15200,7 @@
             settingsRaw.evolutionQueue.splice(id, 1);
             updateSettingsFromState();
             updateEvolutionSettingsContent();
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("evolutionSettings");
         });
 
 
@@ -15206,10 +15214,7 @@
             } catch (error) {
                 queueNode.find('td:eq(0)').html(`<span class="has-text-danger">${error}</span>`);
             }
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("evolutionSettings");
         });
 
         return queueNode;
@@ -15234,9 +15239,7 @@
         let tableBodyNode = $('#script_evolutionQueueTable');
         tableBodyNode.append(buildEvolutionQueueItem(queueLength-1));
 
-        let content = document.querySelector('#script_evolutionSettings .script-content');
-        content.style.height = null;
-        content.style.height = content.offsetHeight + "px"
+        resetTabHeight("evolutionSettings");
     }
 
     function buildPlanetSettings() {
@@ -15318,9 +15321,9 @@
 
         let resetFunction = function() {
             resetTriggerSettings(true);
-            resetTriggerState();
             updateSettingsFromState();
             updateTriggerSettingsContent();
+            resetTabHeight("triggerSettings");
 
             resetCheckbox("autoTrigger");
         };
@@ -15416,10 +15419,7 @@
         buildTriggerActionCount(trigger);
 
         buildTriggerSettingsColumn(trigger);
-
-        let content = document.querySelector('#script_triggerSettings .script-content');
-        content.style.height = null;
-        content.style.height = content.offsetHeight + "px"
+        resetTabHeight("triggerSettings");
     }
 
     function buildTriggerRequirementType(trigger) {
@@ -15536,10 +15536,7 @@
             TriggerManager.RemoveTrigger(trigger.seq);
             updateSettingsFromState();
             updateTriggerSettingsContent();
-
-            let content = document.querySelector('#script_triggerSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("triggerSettings");
         });
     }
 
@@ -16496,10 +16493,7 @@
         addSettingsSelect(currentNode, "imitateRace", "Imitate race", "Imitate selected race, if available.", imitateOptions).on('change', 'select', function() {
             state.evolutionTarget = null;
             updateImitateWarning();
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("evolutionSettings");
         });
 
         currentNode.append(`<div><span id="script_imitate_warning"></span></div>`);
@@ -17461,10 +17455,7 @@
                 }
             }
         }
-
-        let content = document.querySelector('#script_buildingSettings .script-content');
-        content.style.height = null;
-        content.style.height = content.offsetHeight + "px"
+        resetTabHeight("buildingSettings");
     }
 
     function buildAllBuildingEnabledSettingsToggle() {
