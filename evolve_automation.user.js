@@ -13671,6 +13671,7 @@
 
             .script-modal-content.override-modal {
                 width: 70%;
+                min-width: 900px;
             }
 
             /* The Close Button */
