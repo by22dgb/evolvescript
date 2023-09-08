@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.109
+// @version      3.3.1.110
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1596,21 +1596,26 @@
                 return ((game.global.stats.achieve['ascended'] || game.global.stats.achieve['corrupted']) && game.global.stats.achieve['extinct_junker']) ? 1 : 0;
             }
 
+            let unboundMod = game.global.blood.unbound >= 4 ? 0.95 :
+                             game.global.blood.unbound >= 2 ? 0.9 :
+                             game.global.blood.unbound >= 1 ? 0.8 : 0;
+            let shadowMod = game.global.blood.unbound >= 3 ? unboundMod : 0;
+
             switch (this.genus) {
                 case "aquatic":
-                    return ['swamp','oceanic'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['swamp','oceanic'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "fey":
-                    return ['forest','swamp','taiga'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['forest','swamp','taiga'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "sand":
-                    return ['ashland','desert'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['ashland','desert'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "heat":
-                    return ['ashland','volcanic'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['ashland','volcanic'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "polar":
-                    return ['tundra','taiga'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['tundra','taiga'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "demonic":
-                    return game.global.city.biome === 'hellscape' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
+                    return game.global.city.biome === 'hellscape' ? 1 : shadowMod;
                 case "angelic":
-                    return game.global.city.biome === 'eden' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
+                    return game.global.city.biome === 'eden' ? 1 : shadowMod;
                 case "synthetic":
                     return game.global.stats.achieve['obsolete']?.l >= 5 ? 1 : 0;
                 case "eldritch":
@@ -17839,7 +17844,7 @@
         const calendarNode = $("#topBar .calendar");
         if (calendarNode.length === 0) { return; } // The node that we want to add it to doesn't exist yet
 
-        calendarNode.find('.day').after($(`<span id="s-total-days" class="has-text-fade" style="padding-left: 3px;">(<span id="s-total-days-count"></span>)</span>`));
+        calendarNode.find('.day').after($(`<span id="s-total-days" class="has-text-warning" style="padding-left: 3px;">(<span id="s-total-days-count"></span>)</span>`));
     }
 
     function removeTotalDaysFromTopBar() {
@@ -18321,10 +18326,6 @@
 
     function average(arr) {
         return arr.reduce((sum, val) => sum + val) / arr.length;
-    }
-
-    function getUnsuitedMod() {
-        return !game.global.blood.unbound ? 0 : game.global.blood.unbound >= 4 ? 0.95 : game.global.blood.unbound >= 2 ? 0.9 : 0.8;
     }
 
     // Script hooked to fastTick fired 4 times per second
