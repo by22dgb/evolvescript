@@ -2579,7 +2579,7 @@
         ChthonianMission: new Action("Chthonian Mission", "galaxy", "chthonian_mission", "gxy_chthonian"),
         ChthonianMineLayer: new Action("Chthonian Mine Layer", "galaxy", "minelayer", "gxy_chthonian", {ship: true, smart: true}),
         ChthonianExcavator: new Action("Chthonian Excavator", "galaxy", "excavator", "gxy_chthonian", {smart: true}),
-        ChthonianRaider: new Action("Chthonian Raider", "galaxy", "raider", "gxy_chthonian", {ship: true, smart: true}),
+        ChthonianRaider: new Action("Chthonian Corsair", "galaxy", "raider", "gxy_chthonian", {ship: true, smart: true}),
 
         PortalTurret: new Action("Portal Laser Turret", "portal", "turret", "prtl_fortress"),
         PortalCarport: new Action("Portal Surveyor Carport", "portal", "carport", "prtl_fortress"),
