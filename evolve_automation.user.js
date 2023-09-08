@@ -6888,7 +6888,8 @@
             buildingAlwaysClick: false,
             buildingClickPerTick: 50,
             activeTargetsUI: false,
-            displayPrestigeTypeInTopBar: false
+            displayPrestigeTypeInTopBar: false,
+            displayTotalDaysTypeInTopBar: false
         }
 
         applySettings(def, reset);
@@ -14814,7 +14815,7 @@
             removeActiveTargetsUI();
             removePrestigeFromTopBar();
 
-            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "displayPrestigeTypeInTopBar");
+            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "displayPrestigeTypeInTopBar", "displayTotalDaysTypeInTopBar");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
@@ -14854,6 +14855,7 @@
         addSettingsHeader1(currentNode, "Additional UI");
         addSettingsToggle(currentNode, "activeTargetsUI", "Display detailed queue", "Add UI in right column to display currently active queued buildings, technologies, and triggers and their resources.", buildActiveTargetsUI, removeActiveTargetsUI);
         addSettingsToggle(currentNode, "displayPrestigeTypeInTopBar", "Display prestige type in top bar", "Show the currently selected prestige type in the top bar", updatePrestigeInTopBar, updatePrestigeInTopBar);
+        addSettingsToggle(currentNode, "displayTotalDaysTypeInTopBar", "Display total days in top bar", "Show the total days next to this year's days", updateTotalDaysInTopBar, updateTotalDaysInTopBar);
 
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -17817,6 +17819,36 @@
         prestigeNode.remove();
     }
 
+    function updateTotalDaysInTopBar() {
+        if (settings.displayTotalDaysTypeInTopBar) {
+            addTotalDaysToTopBar();
+        } else {
+            removeTotalDaysFromTopBar();
+        }
+
+        const totalDaysNode = document.getElementById("s-total-days-count");
+        if (totalDaysNode == null) { return; } // Element has not yet been added, cannot update
+
+        totalDaysNode.textContent = game.global.stats.days;
+    }
+
+    function addTotalDaysToTopBar() {
+        const nodeId = 's-total-days';
+        if (document.getElementById(nodeId) !== null) { return; } // We've already added the info to the top bar
+
+        const calendarNode = $("#topBar .calendar");
+        if (calendarNode.length === 0) { return; } // The node that we want to add it to doesn't exist yet
+
+        calendarNode.find('.day').after($(`<span id="s-total-days" class="has-text-fade" style="padding-left: 3px;">(<span id="s-total-days-count"></span>)</span>`));
+    }
+
+    function removeTotalDaysFromTopBar() {
+        let totalDaysNode = document.getElementById("s-total-days");
+        if (totalDaysNode == null) { return; } // Element has not yet been added, nothing to do
+
+        totalDaysNode.remove();
+    }
+
     function updateUI() {
         let resetScrollPositionRequired = false;
         let currentScrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
@@ -18009,6 +18041,8 @@
             // Leave the scroll position where it was before all our updates to the UI above
             document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
         }
+
+        updateTotalDaysInTopBar();
     }
 
     function createMechInfo() {
