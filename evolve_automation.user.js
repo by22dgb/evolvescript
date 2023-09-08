@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.110
+// @version      3.3.1.111
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -13595,7 +13595,7 @@
         };
         styles += `
             .script-lastcolumn:after { float: right; content: "\\21c5"; }
-            .script-refresh:after { float: right; content: "\\1f5d8"; cursor: pointer; }
+            .script-refresh:after { float: right; content: "\\21ba"; cursor: pointer; }
             .script-draggable { cursor: move; cursor: grab; }
             .script-draggable:active { cursor: grabbing !important; }
             .ui-sortable-helper { display: table; cursor: grabbing !important; }
@@ -13663,14 +13663,14 @@
                 margin: auto;
                 margin-top: 50px;
                 margin-bottom: 50px;
-                //margin-left: 10%;
-                //margin-right: 10%;
                 padding: 0px;
-                //width: 80%;
                 width: 900px;
-                //max-height: 90%;
                 border-radius: .5rem;
                 text-align: center;
+            }
+
+            .script-modal-content.override-modal {
+                width: 70%;
             }
 
             /* The Close Button */
@@ -14281,6 +14281,7 @@
             event.preventDefault();
             openOptionsModal(event.data.label, function(modal) {
                 modal.append(`<div style="margin-top: 10px; margin-bottom: 10px;" id="script_${event.data.name}Modal"></div>`);
+                $('.script-modal-content').addClass('override-modal');
                 buildOverrideSettings(event.data.name, event.data.type, event.data.options);
             });
         }
@@ -14302,20 +14303,20 @@
               <th class="has-text-warning" colspan="3">Result</th>
             </tr>
             <tr>
-              <th class="has-text-warning" style="width:17%">Type</th>
+              <th class="has-text-warning" style="width:16%">Type</th>
               <th class="has-text-warning" style="width:16%">Value</th>
               <th class="has-text-warning" style="width:10%"></th>
-              <th class="has-text-warning" style="width:17%">Type</th>
+              <th class="has-text-warning" style="width:16%">Type</th>
               <th class="has-text-warning" style="width:16%">Value</th>
               <th class="has-text-warning" style="width:15%"></th>
-              <th style="width:9%"></th>
+              <th style="width:11%"></th>
             </tr>
             <tbody id="script_${settingName}ModalTable"></tbody>
           </table>`);
 
         let newTableBodyText = "";
         for (let i = 0; i < overrides.length; i++) {
-            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:17%"></td><td style="width:16%"></td><td style="width:10%"></td><td style="width:17%"></td><td style="width:16%"></td><td style="width:15%"></td><td style="width:9%"><span class="script-lastcolumn"></span></td></tr>`;
+            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:16%"></td><td style="width:16%"></td><td style="width:10%"></td><td style="width:16%"></td><td style="width:16%"></td><td style="width:15%"></td><td style="width:11%"><span class="script-lastcolumn"></span></td></tr>`;
         }
 
         let listField = typeof settingsRaw[settingName] === "object";
@@ -14325,20 +14326,20 @@
         let note_2 = "The current value:";
 
         let current = listField ?
-         `<td style="width:33%" colspan="2">${note_2}</td>
-          <td style="width:58%" colspan="4"></td>`:
-         `<td style="width:76%" colspan="5">${note_2}</td>
+         `<td style="width:32%" colspan="2">${note_2}</td>
+          <td style="width:57%" colspan="4"></td>`:
+         `<td style="width:74%" colspan="5">${note_2}</td>
           <td style="width:15%"></td>`;
 
         newTableBodyText += `
           <tr id="script_${settingName}_d" class="unsortable">
-            <td style="width:76%" colspan="5">${note}</td>
+            <td style="width:74%" colspan="5">${note}</td>
             <td style="width:15%"></td>
-            <td style="width:9%"><a class="button is-small" style="width: 26px; height: 26px"><span>+</span></a></td>
+            <td style="width:11%"><a class="button is-small" style="width: 26px; height: 26px"><span>+</span></a></td>
           </tr>
           <tr id="script_override_true_value" class="unsortable" value="${settingName}" type="${type}">
             ${current}
-            <td style="width:9%"></td>
+            <td style="width:11%"></td>
           </tr>`;
         let tableBodyNode = $(`#script_${settingName}ModalTable`);
         tableBodyNode.append($(newTableBodyText));
@@ -14386,6 +14387,7 @@
             }
             tableElement = tableElement.next();
             tableElement.append(buildConditionRemove(settingName, i, rebuild));
+            tableElement.append(buildConditionDuplicate(settingName, i, rebuild));
         }
 
         tableBodyNode.sortable({
@@ -14540,6 +14542,15 @@
                 delete settingsRaw.overrides[settingName];
                 $(".script_bg_" + settingName).removeClass("inactive-row");
             }
+            updateSettingsFromState();
+            rebuild();
+        });
+    }
+
+    function buildConditionDuplicate(settingName, id, rebuild) {
+        return $(`<a class="button is-small" style="width: 26px; height: 26px"><span style="font-size: 1.2rem;">&#9282;</span></a>`)
+        .on('click', function() {
+            settingsRaw.overrides[settingName].splice(id, 0, settingsRaw.overrides[settingName][id]);
             updateSettingsFromState();
             rebuild();
         });
@@ -17779,6 +17790,7 @@
         // Add the script modal close button action
         $('#scriptModalClose').on("click", function() {
             $("#scriptModal").css('display', 'none');
+            $('.script-modal-content').removeClass('override-modal');
             $("html").css('overflow-y', 'scroll');
         });
 
@@ -17786,6 +17798,7 @@
         $(window).on("click", function(event) {
             if (event.target.id === "scriptModal") {
                 $("#scriptModal").css('display', 'none');
+                $('.script-modal-content').removeClass('override-modal');
                 $("html").css('overflow-y', 'scroll');
             }
         });
