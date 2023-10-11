@@ -7433,6 +7433,7 @@
         def["log_mercenary"] = false;
         def["log_multi_construction"] = false;
         def["log_prestige"] = false;
+        def["log_prestige_format"] = "Reset: {resetType}, Species: {species}, Duration: {timeStamp} days";
 
         applySettings(def, reset);
     }
@@ -9922,10 +9923,27 @@
         }
     }
 
+    function formatLogString(logString, replacements) {
+        logString = logString.replace(/\{eval:([^}]+)\}/g, (match, evalString) => {
+            try {
+              return fastEval(evalString);
+            } catch(e) {
+              return match;
+            }
+          });
+
+        return logString.replace(/{(\w+)}/g, (placeholderWithDelimiters, placeholderWithoutDelimiters) =>
+            replacements.hasOwnProperty(placeholderWithoutDelimiters) ? replacements[placeholderWithoutDelimiters] : placeholderWithDelimiters
+        );
+    }
+
     function logPrestige() {
-        let prestigeType = prestigeTypes.find(prest => prest.val === settings.prestigeType).label;
-        let species = game.global.race.species.charAt(0).toUpperCase() + game.global.race.species.slice(1)
-        GameLog.logInfo("prestige", `Reset: ${prestigeType}, Species: ${species}, Duration: ${game.global.stats.days} days`, ['achievements']);
+        var placeholders = {};
+        placeholders.resetType = prestigeTypes.find(prest => prest.val === settings.prestigeType).label;
+        placeholders.timeStamp = game.global.stats.days;
+        placeholders.species = game.global.race.species.charAt(0).toUpperCase() + game.global.race.species.slice(1);
+
+        GameLog.logInfo("prestige", formatLogString(settings.log_prestige_format, placeholders), ['achievements']);
     }
 
     function autoPrestige() {
@@ -13987,6 +14005,17 @@
                             evals.push(override.arg2);
                         }
                     }));
+
+                    Object.values(saveState.overrides.log_prestige_format ?? []).forEach(prestige_log_format_override => {
+                        if (prestige_log_format_override.ret.includes("{eval:")) {
+                            evals.push(prestige_log_format_override.ret);
+                        }
+                    });
+
+                    if ((saveState.log_prestige_format ?? "").includes("{eval:")) {
+                        evals.push(saveState.log_prestige_format);
+                    }
+
                     if (evals.length > 0 && !confirm("Warning! Imported settings includes evaluated code, which will have full access to browser page, and can be potentially dangerous.\nOnly continue if you trust the source. Injected code:\n" + evals.join("\n"))) {
                         return;
                     }
@@ -14675,6 +14704,24 @@
             $(".script_" + settingName).val(settingsRaw[settingName]);
         })
         .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "number"}, openOverrideModal)
+        .appendTo(node);
+    }
+
+    function addSettingsString(node, settingName, labelText, hintText) {
+        return $(`
+          <div class="script_bg_${settingName}" style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
+            <label title="${hintText}" tabindex="0">
+              <span>${labelText}</span>
+              <input class="script_${settingName}" type="text" style="text-align: right; height: 18px; width: 70%; float: right;" value="${settingsRaw[settingName]}"></input>
+            </label>
+          </div>`)
+        .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingName]))
+        .on('change', 'input', function() {
+            settingsRaw[settingName] = this.value;
+            updateSettingsFromState();
+            $(".script_" + settingName).val(settingsRaw[settingName]);
+        })
+        .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "string"}, openOverrideModal)
         .appendTo(node);
     }
 
@@ -17683,6 +17730,7 @@
         addSettingsHeader1(currentNode, "Script Messages");
         addSettingsToggle(currentNode, "logEnabled", "Enable logging", "Master switch to enable logging of script actions in the game message queue");
         Object.entries(GameLog.Types).forEach(([id, label]) => addSettingsToggle(currentNode, "log_" + id, label, `If logging is enabled then logs ${label} actions`));
+        addSettingsString(currentNode, "log_prestige_format", "Prestige Log Format", "Available placeholders: {resetType}, {species}, {timestamp} (in game days). Use {eval: XXX } to log custom information");
 
         addSettingsHeader1(currentNode, "Game Messages");
         addSettingsToggle(currentNode, "hellTurnOffLogMessages", "Turn off patrol and surveyor log messages", "Automatically turns off the hell patrol and surveyor log messages");
