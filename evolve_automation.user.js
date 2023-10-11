@@ -12659,9 +12659,11 @@
             let targetName = target.name,
                 targetTimeLeft = '',
                 targetSegments = '',
-                researchTimeLeft = 0;
+                researchTimeLeft = 0,
+                isArpaProject = type === 'arpa' || target instanceof Project,
+                isMultiSegmented = target.is && target.is.multiSegmented;
 
-            if (target.count && !(target.is && target.is.multiSegmented)) {
+            if (target.count && !isMultiSegmented) {
                 targetName += ` #${target.count + 1}`;
             }
 
@@ -12677,7 +12679,7 @@
                 } else if (target.cost.Knowledge > game.global.resource.Knowledge.max) {
                     targetTimeLeft = 'Not enough Knowledge';
                 }
-            } else if (type === 'arpa' || target instanceof Project) {
+            } else if (isArpaProject) {
                 targetName += ` (${target.progress}%)`;
 
                 const segmentedTimeLeft = getMultiSegmentedTimeLeft(target);
@@ -12689,11 +12691,19 @@
                     className = 'has-text-success',
                     resourceTimeLeft = '';
 
-                if (res.currentQuantity < costs[resource]) {
+                let resourceCost = costs[resource];
+
+                if (isArpaProject) {
+                    resourceCost = costs[resource] * ((100 - target.progress) / target.currentStep);
+                } else if (isMultiSegmented) {
+                    resourceCost = costs[resource] * (target.gameMax - target.count);
+                }
+
+                if (res.currentQuantity < resourceCost) {
                     className = 'has-text-danger';
 
-                    if (res.maxQuantity >= costs[resource] && res.income > 0) {
-                        const timeLeftRaw = (costs[resource] - res.currentQuantity) / res.income;
+                    if (res.maxQuantity >= resourceCost && res.income > 0) {
+                        const timeLeftRaw = (resourceCost - res.currentQuantity) / res.income;
 
                         if (target instanceof Technology && timeLeftRaw > researchTimeLeft) {
                             researchTimeLeft = timeLeftRaw;
@@ -12703,12 +12713,14 @@
                         if (res === resources.Soul_Gem) {
                             resourceTimeLeft = `~${resourceTimeLeft}`;
                         }
+                    } else if (isArpaProject && res.name === 'Knowledge' && res.income > 0) {
+                        resourceTimeLeft = poly.timeFormat(res.currentQuantity / res.income);
                     } else {
                         targetTimeLeft = resourceTimeLeft = 'Never';
                     }
                 }
 
-                const progressBarWidth = (res.currentQuantity / costs[resource]) * 100;
+                const progressBarWidth = (res.currentQuantity / resourceCost) * 100;
 
                 const isReplicatingClassName = (game.global.race.replicator && game.global.race.replicator.res === resource) ? 'is-replicating' : '';
 
@@ -12726,7 +12738,7 @@
                     </li>`;
             }).join('');
 
-            if (target.is && target.is.multiSegmented) {
+            if (isMultiSegmented) {
                 targetSegments = `(${target.count} / ${target.gameMax})`;
 
                 const segmentedTimeLeft = getMultiSegmentedTimeLeft(target);
@@ -14551,7 +14563,7 @@
     function buildConditionDuplicate(settingName, id, rebuild) {
         return $(`<a class="button is-small" style="width: 26px; height: 26px"><span style="font-size: 1.2rem;">&#9282;</span></a>`)
         .on('click', function() {
-            settingsRaw.overrides[settingName].splice(id, 0, settingsRaw.overrides[settingName][id]);
+            settingsRaw.overrides[settingName].splice(id, 0, {...settingsRaw.overrides[settingName][id]});
             updateSettingsFromState();
             rebuild();
         });
