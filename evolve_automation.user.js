@@ -12500,8 +12500,8 @@
 
         $("#tech .action").each(function() {
             let tech = techIds[this.id];
+            tech.updateResourceRequirements();
             if (!getTechConflict(tech) || state.triggerTargets.includes(tech) || state.queuedTargetsAll.includes(tech)) {
-                tech.updateResourceRequirements();
                 state.unlockedTechs.push(tech);
             }
         });
