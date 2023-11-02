@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.108.31
+// @version      3.3.1.112
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -955,10 +955,13 @@
 
             KeyManager.set(doMultiClick, doMultiClick, doMultiClick);
 
+            if (this.is.prestige) { logPrestige(); }
+
             // Hide active popper from action, so it won't rewrite it
             let popper = $('#popper');
             if (popper.length > 0 && popper.data('id').indexOf(this._vueBinding) === -1) {
                 popper.attr('id', 'TotallyNotAPopper');
+
                 this.vue.action();
                 popper.attr('id', 'popper');
             } else {
@@ -1154,7 +1157,7 @@
     }
 
     class ResourceAction extends Action {
-        constructor(name, tab, id, location, flags, res) {
+        constructor(name, tab, id, location, res, flags) {
             super(name, tab, id, location, flags);
 
             this.resource = resources[res];
@@ -1317,6 +1320,9 @@
                 GameLog.logSuccess("arpa", poly.loc('build_success', [`${this.title} (${this.progress + this.currentStep}%)`]), ['queue', 'building_queue']);
             } else {
                 GameLog.logSuccess("construction", poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
+                if (this.id === "syphon" && this.count == 79) {
+                    logPrestige();
+                }
             }
 
             KeyManager.set(false, false, false);
@@ -1599,21 +1605,26 @@
                 return ((game.global.stats.achieve['ascended'] || game.global.stats.achieve['corrupted']) && game.global.stats.achieve['extinct_junker']) ? 1 : 0;
             }
 
+            let unboundMod = game.global.blood.unbound >= 4 ? 0.95 :
+                             game.global.blood.unbound >= 2 ? 0.9 :
+                             game.global.blood.unbound >= 1 ? 0.8 : 0;
+            let shadowMod = game.global.blood.unbound >= 3 ? unboundMod : 0;
+
             switch (this.genus) {
                 case "aquatic":
-                    return ['swamp','oceanic'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['swamp','oceanic'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "fey":
-                    return ['forest','swamp','taiga'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['forest','swamp','taiga'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "sand":
-                    return ['ashland','desert'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['ashland','desert'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "heat":
-                    return ['ashland','volcanic'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['ashland','volcanic'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "polar":
-                    return ['tundra','taiga'].includes(game.global.city.biome) ? 1 : getUnsuitedMod();
+                    return ['tundra','taiga'].includes(game.global.city.biome) ? 1 : unboundMod;
                 case "demonic":
-                    return game.global.city.biome === 'hellscape' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
+                    return game.global.city.biome === 'hellscape' ? 1 : shadowMod;
                 case "angelic":
-                    return game.global.city.biome === 'eden' ? 1 : game.global.blood.unbound >= 3 ? getUnsuitedMod() : 0;
+                    return game.global.city.biome === 'eden' ? 1 : shadowMod;
                 case "synthetic":
                     return game.global.stats.achieve['obsolete']?.l >= 5 ? 1 : 0;
                 case "eldritch":
@@ -2241,13 +2252,13 @@
     }
 
     var buildings = {
-        Food: new Action("Food", "city", "food", ""),
-        Lumber: new Action("Lumber", "city", "lumber", ""),
-        Stone: new Action("Stone", "city", "stone", ""),
-        Chrysotile: new Action("Chrysotile", "city", "chrysotile", ""),
-        Slaughter: new Action("Slaughter", "city", "slaughter", ""),
-        ForgeHorseshoe: new ResourceAction("Horseshoe", "city", "horseshoe", "", {housing: true, garrison: true}, "Horseshoe"),
-        SlaveMarket: new ResourceAction("Slave Market", "city", "slave_market", "", null, "Slave"),
+        Food: new ResourceAction("Gather Food", "city", "food", "", "Food"),
+        Lumber: new ResourceAction("Gather Lumber", "city", "lumber", "", "Lumber"),
+        Stone: new ResourceAction("Gather Stone", "city", "stone", "", "Stone"),
+        Chrysotile: new ResourceAction("Gather Chrysotile", "city", "chrysotile", "", "Chrysotile"),
+        Slaughter: new Action("Slaughter the Weak", "city", "slaughter", ""),
+        ForgeHorseshoe: new ResourceAction("Horseshoe", "city", "horseshoe", "", "Horseshoe", {housing: true, garrison: true}),
+        SlaveMarket: new ResourceAction("Slave Market", "city", "slave_market", "", "Slave"),
         SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
         House: new Action("Cabin", "city", "basic_housing", "", {housing: true}),
         Cottage: new Action("Cottage", "city", "cottage", "", {housing: true}),
@@ -2263,7 +2274,7 @@
         Mill: new Action("Windmill", "city", "mill", "", {smart: true}),
         Windmill: new Action("Windmill (Evil)", "city", "windmill", ""),
         Silo: new Action("Grain Silo", "city", "silo", ""),
-        Assembly: new ResourceAction("Assembly", "city", "assembly", "", {housing: true}, "Population"),
+        Assembly: new ResourceAction("Assembly", "city", "assembly", "", "Population", {housing: true}),
         Barracks: new Action("Barracks", "city", "garrison", "", {garrison: true}),
         Hospital: new Action("Hospital", "city", "hospital", ""),
         BootCamp: new Action("Boot Camp", "city", "boot_camp", ""),
@@ -2323,7 +2334,7 @@
         RedTerraformer: new Action("Red Terraformer (Orbit Decay)", "space", "terraformer", "spc_red", {multiSegmented: true}),
         RedAtmoTerraformer: new Action("Red Terraformer (Orbit Decay, Complete)", "space", "atmo_terraformer", "spc_red"),
         RedTerraform: new Action("Red Terraform (Orbit Decay)", "space", "terraform", "spc_red", {prestige: true}),
-        RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", {housing: true}, "Population"),
+        RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", "Population", {housing: true}),
         RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red", {housing: true}),
         RedPylon: new Action("Red Pylon (Cataclysm)", "space", "pylon", "spc_red"),
         RedVrCenter: new Action("Red VR Center", "space", "vr_center", "spc_red"),
@@ -2337,7 +2348,7 @@
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
-        RedForgeHorseshoe: new ResourceAction("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}, "Horseshoe"),
+        RedForgeHorseshoe: new ResourceAction("Red Horseshoe (Cataclysm)", "space", "horseshoe", "spc_red", "Horseshoe", {housing: true, garrison: true}),
 
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
@@ -2426,9 +2437,9 @@
         TauHousing: new Action("Tau Housing", "tauceti", "tau_housing", "tau_home", {housing: true}),
         TauCaptiveHousing: new CityAction("Tau Captive Housing", "tauceti", "captive_housing", "tau_home"),
         TauPylon: new Action("Tau Pylon", "tauceti", "pylon", "tau_home"),
-        TauCloning: new ResourceAction("Tau Cloning", "tauceti", "cloning_facility", "tau_home", {housing: true}, "Population"),
-        TauForgeHorseshoe: new ResourceAction("Tau Horseshoe", "tauceti", "horseshoe", "tau_home", {housing: true, garrison: true}, "Horseshoe"),
-        TauAssembly: new ResourceAction("Tau Assembly", "tauceti", "assembly", "tau_home", {housing: true}, "Population"),
+        TauCloning: new ResourceAction("Tau Cloning", "tauceti", "cloning_facility", "tau_home", "Population", {housing: true}),
+        TauForgeHorseshoe: new ResourceAction("Tau Horseshoe", "tauceti", "horseshoe", "tau_home", "Horseshoe", {housing: true, garrison: true}),
+        TauAssembly: new ResourceAction("Tau Assembly", "tauceti", "assembly", "tau_home", "Population", {housing: true}),
         TauNaniteFactory: new CityAction("Tau Nanite Factory", "tauceti", "nanite_factory", "tau_home"),
         TauFarm: new Action("Tau High-Tech Farm", "tauceti", "tau_farm", "tau_home"),
         TauMiningPit: new Action("Tau Mining Pit", "tauceti", "mining_pit", "tau_home", {smart: true}),
@@ -2577,7 +2588,7 @@
         ChthonianMission: new Action("Chthonian Mission", "galaxy", "chthonian_mission", "gxy_chthonian"),
         ChthonianMineLayer: new Action("Chthonian Mine Layer", "galaxy", "minelayer", "gxy_chthonian", {ship: true, smart: true}),
         ChthonianExcavator: new Action("Chthonian Excavator", "galaxy", "excavator", "gxy_chthonian", {smart: true}),
-        ChthonianRaider: new Action("Chthonian Raider", "galaxy", "raider", "gxy_chthonian", {ship: true, smart: true}),
+        ChthonianRaider: new Action("Chthonian Corsair", "galaxy", "raider", "gxy_chthonian", {ship: true, smart: true}),
 
         PortalTurret: new Action("Portal Laser Turret", "portal", "turret", "prtl_fortress"),
         PortalCarport: new Action("Portal Surveyor Carport", "portal", "carport", "prtl_fortress"),
@@ -6039,6 +6050,15 @@
             mech_scrap: "解体机甲",
             outer_fleet: "智械黎明舰队",
             mutation: "突变",
+            prestige: "威望重置"
+        },
+
+        logInfo(loggingType, text, tags) {
+            if (!settings.logEnabled || !settings["log_" + loggingType]) {
+                return;
+            }
+
+            poly.messageQueue(text, "info", false, tags);
         },
 
         logSuccess(loggingType, text, tags) {
@@ -6882,7 +6902,8 @@
             buildingAlwaysClick: false,
             buildingClickPerTick: 50,
             activeTargetsUI: false,
-            displayPrestigeTypeInTopBar: false
+            displayPrestigeTypeInTopBar: false,
+            displayTotalDaysTypeInTopBar: false
         }
 
         applySettings(def, reset);
@@ -7396,15 +7417,18 @@
         applySettings(def, reset);
     }
 
-    function resetTriggerState() {
-        TriggerManager.priorityList = [];
-    }
-
     function resetTriggerSettings(reset) {
         let def = {
             autoTrigger: false
         }
 
+        if (reset || !settingsRaw.hasOwnProperty("autoTrigger")) {
+            TriggerManager.priorityList = [];
+            TriggerManager.AddTrigger("built", "space-moon_mission", 1, "build", "space-moon_base", 1);
+            TriggerManager.AddTrigger("built", "space-moon_base", 1, "build", "space-iridium_mine", 1);
+            TriggerManager.AddTrigger("built", "space-moon_base", 1, "build", "space-helium_mine", 1);
+            settingsRaw.triggers = JSON.parse(JSON.stringify(TriggerManager.priorityList));
+        }
         applySettings(def, reset);
     }
 
@@ -7417,6 +7441,8 @@
         Object.keys(GameLog.Types).forEach(id => def["log_" + id] = true);
         def["log_mercenary"] = false;
         def["log_multi_construction"] = false;
+        def["log_prestige"] = false;
+        def["log_prestige_format"] = "Reset: {resetType}, Species: {species}, Duration: {timeStamp} days";
 
         applySettings(def, reset);
     }
@@ -9096,7 +9122,7 @@
         workerDeltas.forEach((delta, index) => delta < 0 && jobList[index].removeWorkers(delta * -1));
         workerDeltas.forEach((delta, index) => delta > 0 && jobList[index].addWorkers(delta));
 
-        if (settings.jobManageServants) {
+        if (settings.jobManageServants && !$.isEmptyObject(game.global.race.servants?.jobs ?? {})) {
             let servantDeltas = requiredServants.map((req, index) => req - jobList[index].servants);
             servantDeltas.forEach((delta, index) => delta < 0 && jobList[index].removeServants(delta * -1));
             servantDeltas.forEach((delta, index) => delta > 0 && jobList[index].addServants(delta));
@@ -9906,6 +9932,29 @@
         }
     }
 
+    function formatLogString(logString, replacements) {
+        logString = logString.replace(/\{eval:([^}]+)\}/g, (match, evalString) => {
+            try {
+              return fastEval(evalString);
+            } catch(e) {
+              return match;
+            }
+          });
+
+        return logString.replace(/{(\w+)}/g, (placeholderWithDelimiters, placeholderWithoutDelimiters) =>
+            replacements.hasOwnProperty(placeholderWithoutDelimiters) ? replacements[placeholderWithoutDelimiters] : placeholderWithDelimiters
+        );
+    }
+
+    function logPrestige() {
+        var placeholders = {};
+        placeholders.resetType = prestigeTypes.find(prest => prest.val === settings.prestigeType).label;
+        placeholders.timeStamp = game.global.stats.days;
+        placeholders.species = game.global.race.species.charAt(0).toUpperCase() + game.global.race.species.slice(1);
+
+        GameLog.logInfo("prestige", formatLogString(settings.log_prestige_format, placeholders), ['achievements']);
+    }
+
     function autoPrestige() {
         switch (settings.prestigeType) {
             case 'none':
@@ -9924,6 +9973,7 @@
 
                     if (!settings.prestigeMADWait || (WarManager.currentSoldiers >= WarManager.maxSoldiers && resources.Population.currentQuantity >= resources.Population.maxQuantity && WarManager.currentSoldiers + resources.Population.currentQuantity >= settings.prestigeMADPopulation)) {
                         state.goal = "GameOverMan";
+                        logPrestige();
                         madVue.launch();
                     }
                 }
@@ -9953,6 +10003,7 @@
                     if (settings.autoEvolution) {
                         loadQueuedSettings(); // Cataclysm doesnt't have evolution stage, so we need to load settings here, before reset
                     }
+                    logPrestige();
                     techIds["tech-dial_it_to_11"].click();
                 }
                 return;
@@ -9961,6 +10012,9 @@
                     if (state.goal !== 'Reset') {
                         state.goal = 'Reset';
                         return;
+                    }
+                    if (techIds["tech-exotic_infusion"].isUnlocked() && techIds["tech-exotic_infusion"].isAffordable()) {
+                        logPrestige();
                     }
                     ["tech-infusion_confirm", "tech-infusion_check", "tech-exotic_infusion"].forEach(id => techIds[id].click());
                 }
@@ -9971,6 +10025,7 @@
                         state.goal = 'Reset';
                         return;
                     }
+                    logPrestige();
                     ["tech-protocol66", "tech-protocol66a"].forEach(id => techIds[id].click());
                 }
                 return;
@@ -9982,6 +10037,7 @@
                             return;
                         }
                         KeyManager.set(false, false, false);
+                        logPrestige();
                         buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
                         state.goal = "GameOverMan";
                     }
@@ -10004,6 +10060,7 @@
                             return;
                         }
                         KeyManager.set(false, false, false);
+                        logPrestige();
                         buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
                         state.goal = "GameOverMan";
                     }
@@ -10013,6 +10070,7 @@
                             state.goal = 'Reset';
                             return;
                         }
+                        logPrestige();
                         techIds["tech-demonic_infusion"].click();
                     }
                 }
@@ -10488,7 +10546,7 @@
             // Check queue and trigger conflicts
             let conflict = getCostConflict(building);
             if (conflict) {
-                building.extraDescription += `与${conflict.obj.name}因${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join('，')}而冲突 (${conflict.obj.cause})<br>`;
+                building.extraDescription += `因${conflict.actionList.map(action => {return `<span class="has-text-info">${action}</span>`;}).join('，')}与${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join('，')}冲突 (${conflict.obj.cause})<br>`;
                 continue;
             }
 
@@ -11773,17 +11831,20 @@
 
         let missing = m.getMissingResource(newShip);
         if (missing) {
-            m.nextShipMsg = `下一艘舰船（${m.nextShipName}）还缺少${resources[missing].name}`;
+            m.nextShipMsg = `下一艘舰船(${m.nextShipName})还缺少${resources[missing].name}`;
             return;
         }
 
         if (WarManager.currentCityGarrison - m.ClassCrew[newShip.class] < minCrew) {
-            m.nextShipMsg = `下一艘舰船（${m.nextShipName}）还缺少船员`;
+            m.nextShipMsg = `下一艘舰船(${m.nextShipName})还缺少船员`;
             return;
         }
 
         if (m.build(newShip, targetRegion)) {
             GameLog.logSuccess("outer_fleet", `${m.getShipName(newShip)}已建造，并派往${m.getLocName(targetRegion)}。`, ['combat']);
+        } else {
+            m.nextShipMsg = `设计有误！下一艘舰船(${m.nextShipName})动力不足`;
+            return;
         }
     }
 
@@ -12448,8 +12509,8 @@
 
         $("#tech .action").each(function() {
             let tech = techIds[this.id];
+            tech.updateResourceRequirements();
             if (!getTechConflict(tech) || state.triggerTargets.includes(tech) || state.queuedTargetsAll.includes(tech)) {
-                tech.updateResourceRequirements();
                 state.unlockedTechs.push(tech);
             }
         });
@@ -12463,20 +12524,23 @@
 
         let needReset = false;
         if (settings.autoEvolution && settings.evolutionBackup) {
-            if (settings.userEvolutionTarget === "auto") {
-                let newRace = races[game.global.race.species];
-                if (newRace.getWeighting() <= 0) {
-                    let bestWeighting = Math.max(...Object.values(races).map(r => r.getWeighting()));
-                    if (bestWeighting > 0) {
-                        GameLog.logDanger("special", `${newRace.name}已经获得当前威望重置方式可以获得的所有成就，尝试软重置并重试。`, ['progress', 'achievements']);
-                        needReset = true;
-                    } else {
-                        GameLog.logWarning("special", `当前威望重置方式不存在未获得相应成就的种族。以${newRace.name}继续进化。`, ['progress', 'achievements']);
+            // Sludge and Valdi can't be evolved at random, only intentionally
+            if (game.global.race.species !== "junker" && game.global.race.species !== "sludge") {
+                if (settings.userEvolutionTarget === "auto") {
+                    let newRace = races[game.global.race.species];
+                    if (newRace.getWeighting() <= 0) {
+                        let bestWeighting = Math.max(...Object.values(races).map(r => r.getWeighting()));
+                        if (bestWeighting > 0) {
+                            GameLog.logDanger("special", `${newRace.name}已经获得当前威望重置方式可以获得的所有成就，尝试软重置并重试。`, ['progress', 'achievements']);
+                            needReset = true;
+                        } else {
+                            GameLog.logWarning("special", `当前威望重置方式不存在未获得相应成就的种族。以${newRace.name}继续进化。`, ['progress', 'achievements']);
+                        }
                     }
+                } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
+                    GameLog.logDanger("special", `种族错误，尝试软重置并重试。`, ['progress']);
+                    needReset = true;
                 }
-            } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
-                GameLog.logDanger("special", `种族错误，尝试软重置并重试。`, ['progress']);
-                needReset = true;
             }
         }
         if (settings.autoMutateTraits) {
@@ -12541,9 +12605,9 @@
           + (game.global.tech.tau_gas2 >= 5 ? 1 : 0) // Alien Space Station built
           + (game.global.tech.replicator ? 1 : 0) // Matter Replicator unlocked
           + (game.global.tauceti.tau_factory?.count > 0 ? 1 : 0) // Factory built in lone survivor
-          + (game.global.space.g_factory?.count > 0 ? 1 : 0), // Graphene plant built in lone survivor
-          + (game.global.tauceti.mining_ship?.count > 0 ? 1 : 0), // Extractor ship built
-          + (game.global.tech.psychicthrall ?? 0), // Psychic powers
+          + (game.global.space.g_factory?.count > 0 ? 1 : 0) // Graphene plant built in lone survivor
+          + (game.global.tauceti.mining_ship?.count > 0 ? 1 : 0) // Extractor ship built
+          + (game.global.tech.psychicthrall ?? 0) // Psychic powers
           + (game.global.tech.psychic ?? 0) // Psychic powers
 
 
@@ -12622,9 +12686,11 @@
             let targetName = target.name,
                 targetTimeLeft = '',
                 targetSegments = '',
-                researchTimeLeft = 0;
+                researchTimeLeft = 0,
+                isArpaProject = type === 'arpa' || target instanceof Project,
+                isMultiSegmented = target.is && target.is.multiSegmented;
 
-            if (target.count && !(target.is && target.is.multiSegmented)) {
+            if (target.count && !isMultiSegmented) {
                 targetName += ` #${target.count + 1}`;
             }
 
@@ -12640,7 +12706,7 @@
                 } else if (target.cost.Knowledge > game.global.resource.Knowledge.max) {
                     targetTimeLeft = '知识不足';
                 }
-            } else if (type === 'arpa' || target instanceof Project) {
+            } else if (isArpaProject) {
                 targetName += ` (${target.progress}%)`;
 
                 const segmentedTimeLeft = getMultiSegmentedTimeLeft(target);
@@ -12652,11 +12718,19 @@
                     className = 'has-text-success',
                     resourceTimeLeft = '';
 
-                if (res.currentQuantity < costs[resource]) {
+                let resourceCost = costs[resource];
+
+                if (isArpaProject) {
+                    resourceCost = costs[resource] * ((100 - target.progress) / target.currentStep);
+                } else if (isMultiSegmented) {
+                    resourceCost = costs[resource] * (target.gameMax - target.count);
+                }
+
+                if (res.currentQuantity < resourceCost) {
                     className = 'has-text-danger';
 
-                    if (res.maxQuantity >= costs[resource] && res.income > 0) {
-                        const timeLeftRaw = (costs[resource] - res.currentQuantity) / res.income;
+                    if (res.maxQuantity >= resourceCost && res.income > 0) {
+                        const timeLeftRaw = (resourceCost - res.currentQuantity) / res.income;
 
                         if (target instanceof Technology && timeLeftRaw > researchTimeLeft) {
                             researchTimeLeft = timeLeftRaw;
@@ -12666,12 +12740,14 @@
                         if (res === resources.Soul_Gem) {
                             resourceTimeLeft = `~${resourceTimeLeft}`;
                         }
+                    } else if (isArpaProject && res.name === 'Knowledge' && res.income > 0) {
+                        resourceTimeLeft = poly.timeFormat(res.currentQuantity / res.income);
                     } else {
                         targetTimeLeft = resourceTimeLeft = '永不';
                     }
                 }
 
-                const progressBarWidth = (res.currentQuantity / costs[resource]) * 100;
+                const progressBarWidth = (res.currentQuantity / resourceCost) * 100;
 
                 const isReplicatingClassName = (game.global.race.replicator && game.global.race.replicator.res === resource) ? 'is-replicating' : '';
 
@@ -12689,7 +12765,7 @@
                     </li>`;
             }).join('');
 
-            if (target.is && target.is.multiSegmented) {
+            if (isMultiSegmented) {
                 targetSegments = `(${target.count} / ${target.gameMax})`;
 
                 const segmentedTimeLeft = getMultiSegmentedTimeLeft(target);
@@ -12986,7 +13062,7 @@
         if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargetsAll.includes(obj) && !state.triggerTargets.includes(obj)) {
             let conflict = getCostConflict(obj);
             if (conflict) {
-                notes.push(`与${conflict.obj.name}因${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join('，')}而冲突 (${conflict.obj.cause})`);
+                notes.push(`因${conflict.actionList.map(action => {return `<span class="has-text-info">${action}</span>`;}).join('，')}与${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join('，')}冲突 (${conflict.obj.cause})`);
             }
         }
 
@@ -13686,7 +13762,7 @@
         };
         styles += `
             .script-lastcolumn:after { float: right; content: "\\21c5"; }
-            .script-refresh:after { float: right; content: "\\1f5d8"; cursor: pointer; }
+            .script-refresh:after { float: right; content: "\\21ba"; cursor: pointer; }
             .script-draggable { cursor: move; cursor: grab; }
             .script-draggable:active { cursor: grabbing !important; }
             .ui-sortable-helper { display: table; cursor: grabbing !important; }
@@ -13754,14 +13830,15 @@
                 margin: auto;
                 margin-top: 50px;
                 margin-bottom: 50px;
-                //margin-left: 10%;
-                //margin-right: 10%;
                 padding: 0px;
-                //width: 80%;
                 width: 900px;
-                //max-height: 90%;
                 border-radius: .5rem;
                 text-align: center;
+            }
+
+            .script-modal-content.override-modal {
+                width: 70%;
+                min-width: 900px;
             }
 
             /* The Close Button */
@@ -14033,6 +14110,12 @@
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
 
+    function resetTabHeight(tab) {
+        let content = document.querySelector(`#script_${tab} .script-content`);
+        content.style.height = null;
+        content.style.height = content.offsetHeight + "px";
+    }
+
     function buildImportExport() {
         let importExportNode = $(".importExport").last();
         if (importExportNode === null) {
@@ -14059,12 +14142,22 @@
                             evals.push(override.arg2);
                         }
                     }));
+
+                    Object.values(saveState.overrides.log_prestige_format ?? []).forEach(prestige_log_format_override => {
+                        if (prestige_log_format_override.ret.includes("{eval:")) {
+                            evals.push(prestige_log_format_override.ret);
+                        }
+                    });
+
+                    if ((saveState.log_prestige_format ?? "").includes("{eval:")) {
+                        evals.push(saveState.log_prestige_format);
+                    }
+
                     if (evals.length > 0 && !confirm("警告！导入的设置包含可执行JS代码，这些代码将有对浏览器页面的完全访问权限，并且可能存在潜在危险。\n只有在您信任来源的情况下才能继续。代码:\n" + evals.join("\n"))) {
                         return;
                     }
                     console.log("Importing script settings");
                     settingsRaw = saveState;
-                    resetTriggerState();
                     updateStandAloneSettings();
                     updateStateFromSettings();
                     updateSettingsFromState();
@@ -14367,6 +14460,7 @@
             event.preventDefault();
             openOptionsModal(event.data.label, function(modal) {
                 modal.append(`<div style="margin-top: 10px; margin-bottom: 10px;" id="script_${event.data.name}Modal"></div>`);
+                $('.script-modal-content').addClass('override-modal');
                 buildOverrideSettings(event.data.name, event.data.type, event.data.options);
             });
         }
@@ -14388,20 +14482,20 @@
               <th class="has-text-warning" colspan="3">结果</th>
             </tr>
             <tr>
-              <th class="has-text-warning" style="width:17%">类型</th>
+              <th class="has-text-warning" style="width:16%">类型</th>
               <th class="has-text-warning" style="width:16%">值</th>
               <th class="has-text-warning" style="width:10%"></th>
-              <th class="has-text-warning" style="width:17%">类型</th>
+              <th class="has-text-warning" style="width:16%">类型</th>
               <th class="has-text-warning" style="width:16%">值</th>
               <th class="has-text-warning" style="width:15%"></th>
-              <th style="width:9%"></th>
+              <th style="width:11%"></th>
             </tr>
             <tbody id="script_${settingName}ModalTable"></tbody>
           </table>`);
 
         let newTableBodyText = "";
         for (let i = 0; i < overrides.length; i++) {
-            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:17%"></td><td style="width:16%"></td><td style="width:10%"></td><td style="width:17%"></td><td style="width:16%"></td><td style="width:15%"></td><td style="width:9%"><span class="script-lastcolumn"></span></td></tr>`;
+            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:16%"></td><td style="width:16%"></td><td style="width:10%"></td><td style="width:16%"></td><td style="width:16%"></td><td style="width:15%"></td><td style="width:11%"><span class="script-lastcolumn"></span></td></tr>`;
         }
 
         let listField = typeof settingsRaw[settingName] === "object";
@@ -14411,20 +14505,20 @@
         let note_2 = "当前值为：";
 
         let current = listField ?
-         `<td style="width:33%" colspan="2">${note_2}</td>
-          <td style="width:58%" colspan="4"></td>`:
-         `<td style="width:76%" colspan="5">${note_2}</td>
+         `<td style="width:32%" colspan="2">${note_2}</td>
+          <td style="width:57%" colspan="4"></td>`:
+         `<td style="width:74%" colspan="5">${note_2}</td>
           <td style="width:15%"></td>`;
 
         newTableBodyText += `
           <tr id="script_${settingName}_d" class="unsortable">
-            <td style="width:76%" colspan="5">${note}</td>
+            <td style="width:74%" colspan="5">${note}</td>
             <td style="width:15%"></td>
-            <td style="width:9%"><a class="button is-small" style="width: 26px; height: 26px"><span>+</span></a></td>
+            <td style="width:11%"><a class="button is-small" style="width: 26px; height: 26px"><span>+</span></a></td>
           </tr>
           <tr id="script_override_true_value" class="unsortable" value="${settingName}" type="${type}">
             ${current}
-            <td style="width:9%"></td>
+            <td style="width:11%"></td>
           </tr>`;
         let tableBodyNode = $(`#script_${settingName}ModalTable`);
         tableBodyNode.append($(newTableBodyText));
@@ -14472,6 +14566,7 @@
             }
             tableElement = tableElement.next();
             tableElement.append(buildConditionRemove(settingName, i, rebuild));
+            tableElement.append(buildConditionDuplicate(settingName, i, rebuild));
         }
 
         tableBodyNode.sortable({
@@ -14631,6 +14726,15 @@
         });
     }
 
+    function buildConditionDuplicate(settingName, id, rebuild) {
+        return $(`<a class="button is-small" style="width: 26px; height: 26px"><span style="font-size: 1.2rem;">&#9282;</span></a>`)
+        .on('click', function() {
+            settingsRaw.overrides[settingName].splice(id, 0, {...settingsRaw.overrides[settingName][id]});
+            updateSettingsFromState();
+            rebuild();
+        });
+    }
+
     function buildConditionRet(override, type, options) {
         return buildInputNode(type, options, override.ret, function(result) {
             override.ret = result;
@@ -14737,6 +14841,24 @@
             $(".script_" + settingName).val(settingsRaw[settingName]);
         })
         .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "number"}, openOverrideModal)
+        .appendTo(node);
+    }
+
+    function addSettingsString(node, settingName, labelText, hintText) {
+        return $(`
+          <div class="script_bg_${settingName}" style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
+            <label title="${hintText}" tabindex="0">
+              <span>${labelText}</span>
+              <input class="script_${settingName}" type="text" style="text-align: right; height: 18px; width: 70%; float: right;" value="${settingsRaw[settingName]}"></input>
+            </label>
+          </div>`)
+        .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingName]))
+        .on('change', 'input', function() {
+            settingsRaw[settingName] = this.value;
+            updateSettingsFromState();
+            $(".script_" + settingName).val(settingsRaw[settingName]);
+        })
+        .on('click', {label: `${labelText} (${settingName})`, name: settingName, type: "string"}, openOverrideModal)
         .appendTo(node);
     }
 
@@ -14906,7 +15028,7 @@
             removeActiveTargetsUI();
             removePrestigeFromTopBar();
 
-            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "displayPrestigeTypeInTopBar");
+            resetCheckbox("masterScriptToggle", "showSettings", "autoPrestige", "displayPrestigeTypeInTopBar", "displayTotalDaysTypeInTopBar");
             // No need to call showSettings callback, it enabled if button was pressed, and will be still enabled on default settings
         };
 
@@ -14946,6 +15068,7 @@
         addSettingsHeader1(currentNode, "附加界面");
         addSettingsToggle(currentNode, "activeTargetsUI", "显示详细的队列", "在右侧追加界面，可以显示当前激活的建筑队列，研究队列，触发器以及它们相应的资源。", buildActiveTargetsUI, removeActiveTargetsUI);
         addSettingsToggle(currentNode, "displayPrestigeTypeInTopBar", "在顶部显示威望重置类型", "在顶部显示当前的威望重置类型", updatePrestigeInTopBar, updatePrestigeInTopBar);
+        addSettingsToggle(currentNode, "displayTotalDaysTypeInTopBar", "在顶部显示总天数", "在顶部显示总天数", updateTotalDaysInTopBar, updateTotalDaysInTopBar);
 
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -15156,10 +15279,7 @@
           .on('change', 'select', function() {
             state.evolutionTarget = null;
             updateRaceWarning();
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("evolutionSetting");
         });
 
         currentNode.append(`<div><span id="script_race_warning"></span></div>`);
@@ -15295,10 +15415,7 @@
             settingsRaw.evolutionQueue.splice(id, 1);
             updateSettingsFromState();
             updateEvolutionSettingsContent();
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("evolutionSettings");
         });
 
 
@@ -15312,10 +15429,7 @@
             } catch (error) {
                 queueNode.find('td:eq(0)').html(`<span class="has-text-danger">${error}</span>`);
             }
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("evolutionSettings");
         });
 
         return queueNode;
@@ -15340,9 +15454,7 @@
         let tableBodyNode = $('#script_evolutionQueueTable');
         tableBodyNode.append(buildEvolutionQueueItem(queueLength-1));
 
-        let content = document.querySelector('#script_evolutionSettings .script-content');
-        content.style.height = null;
-        content.style.height = content.offsetHeight + "px"
+        resetTabHeight("evolutionSettings");
     }
 
     function buildPlanetSettings() {
@@ -15424,9 +15536,9 @@
 
         let resetFunction = function() {
             resetTriggerSettings(true);
-            resetTriggerState();
             updateSettingsFromState();
             updateTriggerSettingsContent();
+            resetTabHeight("triggerSettings");
 
             resetCheckbox("autoTrigger");
         };
@@ -15522,10 +15634,7 @@
         buildTriggerActionCount(trigger);
 
         buildTriggerSettingsColumn(trigger);
-
-        let content = document.querySelector('#script_triggerSettings .script-content');
-        content.style.height = null;
-        content.style.height = content.offsetHeight + "px"
+        resetTabHeight("triggerSettings");
     }
 
     function buildTriggerRequirementType(trigger) {
@@ -15642,10 +15751,7 @@
             TriggerManager.RemoveTrigger(trigger.seq);
             updateSettingsFromState();
             updateTriggerSettingsContent();
-
-            let content = document.querySelector('#script_triggerSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("triggerSettings");
         });
     }
 
@@ -16602,10 +16708,7 @@
         addSettingsSelect(currentNode, "imitateRace", "仿制种族", "仿制所选择的种族。", imitateOptions).on('change', 'select', function() {
             state.evolutionTarget = null;
             updateImitateWarning();
-
-            let content = document.querySelector('#script_evolutionSettings .script-content');
-            content.style.height = null;
-            content.style.height = content.offsetHeight + "px"
+            resetTabHeight("evolutionSettings");
         });
 
         currentNode.append(`<div><span id="script_imitate_warning"></span></div>`);
@@ -17567,10 +17670,7 @@
                 }
             }
         }
-
-        let content = document.querySelector('#script_buildingSettings .script-content');
-        content.style.height = null;
-        content.style.height = content.offsetHeight + "px"
+        resetTabHeight("buildingSettings");
     }
 
     function buildAllBuildingEnabledSettingsToggle() {
@@ -17765,8 +17865,9 @@
         currentNode.empty().off("*");
 
         addSettingsHeader1(currentNode, "脚本信息");
-        addSettingsToggle(currentNode, "logEnabled", "是否启用日志，下方设置为相关日志类型", "日志记录的主开关");
+        addSettingsToggle(currentNode, "logEnabled", "是否启用日志", "日志记录的主开关");
         Object.entries(GameLog.Types).forEach(([id, label]) => addSettingsToggle(currentNode, "log_" + id, label, `启用后，记录${label}操作`));
+        addSettingsString(currentNode, "log_prestige_format", "威望重置日志格式", "特定的字段如下：{resetType} - 当前威望重置类型，{species} - 当前种群，{timestamp} - 以游戏日形式显示时间戳。您还可以使用{eval: XXX }的格式记录自定义信息，其中XXX为相应代码");
 
         addSettingsHeader1(currentNode, "游戏信息");
         addSettingsToggle(currentNode, "hellTurnOffLogMessages", "关闭巡逻队和勘探者相关的日志", "自动关闭巡逻队和勘探者相关的日志");
@@ -17887,6 +17988,7 @@
         // Add the script modal close button action
         $('#scriptModalClose').on("click", function() {
             $("#scriptModal").css('display', 'none');
+            $('.script-modal-content').removeClass('override-modal');
             $("html").css('overflow-y', 'scroll');
         });
 
@@ -17894,6 +17996,7 @@
         $(window).on("click", function(event) {
             if (event.target.id === "scriptModal") {
                 $("#scriptModal").css('display', 'none');
+                $('.script-modal-content').removeClass('override-modal');
                 $("html").css('overflow-y', 'scroll');
             }
         });
@@ -17930,6 +18033,36 @@
         if (prestigeNode == null) { return; } // Element has not yet been added, nothing to do
 
         prestigeNode.remove();
+    }
+
+    function updateTotalDaysInTopBar() {
+        if (settings.displayTotalDaysTypeInTopBar) {
+            addTotalDaysToTopBar();
+        } else {
+            removeTotalDaysFromTopBar();
+        }
+
+        const totalDaysNode = document.getElementById("s-total-days-count");
+        if (totalDaysNode == null) { return; } // Element has not yet been added, cannot update
+
+        totalDaysNode.textContent = game.global.stats.days;
+    }
+
+    function addTotalDaysToTopBar() {
+        const nodeId = 's-total-days';
+        if (document.getElementById(nodeId) !== null) { return; } // We've already added the info to the top bar
+
+        const calendarNode = $("#topBar .calendar");
+        if (calendarNode.length === 0) { return; } // The node that we want to add it to doesn't exist yet
+
+        calendarNode.find('.day').after($(`<span id="s-total-days" class="has-text-warning" style="padding-left: 3px;">(<span id="s-total-days-count"></span>)</span>`));
+    }
+
+    function removeTotalDaysFromTopBar() {
+        let totalDaysNode = document.getElementById("s-total-days");
+        if (totalDaysNode == null) { return; } // Element has not yet been added, nothing to do
+
+        totalDaysNode.remove();
     }
 
     function updateUI() {
@@ -18124,6 +18257,8 @@
             // Leave the scroll position where it was before all our updates to the UI above
             document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
         }
+
+        updateTotalDaysInTopBar();
     }
 
     function createMechInfo() {
@@ -18404,10 +18539,6 @@
         return arr.reduce((sum, val) => sum + val) / arr.length;
     }
 
-    function getUnsuitedMod() {
-        return !game.global.blood.unbound ? 0 : game.global.blood.unbound >= 4 ? 0.95 : game.global.blood.unbound >= 2 ? 0.9 : 0.8;
-    }
-
     // Script hooked to fastTick fired 4 times per second
     function ticksPerSecond() {
         return 4 / settings.tickRate / (game.global.settings.at ? 2 : 1);
@@ -18494,7 +18625,8 @@
             for (let res in priorityTarget.cost) {
                 if ((res !== "Knowledge" || blockKnowledge) && priorityTarget.cost[res] > resources[res].currentQuantity - action.cost[res]) {
                     const resList = conflict.resList || [];
-                    conflict = {res: resources[res], obj: priorityTarget, resList: [...new Set([...resList, res])]};
+                    const actionList = conflict.actionList || [];
+                    conflict = {res: resources[res], obj: priorityTarget, resList: [...new Set([...resList, res])], actionList: [...new Set([...actionList, priorityTarget.name])]};
                 }
             }
         }
