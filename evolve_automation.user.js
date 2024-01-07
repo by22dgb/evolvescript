@@ -10546,7 +10546,7 @@
             // Check queue and trigger conflicts
             let conflict = getCostConflict(building);
             if (conflict) {
-                building.extraDescription += `因${conflict.actionList.map(action => {return `<span class="has-text-info">${action}</span>`;}).join('，')}与${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join('，')}冲突 (${conflict.obj.cause})<br>`;
+                building.extraDescription += `与${conflict.actionList.map(action => {return `<span class="has-text-info">${action}</span>`;}).join('，')}因${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join('，')}冲突 (${conflict.obj.cause})<br>`;
                 continue;
             }
 
@@ -13062,7 +13062,7 @@
         if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargetsAll.includes(obj) && !state.triggerTargets.includes(obj)) {
             let conflict = getCostConflict(obj);
             if (conflict) {
-                notes.push(`因${conflict.actionList.map(action => {return `<span class="has-text-info">${action}</span>`;}).join('，')}与${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join('，')}冲突 (${conflict.obj.cause})`);
+                notes.push(`与${conflict.actionList.map(action => {return `<span class="has-text-info">${action}</span>`;}).join('，')}因${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join('，')}冲突 (${conflict.obj.cause})`);
             }
         }
 
