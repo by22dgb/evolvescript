@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.112
+// @version      3.3.1.113
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -222,7 +222,7 @@
 
     class CraftingJob extends Job {
         constructor(id, name, resource) {
-            super(id, name, {});
+            super(id, name, {serve: true});
 
             this._crafterBinding = "foundry";
             this._servantBinding = "skilledServants";
@@ -2010,7 +2010,7 @@
         [{id:"sludge", trait:"sludge"}],
         [{id:"orbit_decay", trait:"orbit_decay"}],
         //[{id:"nonstandard", trait:"nonstandard"}],
-        //[{id:"gravity_well", trait:"gravity_well"}],
+        [{id:"gravity_well", trait:"gravity_well"}],
         [{id:"witch_hunter", trait:"witch_hunter"}],
         //[{id:"warlord", trait:"warlord"}],
         //[{id:"storage_wars", trait:"storage_wars"}],
@@ -2205,13 +2205,14 @@
     var jobs = {
         Unemployed: new BasicJob("unemployed", "Unemployed"),
         Colonist: new Job("colonist", "Colonist"),
-        Hunter: new BasicJob("hunter", "Hunter", {smart: true}),
-        Farmer: new BasicJob("farmer", "Farmer", {smart: true}),
-        //Forager: new BasicJob("forager", "Forager"),
-        Lumberjack: new BasicJob("lumberjack", "Lumberjack", {split: true, smart: true}),
-        QuarryWorker: new BasicJob("quarry_worker", "Quarry Worker", {split: true, smart: true}),
-        CrystalMiner: new BasicJob("crystal_miner", "Crystal Miner", {split: true, smart: true}),
-        Scavenger: new BasicJob("scavenger", "Scavenger", {split: true}),
+        Teamster: new BasicJob("teamster", "Teamster", {smart: true}),
+        Hunter: new BasicJob("hunter", "Hunter", {serve: true, smart: true}),
+        Farmer: new BasicJob("farmer", "Farmer", {serve: true, smart: true}),
+        //Forager: new BasicJob("forager", "Forager", {serve: true}),
+        Lumberjack: new BasicJob("lumberjack", "Lumberjack", {serve: true, split: true, smart: true}),
+        QuarryWorker: new BasicJob("quarry_worker", "Quarry Worker", {serve: true, split: true, smart: true}),
+        CrystalMiner: new BasicJob("crystal_miner", "Crystal Miner", {serve: true, split: true, smart: true}),
+        Scavenger: new BasicJob("scavenger", "Scavenger", {serve: true, split: true}),
 
         TitanColonist: new Job("titan_colonist", "Titan Colonist"),
         Miner: new Job("miner", "Miner", {smart: true}),
@@ -3033,7 +3034,7 @@
           () => "Not needed for Terraform prestige",
           () => 0
       ],[
-          () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isUnlocked() && techIds['tech-mad'].isAffordable(true))),
+          () => settings.autoPrestige && settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isUnlocked() && techIds['tech-mad'].isAffordable(true))),
           (building) => !building.is.housing && !building.is.garrison && !building.cost["Knowledge"] && building !== buildings.OilWell,
           () => "Awaiting MAD prestige",
           () => settings.buildingWeightingMADUseless
@@ -5610,7 +5611,7 @@
 
             let max = game.global.race.servants.max;
             for (let job of this.priorityList) {
-                if (job instanceof BasicJob && !job.isManaged()) {
+                if (job.is.serve && !job.isManaged()) {
                     max -= job.servants;
                 }
             }
@@ -7151,6 +7152,7 @@
             def['job_b3_' + job._originalId] = b3;
         };
         setBreakpoints(jobs.Colonist, -1, -1, -1);
+        setBreakpoints(jobs.Teamster, 10, -1, -1);
         setBreakpoints(jobs.Hunter, -1, -1, -1);
         setBreakpoints(jobs.Farmer, -1, -1, -1);
         //setBreakpoints(jobs.Forager, 4, 10, 0);
@@ -8751,7 +8753,7 @@
                 let currentEmployees = requiredWorkers[j];
                 let availableEmployees = availableWorkers;
                 requiredWorkers[j] = 0;
-                if (job instanceof BasicJob) {
+                if (job.is.serve) {
                     currentEmployees += requiredServants[j] * servantMod;
                     availableServants += requiredServants[j];
                     availableEmployees += availableServants * servantMod;
@@ -9000,6 +9002,13 @@
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
                     }
+                    if (job === jobs.Teamster) {
+                        if (jobMax[j] === undefined) {
+                            jobMax[j] = Math.round(game.global.race.teamster / (game.global.tech.transport ?? 0) * 1.5);
+                            jobMax[j] -= (game.global.tech['railway'] ?? 0) * 2;
+                        }
+                        jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
+                    }
                 }
 
                 if (j === defaultIndex && minDefault > 0) {
@@ -9007,7 +9016,7 @@
                     availableWorkers -= requiredWorkers[j];
                     jobsToAssign -= requiredWorkers[j];
                 }
-                if (jobsToAssign > 0 && job instanceof BasicJob) {
+                if (jobsToAssign > 0 && job.is.serve) {
                     let servantsToAssign = Math.min(availableServants, Math.floor(jobsToAssign / servantMod));
                     requiredServants[j] += servantsToAssign;
                     availableServants -= servantsToAssign;
@@ -9139,6 +9148,8 @@
                 jobs.Hunter.setAsDefault();
             } else if (jobs.Farmer.isManaged()) {
                 jobs.Farmer.setAsDefault();
+            } else if (jobs.Teamster.isManaged()) {
+                jobs.Teamster.setAsDefault();
             } else if (jobs.Unemployed.isManaged()) {
                 jobs.Unemployed.setAsDefault();
             }
@@ -10144,6 +10155,7 @@
             return false;
         }
 
+        // TODO: Do not imitate own genus.
         getVueById('sshifter')?.setShape(settings.shifterGenus);
     }
 
@@ -14178,7 +14190,7 @@
           ({val: p._vueBinding, label: p.name}))},
         job: {def: "unemployed", arg: "select_cb", options: () => Object.values(jobIds).map(j =>
           ({val: j._originalId, label: j._originalName}))},
-        job_servant: {def: "farmer", arg: "select_cb", options: () => Object.values(jobIds).filter(j => j instanceof BasicJob || j instanceof CraftingJob).map(j =>
+        job_servant: {def: "farmer", arg: "select_cb", options: () => Object.values(jobIds).filter(j => j.is.serve).map(j =>
           ({val: j._originalId, label: j._originalName}))},
         resource: {def: "Food", arg: "select_cb", options: () => Object.values(resources).map(r =>
           ({val: r._id, label: r.name}))},
@@ -17167,7 +17179,7 @@
         let currentNode = $('#script_jobContent');
         currentNode.empty().off("*");
 
-        addSettingsToggle(currentNode, "jobSetDefault", "Set default job", "Automatically sets the default job in order of Quarry Worker -> Lumberjack -> Crystal Miner -> Scavenger -> Farmer -> Hunter -> Unemployed");
+        addSettingsToggle(currentNode, "jobSetDefault", "Set default job", "Automatically sets the default job in order of Quarry Worker -> Lumberjack -> Crystal Miner -> Scavenger -> Hunter -> Farmer -> Unemployed");
         addSettingsToggle(currentNode, "jobManageServants", "Manage Servants", "Automatically manage servants, they will be used as substitute of regular workers, sharing same breakpoints and priorities, i.e. for breakpoint 10 script might assign 8 workers and 2 servants, and such.");
         addSettingsNumber(currentNode, "jobLumberWeighting", "Final Lumberjack Weighting", "AFTER allocating breakpoints this weighting will be used to split weighted jobs");
         addSettingsNumber(currentNode, "jobQuarryWeighting", "Final Quarry Worker Weighting", "AFTER allocating breakpoints this weighting will be used to split weighted jobs");
