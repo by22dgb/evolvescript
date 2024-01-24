@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.112
+// @version      3.3.1.113
 // @description  try to take over the world!
 // @downloadURL  https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.user.js
 // @updateURL    https://github.com/by22dgb/evolvescript/raw/master/evolve_automation.meta.js
@@ -225,7 +225,7 @@
 
     class CraftingJob extends Job {
         constructor(id, name, resource) {
-            super(id, name, {});
+            super(id, name, {serve: true});
 
             this._crafterBinding = "foundry";
             this._servantBinding = "skilledServants";
@@ -2019,7 +2019,7 @@
         [{id:"sludge", trait:"sludge"}],
         [{id:"orbit_decay", trait:"orbit_decay"}],
         //[{id:"nonstandard", trait:"nonstandard"}],
-        //[{id:"gravity_well", trait:"gravity_well"}],
+        [{id:"gravity_well", trait:"gravity_well"}],
         [{id:"witch_hunter", trait:"witch_hunter"}],
         //[{id:"warlord", trait:"warlord"}],
         //[{id:"storage_wars", trait:"storage_wars"}],
@@ -2214,13 +2214,14 @@
     var jobs = {
         Unemployed: new BasicJob("unemployed", "失业人口"),
         Colonist: new Job("colonist", "行星居民"),
-        Hunter: new BasicJob("hunter", "猎人", {smart: true}),
-        Farmer: new BasicJob("farmer", "农民", {smart: true}),
-        //Forager: new BasicJob("forager", "Forager"),
-        Lumberjack: new BasicJob("lumberjack", "伐木工人", {split: true, smart: true}),
-        QuarryWorker: new BasicJob("quarry_worker", "石工", {split: true, smart: true}),
-        CrystalMiner: new BasicJob("crystal_miner", "水晶矿工", {split: true, smart: true}),
-        Scavenger: new BasicJob("scavenger", "拾荒者", {split: true}),
+        Teamster: new BasicJob("teamster", "货运司机", {smart: true}),
+        Hunter: new BasicJob("hunter", "猎人", {serve: true, smart: true}),
+        Farmer: new BasicJob("farmer", "农民", {serve: true, smart: true}),
+        //Forager: new BasicJob("forager", "Forager", {serve: true}),
+        Lumberjack: new BasicJob("lumberjack", "伐木工人", {serve: true, split: true, smart: true}),
+        QuarryWorker: new BasicJob("quarry_worker", "石工", {serve: true, split: true, smart: true}),
+        CrystalMiner: new BasicJob("crystal_miner", "水晶矿工", {serve: true, split: true, smart: true}),
+        Scavenger: new BasicJob("scavenger", "拾荒者", {serve: true, split: true}),
 
         TitanColonist: new Job("titan_colonist", "卫星行星居民"),
         Miner: new Job("miner", "矿工", {smart: true}),
@@ -3042,7 +3043,7 @@
           () => "星球重塑重置不需要建造",
           () => 0
       ],[
-          () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isUnlocked() && techIds['tech-mad'].isAffordable(true))),
+          () => settings.autoPrestige && settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isUnlocked() && techIds['tech-mad'].isAffordable(true))),
           (building) => !building.is.housing && !building.is.garrison && !building.cost["Knowledge"] && building !== buildings.OilWell,
           () => "等待核爆重置",
           () => settings.buildingWeightingMADUseless
@@ -5619,7 +5620,7 @@
 
             let max = game.global.race.servants.max;
             for (let job of this.priorityList) {
-                if (job instanceof BasicJob && !job.isManaged()) {
+                if (job.is.serve && !job.isManaged()) {
                     max -= job.servants;
                 }
             }
@@ -7160,6 +7161,7 @@
             def['job_b3_' + job._originalId] = b3;
         };
         setBreakpoints(jobs.Colonist, -1, -1, -1);
+        setBreakpoints(jobs.Teamster, 10, -1, -1);
         setBreakpoints(jobs.Hunter, -1, -1, -1);
         setBreakpoints(jobs.Farmer, -1, -1, -1);
         //setBreakpoints(jobs.Forager, 4, 10, 0);
@@ -8760,7 +8762,7 @@
                 let currentEmployees = requiredWorkers[j];
                 let availableEmployees = availableWorkers;
                 requiredWorkers[j] = 0;
-                if (job instanceof BasicJob) {
+                if (job.is.serve) {
                     currentEmployees += requiredServants[j] * servantMod;
                     availableServants += requiredServants[j];
                     availableEmployees += availableServants * servantMod;
@@ -9009,6 +9011,13 @@
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
                     }
+                    if (job === jobs.Teamster) {
+                        if (jobMax[j] === undefined) {
+                            jobMax[j] = Math.round(game.global.race.teamster / (game.global.tech.transport ?? 0) * 1.5);
+                            jobMax[j] -= (game.global.tech['railway'] ?? 0) * 2;
+                        }
+                        jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
+                    }
                 }
 
                 if (j === defaultIndex && minDefault > 0) {
@@ -9016,7 +9025,7 @@
                     availableWorkers -= requiredWorkers[j];
                     jobsToAssign -= requiredWorkers[j];
                 }
-                if (jobsToAssign > 0 && job instanceof BasicJob) {
+                if (jobsToAssign > 0 && job.is.serve) {
                     let servantsToAssign = Math.min(availableServants, Math.floor(jobsToAssign / servantMod));
                     requiredServants[j] += servantsToAssign;
                     availableServants -= servantsToAssign;
@@ -9148,6 +9157,8 @@
                 jobs.Hunter.setAsDefault();
             } else if (jobs.Farmer.isManaged()) {
                 jobs.Farmer.setAsDefault();
+            } else if (jobs.Teamster.isManaged()) {
+                jobs.Teamster.setAsDefault();
             } else if (jobs.Unemployed.isManaged()) {
                 jobs.Unemployed.setAsDefault();
             }
@@ -10153,6 +10164,7 @@
             return false;
         }
 
+        // TODO: Do not imitate own genus.
         getVueById('sshifter')?.setShape(settings.shifterGenus);
     }
 
@@ -14315,7 +14327,7 @@
           ({val: p._vueBinding, label: p.name}))},
         job: {def: "unemployed", arg: "select_cb", options: () => Object.values(jobIds).map(j =>
           ({val: j._originalId, label: j._originalName}))},
-        job_servant: {def: "farmer", arg: "select_cb", options: () => Object.values(jobIds).filter(j => j instanceof BasicJob || j instanceof CraftingJob).map(j =>
+        job_servant: {def: "farmer", arg: "select_cb", options: () => Object.values(jobIds).filter(j => j.is.serve).map(j =>
           ({val: j._originalId, label: j._originalName}))},
         resource: {def: "Food", arg: "select_cb", options: () => Object.values(resources).map(r =>
           ({val: r._id, label: r.name}))},
@@ -17304,7 +17316,7 @@
         let currentNode = $('#script_jobContent');
         currentNode.empty().off("*");
 
-        addSettingsToggle(currentNode, "jobSetDefault", "设置默认工作", "自动以石工->伐木工人->水晶矿工->拾荒者->农民->猎人->失业人口的顺序设置默认工作");
+        addSettingsToggle(currentNode, "jobSetDefault", "设置默认工作", "自动以石工->伐木工人->水晶矿工->拾荒者->猎人->农民->失业人口的顺序设置默认工作");
         addSettingsToggle(currentNode, "jobManageServants", "管理鼬仆", "自动管理鼬仆，它们将被当成普通工人来处理。");
         addSettingsNumber(currentNode, "jobLumberWeighting", "最终伐木工人权重", "用于分配相应工作的数量");
         addSettingsNumber(currentNode, "jobQuarryWeighting", "最终石工权重", "用于分配相应工作的数量");
