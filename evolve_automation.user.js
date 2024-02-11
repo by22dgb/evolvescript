@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.113
+// @version      3.3.1.114
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -4768,8 +4768,7 @@
 
             // Assign soldiers to assault forge once other requirements are met
             if (settings.autoBuild && buildings.PitAssaultForge.isAutoBuildable()) {
-                let missingRes = Object.entries(buildings.PitAssaultForge.cost).find(([id, amount]) => resources[id].currentQuantity < amount);
-                if (!missingRes) {
+                if (settings.hellAssaultReserve || !Object.entries(buildings.PitAssaultForge.cost).find(([id, amount]) => resources[id].currentQuantity < amount)) {
                     soldiers = Math.round(650 / game.armyRating(1, "hellArmy"));
                 }
             }
@@ -6858,6 +6857,7 @@
             hellHomeGarrison: 10,
             hellMinSoldiers: 20,
             hellMinSoldiersPercent: 90,
+            hellAssaultReserve: true,
             hellTargetFortressDamage: 100,
             hellLowWallsMulti: 3,
             hellHandlePatrolSize: true,
@@ -6907,7 +6907,7 @@
             prestigeMADIgnoreArpa: true,
             prestigeMADWait: true,
             prestigeMADPopulation: 1,
-            prestigeWaitAT: true,
+            prestigeWaitAT: false,
             prestigeGECK: 0,
             prestigeBioseedConstruct: true,
             prestigeBioseedProbes: 3,
@@ -8547,7 +8547,7 @@
             }
 
             // Determine patrol count
-            targetHellPatrols = Math.floor((availableHellSoldiers - hellGarrison) / targetHellPatrolSize);
+            targetHellPatrols = Math.max(1, Math.floor((availableHellSoldiers - hellGarrison) / targetHellPatrolSize));
 
             // Special logic for small number of patrols
             if (settings.hellHandlePatrolSize && targetHellPatrols === 1) {
@@ -15025,7 +15025,7 @@
         })
         .on('click', {label: "Prestige Type (prestigeType)", name: "prestigeType", type: "select", options: prestigeOptions}, openOverrideModal);
 
-        addSettingsToggle(currentNode, "prestigeWaitAT", "Use all Accelerated Time", "Delay reset until all accelerated time will be used");
+        addSettingsToggle(currentNode, "prestigeWaitAT", "Disable prestiging under Accelerated Time", "Delay reset until all accelerated time will be used, to avoid wasting it");
         addSettingsToggle(currentNode, "prestigeMADIgnoreArpa", "Ignore early game A.R.P.A.", "Disables building any A.R.P.A. projects until MAD is researched, or rival have appeared");
         addSettingsToggle(currentNode, "prestigeBioseedConstruct", "Ignore useless buildings", "Space Dock, Bioseeder Ship and Probes will be constructed only when Bioseed prestige enabled. World Collider won't be constructed during Bioseed. Jump Ship won't be constructed during Whitehole. Stellar Engine won't be constucted during Vacuum Collapse. Mana Syphon won't be constructed during Witch Hunter's Ascension and Demonic Infusion.");
 
@@ -15883,6 +15883,7 @@
         addSettingsNumber(currentNode, "hellMinSoldiersPercent", "Alive soldier percentage for entering hell", "Don't enter hell if too many soldiers are dead, but don't get out");
 
         addSettingsHeader1(currentNode, "Hell Garrison");
+        addSettingsToggle(currentNode, "hellAssaultReserve", "Always reserve hell troops to Secure the Pit", "With this option enabled hell soldiers will be put to fortress once Secure the Pit is unlocked, to fulfil its costs. It makes saving resources and setting triggers for it easier, at cost of less efficient use of manpower.");
         addSettingsNumber(currentNode, "hellTargetFortressDamage", "Target wall damage per siege (overestimates threat)", "Actual damage will usually be lower due to patrols and drones");
         addSettingsNumber(currentNode, "hellLowWallsMulti", "Garrison bolster factor for damaged walls", "Multiplies target defense rating by this when close to 0 wall integrity, half as much increase at half integrity");
 
