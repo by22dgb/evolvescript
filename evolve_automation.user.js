@@ -14275,7 +14275,7 @@
         date: (d) => d === "total" ? game.global.stats.days :
                      d === "impact" ? (game.global.race['orbit_decay'] ? game.global.race['orbit_decay'] - game.global.stats.days : -1) :
                      game.global.city.calendar[d],
-        other: (o) => o === "rname" ? game.races[game.global.race.species].name :
+        other: (o) => o === "rname" ? (game.races[game.global.race.species === "protoplasm" && game.global.race.evoFinalMenu ? game.global.race.evoFinalMenu : game.global.race.species].name) :
                       o === "tpfleet" ? (game.global.space.shipyard?.ships?.length ?? 0) :
                       o === "mrelay" ? (game.global.space.m_relay?.charged / 10000.0 ?? 0) :
                       o === "satcost" ? (buildings.SunSwarmSatellite.cost.Money ?? 0) :
