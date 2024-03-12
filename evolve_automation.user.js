@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.114
+// @version      3.3.1.115
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1445,6 +1445,13 @@
                 return -1;
             }
 
+            const greatnessReset = ["bioseed", "ascension", "terraform", "matrix", "retire", "eden"];
+            const midTierReset = ["bioseed", "cataclysm", "whitehole", "vacuum", "terraform"];
+            const highTierReset = ["ascension", "demonic"];
+            const bestForMid = ["human", "cath", "capybara", "gnome", "cyclops", "gecko", "dracnid", "entish", "shroomi", "antid", "sharkin", "dryad", "salamander", "yeti", "kamel", "imp", "unicorn", "synth", "shoggoth"];
+            const bestForHigh = ["human", "cath", "capybara", "gnome", "cyclops", "gecko", "dracnid", "entish", "shroomi", "scorpid", "sharkin", "dryad", "salamander", "wendigo", "kamel", "balorg", "unicorn", "nano", "ghast"];
+            // TODO: Races for TP resets, with armor and such
+
             let weighting = 0;
             let starLevel = getStarLevel(settings);
             const checkAchievement = (baseWeight, id) => {
@@ -1452,6 +1459,11 @@
                 if (game.global.race.universe !== "micro" && game.global.race.universe !== "standard") {
                     weighting += baseWeight * Math.max(0, starLevel - getAchievementStar(id, "standard"));
                 }
+            }
+
+            if ((midTierReset.includes(settings.prestigeType) && bestForMid.includes(this.id)) ||
+                (highTierReset.includes(settings.prestigeType) && bestForHigh.includes(this.id))) {
+                weighting += 1;
             }
 
             // Check pillar
@@ -1467,7 +1479,7 @@
             }
 
             // Check greatness\extinction achievement
-            if (["bioseed", "ascension", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType)) {
+            if (greatnessReset.includes(settings.prestigeType)) {
                 checkAchievement(100, "genus_" + this.genus);
             } else if (this.id !== "sludge" || settings.prestigeType !== "mad") {
                 checkAchievement(100, "extinct_" + this.id);
@@ -5820,6 +5832,7 @@
             for (let i = 0; i < this.priorityList.length; i++) {
                 let trigger = this.priorityList[i];
                 trigger.seq = i;
+                trigger.priority = i;
             }
         },
 
@@ -9393,12 +9406,9 @@
 
                 for (let productionCost of fuel.cost) {
                     let resource = productionCost.resource;
+                    // No need to preserve minimum income when storage is full
                     if (resource.storageRatio < 0.8) {
-                        let remainingRateOfChange = resource.rateOfChange + (m.fueledCount(fuel) * productionCost.quantity);
-                        // No need to preserve minimum income when storage is full
-                        if (resource.storageRatio < 0.98) {
-                            remainingRateOfChange -= productionCost.minRateOfChange;
-                        }
+                        let remainingRateOfChange = resource.rateOfChange + (m.fueledCount(fuel) * productionCost.quantity) - productionCost.minRateOfChange;
 
                         let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
                         if (affordableAmount < maxAllowedUnits) {
@@ -9459,12 +9469,9 @@
         let steelSmeltingConsumption = m.Productions.Steel.cost;
         for (let productionCost of steelSmeltingConsumption) {
             let resource = productionCost.resource;
+            // No need to preserve minimum income when storage is full
             if (resource.storageRatio < 0.8) {
-                let remainingRateOfChange = resource.rateOfChange + (smelterSteelCount * productionCost.quantity);
-                // No need to preserve minimum income when storage is full
-                if (resource.storageRatio < 0.98) {
-                    remainingRateOfChange -= productionCost.minRateOfChange;
-                }
+                let remainingRateOfChange = resource.rateOfChange + (smelterSteelCount * productionCost.quantity) - productionCost.minRateOfChange;
 
                 let affordableAmount = Math.max(0, Math.floor(remainingRateOfChange / productionCost.quantity));
                 if (affordableAmount < maxAllowedSteel) {
@@ -9596,13 +9603,12 @@
                                 break;
                             }
                         }
+                        // No need to preserve minimum income when storage is full
                         if (resourceCost.resource.storageRatio < 0.8){
                             let previousCost = FactoryManager.currentProduction(production) * resourceCost.quantity;
                             let currentCost = factoryAdjustments[production.id] * resourceCost.quantity;
-                            let rate = resourceCost.resource.rateOfChange + previousCost - currentCost;
-                            if (resourceCost.resource.storageRatio < 0.98) {
-                                rate -= resourceCost.minRateOfChange;
-                            }
+                            let rate = resourceCost.resource.rateOfChange + previousCost - currentCost - resourceCost.minRateOfChange;
+
                             if (production.resource.isDemanded()) {
                                 rate += resourceCost.resource.currentQuantity;
                             }
@@ -9615,9 +9621,12 @@
                     }
 
                     // If we're going for bioseed - try to balance neutronium\nanotubes ratio
-                    if (settings.prestigeBioseedConstruct && settings.prestigeType === "bioseed" && production === FactoryManager.Productions.NanoTube && resources.Neutronium.currentQuantity < (game.global.race['truepath'] ? 500 : 250)) {
-                        state.tooltips["iFactory" + production.id] += `${(game.global.race['truepath'] ? 500 : 250)} ${resources.Neutronium.name} reserved<br>`;
-                        actualRequiredFactories = 0;
+                    if (settings.prestigeType === "bioseed" && settings.prestigeBioseedConstruct && production === FactoryManager.Productions.NanoTube) {
+                        let reservedNeutronium = game.global.race['truepath'] ? 500 : 250;
+                        if (resources.Neutronium.currentQuantity < reservedNeutronium) {
+                            state.tooltips["iFactory" + production.id] += `${reservedNeutronium} ${resources.Neutronium.name} reserved<br>`;
+                            actualRequiredFactories = 0;
+                        }
                     }
 
                     if (actualRequiredFactories > 0){
@@ -9773,10 +9782,8 @@
             if (!resources.Graphene.isUseful()) {
                 maxFueledForConsumption = 0;
             } else if (resource.storageRatio < 0.8) {
-                let rateOfChange = resource.rateOfChange + fuel.cost.quantity * currentFuelCount;
-                if (resource.storageRatio < 0.98) {
-                    rateOfChange -= fuel.cost.minRateOfChange;
-                }
+                let rateOfChange = resource.rateOfChange + fuel.cost.quantity * currentFuelCount - fuel.cost.minRateOfChange;
+
                 let affordableAmount = Math.floor(rateOfChange / fuel.cost.quantity);
                 maxFueledForConsumption = Math.max(Math.min(maxFueledForConsumption, affordableAmount), 0);
             }
@@ -12274,17 +12281,18 @@
         // Add clicking to rate of change, so we can sell or eject it.
         if (settings.buildingAlwaysClick || (settings.autoBuild && (resources.Population.currentQuantity <= 15 || (buildings.RockQuarry.count < 1 && !game.global.race['sappy'])))) {
             let resPerClick = getResourcesPerClick() * ticksPerSecond();
+            let conjureMod = haveTech("conjuring", 2) ? 10 : 1;
             if (buildings.Food.isClickable()) {
-                resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick * (haveTech("conjuring", 1) ? 10 : 1);
+                resources.Food.rateOfChange += resPerClick * settings.buildingClickPerTick * conjureMod;
             }
             if (buildings.Lumber.isClickable()) {
-                resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick  * (haveTech("conjuring", 2) ? 10 : 1);
+                resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick  * conjureMod;
             }
             if (buildings.Stone.isClickable()) {
-                resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick  * (haveTech("conjuring", 2) ? 10 : 1);
+                resources.Stone.rateOfChange += resPerClick * settings.buildingClickPerTick  * conjureMod;
             }
             if (buildings.Chrysotile.isClickable()) {
-                resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick  * (haveTech("conjuring", 2) ? 10 : 1);
+                resources.Chrysotile.rateOfChange += resPerClick * settings.buildingClickPerTick  * conjureMod;
             }
             if (buildings.Slaughter.isClickable()){
                 resources.Lumber.rateOfChange += resPerClick * settings.buildingClickPerTick;
@@ -13241,10 +13249,13 @@
                 let check = conditions[i];
                 try {
                     if (!checkTypes[check.type1]) {
-                        throw `${check.type1} check not found`;
+                        throw `${check.type1} variable not found`;
                     }
                     if (!checkTypes[check.type2]) {
-                        throw `${check.type2} check not found`;
+                        throw `${check.type2} variable not found`;
+                    }
+                    if (!checkCompare[check.cmp]) {
+                        throw `${checkCompare[check.cmp]} comparator not found`;
                     }
                     let var1 = checkTypes[check.type1].fn(check.arg1);
                     let var2 = checkTypes[check.type2].fn(check.arg2);
@@ -14137,7 +14148,7 @@
         {val: "vacuum", short_label: "Vacuum", label: "Vacuum Collapse", hint: "Build Mana Syphons until the end"},
         {val: "apocalypse", label: "AI Apocalypse", hint: "Perform AI Apocalypse reset by researching Protocol 66 once available"},
         {val: "ascension", label: "Ascension", hint: "Allows research of Incorporeal Existence and Ascension. Ascension Machine is managed by autoPower. Disable autoPrestige if you want to change custom race. Otherwise current one will be used , or default one if there's no current."},
-        {val: "demonic", short_label: "Infusion", label: "Demonic Infusion", hint: "Sacrifice your entire civilization to absorb the essence of a greater demon lord"},
+        {val: "demonic", short_label: "DI", label: "Demonic Infusion", hint: "Sacrifice your entire civilization to absorb the essence of a greater demon lord"},
         {val: "terraform", label: "Terraform", hint: "Create new planet by building and powering Terraformer. Atmosphere Terraformer is managed by autoPower. Disable autoPrestige if you want to change custom planet. Otherwise current one will be used , or default one if there's no current. "},
         {val: "matrix", label: "Matrix", hint: "Build a computer simulation and trap your entire civilization in it"},
         {val: "retire", label: "Retirement", hint: "Retire and enjoy the easy life."},
@@ -15228,38 +15239,40 @@
         let prestigeClass = "";
 
         let race = races[queuedEvolution.userEvolutionTarget];
+        let isValdi = queuedEvolution.challenge_junker || race === races.junker;
+        let isSludge = queuedEvolution.challenge_sludge || race === races.sludge;
 
-        if (queuedEvolution.challenge_junker || queuedEvolution.challenge_sludge) {
-            raceName = queuedEvolution.challenge_junker ? races.junker.name : races.sludge.name;
-            if (race) {
-                raceName += ", ";
-                if (race === races.junker || race === races.sludge) {
-                    raceName += game.loc(`genelab_genus_fungi`);
-                } else {
-                    raceName += game.loc(`genelab_genus_${race.genus}`);
-                }
+        const getRaceColor = (race) => {
+            let suited = race.getHabitability();
+            if (suited === 1) {
+                return "has-text-info";
+            } else if (suited === 0) {
+                return "has-text-danger";
+            } else {
+                return "has-text-warning";
+            }
+        };
+
+        if (isValdi && isSludge) {
+            raceName = "Valdi and Sludge can not be combined!";
+            raceClass = "has-text-danger";
+        } else if (isValdi || isSludge) {
+            raceName = `${isValdi ? races.junker.name : races.sludge.name}, `;
+            if (race && race !== races.junker && race !== races.sludge) {
+                raceName += game.loc(`genelab_genus_${race.genus}`);
+                raceClass = getRaceColor(race);
+            } else {
+                raceName += game.loc(`genelab_genus_fungi`);
+                raceClass = getRaceColor(races.shroomi);
             }
         } else if (queuedEvolution.userEvolutionTarget === "auto") {
             raceName = "Auto Achievements";
+            raceClass = "has-text-advanced";
         } else if (race) {
             raceName = race.name;
+            raceClass = getRaceColor(race);
         } else {
             raceName = "Unrecognized race!";
-        }
-
-        if (race) {
-            // Check if we can evolve intro it
-            let suited = race.getHabitability();
-            if (suited === 1) {
-                raceClass = "has-text-info";
-            } else if (suited === 0) {
-                raceClass = "has-text-danger";
-            } else {
-                raceClass = "has-text-warning";
-            }
-        } else if (queuedEvolution.userEvolutionTarget === "auto") {
-            raceClass = "has-text-advanced";
-        } else {
             raceClass = "has-text-danger";
         }
 
