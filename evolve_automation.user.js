@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.115
+// @version      3.3.1.116
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1461,11 +1461,6 @@
                 }
             }
 
-            if ((midTierReset.includes(settings.prestigeType) && bestForMid.includes(this.id)) ||
-                (highTierReset.includes(settings.prestigeType) && bestForHigh.includes(this.id))) {
-                weighting += 1;
-            }
-
             // Check pillar
             if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic")) {
                 weighting += 1000 * Math.max(0, starLevel - (game.global.pillars[this.id] ?? 0));
@@ -1516,6 +1511,12 @@
             // Increase weight for suited conditional races with achievements
             if (weighting > 0 && habitability === 1 && this.getCondition() !== '' && this.id !== "junker" && this.id !== "sludge") {
                 weighting += 500;
+            }
+
+            // Increases weight of stringest races of genus
+            if ((midTierReset.includes(settings.prestigeType) && bestForMid.includes(this.id)) ||
+                (highTierReset.includes(settings.prestigeType) && bestForHigh.includes(this.id))) {
+                weighting += 1;
             }
 
             // Same race for Second Evolution
