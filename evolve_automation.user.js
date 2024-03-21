@@ -482,11 +482,23 @@
                         labelFound = true;
                         produced += parseFloat(value) || 0;
                     }
-                } else if (labelFound) {
+                } else if (labelFound && this.isValidProductionLabel(label)) {
                     produced *= 1 + (parseFloat(value) || 0) / 100;
                 }
             }
             return produced * state.globalProductionModifier;
+        }
+
+        isValidProductionLabel(label) {
+            // Bug as of 1.3.11a: Space Syndicate is already applied to the displayed base value
+            // The calculations are correct though
+            // This can cause constant Iron flicker in Truepath because the script thinks
+            // a worker is producing more than the constant smelter consumption.
+            if (this._id === "Iron" && label === `ᄂ${poly.loc('space_syndicate')}`)
+                return false;
+
+            // Everything else is valid (at least for now)
+            return true;
         }
 
         getBusyWorkers(workersSource, workersCount, locArg) {
