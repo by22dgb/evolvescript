@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.116
+// @version      3.3.1.117
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1077,6 +1077,10 @@
         }
 
         get count() {
+            if (this.isMission()) {
+                return this.isComplete() ? 1 : 0;
+            }
+
             if (!this.isUnlocked()) {
                 return 0;
             }
@@ -1728,7 +1732,7 @@
                 this.complete = true;
                 return true;
             }
-            if (this.actionType === "build" && (buildingIds[this.actionId].isMission() ? Number(buildingIds[this.actionId].isComplete()) : buildingIds[this.actionId].count) >= this.actionCount) {
+            if (this.actionType === "build" && buildingIds[this.actionId].count >= this.actionCount) {
                 this.complete = true;
                 return true;
             }
@@ -1746,7 +1750,7 @@
             if (this.requirementType === "researched" && techIds[this.requirementId].isResearched()) {
                 return true;
             }
-            if (this.requirementType === "built" && (buildingIds[this.requirementId].isMission() ? Number(buildingIds[this.requirementId].isComplete()) : buildingIds[this.requirementId].count) >= this.requirementCount) {
+            if (this.requirementType === "built" && buildingIds[this.requirementId].count >= this.requirementCount) {
                 return true;
             }
             if (this.requirementType === "chain" && (this.priority < 1 || TriggerManager.priorityList[this.priority - 1]?.complete)) {
@@ -6091,6 +6095,7 @@
         },
     }
 
+    // Gui & Init functions
     function updateCraftCost() {
         if (state.lastWasteful === game.global.race.wasteful
                 && state.lastHighPop === game.global.race.high_pop
@@ -6117,7 +6122,6 @@
         state.lastFlier = game.global.race.flier;
     }
 
-    // Gui & Init functions
     function initialiseState() {
         updateCraftCost();
         updateTabs(false);
@@ -7429,6 +7433,7 @@
             autoTrigger: false
         }
 
+        // Add default triggers only on reset, or first run, but not on casual update
         if (reset || !settingsRaw.hasOwnProperty("autoTrigger")) {
             TriggerManager.priorityList = [];
             TriggerManager.AddTrigger("built", "space-moon_mission", 1, "build", "space-moon_base", 1);
@@ -7477,43 +7482,7 @@
             fleetAlien2Loses: "none",
             fleetChthonianLoses: "low",
 
-            // Default outer regions weighting
-            fleet_outer_pr_spc_moon: 1, // Iridium
-            fleet_outer_pr_spc_red: 3, // Titanium
-            fleet_outer_pr_spc_gas: 0, // Helium
-            fleet_outer_pr_spc_gas_moon: 0, // Oil
-            fleet_outer_pr_spc_belt: 1, // Iridium
-            fleet_outer_pr_spc_titan: 5, // Adamantite
-            fleet_outer_pr_spc_enceladus: 3, // Quantium
-            fleet_outer_pr_spc_triton: 10, // Encrypted data
-            fleet_outer_pr_spc_kuiper: 5, // Orichalcum
-            fleet_outer_pr_spc_eris: 100, // Encrypted data
-
-            // Default outer regions protect
-            fleet_outer_def_spc_moon: 0.9,
-            fleet_outer_def_spc_red: 0.9,
-            fleet_outer_def_spc_gas: 0.9,
-            fleet_outer_def_spc_gas_moon: 0.9,
-            fleet_outer_def_spc_belt: 0.9,
-            fleet_outer_def_spc_titan: 0.9,
-            fleet_outer_def_spc_enceladus: 0.9,
-            fleet_outer_def_spc_triton: 0.95,
-            fleet_outer_def_spc_kuiper: 0.9,
-            fleet_outer_def_spc_eris: 0.01,
-
-            // Default outer regions scouts
-            fleet_outer_sc_spc_moon: 0,
-            fleet_outer_sc_spc_red: 0,
-            fleet_outer_sc_spc_gas: 0,
-            fleet_outer_sc_spc_gas_moon: 0,
-            fleet_outer_sc_spc_belt: 0,
-            fleet_outer_sc_spc_titan: 1,
-            fleet_outer_sc_spc_enceladus: 1,
-            fleet_outer_sc_spc_triton: 2,
-            fleet_outer_sc_spc_kuiper: 2,
-            fleet_outer_sc_spc_eris: 1,
-
-            // Default outer ship
+            // Default combat ship
             fleet_outer_class: 'destroyer',
             fleet_outer_armor: 'neutronium',
             fleet_outer_weapon: 'plasma',
@@ -7537,6 +7506,22 @@
             fleet_pr_gxy_gateway: 4,
             fleet_pr_gxy_gorddon: 5,
         }
+
+        const setOuterRegion = (id, weighting, protect, scouts) => {
+            def['fleet_outer_pr_' + id] = weighting;
+            def['fleet_outer_def_' + id] = protect;
+            def['fleet_outer_sc_' + id] = scouts;
+        };
+        setOuterRegion("spc_moon", 1, 0.9, 0); // Iridium
+        setOuterRegion("spc_red", 3, 0.9, 0); // Titanium
+        setOuterRegion("spc_gas", 0, 0.9, 0); // Helium
+        setOuterRegion("spc_gas_moon", 0, 0.9, 0); // Oil
+        setOuterRegion("spc_belt", 1, 0.9, 0); // Iridium
+        setOuterRegion("spc_titan", 5, 0.9, 1); // Adamantite
+        setOuterRegion("spc_enceladus", 3, 0.9, 1); // Quantium
+        setOuterRegion("spc_triton", 10, 0.95, 2); // Encrypted data
+        setOuterRegion("spc_kuiper", 5, 0.9, 2); // Orichalcum
+        setOuterRegion("spc_eris", 100, 0.01, 1); // Encrypted data
 
         applySettings(def, reset);
     }
@@ -9335,7 +9320,7 @@
     }
 
     function autoMine() {
-        // Nothing to do here with no moneg
+        // Nothing to do here with no mine
         if (!MineManager.initIndustry()) {
             return;
         }
@@ -10650,6 +10635,7 @@
             if (building.click()) {
                 // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
                 // Same for gems when we're saving them, and missions as they tends to unlock new stuff
+                // TODO: Allow build things with different consumtions
                 if (building.consumption.length > 0 || building.isMission() || (building.cost["Soul_Gem"] && settings.prestigeType === "whitehole" && settings.prestigeWhiteholeSaveGems)) {
                     return;
                 }
@@ -11789,6 +11775,12 @@
         }
 
         let yard = game.global.space.shipyard;
+
+        if (settings.fleetOuterShips === "manual") {
+            m.updateNextShip(m.avail(yard.blueprint) ? yard.blueprint : null);
+            m.nextShipMsg = `Ships managed manually`;
+            return;
+        }
 
         let targetRegion = null;
         let newShip = null;
@@ -13024,16 +13016,17 @@
     function buildFilterRegExp() {
         let regexps = [];
         let validIds = [];
-        let strings = settingsRaw.logFilter.split(/[^0-9a-z_]/g).filter(Boolean);
+        let strings = settingsRaw.logFilter.split(/[^0-9a-z_%]/g).filter(Boolean);
         for (let i = 0; i < strings.length; i++) {
-            let id = strings[i];
+            let [id, ...params] = strings[i].split("%");
+            params = params.map(game.loc);
             // Loot message built from multiple strings without tokens, let's fake one for regexp below
-            let message = game.loc(id) + (id === "civics_garrison_gained" ? "%0" : "");
+            let message = game.loc(id, params.length ? params : undefined) + (id === "civics_garrison_gained" ? "%0" : "");
             if (message === id) {
                 continue;
             }
             regexps.push(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%\d/g, ".*"));
-            validIds.push(id);
+            validIds.push(strings[i]);
         }
         if (regexps.length > 0) {
             state.filterRegExp = new RegExp("^(" + regexps.join("|") + ")$");
@@ -15952,6 +15945,7 @@
 
         let shipOptions = [{val: "none", label: "None", hint: "Ship building disabled"},
                            {val: "user", label: "Current design", hint: "Build whatever currently set in Ship Yard"},
+                           {val: "manual", label: "Manual mode", hint: "Assists accumulating resources needed for current blueprint, without building or deploying anything. It also might need tweaking prioritization settings to work."},
                            {val: "custom", label: "Presets", hint: "Build ships with components configured below. All components need to be unlocked, and resulting design should have enough power"}];
         addSettingsSelect(currentNode, "fleetOuterShips", "Ships to build", "Once avalable and affordable script will build ship of selected design, and send it to region with most piracy * weighting", shipOptions);
         addSettingsNumber(currentNode, "fleetOuterCrew", "Minimum idle soldiers", "Only build ships when amount of idle soldiers above give number");
