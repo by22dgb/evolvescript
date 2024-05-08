@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.117
+// @version      3.3.1.118
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -326,6 +326,7 @@
             this.tradeRoutes = 0;
             this.incomeAdusted = false;
 
+            this.maxCost = 0;
             this.storageRequired = 1;
             this.requestedQuantity = 0;
             this.cost = {};
@@ -1449,6 +1450,7 @@
                 return -1;
             }
 
+            const noGenusRace = ["custom", "junker", "sludge"];
             const greatnessReset = ["bioseed", "ascension", "terraform", "matrix", "retire", "eden"];
             const midTierReset = ["bioseed", "cataclysm", "whitehole", "vacuum", "terraform"];
             const highTierReset = ["ascension", "demonic"];
@@ -1466,14 +1468,19 @@
             }
 
             // Check pillar
-            if (game.global.race.universe !== "micro" && resources.Harmony.currentQuantity >= 1 && ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic")) {
-                weighting += 1000 * Math.max(0, starLevel - (game.global.pillars[this.id] ?? 0));
-                // Check genus pillar for Enlightenment
-                if (this.id !== "custom" && this.id !== "junker" && this.id !== "sludge") {
-                    let genusPillar = Math.max(...Object.values(races)
-                      .filter(r => r.genus === this.genus && r.id !== "custom" && r.id !== "junker" && r.id !== "sludge")
-                      .map(r => (game.global.pillars[r.id] ?? 0)));
-                    weighting += 10000 * Math.max(0, starLevel - genusPillar);
+            if ((settings.prestigeType === "ascension" && settings.prestigeAscensionPillar) || settings.prestigeType === "demonic") {
+                let speciesPillarLevel = game.global.pillars[this.id] ?? 0;
+                let canPillar = !speciesPillarLevel && resources.Harmony.currentQuantity >= 1 && game.global.race.universe !== 'micro';
+                let canUpgrade = speciesPillarLevel && speciesPillarLevel < starLevel;
+                if (canPillar || canUpgrade) {
+                    weighting += 1000 * Math.max(0, starLevel - speciesPillarLevel);
+                    // Check genus pillar for Enlightenment
+                    if (!noGenusRace.includes(this.id)) {
+                        let genusPillar = Math.max(...Object.values(races)
+                          .filter(r => r.genus === this.genus && !noGenusRace.includes(r.id))
+                          .map(r => (game.global.pillars[r.id] ?? 0)));
+                        weighting += 10000 * Math.max(0, starLevel - genusPillar);
+                    }
                 }
             }
 
@@ -3096,12 +3103,12 @@
           () => "Still have some unused storage",
           () => settings.buildingWeightingCrateUseless
       ],[
-          () => resources.Oil.maxQuantity < resources.Oil.requestedQuantity && buildings.OilWell.count <= 0 && buildings.GasMoonOilExtractor.count <= 0,
+          () => resources.Oil.maxQuantity < resources.Oil.maxCost && buildings.OilWell.count <= 0 && buildings.GasMoonOilExtractor.count <= 0,
           (building) => building === buildings.OilWell || building === buildings.GasMoonOilExtractor,
           () => "Need more fuel",
           () => settings.buildingWeightingMissingFuel
       ],[
-          () => resources.Helium_3.maxQuantity < resources.Helium_3.requestedQuantity || resources.Oil.maxQuantity < resources.Oil.requestedQuantity,
+          () => resources.Helium_3.maxQuantity < resources.Helium_3.maxCost || resources.Oil.maxQuantity < resources.Oil.maxCost,
           (building) => building === buildings.OilDepot || building === buildings.SpacePropellantDepot || building === buildings.GasStorage,
           () => "Need more fuel",
           () => settings.buildingWeightingMissingFuel
@@ -10131,7 +10138,11 @@
     }
 
     function isPillarFinished() {
-        return !settings.prestigeAscensionPillar || resources.Harmony.currentQuantity < 1 || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel();
+        let speciesPillarLevel = game.global.pillars[game.global.race.species];
+        let canPillar = !speciesPillarLevel && resources.Harmony.currentQuantity >= 1 && game.global.race.universe !== 'micro';
+        let canUpgrade = speciesPillarLevel && speciesPillarLevel < game.alevel();
+        // Always consider pillared if user doesn't want to wait for pillar, OR can't pillar + can't upgrade existing pillar
+        return !settings.prestigeAscensionPillar || (!canPillar && !canUpgrade);
     }
 
     function isGECKNeeded() {
@@ -10844,7 +10855,7 @@
                     // Disable Belt Space Stations with no workers
                     if (building === buildings.BeltSpaceStation && game.breakdown.c.Elerium) {
                         let stationStorage = parseFloat(game.breakdown.c.Elerium[game.loc("space_belt_station_title")] ?? 0);
-                        let extraStations = Math.floor((resources.Elerium.maxQuantity - resources.Elerium.storageRequired) / stationStorage);
+                        let extraStations = Math.floor((resources.Elerium.maxQuantity - resources.Elerium.maxCost) / stationStorage);
                         let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
                         maxStateOn = Math.min(maxStateOn, Math.max(currentStateOn - extraStations, Math.ceil(minersNeeded / 3)));
                     }
@@ -12305,10 +12316,15 @@
         listLoop:
         for (let i = 0; i < list.length; i++) {
             let obj = list[i];
+            let storageSuffient = true;
             for (let res in obj.cost) {
+                resources[res].maxCost = Math.max(obj.cost[res], resources[res].maxCost);
                 if (resources[res].maxQuantity < obj.cost[res] && !resources[res].hasStorage()) {
-                    continue listLoop;
+                    storageSuffient = false;
                 }
+            }
+            if (!storageSuffient) {
+                continue listLoop;
             }
             for (let res in obj.cost) {
                 let assumeCost = obj.cost[res] * bufferMult;
@@ -12825,6 +12841,7 @@
 
         // Reset required storage and prioritized resources
         for (let id in resources) {
+            resources[id].maxCost = 0;
             resources[id].storageRequired = 1;
             resources[id].requestedQuantity = 0;
         }
@@ -14312,6 +14329,7 @@
         ResourceUnlocked: { fn: (r) => resources[r].isUnlocked(), ...argType.resource, desc: "Returns true when resource or support is unlocked" },
         ResourceQuantity: { fn: (r) => resources[r].currentQuantity, ...argType.resource, desc: "Returns current amount of resource or support as number" },
         ResourceStorage: { fn: (r) => resources[r].maxQuantity, ...argType.resource, desc: "Returns maximum amount of resource or support as number. Power returns 'Disabled' amount." },
+        ResourceMaxCost: { fn: (r) => resources[r].maxCost, ...argType.resource, desc: "Returns maximum cost of resource as number." },
         ResourceIncome: { fn: (r) => resources[r].rateOfChange, ...argType.resource, desc: "Returns current income of resource or unused support as number" }, // rateOfChange holds full diff of resource at the moment when overrides checked
         ResourceRatio: { fn: (r) => resources[r].storageRatio, ...argType.resource, desc: "Returns storage ratio of resource as number. Number 0.5 means that storage is 50% full, and such." },
         ResourceSatisfied: { fn: (r) => resources[r].usefulRatio >= 1, ...argType.resource, desc: "Returns true when current amount of resource above maximum costs" },
