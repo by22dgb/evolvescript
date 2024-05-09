@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.118
+// @version      3.3.1.119
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -14353,6 +14353,11 @@
         Other: { fn: (o) => argMap.other(o), ...argType.other, desc: "Other uncategorized variables" },
     }
 
+    // Eval shortener
+    function _(check, arg){
+        return checkTypes[check].fn(arg);
+    }
+
     function openOverrideModal(event) {
         if (event[overrideKey]) {
             event.preventDefault();
@@ -14385,15 +14390,15 @@
               <th class="has-text-warning" style="width:10%"></th>
               <th class="has-text-warning" style="width:16%">Type</th>
               <th class="has-text-warning" style="width:16%">Value</th>
-              <th class="has-text-warning" style="width:15%"></th>
-              <th style="width:11%"></th>
+              <th class="has-text-warning" style="width:14%"></th>
+              <th style="width:12%"></th>
             </tr>
             <tbody id="script_${settingName}ModalTable"></tbody>
           </table>`);
 
         let newTableBodyText = "";
         for (let i = 0; i < overrides.length; i++) {
-            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:16%"></td><td style="width:16%"></td><td style="width:10%"></td><td style="width:16%"></td><td style="width:16%"></td><td style="width:15%"></td><td style="width:11%"><span class="script-lastcolumn"></span></td></tr>`;
+            newTableBodyText += `<tr id="script_${settingName}_o${i}" value="${i}" class="script-draggable"><td style="width:16%"></td><td style="width:16%"></td><td style="width:10%"></td><td style="width:16%"></td><td style="width:16%"></td><td style="width:14%"></td><td style="width:12%"><span class="script-lastcolumn"></span></td></tr>`;
         }
 
         let listField = typeof settingsRaw[settingName] === "object";
@@ -14404,19 +14409,19 @@
 
         let current = listField ?
          `<td style="width:32%" colspan="2">${note_2}</td>
-          <td style="width:57%" colspan="4"></td>`:
+          <td style="width:56%" colspan="4"></td>`:
          `<td style="width:74%" colspan="5">${note_2}</td>
-          <td style="width:15%"></td>`;
+          <td style="width:14%"></td>`;
 
         newTableBodyText += `
           <tr id="script_${settingName}_d" class="unsortable">
             <td style="width:74%" colspan="5">${note}</td>
-            <td style="width:15%"></td>
-            <td style="width:11%"><a class="button is-small" style="width: 26px; height: 26px"><span>+</span></a></td>
+            <td style="width:14%"></td>
+            <td style="width:12%"><a class="button is-small" style="width: 26px; height: 26px"><span>+</span></a></td>
           </tr>
           <tr id="script_override_true_value" class="unsortable" value="${settingName}" type="${type}">
             ${current}
-            <td style="width:11%"></td>
+            <td style="width:12%"></td>
           </tr>`;
         let tableBodyNode = $(`#script_${settingName}ModalTable`);
         tableBodyNode.append($(newTableBodyText));
@@ -14465,6 +14470,8 @@
             tableElement = tableElement.next();
             tableElement.append(buildConditionRemove(settingName, i, rebuild));
             tableElement.append(buildConditionDuplicate(settingName, i, rebuild));
+            tableElement.append(buildConditionEvalize(settingName, i, rebuild));
+
         }
 
         tableBodyNode.sortable({
@@ -14630,6 +14637,19 @@
             settingsRaw.overrides[settingName].splice(id, 0, {...settingsRaw.overrides[settingName][id]});
             updateSettingsFromState();
             rebuild();
+        });
+    }
+
+    function buildConditionEvalize(settingName, id, rebuild) {
+        return $(`<a class="button is-small" style="width: 26px; height: 26px"><span style="font-size: 0.9rem;">E</span></a>`)
+        .on('click', function() {
+            let override = settingsRaw.overrides[settingName][id];
+            let check = checkCompare[override.cmp].toString().substr(10)
+                .replace(/([a,b])/g, (s, v) => {
+                    let idx = v === "a" ? 1 : 2;
+                    return `_("${override["type"+idx]}","${override["arg"+idx]}")`;
+                });
+            win.prompt("Eval of this check:", check);
         });
     }
 
