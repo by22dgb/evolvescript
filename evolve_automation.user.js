@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.119
+// @version      3.3.1.120
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -14645,9 +14645,17 @@
         .on('click', function() {
             let override = settingsRaw.overrides[settingName][id];
             let check = checkCompare[override.cmp].toString().substr(10)
-                .replace(/([a,b])/g, (s, v) => {
+                .replace(/([ab])/g, (s, v) => {
                     let idx = v === "a" ? 1 : 2;
-                    return `_("${override["type"+idx]}","${override["arg"+idx]}")`;
+                    switch (override["type"+idx]) {
+                        case "Number":
+                        case "Boolean":
+                            return override["arg"+idx];
+                        case "String":
+                            return JSON.stringify(override["arg"+idx]);
+                        default:
+                            return `_("${override["type"+idx]}",${JSON.stringify(override["arg"+idx])})`;
+                    }
                 });
             win.prompt("Eval of this check:", check);
         });
