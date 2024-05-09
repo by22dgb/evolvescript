@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.120
+// @version      3.3.1.121
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -14651,13 +14651,15 @@
                         case "Number":
                         case "Boolean":
                             return override["arg"+idx];
+                        case "Eval":
+                            return `(${override["arg"+idx]})`;
                         case "String":
                             return JSON.stringify(override["arg"+idx]);
                         default:
                             return `_("${override["type"+idx]}",${JSON.stringify(override["arg"+idx])})`;
                     }
                 });
-            win.prompt("Eval of this check:", check);
+            win.prompt("Eval of this condition:", check);
         });
     }
 
