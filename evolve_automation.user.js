@@ -12410,14 +12410,19 @@
         }
 
         // Prioritize material for craftables
+        let availableCrafters = JobManager.craftingMax() + JobManager.skilledServantsMax();
         for (let id in resources) {
             let resource = resources[id];
             if (resource.isDemanded()) {
                 // Only craftables stores their cost, no need for additional checks
                 for (let res in resource.cost) {
                     let material = resources[res];
-                    if (material.currentQuantity < material.maxQuantity * (resource.craftPreserve + 0.05)) {
-                        material.requestedQuantity = Math.max(material.requestedQuantity, material.maxQuantity * (resource.craftPreserve + 0.05));
+                    // Add craftPreserve, plus minimum consumption:
+                    // Craftsmen use 1/140 of game's given cost base per tick, before Crafty
+                    // Demand 60s worth of production if we were to put all crafters on this resource (effectively 30s with Crafty)
+                    let minExpected = (material.maxQuantity * resource.craftPreserve) + (availableCrafters * (1/140) * 60 * resource.cost[res]);
+                    if (material.currentQuantity < minExpected) {
+                        material.requestedQuantity = Math.max(material.requestedQuantity, minExpected);
                     }
                 }
             }
