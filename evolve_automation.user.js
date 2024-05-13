@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.121
+// @version      3.3.1.122
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -7590,13 +7590,13 @@
         }
 
         for (let resource of EjectManager.priorityList) {
-            def['res_eject' + resource.id] = resource.is.tradable;
+            def['res_eject' + resource.id] = resource.is.tradable ?? false;
         }
         for (let resource of SupplyManager.priorityList) {
-            def['res_supply' + resource.id] = resource.is.tradable;
+            def['res_supply' + resource.id] = resource.is.tradable ?? false;
         }
         for (let resource of NaniteManager.priorityList) {
-            def['res_nanite' + resource.id] = resource.is.tradable;
+            def['res_nanite' + resource.id] = resource.is.tradable ?? false;
         }
 
         def['res_eject' + resources.Elerium.id] = true;
@@ -14040,7 +14040,7 @@
                         }
                     }));
 
-                    Object.values(saveState.overrides.log_prestige_format ?? []).forEach(prestige_log_format_override => {
+                    Object.values(saveState.overrides?.log_prestige_format ?? []).forEach(prestige_log_format_override => {
                         if (prestige_log_format_override.ret.includes("{eval:")) {
                             evals.push(prestige_log_format_override.ret);
                         }
