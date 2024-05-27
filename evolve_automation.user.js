@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.122
+// @version      3.3.1.123
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -3083,7 +3083,7 @@
           () => "Not enough energy",
           () => settings.buildingWeightingUnderpowered
       ],[
-          () => state.knowledgeRequiredByTechs < resources.Knowledge.maxQuantity,
+          () => state.knowledgeRequiredByTechs <= resources.Knowledge.maxQuantity,
           (building) => building.is.knowledge && building !== buildings.Wardenclyffe, // We want Wardenclyffe for morale
           () => "No need for more knowledge",
           () => settings.buildingWeightingUselessKnowledge
@@ -3143,7 +3143,7 @@
           () => "Will be destroyed after impact",
           () => settings.buildingWeightingTemporal
       ],[
-          () => true,
+          () => true, // TODO: Only used for name contest, no need to check at other game stages
           (building) => building.is.random,
           () => "Randomized weighting",
           () => 1 + Math.random() // Fluctuate weight to pick random item
@@ -10855,9 +10855,9 @@
             if (building.is.smart && building.autoStateSmart) {
                 if (resources.Power.currentQuantity <= resources.Power.maxQuantity || haveTech('replicator')) { // Saving power, unless we can afford everything
                     // Disable Belt Space Stations with no workers
-                    if (building === buildings.BeltSpaceStation && game.breakdown.c.Elerium) {
-                        let stationStorage = parseFloat(game.breakdown.c.Elerium[game.loc("space_belt_station_title")] ?? 0);
-                        let extraStations = Math.floor((resources.Elerium.maxQuantity - resources.Elerium.maxCost) / stationStorage);
+                    if (building === buildings.BeltSpaceStation) {
+                        let stationStorage = parseFloat(game.breakdown.c.Elerium?.[game.loc("space_belt_station_title")] ?? 0);
+                        let extraStations = stationStorage > 0 ? Math.floor((resources.Elerium.maxQuantity - resources.Elerium.maxCost) / stationStorage) : 0;
                         let minersNeeded = buildings.BeltEleriumShip.stateOnCount * 2 + buildings.BeltIridiumShip.stateOnCount + buildings.BeltIronShip.stateOnCount;
                         maxStateOn = Math.min(maxStateOn, Math.max(currentStateOn - extraStations, Math.ceil(minersNeeded / 3)));
                     }
