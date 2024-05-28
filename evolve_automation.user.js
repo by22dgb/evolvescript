@@ -12421,9 +12421,7 @@
                     // Craftsmen use 1/140 of game's given cost base per tick, before Crafty
                     // Demand 60s worth of production if we were to put all crafters on this resource (effectively 30s with Crafty)
                     let minExpected = (material.maxQuantity * resource.craftPreserve) + (availableCrafters * (1/140) * 60 * resource.cost[res]);
-                    if (material.currentQuantity < minExpected) {
-                        material.requestedQuantity = Math.max(material.requestedQuantity, minExpected);
-                    }
+                    material.requestedQuantity = Math.max(material.requestedQuantity, minExpected);
                 }
             }
         }
