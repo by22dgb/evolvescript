@@ -7346,7 +7346,7 @@
             productionCraftsmen: "nocraft",
             productionSmelting: "required",
             productionSmeltingIridium: 0.5,
-            productionFactoryMinIngredients: 0,
+            productionFactoryMinIngredients: 0.01,
             replicatorAssignGovernorTask: true
         }
 
@@ -12436,21 +12436,36 @@
             }
         }
 
-        // Prioritize some factory materials when needed
-        let factoryThreshold = settings.productionFactoryMinIngredients + 0.01;
-        if (resources.Stanene.isDemanded() && resources.Nano_Tube.storageRatio < factoryThreshold) {
-            resources.Nano_Tube.requestedQuantity = Math.max(resources.Nano_Tube.requestedQuantity, resources.Nano_Tube.maxQuantity * factoryThreshold);
+        // Prioritize some factory materials when needed, 90s of base cost * factory count worth
+        // We can get the full adjusted numbers from FactoryManager, but this is still 30s at the highest factory upgrade level which is good enough
+        const factoryCount = FactoryManager.maxOperating();
+        const factoryThreshold = settings.productionFactoryMinIngredients;
+        const factoryMin = (usedResource, req) => Math.max(usedResource.maxQuantity * factoryThreshold, 90 * factoryCount * req);
+        if (resources.Stanene.isDemanded()) {
+            // 0.02 Nano Tubes/s/slot
+            const minNanoTube = factoryMin(resources.Nano_Tube, 0.02);
+            if (resources.Nano_Tube.currentQuantity < minNanoTube) {
+                resources.Nano_Tube.requestedQuantity = Math.max(resources.Nano_Tube.requestedQuantity, minNanoTube);
+            }
         }
-        if (resources.Nano_Tube.isDemanded() && resources.Coal.storageRatio < factoryThreshold) {
-            resources.Coal.requestedQuantity = Math.max(resources.Coal.requestedQuantity, resources.Coal.maxQuantity * factoryThreshold);
+        if (resources.Nano_Tube.isDemanded()) {
+            // 8 Coal/s/slot
+            const minCoal = factoryMin(resources.Coal, 20);
+            if (resources.Coal.currentQuantity < minCoal) {
+                resources.Coal.requestedQuantity = Math.max(resources.Coal.requestedQuantity, minCoal);
+            }
         }
-        if (resources.Furs.isDemanded() && resources.Polymer.storageRatio < factoryThreshold) {
-            resources.Polymer.requestedQuantity = Math.max(resources.Polymer.requestedQuantity, resources.Polymer.maxQuantity * factoryThreshold);
+        if (resources.Furs.isDemanded()) {
+            // 1.5 Polymer/s/slot
+            const minPolymer = factoryMin(resources.Polymer, 1.5);
+            if (resources.Polymer.currentQuantity < minPolymer) {
+                resources.Polymer.requestedQuantity = Math.max(resources.Polymer.requestedQuantity, minPolymer);
+            }
         }
         // TODO: Prioritize missing consumptions of buildings
-        // Force crafting Stanene when there's less than minute worths of consumption, or 5%
-        if (buildings.Alien1VitreloyPlant.count > 0 && resources.Stanene.currentQuantity < Math.min((buildings.Alien1VitreloyPlant.stateOnCount || 1) * 6000, resources.Stanene.maxQuantity * 0.05)) {
-            resources.Stanene.requestedQuantity = resources.Stanene.maxQuantity;
+        // Force crafting Stanene when there's less than minute worths of consumption (100/s)
+        if (buildings.Alien1VitreloyPlant.count > 0 && resources.Stanene.currentQuantity < (buildings.Alien1VitreloyPlant.count * 6000)) {
+            resources.Stanene.requestedQuantity = (buildings.Alien1VitreloyPlant.count * 6000);
         }
     }
 
