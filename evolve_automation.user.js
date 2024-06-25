@@ -13578,8 +13578,24 @@
             return;
         }
 
-        // Wrappers for firefox, with code to bypass script sandbox. If we're not on firefox - don't use it, call real functions instead
-        if (typeof unsafeWindow !== "object" || typeof cloneInto !== "function") {
+        // Dealing with userscript sandbox
+        // With our @grant none we usually try to run in the page context. This is normally bad for userscripts (can be detected by the page etc)
+        // but this is perfect since the game has debug mode built in on purpose just for us. We get the best possible performance too and there
+        // is no security risk because we don't use any special browser/userscript/GM_ APIs.
+        //
+        // But depending on the userscript manager and browser it is possible we end up in the sandbox anyway.
+        // They are not all alike in how they load scripts.
+        // The default functions in poly. call cloneInto() on a whole bunch of stuff to make the script work when sandboxed in Firefox.
+        // Chrome's sandbox is probably just broken in general, but luckily the most common ones will not sandbox us.
+        //
+        // But, even when we are not sandboxed, some userscript managers set unsafeWindow and cloneInto anyway, for compatibility.
+        // This will work fine in the rest of the script's detections, since there it is not performance relevant, but these functions are much slower
+        // than the game's original functions. So, include a check to make sure that it is worth using cloneInto.
+        // The rest of the checks don't need adjusting as unsafeWindow === window in this case and they all use the same code anyway,
+        // so there is no performance loss there.
+        // If we don't need the sandboxed functions, we can discard our poly. wrappers and directly call the game's ones.
+        let needSandboxBypass = typeof unsafeWindow === "object" && typeof cloneInto === "function" && unsafeWindow !== window;
+        if (!needSandboxBypass) {
             poly.adjustCosts = game.adjustCosts;
             poly.loc = game.loc;
             poly.messageQueue = game.messageQueue;
