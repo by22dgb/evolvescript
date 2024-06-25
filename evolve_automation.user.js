@@ -13611,11 +13611,12 @@
 
         // Hook to game loop, to allow script run at full speed in unfocused tab
         const setCallback = (fn) => (typeof unsafeWindow !== "object" || typeof exportFunction !== "function") ? fn : exportFunction(fn, unsafeWindow);
-        let craftCost = game.craftCost;
-        Object.defineProperty(game, 'craftCost', {
-            get: setCallback(() => craftCost),
+        // This should be the last var set in game's debug.js:updateDebugData(), otherwise we may be working with partially outdated data
+        let breakdown = game.breakdown;
+        Object.defineProperty(game, 'breakdown', {
+            get: setCallback(() => breakdown),
             set: setCallback(v => {
-                craftCost = v;
+                breakdown = v;
                 state.gameTicked = true;
                 if (settings.tickSchedule) {
                     setTimeout(automate);
