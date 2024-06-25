@@ -3084,7 +3084,7 @@
           () => "Need more fuel",
           () => settings.buildingWeightingMissingFuel
       ],[
-          () => resources.Helium_3.maxQuantity < resources.Helium_3.maxCost || resources.Oil.maxQuantity < resources.Oil.maxCost,
+          () => (resources.Helium_3.isUnlocked() && resources.Helium_3.maxQuantity < resources.Helium_3.maxCost) || resources.Oil.maxQuantity < resources.Oil.maxCost,
           (building) => building === buildings.OilDepot || building === buildings.SpacePropellantDepot || building === buildings.GasStorage,
           () => "Need more fuel",
           () => settings.buildingWeightingMissingFuel
