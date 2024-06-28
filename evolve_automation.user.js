@@ -11138,8 +11138,8 @@
                         if (resourceType.resource.storageRatio > 0.05 || isHungryRace()) {
                             continue;
                         }
-                    } else if (!(resourceType.resource instanceof Support) && resourceType.resource.storageRatio > 0.01) {
-                        // If we have more than xx% of our storage then its ok to lose some resources.
+                    } else if (!(resourceType.resource instanceof Support) && resourceType.resource.currentQuantity >= (maxStateOn * 60 * resourceType.rate)) {
+                        // If we have more than 60 seconds of max consumption worth then its ok to lose some resources.
                         // This check is mainly so that power producing buildings don't turn off when rate of change goes negative.
                         // That can cause massive loss of life if turning off space habitats :-)
                         continue;
@@ -12429,18 +12429,18 @@
                     let material = resources[res];
                     // Add craftPreserve, plus minimum consumption:
                     // Craftsmen use 1/140 of game's given cost base per tick, before Crafty
-                    // Demand 60s worth of production if we were to put all crafters on this resource (effectively 30s with Crafty)
-                    let minExpected = (material.maxQuantity * resource.craftPreserve) + (availableCrafters * (1/140) * 60 * resource.cost[res]);
+                    // Demand 120s worth of production if we were to put all crafters on this resource (effectively 60s with Crafty)
+                    let minExpected = (material.maxQuantity * resource.craftPreserve) + (availableCrafters * (1/140) * 120 * resource.cost[res]);
                     material.requestedQuantity = Math.max(material.requestedQuantity, minExpected);
                 }
             }
         }
 
-        // Prioritize some factory materials when needed, 90s of base cost * factory count worth
-        // We can get the full adjusted numbers from FactoryManager, but this is still 30s at the highest factory upgrade level which is good enough
+        // Prioritize some factory materials when needed, 120s of base cost * factory count worth
+        // We can get the full upgrade-adjusted numbers from FactoryManager, but this is good enough
         const factoryCount = FactoryManager.maxOperating();
         const factoryThreshold = settings.productionFactoryMinIngredients;
-        const factoryMin = (usedResource, req) => Math.max(usedResource.maxQuantity * factoryThreshold, 90 * factoryCount * req);
+        const factoryMin = (usedResource, req) => Math.max(usedResource.maxQuantity * factoryThreshold, 120 * factoryCount * req);
         if (resources.Stanene.isDemanded()) {
             // 0.02 Nano Tubes/s/slot
             const minNanoTube = factoryMin(resources.Nano_Tube, 0.02);
@@ -12463,9 +12463,10 @@
             }
         }
         // TODO: Prioritize missing consumptions of buildings
-        // Force crafting Stanene when there's less than minute worths of consumption (100/s)
-        if (buildings.Alien1VitreloyPlant.count > 0 && resources.Stanene.currentQuantity < (buildings.Alien1VitreloyPlant.count * 6000)) {
-            resources.Stanene.requestedQuantity = (buildings.Alien1VitreloyPlant.count * 6000);
+        // Force crafting Stanene when there's less than 120s worths of consumption (100/s each)
+        // This synergizes with the resource check which requires at least 60s
+        if (buildings.Alien1VitreloyPlant.count > 0 && resources.Stanene.currentQuantity < (buildings.Alien1VitreloyPlant.count * 120 * 100)) {
+            resources.Stanene.requestedQuantity = (buildings.Alien1VitreloyPlant.count * 120 * 100);
         }
     }
 
