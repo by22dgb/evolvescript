@@ -10649,7 +10649,7 @@
                 if (building.isMission() || (building.cost["Soul_Gem"] && settings.prestigeType === "whitehole" && settings.prestigeWhiteholeSaveGems)) {
                     return;
                 }
-                building.consumption.forEach(c => consumptionsUsed[c._id] = true);
+                building.consumption.forEach(c => consumptionsUsed[c.resource._id] = true);
                 // Mark all processed building as unaffordable for remaining loop, so they won't appear as conflicting
                 for (let key in affordableCache) {
                     affordableCache[key] = false;
