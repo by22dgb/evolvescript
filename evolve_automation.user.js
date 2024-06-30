@@ -14074,14 +14074,17 @@
     }
 
     function buildImportExport() {
-        let importExportNode = $(".importExport").last();
-        if (importExportNode === null) {
+        let importExportBase = $(".importExport").last();
+        if (importExportBase === null) {
             return;
         }
 
-        if (document.getElementById("script_settingsImport") !== null) {
+        if (document.getElementById("script_importExportButtons") !== null) {
             return;
         }
+
+        let importExportNode = $('<div id="script_importExportButtons" style="margin-top: 6px">');
+        importExportBase.after(importExportNode);
 
         importExportNode.append(' <button id="script_settingsImport" class="button">Import Script Settings</button>');
 
