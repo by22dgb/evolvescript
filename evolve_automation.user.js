@@ -7221,6 +7221,7 @@
             buildingsIgnoreZeroRate: false,
             buildingsLimitPowered: true,
             buildingTowerSuppression: 100,
+            buildingConsumptionCheck: "onePerTick",
             buildingsTransportGem: false,
             buildingsBestFreighter: false,
             buildingsUseMultiClick: false,
@@ -10533,7 +10534,12 @@
         let affordableCache = {};
         let consumptionsUsed = {};
         const isAffordable = (building) => (affordableCache[building._vueBinding] ?? (affordableCache[building._vueBinding] = building.isAffordable()));
-        const usesUsedConsumption = (building) => (building.consumption.some((c) => consumptionsUsed[c.resource._id]));
+        const usesUsedConsumption = (
+            settings.buildingConsumptionCheck === 'perResource' ? (building) => (building.consumption.some((c) => c.rate >= 0 && consumptionsUsed[c.resource._id])) :
+            settings.buildingConsumptionCheck === 'unlimited' ? (building) => false :
+            // onePerTick or any invalid A?B type override
+            (building) => (Object.keys(consumptionsUsed).length > 0)
+        );
 
         // Loop through the auto build list and try to buy them
         buildingsLoop:
@@ -10644,12 +10650,17 @@
 
             // Build building
             if (building.click()) {
-                // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
                 // Same for gems when we're saving them, and missions as they tends to unlock new stuff
                 if (building.isMission() || (building.cost["Soul_Gem"] && settings.prestigeType === "whitehole" && settings.prestigeWhiteholeSaveGems)) {
                     return;
                 }
-                building.consumption.forEach(c => consumptionsUsed[c.resource._id] = true);
+                // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
+                // Buildings that add support (negative rate) don't count
+                building.consumption.forEach(c => {
+                    if (c.rate >= 0) {
+                        consumptionsUsed[c.resource._id] = true;
+                    }
+                });
                 // Mark all processed building as unaffordable for remaining loop, so they won't appear as conflicting
                 for (let key in affordableCache) {
                     affordableCache[key] = false;
