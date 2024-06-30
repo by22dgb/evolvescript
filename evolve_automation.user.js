@@ -17445,6 +17445,13 @@
         addSettingsToggle(currentNode, "buildingsUseMultiClick", "Bulk build multi-segmented buildings", "With this option enabled, the script will build as many segments as are affordable at once, instead of one per tick.");
         addSettingsNumber(currentNode, "buildingTowerSuppression", "Minimum suppression for Towers", "East Tower and West Tower won't be built until minimum suppression is reached");
 
+        const consumptionOptions = [
+            { val: "onePerTick", label: "Default", hint: "Script will stop building buildings for one tick after buying building with support/upkeep. (Example: 1 Living Quarters stops processing of all buildings until next script tick.)" },
+            { val: "perResource", label: "Non-conflicting only", hint: "During a tick, the script will only buy at most one building using a given support/upkeep type, but non-conflicting ones are allowed. Should be safe in most cases. (Example: 1 Living Quarters stops building the other buildings using Red Planet support for that tick, but it can still build on other planets.)" },
+            { val: "unlimited", label: "Unlimited", hint: "Do not pay attention to support/upkeep requirements. This will cause bugs and undesirable behavior as it can easily exceed the maximum support. But, at extremely high prestige levels, this may be required. (Example: Can buy 1 Living Quarters + 1 Mine + 1 Fabrication + 1 Biodome in a single tick even if there is only 2 support left.)" },
+        ];
+        addSettingsSelect(currentNode, "buildingConsumptionCheck", "Behavior when building support/upkeep-using building", "By default, the script only buys one building with support or upkeep requirement per tick, to allow automatic weightings to work optimally.", consumptionOptions);
+
         currentNode.append(`
           <div><input id="script_buildingSearch" class="script-searchsettings" type="text" placeholder="Search for buildings..."></div>
           <table style="width:100%">
