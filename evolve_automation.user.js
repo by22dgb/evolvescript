@@ -14148,6 +14148,20 @@
             $('#importExport').select();
             document.execCommand('copy');
         });
+
+        importExportNode.append(' <button id="script_settingsFile" class="button">Script Settings as File</button>');
+
+        $('#script_settingsFile').on("click", function () {
+            // This one is pretty printed since it's much easier to do when downloading
+            let json = JSON.stringify(settingsRaw, undefined, 2);
+            let url = URL.createObjectURL(new Blob([json]));
+            let a = document.createElement('a');
+            a.download = 'evolve-script-settings.json';
+            a.href = url;
+            a.click();
+            // Doesn't seem like there is any good way to do this, a minute should be fine.
+            setTimeout(() => {URL.revokeObjectURL(url);}, 60 * 1000);
+        });
     }
 
     function buildSettingsSection(sectionId, sectionName, resetFunction, updateSettingsContentFunction) {
