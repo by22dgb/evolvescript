@@ -53,6 +53,7 @@
     var settings = {};
     var game = null;
     var win = null;
+    var needSandboxBypass = false;
 
     var overrideKey = "ctrlKey";
     var overrideKeyLabel = "Ctrl";
@@ -5576,7 +5577,7 @@
 
         dragMech(oldId, newId) {
             let sortObj = {oldDraggableIndex: oldId, newDraggableIndex: newId, from: {querySelectorAll: () => [], insertBefore: () => false}};
-            if (typeof unsafeWindow !== 'undefined') { // Yet another FF fix
+            if (needSandboxBypass) { // Yet another FF fix
                 win.Sortable.get(this._listVue.$el).options.onEnd(cloneInto(sortObj, unsafeWindow, {cloneFunctions: true}));
             } else {
                 Sortable.get(this._listVue.$el).options.onEnd(sortObj);
@@ -5920,7 +5921,7 @@
                 this._setFn = (e) => document.dispatchEvent(new KeyboardEvent("keydown", e));
                 this._unsetFn = (e) => document.dispatchEvent(new KeyboardEvent("keyup", e));
                 this._allFn = null;
-            } else if (typeof unsafeWindow !== 'undefined') { // FF fix
+            } else if (needSandboxBypass) { // FF fix
                 this._setFn = (e) => set(cloneInto(e, unsafeWindow));
                 this._unsetFn = (e) => unset(cloneInto(e, unsafeWindow));
                 this._allFn = (e) => all(cloneInto(e, unsafeWindow));
@@ -13613,7 +13614,7 @@
         // The rest of the checks don't need adjusting as unsafeWindow === window in this case and they all use the same code anyway,
         // so there is no performance loss there.
         // If we don't need the sandboxed functions, we can discard our poly. wrappers and directly call the game's ones.
-        let needSandboxBypass = typeof unsafeWindow === "object" && typeof cloneInto === "function" && unsafeWindow !== window;
+        needSandboxBypass = typeof unsafeWindow === "object" && typeof cloneInto === "function" && typeof exportFunction === "function" && unsafeWindow !== window;
         if (!needSandboxBypass) {
             poly.adjustCosts = game.adjustCosts;
             poly.loc = game.loc;
@@ -13629,7 +13630,7 @@
         updateOverrides();
 
         // Hook to game loop, to allow script run at full speed in unfocused tab
-        const setCallback = (fn) => (typeof unsafeWindow !== "object" || typeof exportFunction !== "function") ? fn : exportFunction(fn, unsafeWindow);
+        const setCallback = (fn) => !needSandboxBypass ? fn : exportFunction(fn, unsafeWindow);
         // This should be the last var set in game's debug.js:updateDebugData(), otherwise we may be working with partially outdated data
         let breakdown = game.breakdown;
         Object.defineProperty(game, 'breakdown', {
