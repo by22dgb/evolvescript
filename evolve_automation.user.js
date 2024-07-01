@@ -6921,7 +6921,8 @@
             buildingClickPerTick: 50,
             activeTargetsUI: false,
             displayPrestigeTypeInTopBar: false,
-            displayTotalDaysTypeInTopBar: false
+            displayTotalDaysTypeInTopBar: false,
+            scriptSettingsExportFilename: "evolve-script-settings.json",
         }
 
         applySettings(def, reset);
@@ -14184,7 +14185,7 @@
             let json = JSON.stringify(settingsRaw, undefined, 2);
             let url = URL.createObjectURL(new Blob([json]));
             let a = document.createElement('a');
-            a.download = 'evolve-script-settings.json';
+            a.download = settings.scriptSettingsExportFilename;
             a.href = url;
             a.click();
             // Doesn't seem like there is any good way to do this, a minute should be fine.
@@ -15109,6 +15110,8 @@
         addSettingsToggle(currentNode, "displayPrestigeTypeInTopBar", "Display prestige type in top bar", "Show the currently selected prestige type in the top bar", updatePrestigeInTopBar, updatePrestigeInTopBar);
         addSettingsToggle(currentNode, "displayTotalDaysTypeInTopBar", "Display total days in top bar", "Show the total days next to this year's days", updateTotalDaysInTopBar, updateTotalDaysInTopBar);
 
+        addSettingsHeader1(currentNode, "Misc");
+        addSettingsString(currentNode, "scriptSettingsExportFilename", "Export Filename", "Configures the filename used when using the 'Script Settings as File' button. This is useful if you keep multiple different profiles around.");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
