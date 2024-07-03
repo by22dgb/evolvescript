@@ -14082,8 +14082,6 @@
                 } else {
                     settingsRaw[collapsibles[i].id] = false;
                     content.style.display = "block";
-                    content.style.height = null;
-                    content.style.height = content.offsetHeight + "px";
                 }
 
                 updateSettingsFromState();
@@ -14091,14 +14089,6 @@
         }
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
-    }
-
-    function resetTabHeight(tab) {
-        let content = document.querySelector(`#script_${tab} .script-content`);
-        // May be possible if showScriptSettings is off.
-        if (!content) return;
-        content.style.height = null;
-        content.style.height = content.offsetHeight + "px";
     }
 
     function buildImportExport() {
@@ -15317,7 +15307,6 @@
           .on('change', 'select', function() {
             state.evolutionTarget = null;
             updateRaceWarning();
-            resetTabHeight("evolutionSetting");
         });
 
         currentNode.append(`<div><span id="script_race_warning"></span></div>`);
@@ -15455,7 +15444,6 @@
             settingsRaw.evolutionQueue.splice(id, 1);
             updateSettingsFromState();
             updateEvolutionSettingsContent();
-            resetTabHeight("evolutionSettings");
         });
 
 
@@ -15469,7 +15457,6 @@
             } catch (error) {
                 queueNode.find('td:eq(0)').html(`<span class="has-text-danger">${error}</span>`);
             }
-            resetTabHeight("evolutionSettings");
         });
 
         return queueNode;
@@ -15493,8 +15480,6 @@
 
         let tableBodyNode = $('#script_evolutionQueueTable');
         tableBodyNode.append(buildEvolutionQueueItem(queueLength-1));
-
-        resetTabHeight("evolutionSettings");
     }
 
     function buildPlanetSettings() {
@@ -15578,7 +15563,6 @@
             resetTriggerSettings(true);
             updateSettingsFromState();
             updateTriggerSettingsContent();
-            resetTabHeight("triggerSettings");
 
             resetCheckbox("autoTrigger");
         };
@@ -15674,7 +15658,6 @@
         buildTriggerActionCount(trigger);
 
         buildTriggerSettingsColumn(trigger);
-        resetTabHeight("triggerSettings");
     }
 
     function buildTriggerRequirementType(trigger) {
@@ -15804,7 +15787,6 @@
             TriggerManager.RemoveTrigger(trigger.seq);
             updateSettingsFromState();
             updateTriggerSettingsContent();
-            resetTabHeight("triggerSettings");
         });
     }
 
@@ -16688,7 +16670,6 @@
         addSettingsSelect(currentNode, "imitateRace", "Imitate race", "Imitate selected race, if available.", imitateOptions).on('change', 'select', function() {
             state.evolutionTarget = null;
             updateImitateWarning();
-            resetTabHeight("evolutionSettings");
         });
 
         currentNode.append(`<div><span id="script_imitate_warning"></span></div>`);
@@ -17657,7 +17638,6 @@
                 }
             }
         }
-        resetTabHeight("buildingSettings");
     }
 
     function buildAllBuildingEnabledSettingsToggle() {
