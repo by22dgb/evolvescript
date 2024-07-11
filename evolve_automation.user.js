@@ -1299,6 +1299,11 @@
             }
         }
 
+        // Override Action's version, because these have a 'grant' but aren't missions.
+        isMission() {
+            return this.gameMax === 1;
+        }
+
         get count() {
             return this.instance?.rank ?? 0;
         }
