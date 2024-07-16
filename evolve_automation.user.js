@@ -971,7 +971,7 @@
             // Try skipping game's laggy postBuild hook by invoking the action() directly, instead of going through the
             // vue action() => game runAction() => game shed.action() => game postBuild() hook.
             // This will greatly reduce the amount of page redraws.
-            // refresh is really only needed for first building as there are no buildings.
+            // refresh is really only needed for first building as there are no buildings where building a second unlocks more stuff.
             if (this.definition.refresh && this.count > 0) {
                 this.definition.action();
                 return true;
