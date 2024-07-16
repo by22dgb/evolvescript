@@ -1355,6 +1355,18 @@
             }
 
             KeyManager.set(false, false, false);
+            // This is a really bad lag hack. ARPAs make a very expensive drawTech() call on every build.
+            // After 10 ARPAs, this will never actually accomplish anything; AFAIK nothing needs more than 10 ARPAs.
+            // Luckily, drawTech() doesn't draw anything if preload tab content is off and we're not on research.
+            // So if we can, we briefly hack that off while buying an ARPA that won't change anything.
+            if (this.count >= 10 && !(this.id === "syphon" && this.count >= 79)) {
+                let mainVue = win.$('#mainColumn > div:first-child')[0].__vue__;
+                mainVue.s.tabLoad = false;
+                getVueById(this._vueBinding).build(this.id, this.currentStep);
+                mainVue.s.tabLoad = true;
+
+                return true;
+            }
             getVueById(this._vueBinding).build(this.id, this.currentStep);
             return true;
         }
