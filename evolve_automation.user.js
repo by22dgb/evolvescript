@@ -972,7 +972,7 @@
             // vue action() => game runAction() => game shed.action() => game postBuild() hook.
             // This will greatly reduce the amount of page redraws.
             // refresh is really only needed for first building as there are no buildings where building a second unlocks more stuff.
-            if (this.definition.refresh && this.count > 0) {
+            if (settings.performanceHackAvoidDrawTech && this.definition.refresh && this.count > 0) {
                 this.definition.action();
                 return true;
             }
@@ -1359,7 +1359,7 @@
             // After 10 ARPAs, this will never actually accomplish anything; AFAIK nothing needs more than 10 ARPAs.
             // Luckily, drawTech() doesn't draw anything if preload tab content is off and we're not on research.
             // So if we can, we briefly hack that off while buying an ARPA that won't change anything.
-            if (this.count >= 10 && !(this.id === "syphon" && this.count >= 79)) {
+            if (settings.performanceHackAvoidDrawTech && this.count >= 10 && !(this.id === "syphon" && this.count >= 79)) {
                 let mainVue = win.$('#mainColumn > div:first-child')[0].__vue__;
                 mainVue.s.tabLoad = false;
                 getVueById(this._vueBinding).build(this.id, this.currentStep);
@@ -6949,6 +6949,7 @@
             displayPrestigeTypeInTopBar: false,
             displayTotalDaysTypeInTopBar: false,
             scriptSettingsExportFilename: "evolve-script-settings.json",
+            performanceHackAvoidDrawTech: false,
         }
 
         applySettings(def, reset);
@@ -15124,6 +15125,9 @@
 
         addSettingsHeader1(currentNode, "Misc");
         addSettingsString(currentNode, "scriptSettingsExportFilename", "Export Filename", "Configures the filename used when using the 'Script Settings as File' button. This is useful if you keep multiple different profiles around.");
+
+        addSettingsHeader1(currentNode, "Experimental");
+        addSettingsToggle(currentNode, "performanceHackAvoidDrawTech", "Enable performance hack: drawTech avoidance", "Enables very experimental and potentially buggy performance hacks designed to avoid excessive redraws of the research tab, which appears to be very CPU-intensive to redraw. This improves game performance when buying lots of buildings, but also causes potentially limitless amounts of bugs as important game code may be skipped.");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
