@@ -968,6 +968,15 @@
 
             if (this.is.prestige) { logPrestige(); }
 
+            // Try skipping game's laggy postBuild hook by invoking the action() directly, instead of going through the
+            // vue action() => game runAction() => game shed.action() => game postBuild() hook.
+            // This will greatly reduce the amount of page redraws.
+            // refresh is really only needed for first building as there are no buildings.
+            if (this.definition.refresh && this.count > 0) {
+                this.definition.action();
+                return true;
+            }
+
             // Hide active popper from action, so it won't rewrite it
             let popper = $('#popper');
             if (popper.length > 0 && popper.data('id').indexOf(this._vueBinding) === -1) {
