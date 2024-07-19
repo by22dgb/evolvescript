@@ -18500,7 +18500,17 @@
     function sorterHelper(event, ui) {
         let clone = $(ui).clone();
         clone.css('position','absolute');
-        return clone.get(0);
+        if (!(ui instanceof HTMLElement)) {
+            ui = ui[0];
+        }
+        let cloneNode = clone[0];
+        ui.childNodes.forEach((el, i) => {
+            if (el.offsetWidth && el.offsetHeight) {
+                cloneNode.childNodes[i].style.width = `${el.offsetWidth}px`;
+                cloneNode.childNodes[i].style.height = `${el.offsetHeight}px`;
+            }
+        });
+        return cloneNode;
     }
 
     // Util functions
