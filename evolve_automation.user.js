@@ -9201,8 +9201,22 @@
                 jobs.Farmer.setAsDefault();
             } else if (jobs.Teamster.isManaged()) {
                 jobs.Teamster.setAsDefault();
-            } else if (jobs.Unemployed.isManaged()) {
-                jobs.Unemployed.setAsDefault();
+            } else {
+                // Fallback case: will really only happen in scenarios where no basic jobs are useful and pop is excess.
+                // Like high-prestige low-challenge OD.
+                // We really only care to avoid Unemployed for the morale hit now. Presumably Scavenger and Crystal Miner are the most useful jobs here.
+                if (jobs.Scavenger.isUnlocked()) {
+                    jobs.Scavenger.setAsDefault();
+                } else if (jobs.CrystalMiner.isUnlocked()) {
+                    jobs.CrystalMiner.setAsDefault();
+                } else if (jobs.QuarryWorker.isUnlocked()) {
+                    jobs.QuarryWorker.setAsDefault();
+                } else if (jobs.Lumberjack.isUnlocked()) {
+                    jobs.Lumberjack.setAsDefault();
+                } else {
+                    // Can't avoid it...
+                    jobs.Unemployed.setAsDefault();
+                }
             }
         }
     }
