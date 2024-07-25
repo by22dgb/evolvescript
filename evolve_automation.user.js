@@ -18353,6 +18353,10 @@
     function createBuildingToggles() {
         removeBuildingToggles();
 
+        // Building toggles redraw much more often than other toggles.
+        // With settings off, disable them.
+        if (!settings.showSettings) return;
+
         for (let i = 0; i < BuildingManager.priorityList.length; i++) {
             let building = BuildingManager.priorityList[i];
             let buildingElement = $('#' + building._vueBinding);
