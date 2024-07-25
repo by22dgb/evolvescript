@@ -10,6 +10,7 @@
 // @author       Vollch
 // @author       schoeggu
 // @author       davezatch
+// @author       Kewne
 // @match        https://pmotschmann.github.io/Evolve/
 // @grant        none
 // @require      https://code.jquery.com/jquery-3.7.1.min.js
