@@ -12571,31 +12571,31 @@
             }
         }
 
-        // Prioritize some factory materials when needed, 120s of base cost * factory count worth
-        // We can get the full upgrade-adjusted numbers from FactoryManager, but this is good enough
+        // Prioritize an array of materials. Multiplier should include CONSUMPTION_BALANCE_TARGET
+        /** @param {ResourceProductionCost|ResourceProductionCost[]} costs */
+        const prioritizeCosts = (costs, multiplier = 1, storageThreshold = 0) => {
+            if (!Array.isArray(costs)) { costs = [costs]; }
+            costs.forEach((cost) => {
+                let req = (cost.quantity * multiplier) + (cost?.minRateOfChange??0) + (storageThreshold * cost.resource.maxQuantity);
+                cost.resource.requestQuantity(req);
+            });
+        };
+
+        // For every Vit plant we'd like to power, prioritize 120s of Stanene (100/s)
+        let vitPlantCount = (settings.autoPower && buildings.Alien1VitreloyPlant.autoStateEnabled) ? buildings.Alien1VitreloyPlant.count : buildings.Alien1VitreloyPlant.stateOnCount;
+        if (vitPlantCount > 0) {
+            resources.Stanene.requestQuantity(vitPlantCount * CONSUMPTION_BALANCE_TARGET * 100);
+        }
+
+        // For every enabled and unlocked Factory product, if the product is demanded, demand 120s of its materials,
+        // assuming every factory is producing it.
         const factoryCount = FactoryManager.maxOperating();
-        const factoryThreshold = settings.productionFactoryMinIngredients;
-        const factoryMin = (usedResource, req) => Math.max(usedResource.maxQuantity * factoryThreshold, CONSUMPTION_BALANCE_TARGET * factoryCount * req);
-        if (resources.Stanene.isDemanded()) {
-            // 0.02 Nano Tubes/s/slot
-            const minNanoTube = factoryMin(resources.Nano_Tube, 0.02);
-            resources.Nano_Tube.requestQuantity(minNanoTube);
-        }
-        if (resources.Nano_Tube.isDemanded()) {
-            // 8 Coal/s/slot
-            const minCoal = factoryMin(resources.Coal, 8);
-            resources.Coal.requestQuantity(minCoal);
-        }
-        if (resources.Furs.isDemanded()) {
-            // 1.5 Polymer/s/slot
-            const minPolymer = factoryMin(resources.Polymer, 1.5);
-            resources.Polymer.requestQuantity(minPolymer);
-        }
-        // TODO: Prioritize missing consumptions of buildings
-        // Force crafting Stanene when there's less than 120s worths of consumption (100/s each)
-        // This synergizes with the resource check which requires at least 60s
-        if (buildings.Alien1VitreloyPlant.count > 0 && resources.Stanene.currentQuantity < (buildings.Alien1VitreloyPlant.count * CONSUMPTION_BALANCE_TARGET * 100)) {
-            resources.Stanene.requestQuantity(buildings.Alien1VitreloyPlant.count * CONSUMPTION_BALANCE_TARGET * 100);
+        if (factoryCount > 0) {
+            Object.values(FactoryManager.Productions).forEach(prod => {
+                if (prod.resource.isDemanded() && prod.enabled && prod.weighting) {
+                    prioritizeCosts(prod.cost, factoryCount * CONSUMPTION_BALANCE_TARGET, settings.productionFactoryMinIngredients);
+                }
+            });
         }
     }
 
