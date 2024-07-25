@@ -9681,33 +9681,36 @@
                     }
 
                     for (let resourceCost of production.cost) {
-                        if (!resourceCost.resource.isUnlocked()) {
+                        let usedMaterial = resourceCost.resource;
+                        if (!usedMaterial.isUnlocked()) {
                             continue;
                         }
                         if (!production.resource.isDemanded()) {
-                            if (!settings.useDemanded && resourceCost.resource.isDemanded()) {
+                            if (!settings.useDemanded && usedMaterial.isDemanded()) {
                                 actualRequiredFactories = 0;
-                                state.tooltips["iFactory" + production.id] += `${resourceCost.resource.name} is demanded<br>`;
+                                state.tooltips["iFactory" + production.id] += `${usedMaterial.name} is demanded<br>`;
                                 break;
                             }
-                            if (resourceCost.resource.storageRatio < settings.productionFactoryMinIngredients) {
+                            if (usedMaterial.storageRatio < settings.productionFactoryMinIngredients) {
                                 actualRequiredFactories = 0;
-                                state.tooltips["iFactory" + production.id] += `${resourceCost.resource.name} under min materials ratio<br>`;
+                                state.tooltips["iFactory" + production.id] += `${usedMaterial.name} under min materials ratio<br>`;
                                 break;
                             }
                         }
-                        // No need to preserve minimum income when storage is full
-                        if (resourceCost.resource.storageRatio < 0.8){
+                        // No need to preserve minimum income when we have enough storage for 60s of running
+                        // We can't demand it here, though, due to order of operations
+                        // Elsewhere, prioritizeDemandedResources() demands a few specific materials.
+                        if (usedMaterial.currentQuantity < ((actualRequiredFactories * resourceCost.quantity) * CONSUMPTION_BALANCE_MIN + resourceCost.minRateOfChange) || usedMaterial.isDemanded()) {
                             let previousCost = FactoryManager.currentProduction(production) * resourceCost.quantity;
                             let currentCost = factoryAdjustments[production.id] * resourceCost.quantity;
-                            let rate = resourceCost.resource.rateOfChange + previousCost - currentCost - resourceCost.minRateOfChange;
+                            let rate = usedMaterial.rateOfChange + previousCost - currentCost - resourceCost.minRateOfChange;
 
                             if (production.resource.isDemanded()) {
-                                rate += resourceCost.resource.currentQuantity;
+                                rate += usedMaterial.currentQuantity;
                             }
                             let affordableAmount = Math.floor(rate / resourceCost.quantity);
                             if (affordableAmount < 1) {
-                                state.tooltips["iFactory" + production.id] += `Too low ${resourceCost.resource.name} income<br>`;
+                                state.tooltips["iFactory" + production.id] += `Too low ${usedMaterial.name} income<br>`;
                             }
                             actualRequiredFactories = Math.min(actualRequiredFactories, affordableAmount);
                         }
