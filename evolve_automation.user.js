@@ -14415,6 +14415,9 @@
           [{val: "", label: "None", hint: "Planet have no trait"},
            ...traitList.slice(1).map(t =>
           ({val: t, label: game.loc(`planet_${t}`)}))]},
+        industry: {def: "smelters", arg: "select_cb", options: () =>
+                [{ val: "smelters", label: "Total Smelter Slot Count" },
+                { val: "factories", label: "Total Factory Slot Count" }]},
         other: {def: "rname", arg: "select_cb", options: () =>
           [{val: "rname", label: "Race Name", hint: "Ingame name of current race as string."},
            {val: "tpfleet", label: "Fleet Size", hint: "Amount of ships in True Path fleet as number."},
@@ -14431,6 +14434,9 @@
         date: (d) => d === "total" ? game.global.stats.days :
                      d === "impact" ? (game.global.race['orbit_decay'] ? game.global.race['orbit_decay'] - game.global.stats.days : -1) :
                      game.global.city.calendar[d],
+        industry: (b) => b === "smelters" ? SmelterManager.maxOperating() :
+                    b === "factories" ? FactoryManager.maxOperating() :
+                    b,
         other: (o) => o === "rname" ? (game.races[game.global.race.species === "protoplasm" && game.global.race.evoFinalMenu ? game.global.race.evoFinalMenu : game.global.race.species].name) :
                       o === "tpfleet" ? (game.global.space.shipyard?.ships?.length ?? 0) :
                       o === "mrelay" ? (game.global.space.m_relay?.charged / 10000.0 ?? 0) :
@@ -14488,6 +14494,7 @@
         Soldiers: { fn: (s) => WarManager[s], ...argType.soldiers, desc: "Returns amount of soldiers as number" },
         PlanetBiome: { fn: (b) => game.global.city.biome === b, ...argType.biome, desc: "Returns true when playing in selected biome" },
         PlanetTrait: { fn: (t) => game.global.city.ptrait.includes(t), ...argType.ptrait, desc: "Returns true when planet have selected trait" },
+        Industry: { fn: (r) => argMap.industry(r), ...argType.industry, desc: "Returns information about Industry buildings" },
         Other: { fn: (o) => argMap.other(o), ...argType.other, desc: "Other uncategorized variables" },
     }
 
