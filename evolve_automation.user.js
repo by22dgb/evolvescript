@@ -14017,7 +14017,11 @@
                             evals.push(override.arg2);
                         }
                     }));
-
+                    (saveState.triggers ?? []).forEach(trigger => {
+                        if (trigger.requirementType === "Eval") {
+                            evals.push(trigger.requirementId);
+                        }
+                    });
                     Object.values(saveState.overrides?.log_prestige_format ?? []).forEach(prestige_log_format_override => {
                         if (prestige_log_format_override.ret.includes("{eval:")) {
                             evals.push(prestige_log_format_override.ret);
