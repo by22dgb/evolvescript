@@ -7426,6 +7426,7 @@
             productionSmelting: "required",
             productionSmeltingIridium: 0.5,
             productionFactoryMinIngredients: 0.01,
+            productionFactoryFocusMaterials: false,
             replicatorAssignGovernorTask: true
         }
 
@@ -12592,7 +12593,7 @@
         const factoryCount = FactoryManager.maxOperating();
         if (factoryCount > 0) {
             Object.values(FactoryManager.Productions).forEach(prod => {
-                if (prod.resource.isDemanded() && prod.enabled && prod.weighting) {
+                if ((settings.productionFactoryFocusMaterials || prod.resource.isDemanded()) && prod.unlocked && prod.enabled && prod.weighting) {
                     prioritizeCosts(prod.cost, factoryCount * CONSUMPTION_BALANCE_TARGET, settings.productionFactoryMinIngredients);
                 }
             });
@@ -17111,6 +17112,7 @@
     function updateProductionTableFactory(currentNode) {
         addStandardHeading(currentNode, "Factory");
         addSettingsNumber(currentNode, "productionFactoryMinIngredients", "Minimum materials to preserve", "Factory will craft resources only when all required materials above given ratio");
+        addSettingsToggle(currentNode, "productionFactoryFocusMaterials", "Prioritize keeping materials stockpiled", `Aggressively request stockpiling ${CONSUMPTION_BALANCE_TARGET}s + min materials worth of materials to ensure factory can always produce. Can work around some issues when one product is produced for too long.`);
 
         currentNode.append(`
           <table style="width:100%">
