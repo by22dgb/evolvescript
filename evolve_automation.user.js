@@ -1808,10 +1808,19 @@
             if (this.requirementType === "chain") {
                 return this.priority < 1 || TriggerManager.priorityList[this.priority - 1]?.complete;
             } else if (checkTypes[this.requirementType]) {
-                if (retBools.includes(this.requirementType)) {
-                    return checkTypes[this.requirementType].fn(this.requirementId) == this.requirementCount
-                } else {
-                    return checkTypes[this.requirementType].fn(this.requirementId) >= this.requirementCount;
+                try {
+                    if (retBools.includes(this.requirementType)) {
+                        return checkTypes[this.requirementType].fn(this.requirementId) == this.requirementCount
+                    } else {
+                        return checkTypes[this.requirementType].fn(this.requirementId) >= this.requirementCount;
+                    }
+                } catch (error) {
+                    // Triggers don't have names, hopefully this is enough for the user to find it
+                    let displayName = `${this.requirementType} ${this.requirementId} x${this.requirementCount} => ${this.actionType}: ${this.actionId} x${this.actionCount}`;
+                    let msg = `Trigger ${this.seq} [${displayName}] requirement is invalid! Fix or remove it. (${error})`;
+                    if (!WindowManager.isOpen() && !Object.values(game.global.lastMsg.all).find(log => log.m === msg)) { // Don't spam with errors
+                        GameLog.logDanger("special", msg, ['events', 'major_events']);
+                    }
                 }
             }
             return false;
