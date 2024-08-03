@@ -1510,7 +1510,9 @@
             const highTierReset = ["ascension", "demonic"];
             const bestForMid = ["human", "cath", "capybara", "gnome", "cyclops", "gecko", "dracnid", "entish", "shroomi", "antid", "sharkin", "dryad", "salamander", "yeti", "kamel", "imp", "unicorn", "synth", "shoggoth"];
             const bestForHigh = ["human", "cath", "capybara", "gnome", "cyclops", "gecko", "dracnid", "entish", "shroomi", "scorpid", "sharkin", "dryad", "salamander", "wendigo", "kamel", "balorg", "unicorn", "nano", "ghast"];
-            // TODO: Races for TP resets, with armor and such
+            // Order and usefulness is very subjective but someone doing auto TP3 is probably going to unlock them all anyway
+            const goodImitates = ["dracnid", "octigoran", "unicorn", "salamander", "cyclops", "kamel", "arraak", "troll", "custom"];
+            const noImitates = ["junker", "nano", "synth"]; // Can't run Valdi, can't imitate synthetic except custom
 
             let weighting = 0;
             let starLevel = getStarLevel(settings);
@@ -1534,6 +1536,17 @@
                           .filter(r => r.genus === this.genus && !noGenusRace.includes(r.id))
                           .map(r => (game.global.pillars[r.id] ?? 0)));
                         weighting += 10000 * Math.max(0, starLevel - genusPillar);
+                    }
+                }
+            }
+
+            // Check imitate unlock
+            if (settings.prestigeType === "apocalypse") {
+                let imitateUnlocked = game.global.stats?.synth?.[this.id] ?? false;
+                if (!noImitates.includes(this.id) && !imitateUnlocked) {
+                    weighting += 10000;
+                    if (goodImitates.includes(this.id)) {
+                        weighting += ((goodImitates.length - 1) - goodImitates.indexOf(this.id)) * 5000;
                     }
                 }
             }
