@@ -14500,8 +14500,8 @@
 
     // TODO: This thing isn't very nice. Ideally each check should declare return type, not only input type. But for now it's only used with triggers which only works with numbers and booleans, so it's fine for now.
     const retBools = ["Boolean", "BuildingUnlocked", "BuildingClickable", "BuildingAffordable", "BuildingQueued", "ProjectUnlocked", "JobUnlocked", "ResearchUnlocked", "ResearchComplete", "ResourceUnlocked", "ResourceSatisfied", "ResourceDemanded", "RacePillared", "RaceGenus", "MimicGenus", "ResetType", "Challenge", "Universe", "Government", "Governor", "PlanetBiome", "PlanetTrait"];
-    // No need to show primitives and string function in triggers UI. Boolean kept for permanent triggers.
-    const overrideOnlyChecks = ["String", "Number", "RaceId"];
+    // No need to show primitives and string function in triggers UI.
+    const overrideOnlyChecks = ["Boolean", "String", "Number", "RaceId"];
 
     // Eval shortener
     function _(check, arg){
