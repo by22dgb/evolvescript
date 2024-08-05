@@ -11020,7 +11020,8 @@
                         //let protectedSoldiers = (game.global.race['armored'] ? 1 : 0) + (game.global.race['scales'] ? 1 : 0) + (game.global.tech['armor'] ?? 0);
                         //let woundCap = Math.ceil((game.global.space.fob.enemy + (game.global.tech.outer >= 4 ? 75 : 62.5)) / 5) - protectedSoldiers;
                         //let maxLanders = getHealingRate() < woundCap ? Math.floor((getHealingRate() + protectedSoldiers) / 1.5) : Number.MAX_SAFE_INTEGER;
-                        let healthySquads = Math.floor((WarManager.currentSoldiers - WarManager.wounded) / (3 * traitVal('high_pop', 0, 1)));
+                        let dispatchSoldiers = WarManager.currentSoldiers - Math.min(0, WarManager.wounded - Math.floor(getHealingRate()));
+                        let healthySquads = Math.floor(dispatchSoldiers / (3 * traitVal('high_pop', 0, 1)));
                         maxStateOn = Math.min(maxStateOn, healthySquads /*, maxLanders*/ );
                     }
                 }
@@ -18607,8 +18608,25 @@
             hc *= 1.5;
         }
         let max_bound = 20 * traitVal('slow_regen', 0, '+');
+        hc = Math.round(hc);
 
-        return traitVal('regenerative', 0, 1) + Math.round(hc) / max_bound;
+        // Guaranteed healing
+        let healed = traitVal('regenerative', 0, 1) + Math.floor(hc / max_bound);
+
+        // Probability to heal extra soldier
+        let leftover = hc % max_bound;
+        if (leftover > 0) {
+            let chances = leftover * max_bound;
+            let success = 0;
+            for (let i = 1; i <= leftover; i++) {
+                for (let j = 1; j <= max_bound; j++) {
+                    success += i > j;
+                }
+            }
+            healed += success / chances;
+        }
+
+        return healed;
     }
 
     // main.js -> Citizen Growth
