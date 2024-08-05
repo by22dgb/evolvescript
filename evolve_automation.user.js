@@ -3156,7 +3156,7 @@
           () => "Will be destroyed after impact",
           () => settings.buildingWeightingTemporal
       ],[
-          () => true, // TODO: Only used for name contest, no need to check at other game stages
+          () => game.global.tech.tau_gas === 1, // Only used for name contest, no need to check at other game stages
           (building) => building.is.random,
           () => "Randomized weighting",
           () => 1 + Math.random() // Fluctuate weight to pick random item
@@ -7284,7 +7284,7 @@
             buildingsIgnoreZeroRate: false,
             buildingsLimitPowered: true,
             buildingTowerSuppression: 100,
-            buildingConsumptionCheck: "onePerTick",
+            buildingConsumptionCheck: "perResource",
             buildingsTransportGem: false,
             buildingsBestFreighter: false,
             buildingsUseMultiClick: false,
@@ -8173,7 +8173,10 @@
                     planet.achieve++;
                 }
             }
-            // TODO: Pick Oceanic for Madagascar Tree
+            // Target oceanic for Madagascar Tree, unless current god is already sharkin
+            if (!isAchievementUnlocked("madagascar_tree", alevel) && planet.biome === "oceanic" && game.global.race.gods !== "sharkin") {
+                planet.achieve++;
+            }
         }
 
         // Now calculate weightings
@@ -15721,7 +15724,7 @@
 
         // Requirement Type
         let types = Object.entries(checkTypes)
-          .filter((c) => !overrideOnlyChecks.includes(c[0]))
+          .filter((c) => !overrideOnlyChecks.includes(c[0]) || trigger.requirementType === c[0])
           .map(([id, type]) => `<option value="${id}" title="${type.desc}">${id.replace(/([A-Z])/g, ' $1').trim()}</option>`).join();
         let typeSelectNode = $(`
           <select style="width: 100%">
