@@ -9087,7 +9087,7 @@
                             threshold += traitVal('slow_digestion', 0);
                             // TODO: slitheryn fathom
                             threshold += traitVal('humpback', 0);
-                            threshold += traitVal('atrophy', 0);
+                            threshold -= traitVal('atrophy', 0);
                             jobMax[j] = Math.ceil((resources.Population.currentQuantity / 100 * getFoodConsume() - threshold) / (0.03 * traitVal('high_pop', 1, '=')));
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
@@ -18640,8 +18640,8 @@
         if (leftover > 0) {
             let chances = leftover * max_bound;
             let success = 0;
-            for (let i = 1; i <= leftover; i++) {
-                for (let j = 1; j <= max_bound; j++) {
+            for (let i = 0; i < leftover; i++) {
+                for (let j = 0; j < max_bound; j++) {
                     success += i > j;
                 }
             }
