@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.125
+// @version      3.3.1.126
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -3975,6 +3975,9 @@
                     + buildings.RedFactory.stateOnCount
                     + buildings.AlphaMegaFactory.stateOnCount * 2
                     + buildings.TauFactory.stateOnCount * (haveTech("isolation") ? 5 : 3);
+            if (!game.global.city.factory) {
+                return max;
+            }
             for (let key in this.Productions) {
                 let production = this.Productions[key];
                 if (production.unlocked && !production.enabled) {
@@ -12721,6 +12724,7 @@
           + (game.global.tech.queue ? 1 : 0) // Queue unlocked
           + (game.global.tech.r_queue ? 1 : 0) // Research queue unlocked
           + (game.global.tech.govern ? 1 : 0) // Government unlocked
+          + (game.global.tech.spy >= 2 ? 1 : 0) // SpyOp governor task
           + (game.global.tech.trade ? 1 : 0) // Trade Routes unlocked
           + (resources.Crates.isUnlocked() ? 1 : 0) // Crates in storage tab
           + (resources.Containers.isUnlocked() ? 1 : 0) // Containers in storage tab
