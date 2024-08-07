@@ -6352,7 +6352,7 @@
         buildings.RedSpaceBarracks.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] || game.global.race['orbit_decayed'] ? 0 : 10);
         buildings.HellGeothermal.addResourceConsumption(resources.Helium_3, 0.5);
         buildings.GasMoonOutpost.addResourceConsumption(resources.Oil, 2);
-        buildings.BeltSpaceStation.addResourceConsumption(resources.Food, () => game.global.race['cataclysm'] || game.global.race['orbit_decayed'] ? 1 : 10);
+        buildings.BeltSpaceStation.addResourceConsumption(resources.Food, () => game.global.race['fasting'] ? 0 : game.global.race['cataclysm'] || game.global.race['orbit_decayed'] ? 1 : 10);
         buildings.BeltSpaceStation.addResourceConsumption(resources.Helium_3, 2.5);
         buildings.DwarfEleriumReactor.addResourceConsumption(resources.Elerium, 0.05);
 
@@ -6377,7 +6377,7 @@
         buildings.CruiserShip.addResourceConsumption(resources.Deuterium, 25);
         buildings.Dreadnought.addResourceConsumption(resources.Deuterium, 80);
 
-        buildings.GorddonEmbassy.addResourceConsumption(resources.Food, 7500);
+        buildings.GorddonEmbassy.addResourceConsumption(resources.Food, () => game.global.race['fasting'] ? 0 : 7500);
         buildings.GorddonFreighter.addResourceConsumption(resources.Helium_3, 12);
 
         buildings.Alien1VitreloyPlant.addResourceConsumption(resources.Bolognium, 2.5);
@@ -9089,6 +9089,7 @@
                             threshold += traitVal('humpback', 0);
                             threshold -= traitVal('atrophy', 0);
                             jobMax[j] = Math.ceil((resources.Population.currentQuantity / 100 * getFoodConsume() - threshold) / (0.03 * traitVal('high_pop', 1, '=')));
+                            jobMax[j] += 1; // One extra meditator to make it more fluctuation-proof
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
                     }
@@ -9215,6 +9216,7 @@
         state.lastFarmerCount = farmerIndex === -1 ? 0 : (requiredWorkers[farmerIndex] + requiredServants[farmerIndex] * servantMod);
 
         // After reassignments adjust default job to something with workers, we need that for sacrifices.
+        // Meditators not allowed to be default, to prevent other jobs from pulling them. That's a double-edged sword: while single extra meditator should still cover natural growth of population, it's now vulnerable to massive spikes of homelessnes.
         if (!craftOnly && settings.jobSetDefault) {
             /*if (jobs.Forager.isManaged() && requiredWorkers[jobList.indexOf(jobs.Forager)] > 0) {
                 jobs.Forager.setAsDefault();
@@ -9233,8 +9235,6 @@
                 jobs.Farmer.setAsDefault();
             } else if (jobs.Teamster.isManaged()) {
                 jobs.Teamster.setAsDefault();
-            } else if (jobs.Meditator.isManaged()) {
-                jobs.Meditator.setAsDefault();
             } else {
                 // Fallback case: will really only happen in scenarios where no basic jobs are useful and pop is excess.
                 // Like high-prestige low-challenge OD.
@@ -11254,8 +11254,13 @@
                     }
 
                     if (resourceType.resource === resources.Food) {
+                        // Food buildings can't be powered in fasting
+                        if (game.global.race['fasting']) {
+                            maxStateOn = 0;
+                            break;
+                        }
                         // Wendigo doesn't store food. Let's assume it's always available.
-                        if (resourceType.resource.storageRatio > 0.05 || isHungryRace() || game.global.race['fasting']) {
+                        if (resourceType.resource.storageRatio > 0.05 || isHungryRace()) {
                             continue;
                         }
                     } else if (!(resourceType.resource instanceof Support) && resourceType.resource.currentQuantity >= (maxStateOn * CONSUMPTION_BALANCE_MIN * resourceType.rate)) {
@@ -18672,7 +18677,9 @@
             }
         }
         fcm *= traitVal('ravenous', 0, "+");
-        fcm *= game.global.city.calendar.season === 3 ? traitVal('hibernator', 0, "-") : 1;
+        // Prematurely increase amount of meditators if hibernation bonus is about to end
+        let hibernationEnds = game.global.city.calendar.day + Math.ceil(settings.tickRate / 4) >= game.global.city.calendar.orbit;
+        fcm *= game.global.city.calendar.season === 3 && !hibernationEnds ? traitVal('hibernator', 0, "-") : 1;
         fcm /= traitVal('high_pop', 0, 1);
         return fcm;
     }
