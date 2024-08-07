@@ -6189,6 +6189,8 @@
 
         // Construct city builds list
         //buildings.SacrificialAltar.gameMax = 1; // Although it is technically limited to single altar, we don't care about that, as we're going to click it to make sacrifices
+        // Max level depends on achievement progress, building is unavailable during fasting so it doesn't have to update dynamically.
+        buildings.Banquet.gameMax = game.global.stats.achieve.endless_hunger?.l ?? 0;
         buildings.RedTerraformer.gameMax = 100;
         buildings.RedAtmoTerraformer.gameMax = 1;
         buildings.RedTerraform.gameMax = 1;
