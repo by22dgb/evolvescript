@@ -1052,6 +1052,11 @@
         }
 
         getMissingSupport() {
+            // In fasting we need to build mining droid first to unlock habitats
+            if (game.global.race['fasting'] && this === buildings.AlphaMiningDroid && this.count < 1) {
+                return null;
+            }
+
             for (let j = 0; j < this.consumption.length; j++) {
                 let resource = this.consumption[j].resource;
 
