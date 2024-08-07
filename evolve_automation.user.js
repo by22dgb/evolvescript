@@ -18701,7 +18701,7 @@
         lb += buildings.Hospital.count * (haveTech('reproduction', 2) ? 1 : 0);
         lb += game.global.genes['birth'] ?? 0;
         lb += game.global.race['promiscuous'] ?? 0;
-        lb += global.race['fasting'] ? (jobs.Meditator.count * traitVal('high_pop', 1, '=') * 0.15) : 0;
+        lb += game.global.race['fasting'] ? (jobs.Meditator.count * traitVal('high_pop', 1, '=') * 0.15) : 0;
         lb *= (buildings.Banquet.stateOnCount > 0 && buildings.Banquet.count >= 1) ? (1 + (game.global.city.banquet.strength ** 0.75) / 100) : 1;
         lb *= (state.astroSign === 'libra' ? 1.25 : 1);
         lb *= traitVal("high_pop", 2, 1);
