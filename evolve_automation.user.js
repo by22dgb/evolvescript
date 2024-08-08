@@ -11116,7 +11116,7 @@
                 }
                 // Disable useless Mine Layers
                 if (building === buildings.ChthonianMineLayer) {
-                    if (buildings.ChthonianRaider.stateOnCount === 0 && buildings.ChthonianExcavator.stateOnCount === 0) {
+                    if ((buildings.ChthonianRaider.stateOnCount === 0 && buildings.ChthonianExcavator.stateOnCount === 0) || buildings.GatewayStarbase.stateOnCount === 0) {
                         maxStateOn = 0;
                     } else {
                         let mineAdjust = ((game.global.race['instinct'] ? 7000 : 7500) - poly.piracy("gxy_chthonian")) / game.actions.galaxy.gxy_chthonian.minelayer.ship.rating();
@@ -11200,12 +11200,16 @@
                         resources.Bolognium.incomeAdusted = true;
                     }
                 }
-                if (building === buildings.ChthonianRaider && !resources.Vitreloy.isUseful() && !resources.Polymer.isUseful() && !resources.Neutronium.isUseful() && !resources.Deuterium.isUseful()) {
-                    let minShips = Math.max(resources.Vitreloy.getBusyWorkers("galaxy_raider", currentStateOn),
-                                            resources.Polymer.getBusyWorkers("galaxy_raider", currentStateOn),
-                                            resources.Neutronium.getBusyWorkers("galaxy_raider", currentStateOn),
-                                            resources.Deuterium.getBusyWorkers("galaxy_raider", currentStateOn));
-                    maxStateOn = Math.min(maxStateOn, minShips);
+                if (building === buildings.ChthonianRaider) {
+                    if (buildings.GatewayStarbase.stateOnCount === 0) {
+                        maxStateOn = 0;
+                    } else if(!resources.Vitreloy.isUseful() && !resources.Polymer.isUseful() && !resources.Neutronium.isUseful() && !resources.Deuterium.isUseful() ) {
+                        let minShips = Math.max(resources.Vitreloy.getBusyWorkers("galaxy_raider", currentStateOn),
+                                                resources.Polymer.getBusyWorkers("galaxy_raider", currentStateOn),
+                                                resources.Neutronium.getBusyWorkers("galaxy_raider", currentStateOn),
+                                                resources.Deuterium.getBusyWorkers("galaxy_raider", currentStateOn));
+                        maxStateOn = Math.min(maxStateOn, minShips);
+                    }
                     if (maxStateOn !== currentStateOn) {
                         resources.Vitreloy.incomeAdusted = true;
                         resources.Polymer.incomeAdusted = true;
