@@ -5978,7 +5978,6 @@
         _allFn: null,
         _eventProp: {Shift: "shiftKey", Control: "ctrlKey", Alt: "altKey", Meta: "metaKey"},
         _state: {x100: undefined, x25: undefined, x10: undefined},
-        _userState: {x100: false, x25: false, x10: false},
         _mode: "none",
 
         init() {
@@ -6000,31 +5999,6 @@
                 this._unsetFn = unset;
                 this._allFn = all;
             }
-
-            // Try to preserve real user state as best as possible by listening for events ourselves.
-            // Our fake events will either not be seen at all (if jQuery) or will not set isTrusted due to being fake (if fallback mode).
-            ["keyup", "keydown"].forEach(etype => win.document.addEventListener(etype, (e) => {
-                if (e.isTrusted) {
-                    let keyCode = e.key || e.keyCode;
-                    let state = this._mapKeyToState(keyCode);
-                    if (state) this._userState[state] = e.type === "keydown" ? true : false;
-                }
-            }));
-            win.document.addEventListener("mousemove", (e) => {
-                if (e.isTrusted) {
-                    Object.entries(this._eventProp).forEach(([keyCode, eventKey]) => {
-                        let state = this._mapKeyToState(keyCode);
-                        if (state) this._userState[state] = e[eventKey];
-                    });
-                }
-            });
-        },
-
-        _mapKeyToState(key) {
-            for (let t of ["x100", "x25", "x10"]) {
-                if (key === game.global.settings.keyMap[t]) return t;
-            }
-            return null;
         },
 
         reset() {
@@ -6048,7 +6022,9 @@
         },
 
         finish() {
-            this.set(this._userState.x100, this._userState.x25, this._userState.x10);
+            if (this._state.x100 || this._state.x25 || this._state.x10) {
+                this.set(false, false, false);
+            }
         },
 
         setKey(key, pressed) {
