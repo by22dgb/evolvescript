@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.128
+// @version      3.3.1.129
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -18648,6 +18648,10 @@
         if (getGovernor() === 'sports') {
             hc *= 1.5;
         }
+        if (buildings.Banquet.stateOnCount > 0 && buildings.Banquet.count >= 2){
+            hc *= 1 + (game.global.city.banquet.strength ** 0.65) / 100;
+        }
+        //TODO: troll fathom
         let max_bound = 20 * traitVal('slow_regen', 0, '+');
         hc = Math.round(hc);
 
