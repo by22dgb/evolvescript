@@ -65,6 +65,9 @@
 
     var checkActions = false;
 
+    // Displayed in error handler. Please change this if you publish a forked version of the script.
+    const SCRIPT_VERSION_EXTRA = "";
+
     const CONSUMPTION_BALANCE_MIN = 60; // Seconds of used resources to keep
     const CONSUMPTION_BALANCE_TARGET = 120; // Seconds of used resources to try producing
 
@@ -13762,6 +13765,7 @@
             poly.shipCosts = game.shipCosts;
         }
 
+        addErrorHandler();
         addScriptStyle();
         KeyManager.init();
         initialiseState();
@@ -14139,6 +14143,84 @@
 
         // Append style to html head
         document.getElementsByTagName("head")[0].appendChild(css);
+    }
+
+    // Known game errors, bugs, etc that we don't want to show to the user.
+    // This should be game errors only.
+    function checkIgnoredError(e) {
+        if (typeof e !== "string") e = String(e);
+        let ignoreRegexes = [
+            // v1.3.13b
+            // https://github.com/pmotschmann/Evolve/pull/1173
+            /.*ReferenceError.*defineGovernor.*/,
+            /.*ReferenceError.*drawResourceTab.*/,
+        ];
+
+        if (ignoreRegexes.find(regex => regex.test(e))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    function displayScriptWarningNode(title, msg, stack) {
+        // Add stack info if available. Format is browser-dependent, but better than nothing, I suppose.
+        if (typeof stack === "string") {
+            msg = `${msg}\n\nStack info:\n${stack}`;
+        }
+
+        // Add script version to message if available.
+        // This is very annoying to retrieve as it can live in GM_info or in GM.info depending on userscript manager,
+        // it might not be available at all in some cases due to @grant none, and it might be somewhat broken even if available,
+        // as these can be weird getters that might fail in some cases.
+        // Still, if we can get it, it's nice to have.
+        let versionPart = "unknown";
+        try {
+            // We can't test this against the window because it's only available in script eval scope
+            let gmInfo = typeof GM_info !== "undefined" ? GM_info : (typeof GM !== "undefined" ? GM?.info : null);
+            if (gmInfo?.script?.version) {
+                versionPart = gmInfo.script.version;
+            }
+        } catch (internalError) {
+            // This should hopefully never happen, but userscript implementations can do some really messed up stuff with GM APIs.
+            // Best not to trust that there's no broken getter, etc.
+            console.error("Error in error handler: %o", internalError);
+            msg = `${msg}\n-----\nError in error handler: ${internalError}`;
+        }
+
+        msg = `${msg}\n\nScript version: ${versionPart} ${SCRIPT_VERSION_EXTRA}\n`;
+
+        $("#script-script-warning").remove();
+
+        let clickable = $(`<span id="script-script-warning" style="cursor: pointer; border-right: 1px solid; margin-right: 1rem; padding-right: 1rem">⚠️ ${title}</span>`);
+        clickable.on("click", (e) => {
+            const builder = (currentNode) => {
+                currentNode.append($(`<textarea style="width: 100%; height: 100%; min-height: 400px; margin-bottom: 10px">`).val(msg));
+            };
+            openOptionsModal(`Script Notice: ${title}`, builder);
+            clickable.remove();
+        });
+
+        $("#versionLog").before(clickable);
+    }
+
+    // Generic JS & Vue2 error handler so that things don't break invisibly as often
+    function addErrorHandler() {
+        win.addEventListener('error', (e) => {
+            if (!checkIgnoredError(e?.message)) {
+                displayScriptWarningNode("Script Error", `${e?.message} in ${e?.filename}:${e?.lineno}:${e?.colno}.`, e?.error?.stack);
+            }
+
+            return false;
+        });
+
+        if (win?.Vue?.config && !(win?.Vue?.config?.errorHandler)) {
+            win.Vue.config.errorHandler = (err, vm, info) => {
+                if (!checkIgnoredError(err)) {
+                    displayScriptWarningNode("Script Error", `Vue error: ${err}`, err?.stack);
+                }
+            };
+        }
     }
 
     function removeScriptSettings() {
