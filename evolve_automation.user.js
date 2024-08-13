@@ -992,8 +992,13 @@
             if (popper.length > 0 && popper.data('id').indexOf(this._vueBinding) === -1) {
                 popper.attr('id', 'TotallyNotAPopper');
 
-                this.vue.action();
-                popper.attr('id', 'popper');
+                // Game bugs in .action() can cause an error to be thrown. We can't really handle it in any good way,
+                // but we need to revert the id or a tooltip might get stuck at the bottom of the page.
+                try {
+                    this.vue.action();
+                } finally {
+                    popper.attr('id', 'popper');
+                }
             } else {
                 this.vue.action();
             }
