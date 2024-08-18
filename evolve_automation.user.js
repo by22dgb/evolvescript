@@ -10354,6 +10354,7 @@
 
     function autoGenetics() {
         let genetics = game.global.tech.genetics;
+        let mutations = game.global.race.mutation;
         if (!genetics) {
             return; // Genetics not researched yet
         }
@@ -10366,7 +10367,10 @@
 
         if ((settings.geneticsSequence === "enabled" && !seq.on) ||
             (settings.geneticsSequence === "disabled" && seq.on) ||
-            (settings.geneticsSequence === "decode" && seq.on && genetics > 1)) {
+            (settings.geneticsSequence === "decode" &&
+                ((seq.on && mutations >= 1) || 
+                (!seq.on && mutations < 1))
+            )) {
             geneticsVue.toggle();
         }
 
