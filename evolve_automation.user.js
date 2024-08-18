@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.129
+// @version      3.3.1.130
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -16222,13 +16222,25 @@
           </table>`);
 
         let tableBodyNode = $(`#script_${secondaryPrefix}fleetTableBody`);
-        let newTableBodyText = "";
 
         let priorityRegions = galaxyRegions.slice().sort((a, b) => settingsRaw["fleet_pr_" + a] - settingsRaw["fleet_pr_" + b]);
         for (let i = 0; i < priorityRegions.length; i++) {
-            newTableBodyText += `<tr value="${priorityRegions[i]}" class="script-draggable"><td id="script_${secondaryPrefix}fleet_${priorityRegions[i]}" style="width:95%"><td style="width:5%"><span class="script-lastcolumn"></span></td></tr>`;
+            const settingName = `fleet_pr_${priorityRegions[i]}`;
+
+            const rowNode = $(`
+              <tr value="${priorityRegions[i]}" class="script-draggable script_bg_${settingName}">
+                <td id="script_${secondaryPrefix}fleet_${priorityRegions[i]}" style="width:95%"></td>
+                <td style="width:5%">
+                  <span class="script-lastcolumn"></span>
+                </td>
+              </tr>`);
+
+            rowNode
+                .toggleClass('inactive-row', Boolean(settingsRaw.overrides[settingName]))
+                .on('click', {label: `Andromeda region priority (${settingName})`, name: settingName, type: "number"}, openOverrideModal);
+
+            tableBodyNode.append(rowNode);
         }
-        tableBodyNode.append($(newTableBodyText));
 
         // Build all other productions settings rows
         for (let i = 0; i < galaxyRegions.length; i++) {
