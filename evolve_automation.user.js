@@ -12610,11 +12610,11 @@
             }
         }
 
-        // Prioritize material for craftables
+        // Prioritize material for craftables (doesn't use ResourceProductionCost)
         let availableCrafters = JobManager.craftingMax() + JobManager.skilledServantsMax();
-        for (let id in resources) {
-            let resource = resources[id];
-            if (resource.isDemanded()) {
+        for (let id in crafter) {
+            let resource = crafter[id].resource;
+            if ((settings.productionFactoryFocusMaterials || resource.isDemanded()) && resource.isUnlocked()) {
                 // Only craftables stores their cost, no need for additional checks
                 for (let res in resource.cost) {
                     let material = resources[res];
@@ -17192,6 +17192,9 @@
         addSettingsNumber(currentNode, "productionExtWeight_common", "Aluminium weighting (Extractor Ship, The True Path)", "Aluminium weighting for autoExtractor, applies after adjusting to difference between current amounts of Iron and Aluminium");
         addSettingsNumber(currentNode, "productionExtWeight_uncommon", "Neutronium weighting (Extractor Ship, The True Path)", "Neutronium weighting for autoExtractor, applies after adjusting to difference between current amounts of Iridium and Neutronium");
         addSettingsNumber(currentNode, "productionExtWeight_rare", "Elerium weighting (Extractor Ship, The True Path)", "Elerium weighting for autoExtractor, applies after adjusting to difference between current amounts of Orichalcum and Elerium");
+        // Named incorrectly now, affects both factory and craftsmen
+        // TODO: Implement focus material mode for other production types
+        addSettingsToggle(currentNode, "productionFactoryFocusMaterials", "Prioritize keeping materials stockpiled", `Aggressively request stockpiling ${CONSUMPTION_BALANCE_TARGET}s + min materials worth of materials to ensure factory and craftsmen can always produce`);
 
         updateProductionTableSmelter(currentNode);
         updateProductionTableFoundry(currentNode);
@@ -17261,7 +17264,6 @@
                                 {val: "buildings", label: "Buildings weightings", hint: "Uses weightings of buildings which are waiting for resources, as multipliers to production weighting. This option requires autoBuild."}];
         addSettingsSelect(currentNode, "productionFactoryWeighting", "Weightings adjustments", "Configures how exactly the resources will be weighted against each other", weightingOptions);
         addSettingsNumber(currentNode, "productionFactoryMinIngredients", "Minimum materials to preserve", "Factory will craft resources only when all required materials above given ratio");
-        addSettingsToggle(currentNode, "productionFactoryFocusMaterials", "Prioritize keeping materials stockpiled", `Aggressively request stockpiling ${CONSUMPTION_BALANCE_TARGET}s + min materials worth of materials to ensure factory can always produce. Can work around some issues when one product is produced for too long.`);
 
         currentNode.append(`
           <table style="width:100%">
