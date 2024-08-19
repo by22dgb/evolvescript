@@ -11156,13 +11156,13 @@
                         resources.Elerium.incomeAdusted = true;
                     }
                 }
-                if (building === buildings.BeltIridiumShip && !resources.Iridium.isUseful()) {
+                if (building === buildings.BeltIridiumShip && !resources.Iridium.isUseful() && resources.Elerium.isUnlocked()) {
                     maxStateOn = Math.min(maxStateOn, resources.Iridium.getBusyWorkers("job_space_miner", currentStateOn));
                     if (maxStateOn !== currentStateOn) {
                         resources.Iridium.incomeAdusted = true;
                     }
                 }
-                if (building === buildings.BeltIronShip && !resources.Iron.isUseful()) {
+                if (building === buildings.BeltIronShip && !resources.Iron.isUseful() && resources.Elerium.isUnlocked()) {
                     maxStateOn = Math.min(maxStateOn, resources.Iron.getBusyWorkers("job_space_miner", currentStateOn));
                     if (maxStateOn !== currentStateOn) {
                         resources.Iron.incomeAdusted = true;
