@@ -14219,6 +14219,8 @@
             const builder = (currentNode) => {
                 currentNode.append($(`<textarea style="width: 100%; height: 100%; min-height: 400px; margin-bottom: 10px">`).val(msg));
             };
+            // It's possible we get stuck in an error loop before updateUI, better safe than sorry
+            createOptionsModal();
             openOptionsModal(`Script Notice: ${title}`, builder);
             clickable.remove();
         });
