@@ -10036,6 +10036,7 @@
         var replicatorTaskIndex = Object.values(game.global.race.governor.tasks).findIndex(task => task === 'replicate');
 
         // If the replicator task is not yet assigned, assign it to the first free slot
+        const office = getVueById("govOffice");
         if (replicatorTaskIndex == -1) {
             replicatorTaskIndex = Object.values(game.global.race.governor.tasks).findIndex(task => task === 'none');
 
@@ -10044,20 +10045,38 @@
                 return;
             }
 
-            getVueById("govOffice").setTask('replicate', replicatorTaskIndex);
+            office.setTask('replicate', replicatorTaskIndex);
         }
 
-        if (game.global.race.governor.config.replicate.pow.on == false) {
-            win.document.querySelector('#govOffice .options').getElementsByClassName('tConfig')[8].childNodes[1].childNodes[0].childNodes[0].click() // Enable auto power management
+        const govSettings = office.c.replicate;
+        let changed = false;
+        if (govSettings.pow.on == false) {
+            // Enable auto power management
+            govSettings.pow.on = true;
+            changed = true;
         }
-        if (game.global.race.governor.config.replicate.res.que) {
-            win.document.querySelector('#govOffice .options').getElementsByClassName('tConfig')[8].childNodes[2].childNodes[0].childNodes[0].click() // Disable focus queue
+        if (govSettings.res.que) {
+            // Disable focus queue
+            govSettings.res.que = false;
+            changed = true;
         }
-        if (game.global.race.governor.config.replicate.res.neg) {
-            win.document.querySelector('#govOffice .options').getElementsByClassName('tConfig')[8].childNodes[2].childNodes[1].childNodes[0].click() // Disable negative focus
+        if (govSettings.res.neg) {
+            // Disable negative focus
+            govSettings.res.neg = false;
+            changed = true;
         }
-        if (game.global.race.governor.config.replicate.res.cap) {
-            win.document.querySelector('#govOffice .options').getElementsByClassName('tConfig')[8].childNodes[2].childNodes[2].childNodes[0].click() // Disable switch on cap
+        if (govSettings.res.cap) {
+            // Disable switch on cap
+            govSettings.res.cap = false;
+            changed = true;
+        }
+        if (govSettings.pow.cap < 1e12) {
+            // Set power cap to a very high number
+            office.c.replicate.pow.cap = 1e12;
+            changed = true;
+        }
+        if (changed) {
+            office.$forceUpdate();
         }
     }
 
