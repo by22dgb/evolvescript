@@ -11787,9 +11787,13 @@
     }
 
     function adjustTradeRoutes() {
+        let sellWeight = settings.tradeRouteSellExcess
+            ? (resource) => (resource.usefulRatio >= 1 ? resource.tradeSellPrice * 1000 : resource.usefulRatio)
+            : (resource) => (resource.storageRatio >= 0.99 ? resource.tradeSellPrice * 1000 : resource.usefulRatio);
+
         let tradableResources = MarketManager.priorityList
           .filter(r => r.isRoutesUnlocked() && (r.autoTradeBuyEnabled || r.autoTradeSellEnabled))
-          .sort((a, b) => (b.storageRatio > 0.99 ? b.tradeSellPrice * 1000 : b.usefulRatio) - (a.storageRatio > 0.99 ? a.tradeSellPrice * 1000 : a.usefulRatio));
+          .sort((a, b) => sellWeight(b) - sellWeight(a));
         let requiredTradeRoutes = {};
         let currentMoneyPerSecond = resources.Money.rateOfChange;
         let tradeRoutesUsed = 0;
