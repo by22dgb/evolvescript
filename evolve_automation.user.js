@@ -7896,7 +7896,7 @@
     }
 
     function findRequiredResourceWeight(resource) {
-        return state.unlockedBuildings.find(building => building.cost[resource.id] > resource.currentQuantity)?.weighting ?? 0;
+        return state.unlockedBuildings.find(building => building.cost[resource.id] > resource.currentQuantity)?.weighting;
     }
 
     function autoEvolution() {
