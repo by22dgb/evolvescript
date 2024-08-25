@@ -2337,7 +2337,7 @@
         Mill: new Action("Windmill", "city", "mill", "", {smart: true}),
         Windmill: new Action("Windmill (Evil)", "city", "windmill", ""),
         Silo: new Action("Grain Silo", "city", "silo", ""),
-        Assembly: new ResourceAction("Assembly", "city", "assembly", "", "Population", {housing: true}),
+        Assembly: new ResourceAction("Assembly", "city", "assembly", "", "Population", {housing: true, important: true}),
         Barracks: new Action("Barracks", "city", "garrison", "", {garrison: true}),
         Hospital: new Action("Hospital", "city", "hospital", ""),
         BootCamp: new Action("Boot Camp", "city", "boot_camp", ""),
@@ -2398,7 +2398,7 @@
         RedTerraformer: new Action("Red Terraformer (Orbit Decay)", "space", "terraformer", "spc_red", {multiSegmented: true}),
         RedAtmoTerraformer: new Action("Red Terraformer (Orbit Decay, Complete)", "space", "atmo_terraformer", "spc_red"),
         RedTerraform: new Action("Red Terraform (Orbit Decay)", "space", "terraform", "spc_red", {prestige: true}),
-        RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", "Population", {housing: true}),
+        RedAssembly: new ResourceAction("Red Assembly (Cataclysm)", "space", "assembly", "spc_red", "Population", {housing: true, important: true}),
         RedLivingQuarters: new Action("Red Living Quarters", "space", "living_quarters", "spc_red", {housing: true}),
         RedPylon: new Action("Red Pylon (Cataclysm)", "space", "pylon", "spc_red"),
         RedVrCenter: new Action("Red VR Center", "space", "vr_center", "spc_red"),
@@ -2503,7 +2503,7 @@
         TauPylon: new Action("Tau Pylon", "tauceti", "pylon", "tau_home"),
         TauCloning: new ResourceAction("Tau Cloning", "tauceti", "cloning_facility", "tau_home", "Population", {housing: true}),
         TauForgeHorseshoe: new ResourceAction("Tau Horseshoe", "tauceti", "horseshoe", "tau_home", "Horseshoe", {housing: true, garrison: true}),
-        TauAssembly: new ResourceAction("Tau Assembly", "tauceti", "assembly", "tau_home", "Population", {housing: true}),
+        TauAssembly: new ResourceAction("Tau Assembly", "tauceti", "assembly", "tau_home", "Population", {housing: true, important: true}),
         TauNaniteFactory: new CityAction("Tau Nanite Factory", "tauceti", "nanite_factory", "tau_home"),
         TauFarm: new Action("Tau High-Tech Farm", "tauceti", "tau_farm", "tau_home"),
         TauMiningPit: new Action("Tau Mining Pit", "tauceti", "mining_pit", "tau_home", {smart: true}),
@@ -10695,7 +10695,7 @@
 
             // Check queue and trigger conflicts
             let conflict = getCostConflict(building);
-            if (conflict) {
+            if (conflict && !building.is.important) {
                 building.extraDescription += `Conflicts with ${conflict.actionList.map(action => {return `<span class="has-text-info">${action}</span>`;}).join(', ')} for ${conflict.resList.map(res => {return `<span class="has-text-info">${res}</span>`;}).join(', ')} (${conflict.obj.cause})<br>`;
                 continue;
             }
