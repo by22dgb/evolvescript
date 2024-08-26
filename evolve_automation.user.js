@@ -9676,11 +9676,10 @@
             }
         }
 
-        let scaledWeights = allProducts.map(production => [production.resource.id, production.weighting]);
-        if (settings.productionFactoryWeighting === "buildings" && state.unlockedBuildings.length > 0) {
-            scaledWeights = scaledWeights.map(([resourceId, weight]) => [resourceId, weight * (findRequiredResourceWeight(resourceId) ?? 100)]);
-        }
-        scaledWeights = Object.fromEntries(scaledWeights);
+        const scalingFactor = settings.productionFactoryWeighting === "buildings" && state.unlockedBuildings.length > 0
+            ? (resource) => findRequiredResourceWeight(resource) ?? 100
+            : () => 1;
+        const scaledWeights = Object.fromEntries(allProducts.map(production => [production.resource.id, production.weighting * scalingFactor(production.resource)]));
 
         // Calculate amount of factories per product
         let remainingFactories = FactoryManager.maxOperating();
