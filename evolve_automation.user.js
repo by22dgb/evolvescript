@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.131
+// @version      3.3.1.132
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -66,7 +66,7 @@
     var checkActions = false;
 
     // Displayed in error handler. Please change this if you publish a forked version of the script.
-    const SCRIPT_VERSION_EXTRA = "";
+    const SCRIPT_VERSION_EXTRA = "[Vollch]";
 
     const CONSUMPTION_BALANCE_MIN = 60; // Seconds of used resources to keep
     const CONSUMPTION_BALANCE_TARGET = 120; // Seconds of used resources to try producing
@@ -9225,7 +9225,7 @@
         workerDeltas.forEach((delta, index) => delta < 0 && jobList[index].removeWorkers(delta * -1));
         workerDeltas.forEach((delta, index) => delta > 0 && jobList[index].addWorkers(delta));
 
-        if (settings.jobManageServants && !$.isEmptyObject(game.global.race.servants?.jobs ?? {})) {
+        if (settings.jobManageServants) {
             let servantDeltas = requiredServants.map((req, index) => req - jobList[index].servants);
             servantDeltas.forEach((delta, index) => delta < 0 && jobList[index].removeServants(delta * -1));
             servantDeltas.forEach((delta, index) => delta > 0 && jobList[index].addServants(delta));
