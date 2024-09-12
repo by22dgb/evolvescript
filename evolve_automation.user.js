@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.132
+// @version      3.3.1.133
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -2690,10 +2690,15 @@
         GateInferniteMine: new Action("Gate Infernite Mine", "portal", "infernite_mine", "prtl_gate"),
 
         LakeMission: new Action("Lake Mission", "portal", "lake_mission", "prtl_lake"),
-        LakeHarbour: new Action("Lake Harbour", "portal", "harbour", "prtl_lake", {smart: true}),
+        LakeHarbor: new Action("Lake Harbor", "portal", "harbor", "prtl_lake", {smart: true}),
         LakeCoolingTower: new Action("Lake Cooling Tower", "portal", "cooling_tower", "prtl_lake", {smart: true}),
         LakeBireme: new Action("Lake Bireme Warship", "portal", "bireme", "prtl_lake", {smart: true}),
         LakeTransport: new Action("Lake Transport", "portal", "transport", "prtl_lake", {smart: true}),
+        LakeOven: new Action("Lake Cooker (Fasting)", "portal", "oven", "prtl_lake"),
+        LakeOvenComplete: new Action("Lake Cooker (Fasting, Complete)", "portal", "oven_complete", "prtl_lake"),
+        LakeSoulSteeper: new Action("Lake Soul Steeper (Fasting)", "portal", "dish_soul_steeper", "prtl_lake"),
+        LakeLifeInfuser: new Action("Lake Life Infuser (Fasting)", "portal", "dish_life_infuser", "prtl_lake"),
+        LakeDevilishDish: new Action("Lake Devilish Dish (Fasting)", "portal", "devilish_dish", "prtl_lake"),
 
         SpireMission: new Action("Spire Mission", "portal", "spire_mission", "prtl_spire"),
         SpirePurifier: new Action("Spire Purifier", "portal", "purifier", "prtl_spire", {smart: true}),
@@ -3039,7 +3044,7 @@
           () => settings.buildingWeightingOverlord
       ],[
           () => true,
-          (building) => building._tab === "city" && building !== buildings.Mill && building.stateOffCount > 0,
+          (building) => building._tab === "city" && building !== buildings.Mill && building !== buildings.Banquet && building.stateOffCount > 0,
           () => "Still have some non operating buildings",
           () => settings.buildingWeightingNonOperatingCity
       ],[
@@ -6237,6 +6242,8 @@
         buildings.GateEastTower.gameMax = 1;
         buildings.GateWestTower.gameMax = 1;
         buildings.RuinsVault.gameMax = 2;
+        buildings.LakeOven.gameMax = 100;
+        buildings.LakeOvenComplete.gameMax = 1;
         buildings.SpireBridge.gameMax = 10;
         buildings.GorddonEmbassy.gameMax = 1;
         buildings.Alien1Consulate.gameMax = 1;
@@ -6305,7 +6312,7 @@
         buildings.Alien2OreProcessor.addSupport(resources.Alien_Support);
         buildings.Alien2Scavenger.addSupport(resources.Alien_Support);
 
-        buildings.LakeHarbour.addSupport(resources.Lake_Support);
+        buildings.LakeHarbor.addSupport(resources.Lake_Support);
         buildings.LakeBireme.addSupport(resources.Lake_Support);
         buildings.LakeTransport.addSupport(resources.Lake_Support);
 
@@ -6408,6 +6415,8 @@
         buildings.RuinsInfernoPower.addResourceConsumption(resources.Infernite, 5);
         buildings.RuinsInfernoPower.addResourceConsumption(resources.Coal, 100);
         buildings.RuinsInfernoPower.addResourceConsumption(resources.Oil, 80);
+
+        buildings.LakeOvenComplete.addResourceConsumption(resources.Infernite, 225);
 
         buildings.TitanElectrolysis.addResourceConsumption(resources.Water, 35);
 
@@ -6777,9 +6786,13 @@
 
         priorityList.push(buildings.LakeMission);
         priorityList.push(buildings.LakeCoolingTower);
-        priorityList.push(buildings.LakeHarbour);
+        priorityList.push(buildings.LakeHarbor);
         priorityList.push(buildings.LakeBireme);
         priorityList.push(buildings.LakeTransport);
+        priorityList.push(buildings.LakeOven);
+        priorityList.push(buildings.LakeOvenComplete);
+        priorityList.push(buildings.LakeSoulSteeper);
+        priorityList.push(buildings.LakeLifeInfuser);
 
         priorityList.push(buildings.HellSmelter);
         priorityList.push(buildings.DwarfShipyard);
@@ -7815,6 +7828,13 @@
         migrateSetting("jobDisableCraftsmans", "productionCraftsmen", (v) => v ? "nocraft" : "always");
         migrateSetting("activeTriggerUI", "activeTargetsUI", (v) => v);
         migrateSetting("autoAssembleGene", "autoGenetics", (v) => v);
+        // Handle ingame ID change
+        migrateSetting("batportal-harbour", "batportal-harbor", (v) => v);
+        migrateSetting("bld_p_portal-harbour", "bld_p_portal-harbor", (v) => v);
+        migrateSetting("bld_s_portal-harbour", "bld_s_portal-harbor", (v) => v);
+        migrateSetting("bld_s2_portal-harbour", "bld_s2_portal-harbor", (v) => v);
+        migrateSetting("bld_m_portal-harbour", "bld_m_portal-harbor", (v) => v);
+        migrateSetting("bld_w_portal-harbour", "bld_w_portal-harbor", (v) => v);
         // Migrate setting as override, in case if someone actualy use it
         if (settingsRaw.hasOwnProperty("genesAssembleGeneAlways")) {
             if (settingsRaw.overrides.genesAssembleGeneAlways) {
@@ -9102,12 +9122,11 @@
                     }
                     if (job === jobs.Meditator) {
                         if (jobMax[j] === undefined) {
-                            let threshold = 1.25;
-                            threshold += traitVal('slow_digestion', 0);
                             // TODO: slitheryn fathom
-                            threshold += traitVal('humpback', 0);
-                            threshold -= traitVal('atrophy', 0);
-                            jobMax[j] = Math.ceil((resources.Population.currentQuantity / 100 * getFoodConsume() - threshold) / (0.03 * traitVal('high_pop', 1, '=')));
+                            let infusion = 0.95 ** buildings.LakeLifeInfuser.stateOnCount;
+                            let threshold = (1.25 + traitVal('slow_digestion', 0) + traitVal('humpback', 0) - traitVal('atrophy', 0)) * infusion;
+                            let meditator = (0.03 * traitVal('high_pop', 1, '=')) * infusion;
+                            jobMax[j] = Math.ceil((resources.Population.currentQuantity / 100 * getFoodConsume() - threshold) / meditator);
                             jobMax[j] += 1; // One extra meditator to make it more fluctuation-proof
                         }
                         jobsToAssign = Math.min(jobsToAssign, jobMax[j]);
@@ -10104,17 +10123,22 @@
     }
 
     function autoPrestige() {
+        const tryReset = (check, act) => {
+            if (check) {
+                if (state.goal !== 'Reset') {
+                    state.goal = 'Reset';
+                    return; // Delay reset for one tick, to let script buy mercs and such
+                }
+                act();
+            }
+        };
+
         switch (settings.prestigeType) {
             case 'none':
                 return;
             case 'mad':
                 let madVue = getVueById("mad");
-                if (madVue?.display && haveTech("mad")) {
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
-                    }
-
+                return tryReset(madVue?.display && haveTech("mad"), () => {
                     if (madVue.armed) {
                         madVue.arm();
                     }
@@ -10124,14 +10148,10 @@
                         logPrestige();
                         madVue.launch();
                     }
-                }
-                return;
+                });
             case 'bioseed':
-                if (isBioseederPrestigeAvailable()) { // Ship completed and probe requirements met
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
-                    }
+                return tryReset(isBioseederPrestigeAvailable(), () => {
+                    // Ship completed and probe requirements met
                     if (buildings.GasSpaceDockLaunch.isUnlocked()) {
                         buildings.GasSpaceDockLaunch.click();
                     } else if (buildings.GasSpaceDockPrepForLaunch.isUnlocked()) {
@@ -10140,14 +10160,9 @@
                         // Open the modal to update the options
                         buildings.GasSpaceDock.cacheOptions();
                     }
-                }
-                return;
+                });
             case 'cataclysm':
-                if (isCataclysmPrestigeAvailable()) {
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
-                    }
+                return tryReset(isCataclysmPrestigeAvailable(), () => {
                     if (settings.autoEvolution) {
                         loadQueuedSettings(); // Cataclysm doesnt't have evolution stage, so we need to load settings here, before reset
                     }
@@ -10155,96 +10170,62 @@
                         logPrestige();
                         techIds["tech-dial_it_to_11"].click();
                     }
-                }
-                return;
+                });
             case 'whitehole':
-                if (isWhiteholePrestigeAvailable()) { // Solar mass requirements met and research available
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
-                    }
+                return tryReset(isWhiteholePrestigeAvailable(), () => {
+                    // Solar mass requirements met and research available
                     if (techIds["tech-exotic_infusion"].isUnlocked() && techIds["tech-exotic_infusion"].isAffordable()) {
                         logPrestige();
                     }
                     ["tech-infusion_confirm", "tech-infusion_check", "tech-exotic_infusion"].forEach(id => techIds[id].click());
-                }
-                return;
+                });
             case 'apocalypse':
-                if (isApocalypsePrestigeAvailable()) {
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
-                    }
+                return tryReset(isApocalypsePrestigeAvailable(), () => {
                     logPrestige();
                     ["tech-protocol66", "tech-protocol66a"].forEach(id => techIds[id].click());
-                }
-                return;
+                });
             case 'ascension':
                 if (game.global.race['witch_hunter']) {
-                    if (isWitchAscensionPrestigeAvailable()) {
-                        if (state.goal !== 'Reset') {
-                            state.goal = 'Reset';
-                            return;
-                        }
+                    return tryReset(isWitchAscensionPrestigeAvailable(), () => {
                         KeyManager.set(false, false, false);
                         logPrestige();
                         buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
                         state.goal = "GameOverMan";
-                    }
+                    });
                 } else {
-                    if (isAscensionPrestigeAvailable()) {
-                        if (state.goal !== 'Reset') {
-                            state.goal = 'Reset';
-                            return;
-                        }
+                    return tryReset(isAscensionPrestigeAvailable(), () => {
                         KeyManager.set(false, false, false);
                         buildings.SiriusAscend.click();
-                    }
+                    });
                 }
-                return;
             case 'demonic':
                 if (game.global.race['witch_hunter']) {
-                    if (isWitchAscensionPrestigeAvailable(true)) {
-                        if (state.goal !== 'Reset') {
-                            state.goal = 'Reset';
-                            return;
-                        }
+                    return tryReset(isWitchAscensionPrestigeAvailable(true), () => {
                         KeyManager.set(false, false, false);
                         logPrestige();
                         buildings.PitAbsorptionChamber.vue.action(); // Hack to bypass "count < max" check
                         state.goal = "GameOverMan";
-                    }
+                    });
                 } else {
-                    if (isDemonicPrestigeAvailable()) {
-                        if (state.goal !== 'Reset') {
-                            state.goal = 'Reset';
-                            return;
-                        }
+                    return tryReset(isDemonicPrestigeAvailable(), () => {
                         logPrestige();
-                        techIds["tech-demonic_infusion"].click();
-                    }
+                        if (game.global.race['fasting']) {
+                            techIds["tech-final_ingredient"].click();
+                        } else {
+                            techIds["tech-demonic_infusion"].click();
+                        }
+                    });
                 }
-                return;
             case 'terraform':
-                if (buildings.RedTerraform.isUnlocked()) {
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
-                    }
+                return tryReset(buildings.RedTerraform.isUnlocked(), () => {
                     KeyManager.set(false, false, false);
                     buildings.RedTerraform.click();
-                }
-                return;
+                });
             case 'matrix':
-                if (buildings.TauStarBluePill.isUnlocked()) {
-                    if (state.goal !== 'Reset') {
-                        state.goal = 'Reset';
-                        return;
-                    }
+                return tryReset(buildings.TauStarBluePill.isUnlocked(), () => {
                     KeyManager.set(false, false, false);
                     buildings.TauStarBluePill.click();
-                }
-                return;
+                });
             case 'vacuum':
             case 'retire':
             case 'eden':
@@ -10278,11 +10259,18 @@
     }
 
     function isWitchAscensionPrestigeAvailable(demonic) {
-        return (!demonic || haveTech("forbidden", 5)) && buildings.PitAbsorptionChamber.count >= 100 && buildings.PitSoulCapacitor.instance.energy >= 100000000 && isPillarFinished();
+        if (demonic && (!haveTech("forbidden", 5) || (game.global.race['fasting'] && !haveTech("dish", 2)))) {
+            return false;
+        }
+        return buildings.PitAbsorptionChamber.count >= 100 && buildings.PitSoulCapacitor.instance.energy >= 100000000 && isPillarFinished();
     }
 
     function isDemonicPrestigeAvailable() {
-        return buildings.SpireTower.count > settings.prestigeDemonicFloor && haveTech("waygate", 3) && (!settings.autoMech || (!MechManager.isActive && MechManager.mechsPotential <= settings.prestigeDemonicPotential)) && techIds["tech-demonic_infusion"].isUnlocked();
+        if (settings.autoMech && (MechManager.isActive || MechManager.mechsPotential > settings.prestigeDemonicPotential)) {
+            return false;
+        }
+        let resetTech = techIds[game.global.race['fasting'] ? "tech-final_ingredient" : "tech-demonic_infusion"];
+        return buildings.SpireTower.count > settings.prestigeDemonicFloor && resetTech.isUnlocked() && resetTech.isAffordable();
     }
 
     function isPillarFinished() {
@@ -10838,7 +10826,7 @@
         // Don't click any reset options without user consent... that would be a dick move, man.
         if (itemId === "tech-exotic_infusion" || itemId === "tech-infusion_check" || itemId === "tech-infusion_confirm" ||
             itemId === "tech-dial_it_to_11" || itemId === "tech-limit_collider" || itemId === "tech-demonic_infusion" ||
-            itemId === "tech-protocol66" || itemId === "tech-protocol66a") {
+            itemId === "tech-protocol66" || itemId === "tech-protocol66a" || itemId === "tech-final_ingredient") {
             return "Reset research";
         }
 
@@ -11043,12 +11031,12 @@
                     if (building === buildings.CoalMine && jobs.CoalMiner.count === 0) {
                         maxStateOn = 0;
                     }
-                    // Enable cooling towers only if we can power at least two harbours
-                    if (building === buildings.LakeCoolingTower && availablePower < (building.powered * maxStateOn + ((500 * 0.92 ** maxStateOn) * (game.global.race['emfield'] ? 1.5 : 1)).toFixed(2) * Math.min(2, buildings.LakeHarbour.count))) {
+                    // Enable cooling towers only if we can power at least two harbors
+                    if (building === buildings.LakeCoolingTower && availablePower < (building.powered * maxStateOn + ((500 * 0.92 ** maxStateOn) * (game.global.race['emfield'] ? 1.5 : 1)).toFixed(2) * Math.min(2, buildings.LakeHarbor.count))) {
                         maxStateOn = 0;
                     }
-                    // Don't bother powering harbour if we have power for only one
-                    if (building === buildings.LakeHarbour && maxStateOn === 1 && building.count > 1) {
+                    // Don't bother powering harbor if we have power for only one
+                    if (building === buildings.LakeHarbor && maxStateOn === 1 && building.count > 1) {
                         maxStateOn = 0;
                     }
                     if (building === buildings.GasMining && !resources.Helium_3.isUseful()) {
@@ -13378,7 +13366,7 @@
             let coolers = buildings.LakeCoolingTower.stateOnCount;
             let current = 500 * (0.92 ** coolers);
             let next = 500 * (0.92 ** (coolers+1));
-            let diff = ((current - next) * buildings.LakeHarbour.stateOnCount) * (game.global.race['emfield'] ? 1.5 : 1);
+            let diff = ((current - next) * buildings.LakeHarbor.stateOnCount) * (game.global.race['emfield'] ? 1.5 : 1);
             notes.push(`Next level will decrease total consumption by ${getNiceNumber(diff)} MW`);
         }
         if (obj === buildings.DwarfShipyard) {
