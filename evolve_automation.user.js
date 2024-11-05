@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.134
+// @version      3.3.1.135
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -600,6 +600,23 @@
         }
     }
 
+    class Troops extends Resource {
+        updateData() {
+            if (!this.isUnlocked()) {
+                return;
+            }
+
+
+            this.currentQuantity = WarManager.currentCityGarrison;
+            this.maxQuantity = WarManager.maxCityGarrison;
+            this.rateOfChange = 0;
+        }
+
+        isUnlocked() {
+            return WarManager._garrisonVue !== undefined;
+        }
+    }
+
     class Supply extends Resource {
         updateData() {
             if (!this.isUnlocked()) {
@@ -867,7 +884,8 @@
                 (this._tab === "interstellar" && !game.global.settings.showDeep) ||
                 (this._tab === "portal" && !game.global.settings.showPortal) ||
                 (this._tab === "galaxy" && !game.global.settings.showGalactic) ||
-                (this._tab === "tauceti" && !game.global.settings.showTau)) {
+                (this._tab === "tauceti" && !game.global.settings.showTau) ||
+                (this._tab === "eden" && !game.global.settings.showEden)) {
                 return false;
             }
             return document.getElementById(this._vueBinding) !== null;
@@ -1512,10 +1530,10 @@
                 return -1;
             }
 
-            const noGenusRace = ["custom", "junker", "sludge"];
+            const noGenusRace = ["custom", "junker", "sludge", "hybrid"];
             const greatnessReset = ["bioseed", "ascension", "terraform", "matrix", "retire", "eden"];
             const midTierReset = ["bioseed", "cataclysm", "whitehole", "vacuum", "terraform"];
-            const highTierReset = ["ascension", "demonic"];
+            const highTierReset = ["ascension", "demonic", "apotheosis"];
             const bestForMid = ["human", "cath", "capybara", "gnome", "cyclops", "gecko", "dracnid", "entish", "shroomi", "antid", "sharkin", "dryad", "salamander", "yeti", "kamel", "imp", "unicorn", "synth", "shoggoth"];
             const bestForHigh = ["human", "cath", "capybara", "gnome", "cyclops", "gecko", "dracnid", "entish", "shroomi", "scorpid", "sharkin", "dryad", "salamander", "wendigo", "kamel", "balorg", "unicorn", "nano", "ghast"];
             // Order and usefulness is very subjective but someone doing auto TP3 is probably going to unlock them all anyway
@@ -1694,6 +1712,9 @@
             if (this.id === "sludge") {
                 return ((game.global.stats.achieve['ascended'] || game.global.stats.achieve['corrupted']) && game.global.stats.achieve['extinct_junker']) ? 1 : 0;
             }
+            if (this.genus === "hybrid" && game.global.stats.achieve['godslayer'] === undefined) {
+                return 0;
+            }
 
             let unboundMod = game.global.blood.unbound >= 4 ? 0.95 :
                              game.global.blood.unbound >= 2 ? 0.9 :
@@ -1727,35 +1748,41 @@
         }
 
         getCondition() {
-            if (this.id === "junker") {
-                return "Genetic Dead End unlocked";
-            }
-            if (this.id === "sludge") {
-                return "Failed Experiment unlocked";
+            switch (this.id) {
+                case "junker":
+                    return "Genetic Dead End unlocked.";
+                case "sludge":
+                    return "Failed Experiment unlocked.";
+                case "custom":
+                    return game.loc('wiki_achieve_ascended');
+                case "hybrid":
+                    return game.loc('wiki_achieve_what_is_best');
             }
 
             switch (this.genus) {
                 case "aquatic":
-                    return "Oceanic or Swamp planet";
+                    return "Oceanic or Swamp planet.";
                 case "fey":
-                    return "Forest, Swamp or Taiga planet";
+                    return "Forest, Swamp or Taiga planet.";
                 case "sand":
-                    return "Ashland or Desert planet";
+                    return "Ashland or Desert planet.";
                 case "heat":
-                    return "Ashland or Volcanic planet";
+                    return "Ashland or Volcanic planet.";
                 case "polar":
-                    return "Tundra or Taiga planet";
+                    return "Tundra or Taiga planet.";
                 case "demonic":
-                    return "Hellscape planet";
+                    return "Hellscape planet.";
                 case "angelic":
-                    return "Eden planet";
+                    return "Eden planet.";
                 case "synthetic":
                     return game.loc('wiki_achieve_obsolete');
                 case "eldritch":
                     return game.loc('wiki_achieve_nightmare');
-                case undefined: // Nonexistent custom
-                    return game.loc('wiki_achieve_ascended');
-                default:
+                case "hybrid":
+                    return game.loc('wiki_achieve_godslayer');
+                case undefined:
+                    return "Unknown.";
+                default: // No special conditions
                     return "";
             }
         }
@@ -1981,11 +2008,11 @@
             super(traitName);
             this.type = "major";
             let ownerRace = Object.entries(game.races)
-              .filter(([id, race]) => id !== "custom" && race.traits[traitName] !== undefined)
+              .filter(([id, race]) => id !== "custom" && id !== "hybrid" && race.traits[traitName] !== undefined)
               .map(([id, race]) => ({id: id, genus: race.type}))[0] ?? {};
             this.source = ownerRace.id ?? specialRaceTraits[traitName] ?? "";
             this.racesThatCanGain = (Object.entries(game.races)
-              .filter(([id, race]) => race.type === ownerRace.genus)
+              .filter(([id, race]) => race?.type === ownerRace.genus)
               .map(([id, race]) => id))
               .flat();
             this.genus = this.source === 'reindeer' ? 'herbivore' : ownerRace.genus;
@@ -2079,8 +2106,8 @@
         [{id:"sludge", trait:"sludge"}],
         [{id:"orbit_decay", trait:"orbit_decay"}],
         //[{id:"nonstandard", trait:"nonstandard"}],
-        [{id:"gravity_well", trait:"gravity_well"}],
-        [{id:"witch_hunter", trait:"witch_hunter"}],
+        [{id:"gravity_well", trait:"gravity_well"},
+         {id:"witch_hunter", trait:"witch_hunter"}],
         //[{id:"warlord", trait:"warlord"}],
         //[{id:"storage_wars", trait:"storage_wars"}],
         [{id:"junker", trait:"junker"}],
@@ -2092,7 +2119,7 @@
     ];
     const governors = ["soldier", "criminal", "entrepreneur", "educator", "spiritual", "bluecollar", "noble", "media", "sports", "bureaucrat"];
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...challenges.map(c => "challenge_" + c[0].id)];
-    const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly", "cloning_facility"];
+    const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly", "cloning_facility", "ambush_patrol", "raid_supplies", "siege_fortress"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "trait", "weighting", "ejector", "planet", "mech", "magic", "trigger"];
     const mutationCostMultipliers = {sludge: {gain: 2, purge: 10}, custom: {gain: 10, purge: 10}};
@@ -2175,6 +2202,7 @@
         Energy: new Resource("Energy", "Energy"),
         Sus: new Resource("Suspicion", "Sus"),
         Knowledge: new Resource("Knowledge", "Knowledge"),
+        Omniscience: new Resource("Omniscience", "Omniscience"),
         Zen: new Resource("Zen", "Zen"),
         Crates: new Resource("Crates", "Crates"),
         Containers: new Resource("Containers", "Containers"),
@@ -2213,6 +2241,8 @@
         Bolognium: new Resource("Bolognium", "Bolognium"),
         Vitreloy: new Resource("Vitreloy", "Vitreloy"),
         Orichalcum: new Resource("Orichalcum", "Orichalcum"),
+        Asphodel_Powder: new Resource("Asphodel Powder", "Asphodel_Powder"),
+        Elysanite: new Resource("Elysanite", "Elysanite"),
         Unobtainium: new Resource("Unobtainium", "Unobtainium"),
         Materials: new Resource("Materials", "Materials"),
 
@@ -2237,18 +2267,21 @@
         Codex: new Resource("Codex", "Codex"),
         Cipher: new Resource("Encrypted Data", "Cipher"),
         Demonic_Essence: new Resource("Demonic Essence", "Demonic_Essence"),
+        Blessed_Essence: new Resource("Blessed Essence", "Blessed_Essence"),
 
         // Prestige resources
         Blood_Stone: new PrestigeResource("Blood Stone", "Blood_Stone"),
         Artifact: new PrestigeResource("Artifact", "Artifact"),
         Plasmid: new PrestigeResource("Plasmid", "Plasmid"),
         Antiplasmid: new PrestigeResource("Anti-Plasmid", "AntiPlasmid"),
+        Supercoiled: new PrestigeResource("Supercoiled", "Supercoiled"),
         Phage: new PrestigeResource("Phage", "Phage"),
         Dark: new PrestigeResource("Dark", "Dark"),
         Harmony: new PrestigeResource("Harmony", "Harmony"),
         AICore: new PrestigeResource("AI Core", "AICore"),
 
         // Special not-really-resources-but-we'll-treat-them-like-resources resources
+        Troops: new Troops("Troops", "Troops"),
         Supply: new Supply("Supplies", "Supply"),
         Power: new Power("Power", "Power"),
         Morale: new Morale("Morale", "Morale"),
@@ -2273,6 +2306,7 @@
         Alien_Support: new Support("Alien Support", "Alien_Support", "galaxy", "gxy_alien2"),
         Lake_Support: new Support("Lake Support", "Lake_Support", "portal", "prtl_lake"),
         Spire_Support: new Support("Spire Support", "Spire_Support", "portal", "prtl_spire"),
+        Asphodel_Support: new Support("Asphodel Support", "Asphodel_Support", "eden", "eden_asphodel"),
     }
 
     var jobs = {
@@ -2300,6 +2334,8 @@
         PitMiner: new Job("pit_miner", "Pit Miner"),
         Torturer: new Job("torturer", "Tormentor", {smart: true}),
         Archaeologist: new Job("archaeologist", "Archaeologist"),
+        GhostTrapper: new Job("ghost_trapper", "Ghost Trapper"),
+        ElysiumMiner: new Job("elysium_miner", "Elysium Miner"),
         Banker: new Job("banker", "Banker", {smart: true}),
         Priest: new Job("priest", "Priest"),
     }
@@ -2589,6 +2625,7 @@
         ProximaDyson: new Action("Proxima Dyson Sphere (Adamantite)", "interstellar", "dyson", "int_proxima", {multiSegmented: true}),
         ProximaDysonSphere: new Action("Proxima Dyson Sphere (Bolognium)", "interstellar", "dyson_sphere", "int_proxima", {multiSegmented: true}),
         ProximaOrichalcumSphere: new Action("Proxima Dyson Sphere (Orichalcum)", "interstellar", "orichalcum_sphere", "int_proxima", {multiSegmented: true}),
+        ProximaElysaniteSphere: new Action("Proxima Dyson Sphere (Elysanite)", "interstellar", "elysanite_sphere", "int_proxima", {multiSegmented: true}),
 
         NebulaMission: new Action("Nebula Mission", "interstellar", "nebula_mission", "int_nebula"),
         NebulaNexus: new Action("Nebula Nexus", "interstellar", "nexus", "int_nebula"),
@@ -2711,6 +2748,58 @@
         SpireMechBay: new Action("Spire Mech Bay", "portal", "mechbay", "prtl_spire", {smart: true}),
         SpireTower: new Action("Spire Tower", "portal", "spire", "prtl_spire"),
         SpireWaygate: new Action("Spire Waygate", "portal", "waygate", "prtl_spire", {smart: true}),
+        SpireEdenicGate: new Action("Spire Edenic Gate", "portal", "edenic_gate", "prtl_spire"),
+
+        AsphodelMission: new Action("Asphodel Mission", "eden", "survery_meadows", "eden_asphodel"),
+        AsphodelEncampment: new Action("Asphodel Encampment", "eden", "encampment", "eden_asphodel"),
+        AsphodelSoulEngine: new Action("Asphodel Soul Engine", "eden", "soul_engine", "eden_asphodel"),
+        AsphodelMechStation: new Action("Asphodel Mech Station", "eden", "mech_station", "eden_asphodel", {multiSegmented: true}),
+        AsphodelHarvester: new Action("Asphodel Harvester", "eden", "asphodel_harvester", "eden_asphodel", {smart: true}),
+        AsphodelProcessor: new Action("Asphodel Muon Processor", "eden", "ectoplasm_processor", "eden_asphodel"),
+        AsphodelResearchStation: new Action("Asphodel Research Station", "eden", "research_station", "eden_asphodel"),
+        AsphodelWarehouse: new Action("Asphodel Warehouse", "eden", "warehouse", "eden_asphodel"),
+        AsphodelStabilizer: new Action("Asphodel Stabilizer", "eden", "stabilizer", "eden_asphodel"),
+        AsphodelRuneGate: new Action("Asphodel Rune Gate", "eden", "rune_gate", "eden_asphodel", {multiSegmented: true}),
+        AsphodelRuneGateOpen: new Action("Asphodel Rune Gate (Complete)", "eden", "rune_gate_open", "eden_asphodel"),
+        AsphodelBunker: new Action("Asphodel Bunker", "eden", "bunker", "eden_asphodel", {garrison: true}),
+        AsphodelBlissDen: new Action("Asphodel Bliss Den", "eden", "bliss_den", "eden_asphodel"),
+        AsphodelRectory: new Action("Asphodel Rectory", "eden", "rectory", "eden_asphodel", {housing: true}),
+
+        ElysiumMission: new Action("Elysium Mission", "eden", "survey_fields", "eden_elysium"),
+        ElysiumFortress: new Action("Elysium Celestial Fortress", "eden", "fortress", "eden_elysium"),
+        ElysiumSiege: new Action("Elysium Siege Fortress", "eden", "siege_fortress", "eden_elysium"),
+        ElysiumRaid: new Action("Elysium Raid Supplies", "eden", "raid_supplies", "eden_elysium"),
+        ElysiumAmbush: new Action("Elysium Ambush Patrol", "eden", "ambush_patrol", "eden_elysium"),
+        ElysiumRuinedFortress: new Action("Elysium Ruined Fortress", "eden", "ruined_fortress", "eden_elysium"),
+        ElysiumScout: new Action("Elysium Scout", "eden", "scout_elysium", "eden_elysium"),
+        ElysiumFireSupportBase: new Action("Elysium Fire Support Base", "eden", "fire_support_base", "eden_elysium", {multiSegmented: true}),
+        ElysiumMine: new Action("Elysium Mine", "eden", "elysanite_mine", "eden_elysium"),
+        ElysiumSacredSmelter: new Action("Elysium Sacred Smelter", "eden", "sacred_smelter", "eden_elysium"),
+        ElysiumEleriumContainment: new Action("Elysium Elerium Containment", "eden", "elerium_containment", "eden_elysium"),
+        ElysiumPillbox: new Action("Elysium Pillbox", "eden", "pillbox", "eden_elysium"), // TODO: Need some interaction with autoHell
+        ElysiumRestaurant: new Action("Elysium Restaurant", "eden", "restaurant", "eden_elysium"),
+        ElysiumEternalBank: new Action("Elysium Eternal Bank", "eden", "eternal_bank", "eden_elysium"),
+        ElysiumArchive: new Action("Elysium Archive", "eden", "archive", "eden_elysium"),
+        ElysiumNorthPier: new Action("Elysium North Pier", "eden", "north_pier", "eden_elysium", {multiSegmented: true}),
+        ElysiumRushmore: new Action("Elysium Rushmore", "eden", "rushmore", "eden_elysium"),
+        ElysiumReincarnation: new Action("Elysium Reincarnation", "eden", "reincarnation", "eden_elysium"),
+        ElysiumCement: new Action("Elysium Cement", "eden", "eden_cement", "eden_elysium"),
+
+        IsleSouthPier: new Action("Isle South Pier", "eden", "south_pier", "eden_isle", {multiSegmented: true}),
+        IsleWestTower: new Action("Isle West Tower", "eden", "west_tower", "eden_isle"),
+        IsleGarrison: new Action("Isle Garrison", "eden", "isle_garrison", "eden_isle"),
+        IsleEastTower: new Action("Isle East Tower", "eden", "east_tower", "eden_isle"),
+        IsleSpiritVacuum: new Action("Isle Spirit Vacuum", "eden", "spirit_vacuum", "eden_isle"),
+        IsleSpiritBattery: new Action("Isle Spirit Battery", "eden", "spirit_battery", "eden_isle"),
+        IsleSoulCompactor: new Action("Isle Soul Compactor", "eden", "soul_compactor", "eden_isle"),
+
+        PalaceMission: new Action("Palace Mission", "eden", "scout_palace", "eden_palace"),
+        PalaceThrone: new Action("Palace Throne", "eden", "throne", "eden_palace"),
+        PalaceInfuser: new Action("Palace Infuser", "eden", "infuser", "eden_palace", {multiSegmented: true}),
+        PalaceApotheosis: new Action("Palace Apotheosis", "eden", "apotheosis", "eden_palace", {prestige: true}),
+        PalaceConduit: new Action("Palace Conduit", "eden", "conduit", "eden_palace"),
+        PalaceTomb: new Action("Palace Tomb", "eden", "tomb", "eden_palace", {multiSegmented: true}),
+
     }
 
     var linkedBuildings = [
@@ -2908,6 +2997,30 @@
           (building) => building === buildings.SpireWaygate,
           () => "",
           () => 0 // We can't limit waygate using gameMax, as max here isn't constant. It start with 10, but after building count reduces down to 1
+      ],[
+          () => haveTech("edenic", 3),
+          (building) => building === buildings.SpireEdenicGate,
+          () => "",
+          () => 0 // We can't limit edenic gate using gameMax, as max here isn't constant. It start with 10, but after building count reduces down to 1
+      ],[
+          () => haveTech("elysium", 8),
+          (building) => {
+              if (building === buildings.ElysiumFireSupportBase) {
+                    if (haveTech("isle", 2)) {
+                        return "Garrison is destroyed";
+                    }
+                    if (!haveTech("elysium", 10) && building.count >= 100 ) {
+                        return "Missing Elerium Cannon tech";
+                    }
+              }
+           },
+          (note) => note,
+          () => 0 // Build up to 100, and then fire after researching cannon
+      ],[
+          () => haveTech("asphodel", 8),
+          (building) => building === buildings.AsphodelStabilizer && building.count >= buildings.AsphodelWarehouse.count,
+          () => "Can not exceed amount of Warehouses",
+          () => 0
       ],[
           () => haveTech("hell_spire", 8),
           (building) => building === buildings.SpireSphinx,
@@ -5832,7 +5945,7 @@
                     project.weighting = 0;
                     project.extraDescription = "Not enough storage<br>";
                 }
-                if (project === projects.ManaSyphon && settings.prestigeBioseedConstruct && (settings.prestigeType === "ascension" || settings.prestigeType === "demonic") && game.global.race['witch_hunter']) {
+                if (project === projects.ManaSyphon && settings.prestigeBioseedConstruct && settings.prestigeType !== "vacuum" && game.global.race['witch_hunter']) {
                     project.weighting = 0;
                     project.extraDescription = "Not needed for current prestige<br>";
                 }
@@ -6199,6 +6312,7 @@
         JobManager.craftingJobs = Object.values(crafter);
 
         // Construct city builds list
+        // TODO: replace gameMax with queue_complete
         //buildings.SacrificialAltar.gameMax = 1; // Although it is technically limited to single altar, we don't care about that, as we're going to click it to make sacrifices
         // Max level depends on achievement progress, building is unavailable during fasting so it doesn't have to update dynamically.
         buildings.Banquet.gameMax = game.global.stats.achieve.endless_hunger?.l ?? 0;
@@ -6230,6 +6344,7 @@
 
         buildings.ProximaDysonSphere.gameMax = 100;
         buildings.ProximaOrichalcumSphere.gameMax = 100;
+        buildings.ProximaElysaniteSphere.gameMax = 1000;
         buildings.BlackholeStargate.gameMax = 200;
         buildings.BlackholeStargateComplete.gameMax = 1;
         buildings.SiriusSpaceElevator.gameMax = 100;
@@ -6245,8 +6360,23 @@
         buildings.LakeOven.gameMax = 100;
         buildings.LakeOvenComplete.gameMax = 1;
         buildings.SpireBridge.gameMax = 10;
+        buildings.SpireEdenicGate.gameMax = 1;
+
+        buildings.AsphodelMechStation.gameMax = 10;
+        buildings.AsphodelRuneGate.gameMax = 100;
+        buildings.ElysiumFireSupportBase.gameMax = 101; // 101th click to fire cannon
+        buildings.ElysiumNorthPier.gameMax = 10;
+        buildings.ElysiumRushmore.gameMax = 1;
+        buildings.ElysiumReincarnation.gameMax = 1; // TODO use it
+        buildings.IsleSouthPier.gameMax = 10;
+        buildings.IsleSoulCompactor.gameMax = 1;
+        buildings.PalaceInfuser.gameMax = 25;
+        buildings.PalaceConduit.gameMax = 25;
+        buildings.PalaceTomb.gameMax = 10;
+
         buildings.GorddonEmbassy.gameMax = 1;
         buildings.Alien1Consulate.gameMax = 1;
+
         projects.LaunchFacility.gameMax = 1;
         projects.ManaSyphon.gameMax = 80;
 
@@ -6363,6 +6493,15 @@
         buildings.TauBeltMiningShip.addSupport(resources.Tau_Belt_Support);
         buildings.TauBeltWhalingShip.addSupport(resources.Tau_Belt_Support);
 
+        buildings.AsphodelEncampment.addSupport(resources.Asphodel_Support);
+        buildings.AsphodelSoulEngine.addSupport(resources.Asphodel_Support);
+        buildings.AsphodelResearchStation.addSupport(resources.Asphodel_Support);
+        buildings.AsphodelHarvester.addSupport(resources.Asphodel_Support);
+        buildings.AsphodelProcessor.addSupport(resources.Asphodel_Support);
+        buildings.AsphodelBunker.addSupport(resources.Asphodel_Support);
+        buildings.AsphodelBlissDen.addSupport(resources.Asphodel_Support);
+        buildings.AsphodelRectory.addSupport(resources.Asphodel_Support);
+
         // Init consumptions
         buildings.MoonBase.addResourceConsumption(resources.Oil, 2);
         buildings.RedSpaceport.addResourceConsumption(resources.Helium_3, 1.25);
@@ -6468,6 +6607,7 @@
         buildings.ProximaDyson.overridePowered = -1.25;
         buildings.ProximaDysonSphere.overridePowered = -5;
         buildings.ProximaOrichalcumSphere.overridePowered = -8;
+        buildings.ProximaElysaniteSphere.overridePowered = -18;
         // Numbers aren't exactly correct. That's fine - it won't mess with calculations - it's not something we can turn off and on. We just need to know that they *are* power generators, for autobuild, and that's enough for us.
         // And it doesn't includes Stellar Engine at all. It can generate some power... But only when fully built, and you don't want to build 100 levels of engine just to generate 20MW.
     }
@@ -6511,8 +6651,14 @@
             }
 
             races[id] = new Race(id);
-            // Use fungi as default Valdi genus
-            let evolutionPath = (id === "junker" || id === "sludge") ? genusEvolution.fungi : genusEvolution[races[id].genus];
+            let evolutionPath;
+            if (id === "junker" || id === "sludge") {
+                evolutionPath = genusEvolution.fungi; // Use fungi as default Valdi genus
+            } else if (game.races[id].type === "hybrid") {
+                evolutionPath = genusEvolution[game.races[id].hybrid[0]];
+            } else {
+                evolutionPath = genusEvolution[races[id].genus];
+            }
             races[id].evolutionTree = [e.bunker, e[id], ...(evolutionPath ?? [])];
 
             // add imitate races
@@ -6609,6 +6755,7 @@
         priorityList.push(buildings.ProximaDyson);
         priorityList.push(buildings.ProximaDysonSphere);
         priorityList.push(buildings.ProximaOrichalcumSphere);
+        priorityList.push(buildings.ProximaElysaniteSphere);
 
         priorityList.push(buildings.AlphaMission);
         priorityList.push(buildings.AlphaStarport);
@@ -6773,6 +6920,16 @@
         priorityList.push(buildings.GateTurret);
         priorityList.push(buildings.GateInferniteMine);
 
+        priorityList.push(buildings.LakeMission);
+        priorityList.push(buildings.LakeCoolingTower);
+        priorityList.push(buildings.LakeHarbor);
+        priorityList.push(buildings.LakeBireme);
+        priorityList.push(buildings.LakeTransport);
+        priorityList.push(buildings.LakeOven);
+        priorityList.push(buildings.LakeOvenComplete);
+        priorityList.push(buildings.LakeSoulSteeper);
+        priorityList.push(buildings.LakeLifeInfuser);
+
         priorityList.push(buildings.SpireMission);
         priorityList.push(buildings.SpirePurifier);
         priorityList.push(buildings.SpireMechBay);
@@ -6783,16 +6940,50 @@
         priorityList.push(buildings.SpireBribeSphinx);
         priorityList.push(buildings.SpireSurveyTower);
         priorityList.push(buildings.SpireWaygate);
+        priorityList.push(buildings.SpireEdenicGate);
 
-        priorityList.push(buildings.LakeMission);
-        priorityList.push(buildings.LakeCoolingTower);
-        priorityList.push(buildings.LakeHarbor);
-        priorityList.push(buildings.LakeBireme);
-        priorityList.push(buildings.LakeTransport);
-        priorityList.push(buildings.LakeOven);
-        priorityList.push(buildings.LakeOvenComplete);
-        priorityList.push(buildings.LakeSoulSteeper);
-        priorityList.push(buildings.LakeLifeInfuser);
+        priorityList.push(buildings.AsphodelMission);
+        priorityList.push(buildings.AsphodelEncampment);
+        priorityList.push(buildings.AsphodelSoulEngine);
+        priorityList.push(buildings.AsphodelMechStation);
+        priorityList.push(buildings.AsphodelHarvester);
+        priorityList.push(buildings.AsphodelProcessor);
+        priorityList.push(buildings.AsphodelResearchStation);
+        priorityList.push(buildings.AsphodelWarehouse);
+        priorityList.push(buildings.AsphodelStabilizer);
+        priorityList.push(buildings.AsphodelRuneGate);
+        priorityList.push(buildings.AsphodelBunker);
+        priorityList.push(buildings.AsphodelBlissDen);
+        priorityList.push(buildings.AsphodelRectory);
+
+        priorityList.push(buildings.ElysiumMission);
+        priorityList.push(buildings.ElysiumAmbush);
+        priorityList.push(buildings.ElysiumRaid);
+        priorityList.push(buildings.ElysiumSiege);
+        priorityList.push(buildings.ElysiumScout);
+        priorityList.push(buildings.ElysiumFireSupportBase);
+        priorityList.push(buildings.ElysiumMine);
+        priorityList.push(buildings.ElysiumSacredSmelter);
+        priorityList.push(buildings.ElysiumEleriumContainment);
+        priorityList.push(buildings.ElysiumPillbox);
+        priorityList.push(buildings.ElysiumRestaurant);
+        priorityList.push(buildings.ElysiumEternalBank);
+        priorityList.push(buildings.ElysiumArchive);
+        priorityList.push(buildings.ElysiumNorthPier);
+        priorityList.push(buildings.ElysiumRushmore);
+        priorityList.push(buildings.ElysiumReincarnation);
+        priorityList.push(buildings.ElysiumCement);
+
+        priorityList.push(buildings.IsleSouthPier);
+        priorityList.push(buildings.IsleSpiritBattery);
+        priorityList.push(buildings.IsleSpiritVacuum);
+        priorityList.push(buildings.IsleSoulCompactor);
+
+        priorityList.push(buildings.PalaceMission);
+        priorityList.push(buildings.PalaceInfuser);
+        priorityList.push(buildings.PalaceConduit);
+        priorityList.push(buildings.PalaceTomb);
+        //priorityList.push(buildings.PalaceApotheosis);
 
         priorityList.push(buildings.HellSmelter);
         priorityList.push(buildings.DwarfShipyard);
@@ -7271,6 +7462,8 @@
         setBreakpoints(jobs.SpaceMiner, 1, 3, -1);
         setBreakpoints(jobs.Torturer, 1, 1, -1);
         setBreakpoints(jobs.Archaeologist, 1, 1, -1);
+        setBreakpoints(jobs.GhostTrapper, 1, 1, -1);
+        setBreakpoints(jobs.ElysiumMiner, 1, 1, -1);
         setBreakpoints(jobs.Banker, 3, 5, -1);
         setBreakpoints(jobs.Priest, 0, 0, -1);
         setBreakpoints(jobs.Unemployed, 0, 0, 0);
@@ -8375,7 +8568,7 @@
 
     function autoSpy() {
         let m = SpyManager;
-        if (!m._foreignVue || haveTask("spyop") || !haveTech("spy")) {
+        if (!m._foreignVue || haveTask("combo_spy") || haveTask("spyop") || !haveTech("spy")) {
             return;
         }
 
@@ -8592,11 +8785,15 @@
         let targetHellSoldiers = 0;
         let targetHellPatrols = 0;
         let targetHellPatrolSize = 0;
+        let homeSoldiers = settings.hellHomeGarrison;
+        if ((buildings.ElysiumFortress.isUnlocked() || buildings.ElysiumScout.isUnlocked()) && homeSoldiers < 100) {
+            homeSoldiers = 100;
+        }
         // First handle not having enough soldiers, then handle patrols
         // Only go into hell at all if soldiers are close to full, or we are already there
-        if (m.maxSoldiers > settings.hellHomeGarrison + settings.hellMinSoldiers &&
+        if (m.maxSoldiers > homeSoldiers + settings.hellMinSoldiers &&
            (m.hellSoldiers > settings.hellMinSoldiers || (m.currentSoldiers >= m.maxSoldiers * settings.hellMinSoldiersPercent / 100))) {
-            targetHellSoldiers = Math.min(m.currentSoldiers, m.maxSoldiers) - settings.hellHomeGarrison; // Leftovers from an incomplete patrol go to hell garrison
+            targetHellSoldiers = Math.min(m.currentSoldiers, m.maxSoldiers) - homeSoldiers; // Leftovers from an incomplete patrol go to hell garrison
             let availableHellSoldiers = targetHellSoldiers - m.hellReservedSoldiers;
 
             // Determine target hell garrison size
@@ -10226,6 +10423,11 @@
                     KeyManager.set(false, false, false);
                     buildings.TauStarBluePill.click();
                 });
+            case 'apotheosis':
+                return tryReset(buildings.PalaceApotheosis.isUnlocked(), () => {
+                    KeyManager.set(false, false, false);
+                    buildings.PalaceApotheosis.click();
+                });
             case 'vacuum':
             case 'retire':
             case 'eden':
@@ -10266,7 +10468,7 @@
     }
 
     function isDemonicPrestigeAvailable() {
-        if (settings.autoMech && (MechManager.isActive || MechManager.mechsPotential > settings.prestigeDemonicPotential)) {
+        if (settings.autoMech && ((MechManager.isActive && settings.prestigeDemonicPotential < 1) || MechManager.mechsPotential > settings.prestigeDemonicPotential)) {
             return false;
         }
         let resetTech = techIds[game.global.race['fasting'] ? "tech-final_ingredient" : "tech-demonic_infusion"];
@@ -10788,7 +10990,7 @@
                         }
 
                         // If we reached here - then we want to delay with our current building. Return all way back to main loop, and try to build something else
-                        building.extraDescription += `Conflicts with ${other.title} for <span class="has-text-info">${resource.name}</span><br>`;
+                        building.extraDescription += `Conflicts with <span class="has-text-info">${other.title}</span> for <span class="has-text-info">${resource.name}</span><br>`;
                         continue buildingsLoop;
                     }
                 }
@@ -10848,6 +11050,10 @@
             return "Progression fork to Matrix reset";
         }
 
+        if (itemId === "tech-purify_essence" && settings.prestigeType !== "apotheosis") {
+            return "Progression fork to Apotheosis";
+        }
+
         if ((itemId === "tech-vax_strat1" || itemId === "tech-vax_strat2" || itemId === "tech-vax_strat3" || itemId === "tech-vax_strat4") && !itemId.includes(settings.prestigeVaxStrat)) {
             return "Undesirable Vaccination Strategy";
         }
@@ -10858,7 +11064,7 @@
         }
 
         // Don't waste phage and plasmid on ascension techs if we're not going there
-        if ((itemId === "tech-incorporeal" || itemId === "tech-tech_ascension") && settings.prestigeType !== "ascension") {
+        if ((itemId === "tech-incorporeal" || itemId === "tech-tech_ascension") && settings.prestigeType !== "ascension" && settings.prestigeType !== "apotheosis") {
             return "Not needed for current prestige";
         }
 
@@ -10899,7 +11105,7 @@
         }
 
         if (itemId !== settings.userResearchTheology_2 && (itemId === "tech-deify" || itemId === "tech-study")) {
-            let longRun = ["ascension", "demonic", "apocalypse", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType);
+            let longRun = ["ascension", "demonic", "apotheosis", "apocalypse", "terraform", "matrix", "retire", "eden"].includes(settings.prestigeType);
             if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && longRun)) {
                 return "Undesirable theology path";
             }
@@ -11092,7 +11298,7 @@
                     }
                 }
                 // Do not enable Ascension Machine while we're waiting for pillar
-                if (building === buildings.SiriusAscensionTrigger && (!isPillarFinished() || settings.prestigeType !== 'ascension')) {
+                if (building === buildings.SiriusAscensionTrigger && building.powered > 0 && (!isPillarFinished() || settings.prestigeType !== 'ascension')) {
                     maxStateOn = 0;
                 }
                 if (building === buildings.RedAtmoTerraformer && settings.prestigeType !== 'terraform') {
@@ -11290,6 +11496,12 @@
                 }
                 if (building === buildings.TauMiningPit) {
                     maxStateOn = Math.min(maxStateOn, Math.ceil(resources.Population.maxQuantity / 6));
+                }
+                if (building === buildings.AsphodelHarvester && !resources.Asphodel_Powder.isUseful()) {
+                    maxStateOn = Math.min(maxStateOn, resources.Asphodel_Powder.getBusyWorkers("eden_asphodel_harvester_title", currentStateOn));
+                    if (maxStateOn !== currentStateOn) {
+                        resources.Asphodel_Powder.incomeAdusted = true;
+                    }
                 }
             }
 
@@ -12421,12 +12633,12 @@
     }
 
     function updateScriptData() {
+        WarManager.updateGarrison();
+        WarManager.updateHell();
         for (let id in resources) {
             resources[id].updateData();
         }
         updateCraftCost();
-        WarManager.updateGarrison();
-        WarManager.updateHell();
         MarketManager.updateData();
         BuildingManager.updateBuildings();
 
@@ -12822,8 +13034,7 @@
           + (game.global.space.g_factory?.count > 0 ? 1 : 0) // Graphene plant built in lone survivor
           + (game.global.tauceti.mining_ship?.count > 0 ? 1 : 0) // Extractor ship built
           + (game.global.tech.psychicthrall ?? 0) // Psychic powers
-          + (game.global.tech.psychic ?? 0) // Psychic powers
-
+          + (game.global.tech.psychic ?? 0); // Psychic powers
 
         if (game.global.settings.showShipYard) { // TP Ship Yard
           state.tabHash += 1
@@ -12840,7 +13051,6 @@
             + (haveTech('eris', 2) ? 1 : 0) // Eris scanning
             + (haveTech('titan_ai_core') ? 1 : 0) // AI core built, drones unlocked
             + (haveTech('tauceti') ? 1 : 0); // Interstellar drive researched, explorer inlocked
-
         }
 
         if (game.global.race['shapeshifter']){
@@ -13497,7 +13707,7 @@
             }
         }
 
-        if (haveTask("bal_storage")) {
+        if (haveTask("bal_storage") || haveTask("combo_storage")) {
             overrides["autoStorage"] = false;
         }
         if (haveTask("trash")) {
@@ -14467,7 +14677,8 @@
         {val: "terraform", label: "Terraform", hint: "Create new planet by building and powering Terraformer. Atmosphere Terraformer is managed by autoPower. Disable autoPrestige if you want to change custom planet. Otherwise current one will be used , or default one if there's no current. "},
         {val: "matrix", label: "Matrix", hint: "Build a computer simulation and trap your entire civilization in it"},
         {val: "retire", label: "Retirement", hint: "Retire and enjoy the easy life."},
-        {val: "eden", label: "Eden", hint: "Build Garden Of Eden."}];
+        {val: "eden", label: "Eden", hint: "Build Garden Of Eden."},
+        {val: "apotheosis", label: "Apotheosis", hint: "Kill the God."}];
 
     const prestigeOptions = buildSelectOptions(prestigeTypes);
 
@@ -15384,6 +15595,8 @@
                 } else if (this.value === "eden" && buildings.TauStarEden.isUnlocked()
                                                  && buildings.TauStarEden.isAffordable()) {
                     confirmationText = "Garden Of Eden is ready to build.";
+                } else if (this.value === "apotheosis" && buildings.PalaceApotheosis.isUnlocked()) {
+                    confirmationText = "Apotheosis is ready to build.";
                 }
                 if (confirmationText !== "") {
                     confirmationText += " You may prestige immediately. Are you sure you want to toggle this prestige?";
@@ -15492,11 +15705,11 @@
         if (race && race.getCondition() !== '') {
             let suited = race.getHabitability();
             if (suited === 1) {
-                $("#script_race_warning").html(`<span class="has-text-success">This race have special requirements: ${race.getCondition()}. This condition is met.</span>`);
+                $("#script_race_warning").html(`<span class="has-text-success">This race have special requirements: ${race.getCondition()} This condition is met.</span>`);
             } else if (suited === 0) {
-                $("#script_race_warning").html(`<span class="has-text-danger">Warning! This race have special requirements: ${race.getCondition()}. This condition is not met.</span>`);
+                $("#script_race_warning").html(`<span class="has-text-danger">Warning! This race have special requirements: ${race.getCondition()} This condition is not met.</span>`);
             } else {
-                $("#script_race_warning").html(`<span class="has-text-warning">Warning! This race have special requirements: ${race.getCondition()}. This condition is bypassed. Race will have ${100 - suited * 100}% penalty.</span>`);
+                $("#script_race_warning").html(`<span class="has-text-warning">Warning! This race have special requirements: ${race.getCondition()} This condition is bypassed. Race will have ${100 - suited * 100}% penalty.</span>`);
             }
         } else {
             $("#script_race_warning").empty();
@@ -16087,7 +16300,7 @@
         addSettingsSelect(currentNode, "userResearchTheology_1", "Target Theology 1", "Theology 1 technology to research, have no effect after getting Transcendence perk", theology1Options);
 
         // Theology 2
-        let theology2Options = [{val: "auto", label: "Script Managed", hint: "Picks Deify for Ascension, Demonic Infusion, AI Apocalypse, Terraform, Matrix, Retirement and Eden prestiges, or Study for others prestiges"},
+        let theology2Options = [{val: "auto", label: "Script Managed", hint: "Picks Deify for Ascension, Demonic Infusion, Apotheosis, AI Apocalypse, Terraform, Matrix, Retirement and Eden prestiges, or Study for others prestiges"},
                                 {val: "tech-study", label: game.loc('tech_study'), hint: game.loc('tech_study_desc')},
                                 {val: "tech-deify", label: game.loc('tech_deify'), hint: game.loc('tech_deify_desc')}];
         addSettingsSelect(currentNode, "userResearchTheology_2", "Target Theology 2", "Theology 2 technology to research", theology2Options);
@@ -17771,7 +17984,7 @@
             let buildingElement = $('#script_' + building._vueBinding);
 
             let color = (building._tab === "space" || building._tab === "starDock") ? "has-text-danger" :
-                        building._tab === "galaxy" ? "has-text-advanced" :
+                        (building._tab === "galaxy" || building._tab === "eden") ? "has-text-advanced" :
                         building._tab === "interstellar" ? "has-text-special" :
                         (building._tab === "portal" || building._tab === "tauceti") ? "has-text-warning" :
                         "has-text-info";
@@ -18899,7 +19112,7 @@
                 if ((res !== "Knowledge" || blockKnowledge) && priorityTarget.cost[res] > resources[res].currentQuantity - action.cost[res]) {
                     const resList = conflict.resList || [];
                     const actionList = conflict.actionList || [];
-                    conflict = {res: resources[res], obj: priorityTarget, resList: [...new Set([...resList, res])], actionList: [...new Set([...actionList, priorityTarget.name])]};
+                    conflict = {res: resources[res], obj: priorityTarget, resList: [...new Set([...resList, resources[res].name])], actionList: [...new Set([...actionList, priorityTarget.name])]};
                 }
             }
         }
@@ -19099,7 +19312,7 @@
         // export const supplyValue from resources.js
         supplyValue: {Lumber:{in:.5,out:25e3},Chrysotile:{in:.5,out:25e3},Stone:{in:.5,out:25e3},Crystal:{in:3,out:25e3},Furs:{in:3,out:25e3},Copper:{in:1.5,out:25e3},Iron:{in:1.5,out:25e3},Aluminium:{in:2.5,out:25e3},Cement:{in:3,out:25e3},Coal:{in:1.5,out:25e3},Oil:{in:2.5,out:12e3},Uranium:{in:5,out:300},Steel:{in:3,out:25e3},Titanium:{in:3,out:25e3},Alloy:{in:6,out:25e3},Polymer:{in:6,out:25e3},Iridium:{in:8,out:25e3},Helium_3:{in:4.5,out:12e3},Deuterium:{in:4,out:1e3},Neutronium:{in:15,out:1e3},Adamantite:{in:12.5,out:1e3},Infernite:{in:25,out:250},Elerium:{in:30,out:250},Nano_Tube:{in:6.5,out:1e3},Graphene:{in:5,out:1e3},Stanene:{in:4.5,out:1e3},Bolognium:{in:18,out:1e3},Vitreloy:{in:14,out:1e3},Orichalcum:{in:10,out:1e3},Plywood:{in:10,out:250},Brick:{in:10,out:250},Wrought_Iron:{in:10,out:250},Sheet_Metal:{in:10,out:250},Mythril:{in:12.5,out:250},Aerogel:{in:16.5,out:250},Nanoweave:{in:18,out:250},Scarletite:{in:35,out:250}},
         // export const monsters from portal.js
-        monsters: {fire_elm:{weapon:{laser:1.05,flame:0,plasma:.25,kinetic:.5,missile:.5,sonic:1,shotgun:.75,tesla:.65},nozone:{freeze:!0,flooded:!0},amp:{hot:1.75,humid:.8,steam:.9}},water_elm:{weapon:{laser:.65,flame:.5,plasma:1,kinetic:.2,missile:.5,sonic:.5,shotgun:.25,tesla:.75},nozone:{hot:!0,freeze:!0},amp:{steam:1.5,river:1.1,flooded:2,rain:1.75,humid:1.25}},rock_golem:{weapon:{laser:1,flame:.5,plasma:1,kinetic:.65,missile:.95,sonic:.75,shotgun:.35,tesla:0},nozone:{},amp:{}},bone_golem:{weapon:{laser:.45,flame:.35,plasma:.55,kinetic:1,missile:1,sonic:.75,shotgun:.75,tesla:.15},nozone:{},amp:{}},mech_dino:{weapon:{laser:.85,flame:.05,plasma:.55,kinetic:.45,missile:.5,sonic:.35,shotgun:.5,tesla:1},nozone:{},amp:{}},plant:{weapon:{laser:.42,flame:1,plasma:.65,kinetic:.2,missile:.25,sonic:.75,shotgun:.35,tesla:.38},nozone:{},amp:{}},crazed:{weapon:{laser:.5,flame:.85,plasma:.65,kinetic:1,missile:.35,sonic:.15,shotgun:.95,tesla:.6},nozone:{},amp:{}},minotaur:{weapon:{laser:.32,flame:.5,plasma:.82,kinetic:.44,missile:1,sonic:.15,shotgun:.2,tesla:.35},nozone:{},amp:{}},ooze:{weapon:{laser:.2,flame:.65,plasma:1,kinetic:0,missile:0,sonic:.85,shotgun:0,tesla:.15},nozone:{},amp:{}},zombie:{weapon:{laser:.35,flame:1,plasma:.45,kinetic:.08,missile:.8,sonic:.18,shotgun:.95,tesla:.05},nozone:{},amp:{}},raptor:{weapon:{laser:.68,flame:.55,plasma:.85,kinetic:1,missile:.44,sonic:.22,shotgun:.33,tesla:.66},nozone:{},amp:{}},frost_giant:{weapon:{laser:.9,flame:.82,plasma:1,kinetic:.25,missile:.08,sonic:.45,shotgun:.28,tesla:.5},nozone:{hot:!0},amp:{freeze:2.5,hail:1.65}},swarm:{weapon:{laser:.02,flame:1,plasma:.04,kinetic:.01,missile:.08,sonic:.66,shotgun:.38,tesla:.45},nozone:{},amp:{}},dragon:{weapon:{laser:.18,flame:0,plasma:.12,kinetic:.35,missile:1,sonic:.22,shotgun:.65,tesla:.15},nozone:{},amp:{}},mech_dragon:{weapon:{laser:.84,flame:.1,plasma:.68,kinetic:.18,missile:.75,sonic:.22,shotgun:.28,tesla:1},nozone:{},amp:{}},construct:{weapon:{laser:.5,flame:.2,plasma:.6,kinetic:.34,missile:.9,sonic:.08,shotgun:.28,tesla:1},nozone:{},amp:{}},beholder:{weapon:{laser:.75,flame:.15,plasma:1,kinetic:.45,missile:.05,sonic:.01,shotgun:.12,tesla:.3},nozone:{},amp:{}},worm:{weapon:{laser:.55,flame:.38,plasma:.45,kinetic:.2,missile:.05,sonic:1,shotgun:.02,tesla:.01},nozone:{},amp:{}},hydra:{weapon:{laser:.85,flame:.75,plasma:.85,kinetic:.25,missile:.45,sonic:.5,shotgun:.6,tesla:.65},nozone:{},amp:{}},colossus:{weapon:{laser:1,flame:.05,plasma:.75,kinetic:.45,missile:1,sonic:.35,shotgun:.35,tesla:.5},nozone:{},amp:{}},lich:{weapon:{laser:.1,flame:.1,plasma:.1,kinetic:.45,missile:.75,sonic:.35,shotgun:.75,tesla:.5},nozone:{},amp:{}},ape:{weapon:{laser:1,flame:.95,plasma:.85,kinetic:.5,missile:.5,sonic:.05,shotgun:.35,tesla:.68},nozone:{},amp:{}},bandit:{weapon:{laser:.65,flame:.5,plasma:.85,kinetic:1,missile:.5,sonic:.25,shotgun:.75,tesla:.25},nozone:{},amp:{}},croc:{weapon:{laser:.65,flame:.05,plasma:.6,kinetic:.5,missile:.5,sonic:1,shotgun:.2,tesla:.75},nozone:{},amp:{}},djinni:{weapon:{laser:0,flame:.35,plasma:1,kinetic:.15,missile:0,sonic:.65,shotgun:.22,tesla:.4},nozone:{},amp:{}},snake:{weapon:{laser:.5,flame:.5,plasma:.5,kinetic:.5,missile:.5,sonic:.5,shotgun:.5,tesla:.5},nozone:{},amp:{}},centipede:{weapon:{laser:.5,flame:.85,plasma:.95,kinetic:.65,missile:.6,sonic:0,shotgun:.5,tesla:.01},nozone:{},amp:{}},spider:{weapon:{laser:.65,flame:1,plasma:.22,kinetic:.75,missile:.15,sonic:.38,shotgun:.9,tesla:.18},nozone:{},amp:{}},manticore:{weapon:{laser:.05,flame:.25,plasma:.95,kinetic:.5,missile:.15,sonic:.48,shotgun:.4,tesla:.6},nozone:{},amp:{}},fiend:{weapon:{laser:.75,flame:.25,plasma:.5,kinetic:.25,missile:.75,sonic:.25,shotgun:.5,tesla:.5},nozone:{},amp:{}},bat:{weapon:{laser:.16,flame:.18,plasma:.12,kinetic:.25,missile:.02,sonic:1,shotgun:.9,tesla:.58},nozone:{},amp:{}},medusa:{weapon:{laser:.35,flame:.1,plasma:.3,kinetic:.95,missile:1,sonic:.15,shotgun:.88,tesla:.26},nozone:{},amp:{}},ettin:{weapon:{laser:.5,flame:.35,plasma:.8,kinetic:.5,missile:.25,sonic:.3,shotgun:.6,tesla:.09},nozone:{},amp:{}},faceless:{weapon:{laser:.6,flame:.28,plasma:.6,kinetic:0,missile:.05,sonic:.8,shotgun:.15,tesla:1},nozone:{},amp:{}},enchanted:{weapon:{laser:1,flame:.02,plasma:.95,kinetic:.2,missile:.7,sonic:.05,shotgun:.65,tesla:.01},nozone:{},amp:{}},gargoyle:{weapon:{laser:.15,flame:.4,plasma:.3,kinetic:.5,missile:.5,sonic:.85,shotgun:1,tesla:.2},nozone:{},amp:{}},chimera:{weapon:{laser:.38,flame:.6,plasma:.42,kinetic:.85,missile:.35,sonic:.5,shotgun:.65,tesla:.8},nozone:{},amp:{}},gorgon:{weapon:{laser:.65,flame:.65,plasma:.65,kinetic:.65,missile:.65,sonic:.65,shotgun:.65,tesla:.65},nozone:{},amp:{}},kraken:{weapon:{laser:.75,flame:.35,plasma:.75,kinetic:.35,missile:.5,sonic:.18,shotgun:.05,tesla:.85},nozone:{},amp:{}},homunculus:{weapon:{laser:.05,flame:1,plasma:.1,kinetic:.85,missile:.65,sonic:.5,shotgun:.75,tesla:.2},nozone:{},amp:{}}},
+        monsters: {fire_elm:{weapon:{laser:1.05,flame:0,plasma:.25,kinetic:.5,missile:.5,sonic:1,shotgun:.75,tesla:.65},nozone:{freeze:!0,flooded:!0},amp:{hot:1.75,humid:.8,steam:.9}},water_elm:{weapon:{laser:.65,flame:.5,plasma:1,kinetic:.2,missile:.5,sonic:.5,shotgun:.25,tesla:.75},nozone:{hot:!0,freeze:!0},amp:{steam:1.5,river:1.1,flooded:2,rain:1.75,humid:1.25}},rock_golem:{weapon:{laser:1,flame:.5,plasma:1,kinetic:.65,missile:.95,sonic:.75,shotgun:.35,tesla:0},nozone:{},amp:{}},bone_golem:{weapon:{laser:.45,flame:.35,plasma:.55,kinetic:1,missile:1,sonic:.75,shotgun:.75,tesla:.15},nozone:{},amp:{}},mech_dino:{weapon:{laser:.85,flame:.05,plasma:.55,kinetic:.45,missile:.5,sonic:.35,shotgun:.5,tesla:1},nozone:{},amp:{}},plant:{weapon:{laser:.42,flame:1,plasma:.65,kinetic:.2,missile:.25,sonic:.75,shotgun:.35,tesla:.38},nozone:{},amp:{}},crazed:{weapon:{laser:.5,flame:.85,plasma:.65,kinetic:1,missile:.35,sonic:.15,shotgun:.95,tesla:.6},nozone:{},amp:{}},minotaur:{weapon:{laser:.32,flame:.5,plasma:.82,kinetic:.44,missile:1,sonic:.15,shotgun:.2,tesla:.35},nozone:{},amp:{}},ooze:{weapon:{laser:.2,flame:.65,plasma:1,kinetic:0,missile:0,sonic:.85,shotgun:0,tesla:.15},nozone:{},amp:{}},zombie:{weapon:{laser:.35,flame:1,plasma:.45,kinetic:.08,missile:.8,sonic:.18,shotgun:.95,tesla:.05},nozone:{},amp:{}},raptor:{weapon:{laser:.68,flame:.55,plasma:.85,kinetic:1,missile:.44,sonic:.22,shotgun:.33,tesla:.66},nozone:{},amp:{}},frost_giant:{weapon:{laser:.9,flame:.82,plasma:1,kinetic:.25,missile:.08,sonic:.45,shotgun:.28,tesla:.5},nozone:{hot:!0},amp:{freeze:2.5,hail:1.65}},swarm:{weapon:{laser:.02,flame:1,plasma:.04,kinetic:.01,missile:.08,sonic:.66,shotgun:.38,tesla:.45},nozone:{},amp:{}},dragon:{weapon:{laser:.18,flame:0,plasma:.12,kinetic:.35,missile:1,sonic:.22,shotgun:.65,tesla:.15},nozone:{},amp:{}},mech_dragon:{weapon:{laser:.84,flame:.1,plasma:.68,kinetic:.18,missile:.75,sonic:.22,shotgun:.28,tesla:1},nozone:{},amp:{}},construct:{weapon:{laser:.5,flame:.2,plasma:.6,kinetic:.34,missile:.9,sonic:.08,shotgun:.28,tesla:1},nozone:{},amp:{}},beholder:{weapon:{laser:.75,flame:.15,plasma:1,kinetic:.45,missile:.05,sonic:.01,shotgun:.12,tesla:.3},nozone:{},amp:{}},worm:{weapon:{laser:.55,flame:.38,plasma:.45,kinetic:.2,missile:.05,sonic:1,shotgun:.02,tesla:.01},nozone:{},amp:{}},hydra:{weapon:{laser:.85,flame:.75,plasma:.85,kinetic:.25,missile:.45,sonic:.5,shotgun:.6,tesla:.65},nozone:{},amp:{}},colossus:{weapon:{laser:1,flame:.05,plasma:.75,kinetic:.45,missile:1,sonic:.35,shotgun:.35,tesla:.5},nozone:{},amp:{}},lich:{weapon:{laser:.1,flame:.1,plasma:.1,kinetic:.45,missile:.75,sonic:.35,shotgun:.75,tesla:.5},nozone:{},amp:{}},ape:{weapon:{laser:1,flame:.95,plasma:.85,kinetic:.5,missile:.5,sonic:.05,shotgun:.35,tesla:.68},nozone:{},amp:{}},bandit:{weapon:{laser:.65,flame:.5,plasma:.85,kinetic:1,missile:.5,sonic:.25,shotgun:.75,tesla:.25},nozone:{},amp:{}},croc:{weapon:{laser:.65,flame:.05,plasma:.6,kinetic:.5,missile:.5,sonic:1,shotgun:.2,tesla:.75},nozone:{},amp:{}},djinni:{weapon:{laser:0,flame:.35,plasma:1,kinetic:.15,missile:0,sonic:.65,shotgun:.22,tesla:.4},nozone:{},amp:{}},snake:{weapon:{laser:.5,flame:.5,plasma:.5,kinetic:.5,missile:.5,sonic:.5,shotgun:.5,tesla:.5},nozone:{},amp:{}},centipede:{weapon:{laser:.5,flame:.85,plasma:.95,kinetic:.65,missile:.6,sonic:0,shotgun:.5,tesla:.01},nozone:{},amp:{}},spider:{weapon:{laser:.65,flame:1,plasma:.22,kinetic:.75,missile:.15,sonic:.38,shotgun:.9,tesla:.18},nozone:{},amp:{}},manticore:{weapon:{laser:.05,flame:.25,plasma:.95,kinetic:.5,missile:.15,sonic:.48,shotgun:.4,tesla:.6},nozone:{},amp:{}},fiend:{weapon:{laser:.75,flame:.25,plasma:.5,kinetic:.25,missile:.75,sonic:.25,shotgun:.5,tesla:.5},nozone:{},amp:{}},bat:{weapon:{laser:.16,flame:.18,plasma:.12,kinetic:.25,missile:.02,sonic:1,shotgun:.9,tesla:.58},nozone:{},amp:{}},medusa:{weapon:{laser:.35,flame:.1,plasma:.3,kinetic:.95,missile:1,sonic:.15,shotgun:.88,tesla:.26},nozone:{},amp:{}},ettin:{weapon:{laser:.5,flame:.35,plasma:.8,kinetic:.5,missile:.25,sonic:.3,shotgun:.6,tesla:.09},nozone:{},amp:{}},faceless:{weapon:{laser:.6,flame:.28,plasma:.6,kinetic:0,missile:.05,sonic:.8,shotgun:.15,tesla:1},nozone:{},amp:{}},enchanted:{weapon:{laser:1,flame:.02,plasma:.95,kinetic:.2,missile:.7,sonic:.05,shotgun:.65,tesla:.01},nozone:{},amp:{}},gargoyle:{weapon:{laser:.15,flame:.4,plasma:.3,kinetic:.5,missile:.5,sonic:.85,shotgun:1,tesla:.2},nozone:{},amp:{}},chimera:{weapon:{laser:.38,flame:.6,plasma:.42,kinetic:.85,missile:.35,sonic:.5,shotgun:.65,tesla:.8},nozone:{},amp:{}},gorgon:{weapon:{laser:.65,flame:.65,plasma:.65,kinetic:.65,missile:.65,sonic:.65,shotgun:.65,tesla:.65},nozone:{},amp:{}},kraken:{weapon:{laser:.75,flame:.35,plasma:.75,kinetic:.35,missile:.5,sonic:.18,shotgun:.05,tesla:.85},nozone:{},amp:{}},homunculus:{weapon:{laser:.05,flame:1,plasma:.1,kinetic:.85,missile:.65,sonic:.5,shotgun:.75,tesla:.2},nozone:{},amp:{}},giant_chicken:{weapon:{laser:.95,flame:.95,plasma:.95,kinetic:.95,missile:.95,sonic:.95,shotgun:.95,tesla:.95},nozone:{},amp:{}},skeleton_pack:{weapon:{laser:.5,flame:.1,plasma:.5,kinetic:1,missile:1.2,sonic:.5,shotgun:1.05,tesla:.2},nozone:{},amp:{}}},
         // export function hellSupression(area, val) from portal.js
         hellSupression: function(t,e){switch(t){case"ruins":{let t=e||buildings.RuinsGuardPost.stateOnCount,r=75*buildings.RuinsArcology.stateOnCount,a=game.armyRating(t*traitVal('high_pop', 0, 1),"hellArmy",0);a*=traitVal('holy', 1, '+');let l=(a+r)/5e3;return{supress:l>1?1:l,rating:a+r}}case"gate":{let t=poly.hellSupression("ruins",e),r=100*buildings.GateTurret.stateOnCount;r*=traitVal('holy', 1, '+');let a=(t.rating+r)/7500;return{supress:a>1?1:a,rating:t.rating+r}}default:return 0}},
         // function taxCap(min) from civics.js
