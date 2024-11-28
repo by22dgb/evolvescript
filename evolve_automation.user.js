@@ -1530,7 +1530,9 @@
                 return -1;
             }
 
-            const noGenusRace = ["custom", "junker", "sludge", "hybrid"];
+            const noMADRace = ["sludge", "ultra_sludge"];
+            const noGenusRace = ["custom", "junker", "sludge", "ultra_sludge", "hybrid"];
+            const challengeRace = ["junker", "sludge", "ultra_sludge"];
             const greatnessReset = ["bioseed", "ascension", "terraform", "matrix", "retire", "eden"];
             const midTierReset = ["bioseed", "cataclysm", "whitehole", "vacuum", "terraform"];
             const highTierReset = ["ascension", "demonic", "apotheosis"];
@@ -1580,7 +1582,7 @@
             // Check greatness\extinction achievement
             if (greatnessReset.includes(settings.prestigeType)) {
                 checkAchievement(100, "genus_" + this.genus);
-            } else if (this.id !== "sludge" || settings.prestigeType !== "mad") {
+            } else if (!noMADRace.includes(this.id) || settings.prestigeType !== "mad") {
                 checkAchievement(100, "extinct_" + this.id);
             }
 
@@ -1613,7 +1615,7 @@
             }
 
             // Increase weight for suited conditional races with achievements
-            if (weighting > 0 && habitability === 1 && this.getCondition() !== '' && this.id !== "junker" && this.id !== "sludge") {
+            if (weighting > 0 && habitability === 1 && this.getCondition() !== '' && !challengeRace.includes(this.id)) {
                 weighting += 500;
             }
 
@@ -1694,8 +1696,8 @@
                 }
             }
 
-            // Ignore Valdi on low star, and decrease weight on any other star
-            if (this.id === "junker" || this.id === "sludge") {
+            // Ignore challenge races on low star, and decrease weight on any other star
+            if (challengeRace.includes(this.id)) {
                 weighting *= starLevel < 5 ? 0 : 0.01;
             }
 
@@ -1712,7 +1714,10 @@
             if (this.id === "sludge") {
                 return ((game.global.stats.achieve['ascended'] || game.global.stats.achieve['corrupted']) && game.global.stats.achieve['extinct_junker']) ? 1 : 0;
             }
-            if (this.genus === "hybrid" && game.global.stats.achieve['godslayer'] === undefined) {
+            if (this.id === "ultra_sludge") {
+                return (game.global.stats.achieve['godslayer'] && game.global.stats.achieve['extinct_sludge']) ? 1 : 0;
+            }
+            if (this.genus === "hybrid") {
                 return 0;
             }
 
@@ -1753,10 +1758,12 @@
                     return "Genetic Dead End unlocked.";
                 case "sludge":
                     return "Failed Experiment unlocked.";
+                case "ultra_sludge":
+                    return "Ultra Failed Experiment unlocked.";
                 case "custom":
                     return game.loc('wiki_achieve_ascended');
                 case "hybrid":
-                    return game.loc('wiki_achieve_what_is_best');
+                    return "???";
             }
 
             switch (this.genus) {
@@ -1986,7 +1993,7 @@
         canPurge() {
             return this.purgeEnabled && !this.gainEnabled && this.canMutate("purge")
               && game.global.race[this.traitName] !== undefined
-              && !(game.global.race.species === "sludge" && this.traitName === "ooze")
+              && !((game.global.race.species === "sludge" || game.global.race.species === "ultra_sludge") && this.traitName === "ooze")
               && !(game.global.race.ss_traits?.includes(this.traitName))
               && !(game.global.race.iTraits?.hasOwnProperty(this.traitName));
         }
@@ -1994,12 +2001,13 @@
         canMutate(action) {
             let currentPlasmids = resources[game.global.race.universe === "antimatter" ? "Antiplasmid" : "Plasmid"].currentQuantity;
             return currentPlasmids - this.mutationCost(action) >= MutableTraitManager.minimumPlasmidsToPreserve
-              && !(game.global.race.species === "sludge" && game.global.race["modified"]);
+              && !((game.global.race.species === "sludge" || game.global.race.species === "ultra_sludge") && game.global.race["modified"]);
         }
 
         mutationCost(action) {
             let mult = mutationCostMultipliers[game.global.race.species]?.[action] ?? 1;
-            return this.baseCost * 5 * mult;
+            let multGenus = mutationCostMultipliersGenus[game.races[game.global.race.species].type]?.[action] ?? 1;
+            return this.baseCost * 5 * mult * multGenus;
         }
     }
 
@@ -2104,6 +2112,7 @@
         [{id:"emfield", trait:"emfield"}],
         [{id:"inflation", trait:"inflation"}],
         [{id:"sludge", trait:"sludge"}],
+        [{id:"ultra_sludge", trait:"ultra_sludge"}],
         [{id:"orbit_decay", trait:"orbit_decay"}],
         //[{id:"nonstandard", trait:"nonstandard"}],
         [{id:"gravity_well", trait:"gravity_well"},
@@ -2122,7 +2131,8 @@
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe", "assembly", "cloning_facility", "ambush_patrol", "raid_supplies", "siege_fortress"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["toggle", "general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "trait", "weighting", "ejector", "planet", "mech", "magic", "trigger"];
-    const mutationCostMultipliers = {sludge: {gain: 2, purge: 10}, custom: {gain: 10, purge: 10}};
+    const mutationCostMultipliers = {sludge: {gain: 10, purge: 10}, ultra_sludge: {gain: 10, purge: 10}, custom: {gain: 10, purge: 10}};
+    const mutationCostMultipliersGenus = {hybrid: {gain: 2, purge: 2}};
     const specialRaceTraits = {beast_of_burden: "reindeer", photosynth: "plant"};
     const conflictingTraits = [["dumb", "smart"]];
     const replicableResources = ['Food', 'Lumber', 'Chrysotile', 'Stone', 'Crystal', 'Furs', 'Copper', 'Iron', 'Aluminium', 'Cement', 'Coal', 'Oil', 'Uranium', 'Steel', 'Titanium', 'Alloy', 'Polymer', 'Iridium', 'Helium_3', 'Deuterium', 'Neutronium', 'Adamantite', 'Infernite', 'Elerium', 'Nano_Tube', 'Graphene', 'Stanene', 'Bolognium', 'Unobtainium', 'Vitreloy', 'Orichalcum', 'Water', 'Plywood', 'Brick', 'Wrought_Iron', 'Sheet_Metal', 'Mythril', 'Aerogel', 'Nanoweave', 'Scarletite', 'Quantium'];
@@ -6652,7 +6662,7 @@
 
             races[id] = new Race(id);
             let evolutionPath;
-            if (id === "junker" || id === "sludge") {
+            if (id === "junker" || id === "sludge" || id === "ultra_sludge") {
                 evolutionPath = genusEvolution.fungi; // Use fungi as default Valdi genus
             } else if (game.races[id].type === "hybrid") {
                 evolutionPath = genusEvolution[game.races[id].hybrid[0]];
@@ -8173,7 +8183,7 @@
             if (settings["challenge_" + challenges[i][0].id]) {
                 for (let j = 0; j < challenges[i].length; j++) {
                     let {id, trait} = challenges[i][j];
-                    if (game.global.race[trait] !== 1 && evolutions[id].click() && (id === "junker" || id === "sludge")) {
+                    if (game.global.race[trait] !== 1 && evolutions[id].click() && (id === "junker" || id === "sludge" || id === "ultra_sludge")) {
                         return; // Give game time to update state after activating junker
                     }
                 }
@@ -12950,7 +12960,7 @@
         let needReset = false;
         if (settings.autoEvolution && settings.evolutionBackup) {
             // Sludge and Valdi can't be evolved at random, only intentionally
-            if (game.global.race.species !== "junker" && game.global.race.species !== "sludge") {
+            if (game.global.race.species !== "junker" && game.global.race.species !== "sludge" && game.global.race.species !== "ultra_sludge") {
                 if (settings.userEvolutionTarget === "auto") {
                     let newRace = races[game.global.race.species];
                     if (newRace.getWeighting() <= 0) {
@@ -13269,10 +13279,11 @@
         if (game.global.hasOwnProperty('pillars')){
             for (let pillar in game.global.pillars) {
                 if (game.global.pillars[pillar]){
-                    towerSize -= 12;
+                    towerSize -= game.global.pillars[pillar] * 2 + 2;
                 }
             }
         }
+        if (towerSize < 250){ towerSize = 250; }
 
         state.astroSign = poly.astrologySign();
 
@@ -15817,6 +15828,7 @@
         let race = races[queuedEvolution.userEvolutionTarget];
         let isValdi = queuedEvolution.challenge_junker || race === races.junker;
         let isSludge = queuedEvolution.challenge_sludge || race === races.sludge;
+        let isUltraSludge = queuedEvolution.challenge_ultra_sludge || race === races.ultra_sludge;
 
         const getRaceColor = (race) => {
             let suited = race.getHabitability();
@@ -15829,12 +15841,13 @@
             }
         };
 
-        if (isValdi && isSludge) {
+        let uniqPicked = isValdi + isSludge + isUltraSludge;
+        if (uniqPicked > 1) {
             raceName = "Valdi and Sludge can not be combined!";
             raceClass = "has-text-danger";
-        } else if (isValdi || isSludge) {
+        } else if (uniqPicked === 1) {
             raceName = `${isValdi ? races.junker.name : races.sludge.name}, `;
-            if (race && race !== races.junker && race !== races.sludge) {
+            if (race && race !== races.junker && race !== races.sludge && race !== races.ultra_sludge) {
                 raceName += game.loc(`genelab_genus_${race.genus}`);
                 raceClass = getRaceColor(race);
             } else {
@@ -19161,7 +19174,7 @@
     function isEarlyGame() {
         if (game.global.race['cataclysm'] || game.global.race['orbit_decayed'] || game.global.race['lone_survivor']) {
             return false;
-        } else if (game.global.race['truepath'] || game.global.race['sludge']) {
+        } else if (game.global.race['truepath'] || game.global.race['sludge'] || game.global.race['ultra_sludge']) {
             return !haveTech("high_tech", 7);
         } else {
             return !haveTech("mad");
