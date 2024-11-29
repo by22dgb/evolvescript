@@ -7943,6 +7943,16 @@
             }
         }
 
+        // Specific migrations that should only be executed once
+        if (!settingsRaw.migrationVersion || settingsRaw.migrationVersion < 1) {
+            // Moved upwards in default priority list, needs to be executed before resetting building settings
+            // Settings may not exist yet here
+            if (settingsRaw["bld_p_eden-bliss_den"] && settingsRaw["bld_p_eden-rectory"] && settingsRaw["bld_p_eden-encampment"] && settingsRaw["bld_p_eden-bliss_den"] < settingsRaw["bld_p_eden-rectory"]) {
+                settingsRaw["bld_p_eden-rectory"] = settingsRaw["bld_p_eden-encampment"] + 1;
+            }
+            settingsRaw.migrationVersion = 1;
+        }
+
         // Apply default settings
         resetEvolutionSettings(false);
         resetWarSettings(false);
