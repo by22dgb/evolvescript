@@ -13367,6 +13367,8 @@
         verifyGameActionsExist(game.actions.interstellar, buildings, true);
         verifyGameActionsExist(game.actions.portal, buildings, true);
         verifyGameActionsExist(game.actions.galaxy, buildings, true);
+        verifyGameActionsExist(game.actions.tauceti, buildings, true);
+        verifyGameActionsExist(game.actions.eden, buildings, true);
     }
 
     function verifyGameActionsExist(gameObject, scriptObject, hasSubLevels) {
