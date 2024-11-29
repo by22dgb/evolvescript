@@ -13053,7 +13053,10 @@
           + (game.global.space.g_factory?.count > 0 ? 1 : 0) // Graphene plant built in lone survivor
           + (game.global.tauceti.mining_ship?.count > 0 ? 1 : 0) // Extractor ship built
           + (game.global.tech.psychicthrall ?? 0) // Psychic powers
-          + (game.global.tech.psychic ?? 0); // Psychic powers
+          + (game.global.tech.psychic ?? 0) // Psychic powers
+          + (game.global.tech.isle >= 3 ? 1 : 0) // Edenic north/south piers -> spirit syphon tech
+          + (game.global.tech.palace >= 4 ? 1 : 0) // Edenic sealed tomb -> energy drain tech
+        ;
 
         if (game.global.settings.showShipYard) { // TP Ship Yard
           state.tabHash += 1
