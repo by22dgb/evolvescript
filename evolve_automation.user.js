@@ -1717,7 +1717,7 @@
             if (this.id === "ultra_sludge") {
                 return (game.global.stats.achieve['godslayer'] && game.global.stats.achieve['extinct_sludge']) ? 1 : 0;
             }
-            if (this.genus === "hybrid") {
+            if (this.id === "hybrid") {
                 return 0;
             }
 
@@ -1745,6 +1745,8 @@
                     return game.global.stats.achieve['obsolete']?.l >= 5 ? 1 : 0;
                 case "eldritch":
                     return game.global.stats.achieve['nightmare']?.mg ? 1 : 0;
+                case "hybrid":
+                    return game.global.stats.achieve['godslayer'] ? 1 : 0;
                 case undefined: // Nonexistent custom
                     return 0;
                 default:
@@ -6954,6 +6956,7 @@
 
         priorityList.push(buildings.AsphodelMission);
         priorityList.push(buildings.AsphodelEncampment);
+        priorityList.push(buildings.AsphodelRectory);
         priorityList.push(buildings.AsphodelSoulEngine);
         priorityList.push(buildings.AsphodelMechStation);
         priorityList.push(buildings.AsphodelHarvester);
@@ -6964,7 +6967,6 @@
         priorityList.push(buildings.AsphodelRuneGate);
         priorityList.push(buildings.AsphodelBunker);
         priorityList.push(buildings.AsphodelBlissDen);
-        priorityList.push(buildings.AsphodelRectory);
 
         priorityList.push(buildings.ElysiumMission);
         priorityList.push(buildings.ElysiumAmbush);
