@@ -7652,7 +7652,8 @@
             productionFactoryWeighting: "none",
             productionFactoryMinIngredients: 0,
             productionFactoryFocusMaterials: false,
-            replicatorAssignGovernorTask: true
+            replicatorAssignGovernorTask: true,
+            replicatorWeightingMode: "mass",
         }
 
         // Foundry
@@ -10250,9 +10251,36 @@
             priorityList[0].push(...priorityGroups["-1"]);
         }
 
-        // Set the replicator to whatever has 1. the highest priority and 2. the highest weighting. Should be improved in the future
+        // For some situation where resource A has 100 weighting and resource B has 200 weighting, while both have 1000 quantity,
+        // we want to spend 2x as much "time" on resource B in some way.
+        // But not all resources take equally long to replicate, and some people may want different behavior.
+        //
+        // Mass mode: Factor in atomic mass (production time) & 1.4 exotic mass nerf.
+        //   A doubled weighting is treated as approximately "spend 2x as much time on this" (based on current quantities).
+        //   Actual quantities may vary a lot (eg may have 10x as much Plywood as compared to).
+        // Quantity mode: Simple quantity split.
+        //   A doubled weighting is treated as approximately "make 2x as much of this".
+        // Legacy mode: None of that matters, we only ever make the resource with the highest weighting. Intended for compat with old configs only. May be removed in the future.
+        let weightFn;
+        switch (settings.replicatorWeightingMode) {
+            case "mass":
+                weightFn = (production, resource) => production.weighting / resource.atomicMass / ((resource === resources.Elerium || resource === resources.Infernite) ? 4 : 1) / resource.currentQuantity;
+                break;
+
+            case "quantity":
+                weightFn = (production, resource) => production.weighting / resource.currentQuantity;
+                break;
+
+            case "legacy":
+            default:
+                weightFn = (production, resource) => production.weighting;
+                break;
+        }
+
+        // Set the replicator to whatever has the highest priority, roughly multiplied by the weighting
         if (priorityList.length > 0 && priorityList[0].length > 0) {
-            var selectedResource = priorityList[0].sort((a, b) => a.weighting - b.weighting)[0];
+            let list = priorityList[0].sort((a, b) => weightFn(a, a.resource) - weightFn(b, b.resource));
+            let selectedResource = settings.replicatorWeightingMode !== "legacy" ? list[list.length - 1] : list[0];
             ReplicatorManager.setResource(selectedResource.id);
         }
 
@@ -17645,6 +17673,11 @@
         addStandardHeading(currentNode, "Replicator");
 
         addSettingsToggle(currentNode, 'replicatorAssignGovernorTask', 'Assign governor task', 'If active, the replicator scheduler governor task will be set, the power adjustment will be enabled.')
+        addSettingsSelect(currentNode, 'replicatorWeightingMode', 'Weighting mode', 'Replicator only picks from enabled resources with the current highest valid priority (or -1 priority). After that, replicator use is split between resources of identical weighting. Setting configures how that split happens.', [
+            { val: "mass", hint: "Spends more time on resources that are easy to replicate. A resource with 2x the weighting will have roughly 2x the time spent. Based on differences in atomic mass, resources at similar weightings may have very different quantities.", label: "By atomic mass" },
+            { val: "quantity", hint: "Spends more time on resources that are hard to replicate. A resource with 2x the weighting will be focused until you have roughly 2x the amount. Resources at similar weightings will have similar quantities.", label: "By resource quantity" },
+            { val: "legacy", hint: "Legacy mode, similar to previous script behavior. Only the resource with the highest weighting is picked. If multiple resources have the same weighting then it will focus exclusively on one of those resources. This mode exists only to give you time to migrate your config to using the priority field.", label: "Legacy (deprecated)" },
+        ]);
 
         currentNode.append(`
         <table style="width:100%">
