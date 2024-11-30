@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.135
+// @version      3.3.1.136
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.user.js
 // @updateURL    https://gist.github.com/Vollch/b1a5eec305558a48b7f4575d317d7dd1/raw/evolve_automation.meta.js
@@ -1708,17 +1708,15 @@
         }
 
         getHabitability() {
-            if (this.id === "junker") {
-                return game.global.genes.challenge ? 1 : 0;
-            }
-            if (this.id === "sludge") {
-                return ((game.global.stats.achieve['ascended'] || game.global.stats.achieve['corrupted']) && game.global.stats.achieve['extinct_junker']) ? 1 : 0;
-            }
-            if (this.id === "ultra_sludge") {
-                return (game.global.stats.achieve['godslayer'] && game.global.stats.achieve['extinct_sludge']) ? 1 : 0;
-            }
-            if (this.id === "hybrid") {
-                return 0;
+            switch (this.id) {
+                case "junker":
+                    return game.global.genes.challenge ? 1 : 0;
+                case "sludge":
+                    return ((game.global.stats.achieve['ascended'] || game.global.stats.achieve['corrupted']) && game.global.stats.achieve['extinct_junker']) ? 1 : 0;
+                case "ultra_sludge":
+                    return (game.global.stats.achieve['godslayer'] && game.global.stats.achieve['extinct_sludge']) ? 1 : 0;
+                case "hybrid":
+                    return 0;
             }
 
             let unboundMod = game.global.blood.unbound >= 4 ? 0.95 :
